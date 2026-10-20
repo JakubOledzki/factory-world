@@ -13,6 +13,9 @@
 
 	handle {
 		root * /srv
+		# The game files keep the same names in every release (index.pck, index.wasm),
+		# so browsers must revalidate them or they keep running an old version.
+		header Cache-Control "no-cache"
 		file_server
 	}
 }
