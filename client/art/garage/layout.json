@@ -1,13 +1,63 @@
 {
- "bin": {
-  "x": 221,
-  "y": 291,
-  "w": 162,
-  "h": 159
+ "objects": {
+  "furniture_trash_bin": {
+   "anchorX": 71,
+   "anchorY": 106
+  },
+  "furniture_workbench": {
+   "anchorX": 181,
+   "anchorY": 159
+  },
+  "furniture_gas_cylinder": {
+   "anchorX": 31,
+   "anchorY": 58
+  },
+  "furniture_shelf": {
+   "anchorX": 142,
+   "anchorY": 142
+  },
+  "furniture_barrel_blue": {
+   "anchorX": 94,
+   "anchorY": 144
+  },
+  "furniture_barrel_red": {
+   "anchorX": 51,
+   "anchorY": 83
+  },
+  "furniture_tyres": {
+   "anchorX": 50,
+   "anchorY": 67
+  },
+  "furniture_pallet": {
+   "anchorX": 64,
+   "anchorY": 58
+  }
+ },
+ "projection": {
+  "origin": [
+   256.0,
+   668.61
+  ],
+  "axisX": [
+   96.0,
+   0.0
+  ],
+  "axisY": [
+   0.0,
+   -67.8823
+  ],
+  "axisZ": [
+   0.0,
+   -67.8823
+  ]
+ },
+ "room": {
+  "width": 8.0,
+  "depth": 6.0
  },
  "player": {
-  "x": 421,
-  "y": 451
+  "x": 4.0,
+  "y": 2.5999999046325684
  },
  "pixelsPerMetre": 96
 }

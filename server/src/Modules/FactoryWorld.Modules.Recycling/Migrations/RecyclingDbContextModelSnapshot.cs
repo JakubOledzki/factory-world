@@ -34,9 +34,45 @@ namespace FactoryWorld.Modules.Recycling.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<bool>("Furnished")
+                        .HasColumnType("boolean")
+                        .HasColumnName("furnished");
+
                     b.HasKey("OwnerId");
 
                     b.ToTable("garages", "recycling");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Recycling.GarageObject", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<double>("X")
+                        .HasColumnType("double precision")
+                        .HasColumnName("x");
+
+                    b.Property<double>("Y")
+                        .HasColumnType("double precision")
+                        .HasColumnName("y");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId");
+
+                    b.ToTable("garage_objects", "recycling");
                 });
 
             modelBuilder.Entity("FactoryWorld.Modules.Recycling.SortingJob", b =>

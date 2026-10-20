@@ -10,6 +10,16 @@ public static class Items
     public const string WastePlastic = "waste_plastic";
     public const string WasteGlass = "waste_glass";
 
+    // Furniture: stands in the garage, can be picked up into the inventory and placed again.
+    public const string TrashBin = "furniture_trash_bin";
+    public const string Workbench = "furniture_workbench";
+    public const string Shelf = "furniture_shelf";
+    public const string BarrelBlue = "furniture_barrel_blue";
+    public const string BarrelRed = "furniture_barrel_red";
+    public const string Tyres = "furniture_tyres";
+    public const string Pallet = "furniture_pallet";
+    public const string GasCylinder = "furniture_gas_cylinder";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -19,6 +29,14 @@ public static class Items
         [WasteCopper] = "Złom miedzi",
         [WastePlastic] = "Plastik z odzysku",
         [WasteGlass] = "Stłuczka szklana",
+        [TrashBin] = "Kosz na śmieci",
+        [Workbench] = "Stół warsztatowy",
+        [Shelf] = "Regał",
+        [BarrelBlue] = "Niebieska beczka",
+        [BarrelRed] = "Czerwona beczka",
+        [Tyres] = "Opony",
+        [Pallet] = "Paleta",
+        [GasCylinder] = "Butla gazowa",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);

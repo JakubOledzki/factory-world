@@ -7,7 +7,7 @@ pre-rendered 3D games.
 
 Needs the Blender Python module and Pillow:
     uv venv -p 3.13 .venv-art && VIRTUAL_ENV=.venv-art uv pip install bpy==5.2.2 pillow
-    .venv-art/bin/python tools/render_art.py [garage] [character] [items]
+    .venv-art/bin/python tools/render_art.py [garage] [character] [items] [furniture_<kind>...]
 """
 import json
 import math
@@ -462,24 +462,13 @@ def emission(name, color, strength):
 
 # --- Sprites --------------------------------------------------------------------------------
 
-def crop(path: Path, out: Path, pad=2) -> dict:
-    """Crops a full-screen render to its visible pixels; returns where it sits on screen."""
-    img = Image.open(path)
-    bbox = img.getchannel("A").point(lambda a: 255 if a > 3 else 0).getbbox()
-    x0, y0, x1, y1 = bbox
-    x0, y0 = max(0, x0 - pad), max(0, y0 - pad)
-    x1, y1 = min(img.width, x1 + pad), min(img.height, y1 + pad)
-    img.crop((x0, y0, x1, y1)).save(out, optimize=True)
-    return {"x": x0, "y": y0, "w": x1 - x0, "h": y1 - y0}
-
-
 def vignette(img: Image.Image, strength=0.55) -> Image.Image:
     w, h = img.size
     mask = Image.new("L", (w, h), 0)
     px = mask.load()
     for y in range(0, h, 4):
         for x in range(0, w, 4):
-            dx, dy = (x - w * 0.36) / (w * 0.6), (y - h * 0.5) / (h * 0.65)
+            dx, dy = (x - w * 0.5) / (w * 0.6), (y - h * 0.5) / (h * 0.65)
             v = int(255 * min(1.0, (dx * dx + dy * dy) ** 1.2 * strength))
             for yy in range(y, min(y + 4, h)):
                 for xx in range(x, min(x + 4, w)):
@@ -493,11 +482,23 @@ def vignette(img: Image.Image, strength=0.55) -> Image.Image:
 
 ROOM_W, ROOM_D, WALL_H, WALL_T = 8.0, 6.0, 2.8, 0.3
 FRONT_H = 0.45
-# Where on screen the room's centre sits: the right part of the screen is the side panel.
-ROOM_SCREEN_X = 450
+# Where on screen the room's centre sits.
+ROOM_SCREEN_X = 640
 
-BIN_AT = Vector((2.5, 3.9, 0))
-PLAYER_AT = Vector((3.7, 3.2, 0))
+PLAYER_AT = Vector((4.0, 2.6, 0))
+
+# Furniture the player can move, at the spots of the starter layout (the server's GarageLayout).
+# Each one is rendered alone at that spot, so the lighting matches the room it starts in.
+FURNITURE_AT = {
+    "furniture_trash_bin": (2.6, 4.2),
+    "furniture_workbench": (6.3, 5.55),
+    "furniture_gas_cylinder": (4.75, 5.65),
+    "furniture_shelf": (1.2, 2.3),
+    "furniture_barrel_blue": (7.45, 2.6),
+    "furniture_barrel_red": (7.4, 1.85),
+    "furniture_tyres": (6.6, 1.0),
+    "furniture_pallet": (1.6, 0.9),
+}
 
 
 def garage_camera(scene):
@@ -514,7 +515,7 @@ def screen_pos(scene, world: Vector) -> tuple[float, float]:
     return co.x * SCREEN_W, (1 - co.y) * SCREEN_H
 
 
-def build_garage(coll_room, coll_bin):
+def build_room(coll_room):
     floor_m = concrete_floor()
     wall_m = block_wall()
     cap_m = plain("wall_cap", (0.05, 0.05, 0.055), 0.9, variation=0.3)
@@ -560,62 +561,15 @@ def build_garage(coll_room, coll_bin):
     box("window_bar", (0.04, 0.06, 0.55), (6.3, ROOM_D - 0.11, 1.85), frame_m, coll_room)
     box("window_bar2", (0.95, 0.06, 0.04), (6.3, ROOM_D - 0.11, 1.85), frame_m, coll_room)
 
-    # Workbench under the window with a vice, a toolbox and junk.
-    wood_m = wood()
-    steel = rusty_metal("steel", (0.18, 0.18, 0.19), 0.3)
-    box("bench_top", (2.4, 0.8, 0.08), (6.3, ROOM_D - 0.45, 0.9), wood_m, coll_room, bevel=0.01)
-    for x in (5.2, 7.4):
-        for y in (ROOM_D - 0.8, ROOM_D - 0.12):
-            box("bench_leg", (0.08, 0.08, 0.86), (x, y, 0.43), steel, coll_room, bevel=0.005)
-    box("bench_shelf", (2.3, 0.7, 0.04), (6.3, ROOM_D - 0.45, 0.25), wood_m, coll_room)
-    red = rusty_metal("toolbox", (0.35, 0.04, 0.03), 0.3)
-    box("toolbox", (0.55, 0.26, 0.24), (6.9, ROOM_D - 0.45, 1.06), red, coll_room, bevel=0.02)
-    box("toolbox_lid", (0.57, 0.27, 0.04), (6.9, ROOM_D - 0.45, 1.19), red, coll_room, bevel=0.01)
-    box("vice", (0.2, 0.25, 0.16), (5.5, ROOM_D - 0.75, 1.02), steel, coll_room, bevel=0.02)
-    cylinder("can", 0.06, 0.16, (6.1, ROOM_D - 0.3, 1.02), plain("can", (0.4, 0.3, 0.05), 0.4, 0.5), coll_room)
-    cylinder("can2", 0.05, 0.12, (6.25, ROOM_D - 0.55, 1.0), plain("can2", (0.1, 0.15, 0.3), 0.4, 0.5), coll_room)
-    for i in range(4):
-        box("part", (0.08 + random.random() * 0.1, 0.06, 0.03), (5.8 + random.random() * 0.4, ROOM_D - 0.5 - random.random() * 0.2, 0.96),
-            steel, coll_room, rotation=(0, 0, random.random() * 3))
-    # Pegboard with tools on the wall above the bench.
+    # Pegboard with tools on the wall.
+    steel = rusty_metal("steel_wall", (0.18, 0.18, 0.19), 0.3)
     board = plain("pegboard", (0.12, 0.09, 0.06), 0.9)
     box("pegboard", (1.0, 0.03, 0.6), (5.25, ROOM_D - 0.02, 1.55), board, coll_room)
     for i in range(5):
         box("tool", (0.04, 0.03, 0.25 + 0.1 * random.random()), (4.9 + i * 0.18, ROOM_D - 0.05, 1.55), steel, coll_room,
             rotation=(0, random.uniform(-0.2, 0.2), 0))
 
-    # Steel shelving along the left wall with boxes and canisters.
-    shelf_m = rusty_metal("shelf", (0.15, 0.16, 0.17), 0.4)
-    cardboard = plain("cardboard", (0.28, 0.18, 0.09), 0.85, variation=0.25)
-    for z in (0.05, 0.6, 1.15, 1.7):
-        box("shelf_board", (0.6, 2.2, 0.04), (0.35, 2.9, z), shelf_m, coll_room)
-    for y in (1.85, 3.95):
-        for x in (0.07, 0.63):
-            box("shelf_post", (0.05, 0.05, 1.8), (x, y, 0.9), shelf_m, coll_room)
-    for z in (0.07, 0.62, 1.17, 1.72):
-        y = 2.0
-        while y < 3.8:
-            w = random.uniform(0.3, 0.55)
-            h = random.uniform(0.2, 0.42)
-            if random.random() < 0.8:
-                box("box", (0.45, w * 0.9, h), (0.34, y + w / 2, z + h / 2), cardboard, coll_room, bevel=0.01,
-                    rotation=(0, 0, random.uniform(-0.08, 0.08)))
-            y += w
-
-    # Barrels, tyres and junk on the right.
-    barrel_m = rusty_metal("barrel", (0.05, 0.12, 0.25), 0.5)
-    barrel2_m = rusty_metal("barrel2", (0.3, 0.07, 0.04), 0.6)
-    for (x, y, m) in ((7.45, 2.6, barrel_m), (7.4, 1.85, barrel2_m)):
-        cylinder("barrel", 0.3, 0.9, (x, y, 0.45), m, coll_room, bevel=0.01)
-        for z in (0.3, 0.6):
-            torus("rib", 0.3, 0.015, (x, y, z), m, coll_room)
-        cylinder("lid", 0.27, 0.01, (x, y, 0.905), m, coll_room)
-    rubber = plain("rubber", (0.025, 0.025, 0.025), 0.75, variation=0.3, scale=30, bump=0.5)
-    for i in range(3):
-        torus("tyre", 0.27, 0.11, (6.6, 1.0, 0.11 + i * 0.22), rubber, coll_room)
-    torus("tyre", 0.27, 0.11, (5.9, 0.75, 0.11), rubber, coll_room, rotation=(0, 0, 0))
-
-    # Scattered paper and a stain near the door.
+    # Scattered paper and a cable on the floor.
     paper = plain("paper", (0.26, 0.25, 0.22), 0.9, variation=0.2)
     for i in range(8):
         box("scrap", (random.uniform(0.1, 0.25), random.uniform(0.1, 0.2), 0.005),
@@ -631,7 +585,7 @@ def build_garage(coll_room, coll_bin):
         c.rotation_mode = "QUATERNION"
         c.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(d)
 
-    # Pipes along the back wall, a fuse box and other clutter.
+    # Pipes along the back wall, a fuse box.
     pipe_m = rusty_metal("pipe", (0.2, 0.2, 0.21), 0.4)
     rot_x = (0, math.pi / 2, 0)
     cylinder("pipe", 0.06, ROOM_W, (ROOM_W / 2, ROOM_D - 0.12, 2.5), pipe_m, coll_room, rotation=rot_x)
@@ -642,38 +596,106 @@ def build_garage(coll_room, coll_bin):
     fuse_m = plain("fuse", (0.3, 0.3, 0.27), 0.5, 0.3)
     box("fuse_box", (0.4, 0.15, 0.5), (4.3, ROOM_D - 0.08, 1.5), fuse_m, coll_room, bevel=0.02)
     box("fuse_sign", (0.12, 0.01, 0.1), (4.3, ROOM_D - 0.16, 1.62), plain("sign", (0.7, 0.5, 0.0), 0.5), coll_room)
+
+
+def garage_lights():
+    """Bare bulb hanging from the ceiling, cold light from the window and the open front."""
+    lights = [light("POINT", (4.0, 3.4, 2.6), 220, (1.0, 0.72, 0.42), size=0.08),
+              light("AREA", (6.3, ROOM_D - 0.4, 1.9), 25, (0.55, 0.7, 1.0), size=0.8, rotation=(math.radians(-70), 0, 0)),
+              light("AREA", (4.0, 3.0, 8.0), 30, (0.5, 0.6, 0.8), size=10),
+              # Faint cold fill from the open front, so the faces turned to the camera are not black.
+              light("AREA", (4.0, -4.0, 3.0), 120, (0.55, 0.62, 0.8), size=6, rotation=(math.radians(60), 0, 0))]
+    return lights
+
+
+# Each builder makes one piece of furniture standing on the floor around `at`.
+
+def build_workbench(coll, at: Vector):
+    """Workbench with a vice, a toolbox and junk on top."""
+    wood_m = wood()
+    steel = rusty_metal("steel", (0.18, 0.18, 0.19), 0.3)
+    box("bench_top", (2.4, 0.8, 0.08), at + Vector((0, 0, 0.9)), wood_m, coll, bevel=0.01)
+    for x in (-1.1, 1.1):
+        for y in (-0.33, 0.33):
+            box("bench_leg", (0.08, 0.08, 0.86), at + Vector((x, y, 0.43)), steel, coll, bevel=0.005)
+    box("bench_shelf", (2.3, 0.7, 0.04), at + Vector((0, 0, 0.25)), wood_m, coll)
+    red = rusty_metal("toolbox", (0.35, 0.04, 0.03), 0.3)
+    box("toolbox", (0.55, 0.26, 0.24), at + Vector((0.6, 0.05, 1.06)), red, coll, bevel=0.02)
+    box("toolbox_lid", (0.57, 0.27, 0.04), at + Vector((0.6, 0.05, 1.19)), red, coll, bevel=0.01)
+    box("vice", (0.2, 0.25, 0.16), at + Vector((-0.8, -0.25, 1.02)), steel, coll, bevel=0.02)
+    cylinder("can", 0.06, 0.16, at + Vector((-0.2, 0.2, 1.02)), plain("can", (0.4, 0.3, 0.05), 0.4, 0.5), coll)
+    cylinder("can2", 0.05, 0.12, at + Vector((-0.05, -0.05, 1.0)), plain("can2", (0.1, 0.15, 0.3), 0.4, 0.5), coll)
+    for i in range(4):
+        box("part", (0.08 + random.random() * 0.1, 0.06, 0.03), at + Vector((-0.5 + random.random() * 0.4, -0.15 + random.random() * 0.2, 0.96)),
+            steel, coll, rotation=(0, 0, random.random() * 3))
+    # A box of scrap on the lower shelf.
+    box("bench_crate", (0.5, 0.4, 0.22), at + Vector((-0.6, 0, 0.38)), plain("cardboard", (0.28, 0.18, 0.09), 0.85, variation=0.25), coll, bevel=0.01)
+
+
+def build_shelf(coll, at: Vector):
+    """Steel shelving with cardboard boxes, open towards the camera."""
+    shelf_m = rusty_metal("shelf", (0.15, 0.16, 0.17), 0.4)
+    cardboard = plain("cardboard", (0.28, 0.18, 0.09), 0.85, variation=0.25)
+    for z in (0.05, 0.6, 1.15, 1.7):
+        box("shelf_board", (2.0, 0.5, 0.04), at + Vector((0, 0, z)), shelf_m, coll)
+    for x in (-0.97, 0.97):
+        for y in (-0.23, 0.23):
+            box("shelf_post", (0.05, 0.05, 1.8), at + Vector((x, y, 0.9)), shelf_m, coll)
+    for z in (0.07, 0.62, 1.17):
+        x = -0.92
+        while x < 0.75:
+            w = random.uniform(0.3, 0.5)
+            h = random.uniform(0.2, 0.42)
+            if random.random() < 0.8:
+                box("box", (w * 0.9, 0.4, h), at + Vector((x + w / 2, 0.02, z + h / 2)), cardboard, coll, bevel=0.01,
+                    rotation=(0, 0, random.uniform(-0.08, 0.08)))
+            x += w
+
+
+def build_barrel(coll, at: Vector, color):
+    m = rusty_metal(f"barrel{color}", color, 0.5)
+    cylinder("barrel", 0.28, 0.9, at + Vector((0, 0, 0.45)), m, coll, bevel=0.01)
+    for z in (0.3, 0.6):
+        torus("rib", 0.28, 0.015, at + Vector((0, 0, z)), m, coll)
+    cylinder("lid", 0.25, 0.01, at + Vector((0, 0, 0.905)), m, coll)
+    cylinder("cap", 0.04, 0.02, at + Vector((0.12, 0.08, 0.915)), m, coll)
+
+
+def build_tyres(coll, at: Vector):
+    rubber = plain("rubber", (0.025, 0.025, 0.025), 0.75, variation=0.3, scale=30, bump=0.5)
+    for i in range(3):
+        torus("tyre", 0.26, 0.11, at + Vector((0.01 * i, -0.01 * i, 0.11 + i * 0.22)), rubber, coll)
+    rim = rusty_metal("rim", (0.2, 0.2, 0.21), 0.4)
+    cylinder("rim", 0.17, 0.12, at + Vector((0.02, -0.02, 0.6)), rim, coll)
+
+
+def build_pallet(coll, at: Vector):
     pallet_m = wood("pallet", (0.2, 0.13, 0.07))
-    for i in range(5):
-        box("pallet_board", (1.0, 0.13, 0.03), (1.6, 0.55 + i * 0.19, 0.13), pallet_m, coll_room, bevel=0.005)
-    for y in (0.55, 0.93, 1.31):
-        box("pallet_block", (1.0, 0.1, 0.1), (1.6, y, 0.05), pallet_m, coll_room)
+    for i in range(6):
+        box("pallet_board", (1.2, 0.13, 0.03), at + Vector((0, -0.43 + i * 0.172, 0.13)), pallet_m, coll, bevel=0.005)
+    for x in (-0.55, 0, 0.55):
+        box("pallet_block", (0.1, 1.0, 0.1), at + Vector((x, 0, 0.05)), pallet_m, coll)
+    cardboard = plain("cardboard_p", (0.28, 0.18, 0.09), 0.85, variation=0.25)
+    box("pallet_box", (0.5, 0.4, 0.35), at + Vector((-0.25, 0.1, 0.32)), cardboard, coll, bevel=0.01, rotation=(0, 0, 0.1))
+    box("pallet_box2", (0.35, 0.3, 0.25), at + Vector((0.3, -0.15, 0.27)), cardboard, coll, bevel=0.01, rotation=(0, 0, -0.2))
+
+
+def build_gas(coll, at: Vector):
     gas = rusty_metal("gas", (0.35, 0.05, 0.03), 0.3)
-    cylinder("gas", 0.14, 0.6, (4.75, ROOM_D - 0.35, 0.3), gas, coll_room, bevel=0.01)
-    sphere("gas_top", 0.14, (4.75, ROOM_D - 0.35, 0.6), gas, coll_room, scale=(1, 1, 0.6))
-    cylinder("gas_valve", 0.03, 0.12, (4.75, ROOM_D - 0.35, 0.72), steel, coll_room)
-    battery = plain("battery", (0.03, 0.03, 0.035), 0.5)
-    box("battery", (0.3, 0.18, 0.2), (2.0, 1.0, 0.28), battery, coll_room, bevel=0.01, rotation=(0, 0, 0.3))
-
-    # Bare bulb hanging from the ceiling (only its glow is visible).
-    lamp = light("POINT", (4.0, 3.4, 2.6), 220, (1.0, 0.72, 0.42), size=0.08)
-    light("AREA", (6.3, ROOM_D - 0.4, 1.9), 25, (0.55, 0.7, 1.0), size=0.8, rotation=(math.radians(-70), 0, 0))
-    light("AREA", (4.0, 3.0, 8.0), 30, (0.5, 0.6, 0.8), size=10)
-    # Faint cold fill from the open front, so the faces turned to the camera are not black.
-    light("AREA", (4.0, -4.0, 3.0), 120, (0.55, 0.62, 0.8), size=6, rotation=(math.radians(60), 0, 0))
-
-    # The trash bin and the bags beside it.
-    build_bin(coll_bin, BIN_AT)
-    return lamp
+    steel = rusty_metal("gas_valve", (0.18, 0.18, 0.19), 0.3)
+    cylinder("gas", 0.14, 0.6, at + Vector((0, 0, 0.3)), gas, coll, bevel=0.01)
+    sphere("gas_top", 0.14, at + Vector((0, 0, 0.6)), gas, coll, scale=(1, 1, 0.6))
+    cylinder("gas_valve", 0.03, 0.12, at + Vector((0, 0, 0.72)), steel, coll)
 
 
 def build_bin(coll, at: Vector):
-    """A big wheelie bin with its lid thrown open and bags of trash inside and around it."""
+    """A big wheelie bin with its lid thrown open and bags of trash inside and beside it."""
     green = plain("bin", (0.035, 0.11, 0.05), 0.5, variation=0.25, grime=0.85, bump=0.2)
     lid_m = plain("bin_lid", (0.03, 0.09, 0.04), 0.45, variation=0.2, grime=0.7)
     rubber = plain("wheel", (0.02, 0.02, 0.02), 0.8)
     steel = rusty_metal("bin_axle", (0.2, 0.2, 0.2), 0.4)
     bag_m = plain("bag", (0.012, 0.012, 0.014), 0.25, variation=0.5, scale=4, bump=0.6)
-    w0, d0, w1, d1, h = 0.29, 0.3, 0.36, 0.38, 1.05
+    w0, d0, w1, d1, h = 0.27, 0.26, 0.33, 0.32, 1.0
     v = [(-w0, -d0, 0.05), (w0, -d0, 0.05), (w0, d0, 0.05), (-w0, d0, 0.05),
          (-w1, -d1, h), (w1, -d1, h), (w1, d1, h), (-w1, d1, h)]
     # Open box: no top face, thickened so the inside is visible.
@@ -684,7 +706,7 @@ def build_bin(coll, at: Vector):
     bevel = body.modifiers.new("bevel", "BEVEL")
     bevel.width = 0.02
     bevel.segments = 3
-    for z in (0.35, 0.75):
+    for z in (0.35, 0.72):
         t = z / h
         box("bin_rib", (2 * (w0 + (w1 - w0) * t) + 0.04, 2 * (d0 + (d1 - d0) * t) + 0.04, 0.04),
             at + Vector((0, 0, z)), green, coll, bevel=0.015)
@@ -694,54 +716,154 @@ def build_bin(coll, at: Vector):
         bevel=0.02, rotation=(math.radians(-8), 0, 0))
     box("bin_handle", (0.5, 0.05, 0.05), at + Vector((0, d1 + 0.12, h - 0.05)), steel, coll, bevel=0.015)
     # Recycling sticker on the front.
-    box("bin_sticker", (0.3, 0.01, 0.22), at + Vector((0, -d1 + 0.04, 0.72)), plain("sticker", (0.75, 0.55, 0.05), 0.5, grime=0.4),
+    box("bin_sticker", (0.3, 0.01, 0.22), at + Vector((0, -d1 + 0.04, 0.68)), plain("sticker", (0.75, 0.55, 0.05), 0.5, grime=0.4),
         coll, rotation=(math.radians(-4), 0, 0))
-    box("bin_sticker_mark", (0.12, 0.012, 0.12), at + Vector((0, -d1 + 0.035, 0.72)), plain("mark", (0.02, 0.03, 0.02), 0.5),
+    box("bin_sticker_mark", (0.12, 0.012, 0.12), at + Vector((0, -d1 + 0.035, 0.68)), plain("mark", (0.02, 0.03, 0.02), 0.5),
         coll, rotation=(math.radians(-4), 0, math.radians(45)))
-    for x in (-0.25, 0.25):
-        cylinder("bin_wheel", 0.11, 0.07, at + Vector((x, d0 + 0.05, 0.11)), rubber, coll, rotation=(0, math.pi / 2, 0))
-    cylinder("bin_axle", 0.02, 0.6, at + Vector((0, d0 + 0.05, 0.11)), steel, coll, rotation=(0, math.pi / 2, 0))
-    # Bags inside, poking out of the top, and more on the floor.
-    for (dx, dy, r) in ((-0.12, -0.08, 0.2), (0.14, 0.06, 0.19), (0.0, 0.12, 0.17)):
+    for x in (-0.23, 0.23):
+        cylinder("bin_wheel", 0.1, 0.07, at + Vector((x, d0 + 0.05, 0.1)), rubber, coll, rotation=(0, math.pi / 2, 0))
+    cylinder("bin_axle", 0.02, 0.55, at + Vector((0, d0 + 0.05, 0.1)), steel, coll, rotation=(0, math.pi / 2, 0))
+    # Bags inside, poking out of the top, and two more on the floor beside it.
+    for (dx, dy, r) in ((-0.11, -0.07, 0.18), (0.13, 0.05, 0.17), (0.0, 0.11, 0.15)):
         displace(sphere("bin_trash", r, at + Vector((dx, dy, h - 0.05)), bag_m, coll, scale=(1, 1, 0.8)), 0.06, 0.15)
-    for (dx, dy, r) in ((-0.62, -0.15, 0.24), (-0.45, -0.55, 0.2), (0.55, -0.4, 0.22)):
+    for (dx, dy, r) in ((-0.5, -0.12, 0.17), (0.48, -0.2, 0.15)):
         bag = sphere("bag", r, at + Vector((dx, dy, r * 0.8)), bag_m, coll, scale=(1, 1, 0.85))
-        displace(bag, 0.07, 0.15)
-        cylinder("bag_knot", 0.035, 0.11, at + Vector((dx, dy, r * 1.6)), bag_m, coll, radius2=0.01)
+        displace(bag, 0.06, 0.15)
+        cylinder("bag_knot", 0.03, 0.1, at + Vector((dx, dy, r * 1.6)), bag_m, coll, radius2=0.01)
 
 
-def render_garage():
+FURNITURE_BUILDERS = {
+    "furniture_trash_bin": build_bin,
+    "furniture_workbench": build_workbench,
+    "furniture_gas_cylinder": build_gas,
+    "furniture_shelf": build_shelf,
+    "furniture_barrel_blue": lambda c, at: build_barrel(c, at, (0.05, 0.12, 0.25)),
+    "furniture_barrel_red": lambda c, at: build_barrel(c, at, (0.3, 0.07, 0.04)),
+    "furniture_tyres": build_tyres,
+    "furniture_pallet": build_pallet,
+}
+
+
+def screen_bounds(scene, objs, margin=24) -> tuple[int, int, int, int]:
+    """Pixel rectangle (x0, y0, x1, y1) covering the objects' bounding boxes on screen."""
+    bpy.context.view_layer.update()
+    xs, ys = [], []
+    for o in objs:
+        for corner in o.bound_box:
+            x, y = screen_pos(scene, o.matrix_world @ Vector(corner))
+            xs.append(x)
+            ys.append(y)
+    return (max(0, int(min(xs)) - margin), max(0, int(min(ys)) - margin),
+            min(SCREEN_W, int(max(xs)) + margin), min(SCREEN_H, int(max(ys)) + margin))
+
+
+def render_border(scene, rect, path: Path) -> None:
+    """Renders only `rect` of the screen; the rest of the image stays transparent."""
+    x0, y0, x1, y1 = rect
+    scene.render.use_border = True
+    scene.render.use_crop_to_border = False
+    scene.render.border_min_x, scene.render.border_max_x = x0 / SCREEN_W, x1 / SCREEN_W
+    scene.render.border_min_y, scene.render.border_max_y = 1 - y1 / SCREEN_H, 1 - y0 / SCREEN_H
+    render(path)
+    scene.render.use_border = False
+
+
+def icon_from(sprite: Image.Image, out: Path, size=64) -> None:
+    """Fills an icon with the object: crops to it and centres it on a square with a small margin."""
+    img = sprite.crop(sprite.getchannel("A").point(lambda a: 255 if a > 8 else 0).getbbox())
+    side = int(max(img.size) * 1.08)
+    square = Image.new("RGBA", (side, side))
+    square.paste(img, ((side - img.width) // 2, (side - img.height) // 2))
+    square.resize((size, size), Image.LANCZOS).save(out, optimize=True)
+
+
+def render_garage(only=None):
+    """The empty room as the background, then every piece of furniture as its own sprite with
+    a separate soft shadow, so the game can move it around the floor."""
     scene = reset()
     scene.cycles.samples = 160
     set_world((0.012, 0.014, 0.018), 1.0)
     room = collection("room")
-    bin_coll = collection("bin")
-    build_garage(room, bin_coll)
+    build_room(room)
+    lights = garage_lights()
     garage_camera(scene)
 
     out = ART / "garage"
     out.mkdir(parents=True, exist_ok=True)
-    layout = {}
+    icons = ART / "icons"
+    layout_path = out / "layout.json"
+    layout = json.loads(layout_path.read_text()) if only and layout_path.exists() else {"objects": {}}
 
-    # 1. The whole room, bin included, as the background.
-    scene.render.film_transparent = False
-    render(TMP / "garage_full.png")
-    vignette(Image.open(TMP / "garage_full.png").convert("RGBA")).convert("RGB").save(out / "background.jpg", quality=92)
+    if not only:
+        scene.render.film_transparent = False
+        render(TMP / "garage_full.png")
+        vignette(Image.open(TMP / "garage_full.png").convert("RGBA")).convert("RGB").save(out / "background.jpg", quality=92)
+        for old in ("bin.png",):
+            (out / old).unlink(missing_ok=True)
 
-    # 2. The bin alone (everything else cut out), for the hover highlight and click area.
+    # The room stays out of the furniture renders: it would only block light and catch shadows.
+    for obj in room.objects:
+        obj.hide_render = True
     scene.render.film_transparent = True
-    for obj in room.objects:
-        obj.is_holdout = True
-    render(TMP / "garage_bin.png")
-    layout["bin"] = crop(TMP / "garage_bin.png", out / "bin.png")
-    for obj in room.objects:
-        obj.is_holdout = False
+    scene.cycles.samples = 96
+    catcher = box("catcher", (40, 40, 0.01), (ROOM_W / 2, ROOM_D / 2, -0.005))
+    catcher.is_shadow_catcher = True
+    # Shadows come from almost straight above, so they look right wherever the object is moved.
+    shadow_sun = light("SUN", (0, 0, 5), 4.0, size=0.35, rotation=(math.radians(10), math.radians(6), 0))
 
-    # Where the player stands, in screen pixels (feet).
-    x, y = screen_pos(scene, PLAYER_AT)
-    layout["player"] = {"x": round(x), "y": round(y)}
+    for kind, (x, y) in FURNITURE_AT.items():
+        if only and kind not in only:
+            continue
+        coll = collection(kind)
+        at = Vector((x, y, 0))
+        FURNITURE_BUILDERS[kind](coll, at)
+        rect = screen_bounds(scene, list(coll.objects))
+
+        # The object itself, lit by the room's lights.
+        catcher.hide_render = True
+        shadow_sun.hide_render = True
+        for lt in lights:
+            lt.hide_render = False
+        render_border(scene, rect, TMP / f"{kind}.png")
+
+        # Its shadow alone: invisible to the camera but still casting onto the catcher.
+        catcher.hide_render = False
+        shadow_sun.hide_render = False
+        for lt in lights:
+            lt.hide_render = True
+        for o in coll.objects:
+            o.visible_camera = False
+        sx0, sy0, sx1, sy1 = rect
+        render_border(scene, (max(0, sx0 - 40), max(0, sy0 - 40), min(SCREEN_W, sx1 + 40), min(SCREEN_H, sy1 + 40)),
+                      TMP / f"{kind}_shadow.png")
+
+        # Same crop for both, so they share an anchor.
+        sprite = Image.open(TMP / f"{kind}.png").convert("RGBA")
+        shadow = Image.open(TMP / f"{kind}_shadow.png").convert("RGBA")
+        a = sprite.getchannel("A").point(lambda v: 255 if v > 3 else 0).getbbox()
+        b = shadow.getchannel("A").point(lambda v: 255 if v > 6 else 0).getbbox() or a
+        box_ = (max(0, min(a[0], b[0]) - 2), max(0, min(a[1], b[1]) - 2),
+                min(SCREEN_W, max(a[2], b[2]) + 2), min(SCREEN_H, max(a[3], b[3]) + 2))
+        sprite.crop(box_).save(out / f"{kind}.png", optimize=True)
+        shadow.crop(box_).save(out / f"{kind}_shadow.png", optimize=True)
+        icon_from(sprite, icons / f"{kind}.png")
+        fx, fy = screen_pos(scene, at)
+        layout["objects"][kind] = {"anchorX": round(fx - box_[0]), "anchorY": round(fy - box_[1])}
+
+        bpy.data.collections.remove(coll)
+        print("furniture", kind, layout["objects"][kind])
+
+    # How world metres map to screen pixels: screen = origin + x * axisX + y * axisY + z * axisZ.
+    ox, oy = screen_pos(scene, Vector((0, 0, 0)))
+    axes = {}
+    for name, v in (("axisX", (1, 0, 0)), ("axisY", (0, 1, 0)), ("axisZ", (0, 0, 1))):
+        px, py = screen_pos(scene, Vector(v))
+        axes[name] = [round(px - ox, 4), round(py - oy, 4)]
+    layout["projection"] = {"origin": [round(ox, 2), round(oy, 2)], **axes}
+    layout["room"] = {"width": ROOM_W, "depth": ROOM_D}
+    layout["player"] = {"x": PLAYER_AT.x, "y": PLAYER_AT.y}
     layout["pixelsPerMetre"] = PPM
-    (out / "layout.json").write_text(json.dumps(layout, indent=1))
+    layout_path.write_text(json.dumps(layout, indent=1))
     print("garage", layout)
 
 
@@ -749,8 +871,14 @@ def render_garage():
 
 HAIR_STYLES = 6
 SHIRT_STYLES = 3
-CHAR_RES = (128, 240)
-CHAR_WIDTH_M = 0.8
+# The editor and the HUD show a portrait from the front; in the garage the character is seen
+# from above like everything else, in four directions with a two-step walk.
+PORTRAIT_RES = (128, 320)
+PORTRAIT_WIDTH_M = 0.8
+PORTRAIT_PITCH = math.radians(12)
+FRAME_RES = (96, 168)
+DIRECTIONS = {"down": 0.0, "left": -math.pi / 2, "right": math.pi / 2, "up": math.pi}
+POSES = ("idle", "step_a", "step_b")
 
 
 def tint_mat(name, roughness=0.6, bump=0.1, scale=40.0, sheen=False):
@@ -765,39 +893,86 @@ def tint_mat(name, roughness=0.6, bump=0.1, scale=40.0, sheen=False):
     return mat
 
 
+class Rig:
+    """Empties the body parts hang from, so the character can turn and swing its arms and legs."""
+
+    def __init__(self):
+        self.root = self._empty("root", Vector((0, 0, 0)), None)
+        self.pivots = {"root": self.root}
+        for name, at in (("leg_l", (-0.09, 0, 0.92)), ("leg_r", (0.09, 0, 0.92)),
+                         ("arm_l", (-0.2, 0, 1.43)), ("arm_r", (0.2, 0, 1.43)), ("head", (0, 0, 1.55))):
+            self.pivots[name] = self._empty(name, Vector(at), self.root)
+
+    @staticmethod
+    def _empty(name, at, parent):
+        e = bpy.data.objects.new(name, None)
+        e.location = at
+        e.parent = parent
+        link(e)
+        return e
+
+    def attach(self, obj, part="root"):
+        """Hangs an object built in world space from a pivot, keeping where it is."""
+        from mathutils import Matrix
+        pivot = self.pivots[part]
+        obj.parent = pivot
+        world = pivot.location if pivot is self.root else pivot.location + self.root.location
+        obj.matrix_parent_inverse = Matrix.Translation(-world)
+        return obj
+
+    def pose(self, direction=0.0, pose="idle", head_tilt=0.0):
+        self.root.rotation_euler = (0, 0, direction)
+        swing = {"idle": 0.0, "step_a": 1.0, "step_b": -1.0}[pose]
+        self.pivots["leg_l"].rotation_euler = (math.radians(17) * swing, 0, 0)
+        self.pivots["leg_r"].rotation_euler = (-math.radians(17) * swing, 0, 0)
+        self.pivots["arm_l"].rotation_euler = (-math.radians(15) * swing, 0, 0)
+        self.pivots["arm_r"].rotation_euler = (math.radians(15) * swing, 0, 0)
+        self.pivots["head"].rotation_euler = (head_tilt, 0, 0)
+
+
 def build_character():
-    """Returns ({layer: [objects]}, shirt variants, hair variants, bare skin per shirt), facing the camera (-Y)."""
+    """Returns (rig, {layer: [objects]}, shirt variants, hair variants, bare skin per shirt), facing the camera (-Y)."""
+    rig = Rig()
     skin = tint_mat("skin", 0.5, 0.02, 60)
     cloth = tint_mat("cloth", 0.85, 0.25, 90, sheen=True)
     pants_m = tint_mat("denim", 0.85, 0.3, 120)
     shoe_m = tint_mat("shoe", 0.45, 0.1, 30)
     hair_m = tint_mat("hair", 0.45, 0.6, 200)
-    eye = plain("eye", (0.01, 0.01, 0.01), 0.2, variation=0.0, grime=0.0)
-    mouth = plain("mouth", (0.25, 0.08, 0.07), 0.5, variation=0.0, grime=0.0)
+    eye_white = plain("eye_white", (0.78, 0.77, 0.74), 0.3, variation=0.0, grime=0.0, bump=0.0)
+    iris = plain("iris", (0.05, 0.03, 0.018), 0.15, variation=0.0, grime=0.0, bump=0.0)
+    mouth = plain("mouth", (0.22, 0.06, 0.05), 0.5, variation=0.0, grime=0.0)
     belt = plain("belt", (0.04, 0.03, 0.025), 0.5, grime=0.3)
     buckle = plain("buckle", (0.6, 0.55, 0.4), 0.3, 1.0, grime=0.2)
+    a = rig.attach
 
-    L = {"skin": [], "pants": [], "shoes": [], "detail": []}
+    L = {"skin": [], "pants": [], "shoes": [], "detail": [], "brows": []}
     # Skin that only some shirts show (the tank top's bare shoulders), by shirt style.
     bare = {style: [] for style in range(SHIRT_STYLES)}
-    for side in (-1, 1):
+    for side, leg in ((-1, "leg_l"), (1, "leg_r")):
         x = side * 0.09
-        L["shoes"].append(box("shoe", (0.11, 0.22, 0.08), (x, -0.03, 0.04), shoe_m, bevel=0.035))
-        L["pants"].append(cylinder("leg", 0.068, 0.84, (x, 0, 0.5), pants_m, radius2=0.08))
-    L["pants"].append(sphere("hips", 1.0, (0, 0, 0.94), pants_m, scale=(0.17, 0.115, 0.13)))
-    L["detail"].append(cylinder("belt", 1.0, 0.04, (0, 0, 1.0), belt, verts=32))
+        L["shoes"].append(a(box("shoe", (0.11, 0.22, 0.08), (x, -0.03, 0.04), shoe_m, bevel=0.035), leg))
+        L["pants"].append(a(cylinder("leg", 0.068, 0.84, (x, 0, 0.5), pants_m, radius2=0.08), leg))
+    L["pants"].append(a(sphere("hips", 1.0, (0, 0, 0.94), pants_m, scale=(0.17, 0.115, 0.13))))
+    L["detail"].append(a(cylinder("belt", 1.0, 0.04, (0, 0, 1.0), belt, verts=32)))
     L["detail"][-1].scale = (0.175, 0.12, 1)
-    L["detail"].append(box("buckle", (0.05, 0.02, 0.035), (0, -0.12, 1.0), buckle, bevel=0.005))
-    L["skin"].append(cylinder("neck", 0.05, 0.14, (0, 0, 1.52), skin))
-    L["skin"].append(sphere("head", 0.12, (0, 0, 1.67), skin, scale=(0.92, 0.98, 1.08)))
-    L["skin"].append(sphere("nose", 0.02, (0, -0.115, 1.655), skin))
-    L["detail"].append(box("mouth", (0.04, 0.01, 0.008), (0, -0.108, 1.615), mouth))
-    for side in (-1, 1):
-        L["skin"].append(sphere("ear", 0.028, (side * 0.11, 0, 1.67), skin, scale=(0.5, 1, 1.2)))
-        L["detail"].append(sphere("eye", 0.015, (side * 0.042, -0.104, 1.69), eye))
+    L["detail"].append(a(box("buckle", (0.05, 0.02, 0.035), (0, -0.12, 1.0), buckle, bevel=0.005)))
+    L["skin"].append(a(cylinder("neck", 0.05, 0.14, (0, 0, 1.52), skin)))
+
+    # The head, a bit big for the body so the face reads at game size.
+    head = Vector((0, 0, 1.68))
+    L["skin"].append(a(sphere("head", 0.125, head, skin, scale=(0.92, 0.98, 1.06)), "head"))
+    L["skin"].append(a(sphere("nose", 0.022, head + Vector((0, -0.121, -0.02)), skin, scale=(0.8, 1, 1.1)), "head"))
+    L["detail"].append(a(box("mouth", (0.056, 0.012, 0.012), head + Vector((0, -0.108, -0.062)), mouth, bevel=0.004), "head"))
+    for side, arm in ((-1, "arm_l"), (1, "arm_r")):
+        L["skin"].append(a(sphere("ear", 0.03, head + Vector((side * 0.113, 0.005, -0.005)), skin, scale=(0.5, 1, 1.25)), "head"))
+        eye = head + Vector((side * 0.044, 0, 0.015))
+        L["detail"].append(a(sphere("eye_white", 0.024, eye + Vector((0, -0.104, 0)), eye_white, scale=(1.0, 0.45, 0.75)), "head"))
+        L["detail"].append(a(sphere("iris", 0.013, eye + Vector((side * -0.002, -0.113, -0.001)), iris, scale=(1, 0.5, 1)), "head"))
+        L["brows"].append(a(box("brow", (0.052, 0.014, 0.014), head + Vector((side * 0.046, -0.106, 0.05)), hair_m, bevel=0.005,
+                                rotation=(0, side * 0.08, 0)), "head"))
         # Arms hang along the body, slightly away from it.
-        L["skin"].append(cylinder("arm", 0.042, 0.52, (side * 0.215, 0, 1.17), skin, rotation=(0, side * 0.1, 0), radius2=0.05))
-        L["skin"].append(sphere("hand", 0.045, (side * 0.24, -0.01, 0.88), skin, scale=(0.8, 1, 1.15)))
+        L["skin"].append(a(cylinder("arm", 0.042, 0.52, (side * 0.215, 0, 1.17), skin, rotation=(0, side * 0.1, 0), radius2=0.05), arm))
+        L["skin"].append(a(sphere("hand", 0.045, (side * 0.24, -0.01, 0.88), skin, scale=(0.8, 1, 1.15)), arm))
 
     shirts = []
     for style in range(SHIRT_STYLES):
@@ -808,54 +983,54 @@ def build_character():
         bevel = torso.modifiers.new("bevel", "BEVEL")
         bevel.width = 0.05
         bevel.segments = 4
-        objs = [torso, sphere("chest", 1.0, (0, -0.02, 1.32), cloth, scale=(top * 0.95, 0.12, 0.14))]
-        for side in (-1, 1):
+        objs = [a(torso), a(sphere("chest", 1.0, (0, -0.02, 1.32), cloth, scale=(top * 0.95, 0.12, 0.14)))]
+        for side, arm in ((-1, "arm_l"), (1, "arm_r")):
             shoulder = Vector((side * 0.19, 0, 1.43))
             if style == 1:  # Tank top: bare shoulders, straps.
-                bare[style].append(sphere("shoulder", 0.055, shoulder, skin))
-                objs.append(box("strap", (0.05, 0.2, 0.05), (side * 0.1, 0, 1.47), cloth, bevel=0.02))
+                bare[style].append(a(sphere("shoulder", 0.055, shoulder, skin)))
+                objs.append(a(box("strap", (0.05, 0.2, 0.05), (side * 0.1, 0, 1.47), cloth, bevel=0.02)))
             else:
-                objs.append(sphere("shoulder", 0.064, shoulder, cloth))
+                objs.append(a(sphere("shoulder", 0.064, shoulder, cloth)))
             if style == 0:  # T-shirt sleeves.
-                objs.append(cylinder("sleeve", 0.058, 0.2, (side * 0.2, 0, 1.34), cloth, rotation=(0, side * 0.1, 0), radius2=0.062))
+                objs.append(a(cylinder("sleeve", 0.058, 0.2, (side * 0.2, 0, 1.34), cloth, rotation=(0, side * 0.1, 0), radius2=0.062), arm))
             elif style == 2:  # Hoodie: long sleeves.
-                objs.append(cylinder("sleeve", 0.054, 0.5, (side * 0.215, 0, 1.17), cloth, rotation=(0, side * 0.1, 0), radius2=0.062))
+                objs.append(a(cylinder("sleeve", 0.054, 0.5, (side * 0.215, 0, 1.17), cloth, rotation=(0, side * 0.1, 0), radius2=0.062), arm))
         if style == 2:
-            objs.append(sphere("hood", 1.0, (0, 0.07, 1.5), cloth, scale=(0.14, 0.08, 0.07)))
-            objs.append(box("pocket", (0.2, 0.03, 0.09), (0, -0.105, 1.1), cloth, bevel=0.02))
+            objs.append(a(sphere("hood", 1.0, (0, 0.07, 1.5), cloth, scale=(0.14, 0.08, 0.07))))
+            objs.append(a(box("pocket", (0.2, 0.03, 0.09), (0, -0.105, 1.1), cloth, bevel=0.02)))
         shirts.append(objs)
 
     def cap(co):
-        return co.z > -0.02 or co.y > 0.02
+        # Hairline above the brows at the front, down to the neck at the back.
+        return co.z > 0.07 or co.y > 0.0
 
     hairs = [[]]
-    head = Vector((0, 0, 1.67))
     for style in range(1, HAIR_STYLES):
-        objs = [sphere("hair", 0.128, head + Vector((0, 0.01, 0.012)), hair_m, scale=(0.95, 1.0, 1.08), keep=cap)]
+        objs = [a(sphere("hair", 0.134, head + Vector((0, 0.008, 0.012)), hair_m, scale=(0.94, 0.99, 1.06), keep=cap), "head")]
         if style == 2:  # Spiky.
             for i in range(9):
-                a = i / 9 * 2 * math.pi
-                d = Vector((math.cos(a) * 0.065, math.sin(a) * 0.065 + 0.01, 0.115))
+                ang = i / 9 * 2 * math.pi
+                d = Vector((math.cos(ang) * 0.065, math.sin(ang) * 0.065 + 0.01, 0.12))
                 c = cylinder("spike", 0.032, 0.09, head + d, hair_m, radius2=0.0, verts=8)
                 c.rotation_euler = (-d.y * 4, d.x * 4, 0)
-                objs.append(c)
+                objs.append(a(c, "head"))
         elif style == 3:  # Long.
-            objs.append(box("long", (0.24, 0.1, 0.32), head + Vector((0, 0.065, -0.15)), hair_m, bevel=0.045))
+            objs.append(a(box("long", (0.25, 0.1, 0.32), head + Vector((0, 0.07, -0.15)), hair_m, bevel=0.045), "head"))
             for side in (-1, 1):
-                objs.append(box("lock", (0.05, 0.09, 0.28), head + Vector((side * 0.11, 0.0, -0.12)), hair_m, bevel=0.022))
+                objs.append(a(box("lock", (0.05, 0.1, 0.28), head + Vector((side * 0.118, 0.015, -0.12)), hair_m, bevel=0.022), "head"))
         elif style == 4:  # Ponytail.
-            objs.append(sphere("tie", 0.04, head + Vector((0, 0.13, 0.03)), hair_m))
-            objs.append(cylinder("tail", 0.042, 0.26, head + Vector((0, 0.16, -0.1)), hair_m, radius2=0.014,
-                                 rotation=(math.radians(-15), 0, 0)))
+            objs.append(a(sphere("tie", 0.04, head + Vector((0, 0.135, 0.03)), hair_m), "head"))
+            objs.append(a(cylinder("tail", 0.042, 0.26, head + Vector((0, 0.165, -0.1)), hair_m, radius2=0.014,
+                                   rotation=(math.radians(-15), 0, 0)), "head"))
         elif style == 5:  # Curly.
             for i in range(26):
-                a, b = random.random() * 2 * math.pi, random.uniform(0.0, 1.3)
-                d = Vector((math.cos(a) * math.sin(b), math.sin(a) * math.sin(b) + 0.02, math.cos(b))) * 0.13
-                if d.y < -0.055 and d.z < 0.055:
+                ang, b = random.random() * 2 * math.pi, random.uniform(0.0, 1.3)
+                d = Vector((math.cos(ang) * math.sin(b), math.sin(ang) * math.sin(b) + 0.02, math.cos(b))) * 0.135
+                if d.y < -0.05 and d.z < 0.09:
                     continue
-                objs.append(sphere("curl", 0.042, head + d, hair_m, segments=12))
+                objs.append(a(sphere("curl", 0.042, head + d, hair_m, segments=12), "head"))
         hairs.append(objs)
-    return L, shirts, hairs, bare
+    return rig, L, shirts, hairs, bare
 
 
 # Mask colours: which tint each pixel takes. Two images with three channels each.
@@ -866,33 +1041,43 @@ MASKS = {
 
 
 def render_character():
-    """Per hair and shirt style: one grey shading image and two masks saying which pixels
-    are skin, shirt, pants, hair, shoes or untinted detail. A shader in the game tints them,
-    which avoids seams between separately rendered layers."""
+    """Per hair and shirt style: grey shading images and two masks saying which pixels are
+    skin, shirt, pants, hair, shoes or untinted detail. A shader in the game tints them, which
+    avoids seams between separately rendered layers. Writes a front portrait and a walk atlas
+    (rows: down, left, right, up; columns: idle, step A, step B)."""
+    from bpy_extras.object_utils import world_to_camera_view
     scene = reset()
-    scene.cycles.samples = 64
     set_world((0.25, 0.27, 0.3), 0.6)
-    L, shirts, hairs, bare = build_character()
-    cam = camera(scene, Vector((0, 0, 0.86)), CHAR_WIDTH_M, CHAR_RES)
-    cam.data.sensor_fit = "HORIZONTAL"
+    rig, L, shirts, hairs, bare = build_character()
+    portrait_cam = camera(scene, Vector((0, 0, 0.98)), PORTRAIT_WIDTH_M, PORTRAIT_RES, pitch=PORTRAIT_PITCH)
+    portrait_cam.data.sensor_fit = "HORIZONTAL"
+    walk_cam = camera(scene, Vector((0, 0, 0.81)), FRAME_RES[0] / PPM, FRAME_RES)
+    walk_cam.data.sensor_fit = "HORIZONTAL"
     light("SUN", (0, 0, 5), 3.5, (1.0, 0.95, 0.88), size=0.3, rotation=(math.radians(40), math.radians(-25), math.radians(-20)))
     light("SUN", (0, 0, 5), 1.2, (0.6, 0.7, 1.0), size=0.5, rotation=(math.radians(60), math.radians(40), math.radians(150)))
     light("AREA", (0, 1.5, 2.2), 60, (1, 1, 1), size=1.5, rotation=(math.radians(-50), 0, 0))
     catcher = box("catcher", (4, 4, 0.01), (0, 0, -0.005))
     catcher.is_shadow_catcher = True
 
+    def use_camera(cam, res):
+        scene.camera = cam
+        scene.render.resolution_x, scene.render.resolution_y = res
+
     all_shirt = [o for s in shirts for o in s] + [o for objs in bare.values() for o in objs]
     all_hair = [o for h in hairs for o in h]
     out = ART / "character"
-    out.mkdir(parents=True, exist_ok=True)
-    for old in out.glob("*.png"):
-        old.unlink()
+    for sub in ("", "portrait", "walk"):
+        (out / sub).mkdir(parents=True, exist_ok=True)
+        for old in (out / sub).glob("*.png"):
+            old.unlink()
 
     def show(objs, visible):
         for o in objs:
             o.hide_render = not visible
 
     # Shadow: the body is invisible to the camera but still casts a shadow on the catcher.
+    use_camera(walk_cam, FRAME_RES)
+    rig.pose()
     show(all_shirt, False)
     show(all_hair, False)
     show(shirts[0] + hairs[1], True)
@@ -903,7 +1088,7 @@ def render_character():
     # A light from almost straight above, like the garage bulb, keeps the shadow inside the frame.
     for o in lights:
         o.hide_render = True
-    overhead = light("SUN", (0, 0, 5), 4.0, size=0.25, rotation=(math.radians(12), math.radians(8), 0))
+    overhead = light("SUN", (0, 0, 5), 4.0, size=0.25, rotation=(math.radians(10), math.radians(6), 0))
     render(out / "shadow.png")
     overhead.hide_render = True
     for o in lights:
@@ -931,35 +1116,59 @@ def render_character():
             o.data.materials.clear()
             for m in mats:
                 o.data.materials.append(m)
+        scene.view_settings.view_transform = "AgX"
+        scene.view_settings.look = "AgX - Medium High Contrast"
+        scene.cycles.samples = 48
+        scene.cycles.use_denoising = True
 
+    def flat_settings():
+        scene.view_settings.view_transform = "Standard"
+        scene.view_settings.look = "None"
+        scene.cycles.samples = 12
+        scene.cycles.use_denoising = False
+
+    fw, fh = FRAME_RES
     for h in range(HAIR_STYLES):
         for s in range(SHIRT_STYLES):
             show(all_shirt, False)
             show(all_hair, False)
             show(shirts[s] + hairs[h] + bare[s], True)
             layers = {"skin": L["skin"] + bare[s], "pants": L["pants"], "shoes": L["shoes"], "detail": L["detail"],
-                      "shirt": shirts[s], "hair": hairs[h]}
-            shade_mode()
-            scene.view_settings.view_transform = "AgX"
-            scene.view_settings.look = "AgX - Medium High Contrast"
-            scene.cycles.samples = 64
-            scene.cycles.use_denoising = True
-            render(out / f"h{h}_s{s}.png")
-            scene.view_settings.view_transform = "Standard"
-            scene.view_settings.look = "None"
-            scene.cycles.samples = 16
-            scene.cycles.use_denoising = False
-            for name, colours in MASKS.items():
-                mask_mode(layers, colours)
-                render(out / f"h{h}_s{s}_mask_{name}.png")
+                      "shirt": shirts[s], "hair": hairs[h] + L["brows"]}
+            name = f"h{h}_s{s}"
+            for mode in ("", "_mask_a", "_mask_b"):
+                if mode:
+                    mask_mode(layers, MASKS[mode[-1]])
+                    flat_settings()
+                else:
+                    shade_mode()
+                use_camera(portrait_cam, PORTRAIT_RES)
+                rig.pose()
+                render(out / "portrait" / f"{name}{mode}.png")
+                use_camera(walk_cam, FRAME_RES)
+                atlas = Image.new("RGBA", (fw * len(POSES), fh * len(DIRECTIONS)))
+                for row, angle in enumerate(DIRECTIONS.values()):
+                    for col, pose in enumerate(POSES):
+                        rig.pose(angle, pose, head_tilt=-0.12)
+                        render(TMP / "frame.png")
+                        atlas.paste(Image.open(TMP / "frame.png").convert("RGBA"), (col * fw, row * fh))
+                atlas.save(out / "walk" / f"{name}{mode}.png", optimize=True)
+            print("character", name, flush=True)
     shade_mode()
 
-    meta = {"width": CHAR_RES[0], "height": CHAR_RES[1], "pixelsPerMetre": CHAR_RES[0] / CHAR_WIDTH_M}
-    # Feet position in the image, so the game can stand the character on the floor.
-    from bpy_extras.object_utils import world_to_camera_view
-    feet = world_to_camera_view(scene, cam, Vector((0, 0, 0)))
-    meta["feetX"] = round(feet.x * CHAR_RES[0])
-    meta["feetY"] = round((1 - feet.y) * CHAR_RES[1])
+    def feet(cam, res):
+        use_camera(cam, res)  # The projection depends on the image's aspect ratio.
+        f = world_to_camera_view(scene, cam, Vector((0, 0, 0)))
+        return round(f.x * res[0]), round((1 - f.y) * res[1])
+
+    px, py = feet(portrait_cam, PORTRAIT_RES)
+    wx, wy = feet(walk_cam, FRAME_RES)
+    meta = {
+        "portrait": {"width": PORTRAIT_RES[0], "height": PORTRAIT_RES[1], "feetX": px, "feetY": py,
+                     "pixelsPerMetre": PORTRAIT_RES[0] / PORTRAIT_WIDTH_M},
+        "walk": {"frameWidth": fw, "frameHeight": fh, "feetX": wx, "feetY": wy, "pixelsPerMetre": PPM,
+                 "directions": list(DIRECTIONS), "poses": list(POSES)},
+    }
     (out / "meta.json").write_text(json.dumps(meta, indent=1))
     print("character", meta)
 
@@ -1056,13 +1265,7 @@ def render_items():
         icon_scene()
         build()
         render(TMP / f"{name}.png")
-        img = Image.open(TMP / f"{name}.png").convert("RGBA")
-        # Fill the icon: crop to the object, centre it on a square with a small margin.
-        img = img.crop(img.getchannel("A").point(lambda a: 255 if a > 8 else 0).getbbox())
-        side = int(max(img.size) * 1.08)
-        square = Image.new("RGBA", (side, side))
-        square.paste(img, ((side - img.width) // 2, (side - img.height) // 2))
-        square.resize((64, 64), Image.LANCZOS).save(out / f"{name}.png", optimize=True)
+        icon_from(Image.open(TMP / f"{name}.png").convert("RGBA"), out / f"{name}.png")
         print("icon", name)
 
 
@@ -1071,6 +1274,8 @@ if __name__ == "__main__":
     TMP.mkdir(parents=True, exist_ok=True)
     if "garage" in args:
         render_garage()
+    elif kinds := [a for a in args if a.startswith("furniture_")]:
+        render_garage(only=kinds)
     if "character" in args:
         render_character()
     if "items" in args:

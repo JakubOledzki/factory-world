@@ -27,6 +27,11 @@ const ERRORS := {
 	"bad_quantity": "Nieprawidłowa ilość.",
 	"not_traded": "Handlarz nie handluje tym przedmiotem.",
 	"unknown_item": "Nieznany przedmiot.",
+	"no_bin": "Najpierw postaw w garażu kosz na śmieci.",
+	"not_placeable": "Tego nie da się postawić w garażu.",
+	"bad_position": "To się tu nie zmieści.",
+	"blocked": "To miejsce jest zajęte.",
+	"no_object": "Tego już tu nie ma.",
 }
 
 var token := ""
