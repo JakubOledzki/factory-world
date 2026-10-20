@@ -15,6 +15,9 @@ public interface IGameModule
 
     void RegisterServices(IServiceCollection services, IConfiguration configuration);
 
+    /// <summary>Runs once at startup, before the server accepts players (e.g. database migrations).</summary>
+    Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) => Task.CompletedTask;
+
     /// <summary>Optional HTTP endpoints. Gameplay goes through the WebSocket instead.</summary>
     void MapEndpoints(IEndpointRouteBuilder endpoints) { }
 }

@@ -14,6 +14,8 @@ public sealed class HelloHandler : IMessageHandler
 {
     public string Type => "hello";
 
+    public bool RequiresAccount => false;
+
     public Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
     {
         var clientVersion = payload is { ValueKind: JsonValueKind.Object } p
@@ -36,6 +38,8 @@ public sealed class HelloHandler : IMessageHandler
 public sealed class PingHandler(TimeProvider time) : IMessageHandler
 {
     public string Type => "ping";
+
+    public bool RequiresAccount => false;
 
     public Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken) =>
         Task.FromResult(new Reply("pong", new { serverTime = time.GetUtcNow() }));

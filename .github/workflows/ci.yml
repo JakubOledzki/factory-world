@@ -8,6 +8,21 @@ on:
 jobs:
   server:
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: factory
+          POSTGRES_PASSWORD: factory
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U factory"
+          --health-interval 5s
+          --health-retries 10
+    env:
+      FW_TEST_DB: Host=localhost;Port=5432;Database=postgres;Username=factory;Password=factory
     defaults:
       run:
         working-directory: server
@@ -34,6 +49,6 @@ jobs:
         working-directory: client
         run: |
           ../godot --headless --import
-          # Runs the main scene for a few frames; any GDScript error is printed as SCRIPT ERROR.
-          ../godot --headless --quit-after 10 2>&1 | tee run.log
-          ! grep -E "SCRIPT ERROR|Parse Error" run.log
+          # Loads every script and scene; exits non-zero if any fails to compile.
+          ../godot --headless --script res://tools/check_scripts.gd 2>&1 | tee check.log
+          ! grep -E "SCRIPT ERROR|Parse Error" check.log

@@ -12,7 +12,15 @@ public sealed record Envelope(string Type, string? Id = null, JsonElement? Paylo
 public sealed class ClientContext
 {
     public required Guid ConnectionId { get; init; }
+
+    /// <summary>Set once the player has logged in on this connection.</summary>
     public Guid? AccountId { get; set; }
+
+    /// <summary>Per-connection state that a module keeps for itself, keyed by a name it owns.</summary>
+    public Dictionary<string, object> Items { get; } = new();
+
+    public Guid RequireAccount() =>
+        AccountId ?? throw new GameException("not_logged_in", "Log in first.");
 }
 
 /// <summary>A reply to a client request: a message type and an optional payload.</summary>
@@ -26,6 +34,9 @@ public interface IMessageHandler
 {
     string Type { get; }
 
+    /// <summary>False for the few messages a player may send before logging in.</summary>
+    bool RequiresAccount => true;
+
     Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken);
 }
 
@@ -33,4 +44,26 @@ public interface IMessageHandler
 public sealed class GameException(string code, string message) : Exception(message)
 {
     public string Code { get; } = code;
+}
+
+public static class Payload
+{
+    public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    /// <summary>Reads a request payload into <typeparamref name="T"/>, or fails with <c>bad_payload</c>.</summary>
+    public static T Read<T>(JsonElement? payload) where T : class
+    {
+        try
+        {
+            if (payload is { ValueKind: JsonValueKind.Object } p && p.Deserialize<T>(Json) is { } value)
+            {
+                return value;
+            }
+        }
+        catch (JsonException)
+        {
+        }
+
+        throw new GameException("bad_payload", "Message payload is missing or malformed.");
+    }
 }

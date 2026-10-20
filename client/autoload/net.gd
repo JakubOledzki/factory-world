@@ -9,7 +9,13 @@ signal message_received(type: String, payload: Variant, id: String)
 const PROTOCOL_VERSION := 1
 const RECONNECT_DELAY := 3.0
 
+## One request waiting for its reply.
+class Pending:
+	signal done(reply: Dictionary)
+
+
 var _socket := WebSocketPeer.new()
+var _pending := {}
 var _last_state := WebSocketPeer.STATE_CLOSED
 var _next_id := 0
 var _reconnect_in := 0.0
@@ -49,6 +55,17 @@ func send(type: String, payload: Variant = null) -> String:
 	return id
 
 
+## Sends a request and waits for its reply: {"type": ..., "payload": ...}.
+## Usage: var reply := await Net.request("auth.login", {...})
+func request(type: String, payload: Variant = null) -> Dictionary:
+	if not is_open():
+		return _disconnected_reply()
+	var pending := Pending.new()
+	_pending[send(type, payload)] = pending
+	var reply: Dictionary = await pending.done
+	return reply
+
+
 func _process(delta: float) -> void:
 	if _reconnect_in > 0.0:
 		_reconnect_in -= delta
@@ -65,6 +82,7 @@ func _process(delta: float) -> void:
 			send("hello", {"protocol": PROTOCOL_VERSION})
 			connected.emit()
 		elif state == WebSocketPeer.STATE_CLOSED:
+			_fail_pending()
 			disconnected.emit()
 			_reconnect_in = RECONNECT_DELAY
 
@@ -78,4 +96,19 @@ func _handle_packet(text: String) -> void:
 		push_warning("Bad message from server: %s" % text)
 		return
 	var id: String = data.get("id") if data.get("id") != null else ""
+	if _pending.has(id):
+		var pending: Pending = _pending[id]
+		_pending.erase(id)
+		pending.done.emit({"type": data["type"], "payload": data.get("payload")})
 	message_received.emit(data["type"], data.get("payload"), id)
+
+
+func _fail_pending() -> void:
+	var waiting := _pending.values()
+	_pending.clear()
+	for pending: Pending in waiting:
+		pending.done.emit(_disconnected_reply())
+
+
+func _disconnected_reply() -> Dictionary:
+	return {"type": "error", "payload": {"code": "disconnected", "message": "Not connected."}}

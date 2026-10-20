@@ -11,6 +11,7 @@ config/features=PackedStringArray("4.5", "GL Compatibility")
 [autoload]
 
 Net="*res://autoload/net.gd"
+Game="*res://autoload/game.gd"
 
 [display]
 

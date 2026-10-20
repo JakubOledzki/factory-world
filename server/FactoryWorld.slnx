@@ -4,6 +4,8 @@
     <Project Path="src/FactoryWorld.Server/FactoryWorld.Server.csproj" />
   </Folder>
   <Folder Name="/src/Modules/">
+    <Project Path="src/Modules/FactoryWorld.Modules.Accounts/FactoryWorld.Modules.Accounts.csproj" />
+    <Project Path="src/Modules/FactoryWorld.Modules.Characters/FactoryWorld.Modules.Characters.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Session/FactoryWorld.Modules.Session.csproj" />
   </Folder>
   <Folder Name="/tests/">
