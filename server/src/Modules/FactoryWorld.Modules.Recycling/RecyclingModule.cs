@@ -230,8 +230,9 @@ public abstract class GarageHandler(IServiceScopeFactory scopes) : IMessageHandl
         return new Reply("garage", new
         {
             trash = state.Trash,
-            queue = state.Queue,
-            serverTime = state.ServerTime,
+            // Unix milliseconds: the client compares them with serverTime, not its own clock.
+            queue = state.Queue.Select(t => t.ToUnixTimeMilliseconds()),
+            serverTime = state.ServerTime.ToUnixTimeMilliseconds(),
             sortSeconds = RecyclingRules.SortTime.TotalSeconds,
             maxQueue = RecyclingRules.MaxQueue,
             results = state.Results.Select(id => new { id, name = Items.Names[id] }),

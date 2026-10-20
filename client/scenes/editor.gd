@@ -28,14 +28,14 @@ var _create: Button
 
 func _ready() -> void:
 	var box := UI.centered_panel(self, 380)
-	box.add_child(UI.label("Stwórz swoją postać", Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER))
+	box.add_child(UI.title("Stwórz swoją postać"))
 
 	var columns := HBoxContainer.new()
 	columns.add_theme_constant_override("separation", 16)
 	box.add_child(columns)
 
 	_preview = CharacterPreview.new()
-	_preview.pixel = 6
+	_preview.pixel = 5
 	_preview.options = Game.appearance_options
 	_preview.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	columns.add_child(_preview)
@@ -49,6 +49,7 @@ func _ready() -> void:
 		rows.add_child(UI.label(row[0], UI.MUTED))
 		rows.add_child(UI.button("<", _step.bind(key, -1)))
 		var value := UI.label("", Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
+		value.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		value.custom_minimum_size.x = 80
 		_values[key] = value
 		rows.add_child(value)
@@ -65,7 +66,7 @@ func _ready() -> void:
 	var buttons := HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
 	buttons.add_child(UI.button("Losuj", _randomize))
-	_create = UI.button("Stwórz postać", _submit)
+	_create = UI.button("Stwórz postać", _submit, true)
 	buttons.add_child(_create)
 	box.add_child(buttons)
 

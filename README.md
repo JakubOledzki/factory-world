@@ -9,8 +9,9 @@ Projekt gry: [dokument projektowy](https://claude.ai/code/artifact/50d66faa-a0b4
 | --- | --- |
 | `client/` | Klient gry w Godot 4.5 (GDScript) |
 | `server/` | Serwer gry w C#/.NET 10, modularny monolit |
-| `server/src/Modules/` | Moduły gry: `Session` (powitanie, ping), `Accounts` (rejestracja, logowanie, sesje), `Characters` (postać, wygląd, poziom) |
+| `server/src/Modules/` | Moduły gry: `Session` (powitanie, ping), `Accounts` (rejestracja, logowanie, sesje), `Characters` (postać, wygląd, poziom), `Inventory` (przedmioty), `Wallet` (pieniądze i historia operacji), `Market` (handlarz NPC), `Recycling` (garaż, kosz na śmieci, segregacja) |
 | `docker-compose.yml` | PostgreSQL i serwer do lokalnego uruchomienia |
+| `tools/generate_art.py` | Rysuje grafikę pixel art do `client/art/` (sprite'y zapisane jako siatki znaków); uruchom po zmianie: `python3 tools/generate_art.py` |
 | `deploy/` | Wdrożenie produkcyjne: Caddy (HTTPS + gra w przeglądarce), compose, `.env` |
 
 ## Uruchomienie lokalne
@@ -19,7 +20,7 @@ Wymagane: [.NET 10 SDK](https://dotnet.microsoft.com/download), [Godot 4.5](http
 
 1. Baza danych: `docker compose up db`
 2. Serwer: `cd server && dotnet run --project src/FactoryWorld.Server` (nasłuchuje na `http://localhost:5080`, WebSocket pod `/ws`)
-3. Klient: otwórz `client/project.godot` w Godot i naciśnij F5. Na ekranie powinno pojawić się „Połączono z serwerem” i ping.
+3. Klient: otwórz `client/project.godot` w Godot i naciśnij F5. Po połączeniu pojawi się ekran logowania.
 
 Całość w Dockerze: `docker compose up --build`.
 
@@ -49,6 +50,15 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `character.options` | | palety i liczby opcji edytora |
 | `character.get` | | `character` albo `character.none` |
 | `character.create` | `{ name, appearance }` | `character` `{ name, appearance, level, xp, levelXp, nextLevelXp }` |
+| `garage.get` | | `garage` `{ trash, queue: [finishesAtMs], serverTime, sortSeconds, maxQueue, results: [{ id, name }], xp }`; przy okazji wydaje zakończone segregacje |
+| `recycling.sort` | `{ count }` | `garage` |
+| `inventory.get` | | `inventory` `{ items: [{ id, name, quantity }] }` |
+| `wallet.get` | | `wallet` `{ balanceCents }` |
+| `market.prices` | | `market.prices` `{ items: [{ id, name, buyCents, sellCents }] }` |
+| `market.buy` / `market.sell` | `{ item, quantity }` | `market.traded` `{ item, quantity, balanceCents }` |
+
+Czasy w `garage` to milisekundy uniksowe według zegara serwera; `xp` to `{ xp, level, leveledUp }` albo `null`.
+Kwoty są w centach. `buyCents` to cena, za którą gracz kupuje od handlarza, `sellCents` to cena skupu.
 
 Wszystko poza `hello`, `ping`, `auth.*` i `character.options` wymaga zalogowania.
 

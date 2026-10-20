@@ -14,11 +14,11 @@ public static class Items
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
         [Trash] = "Śmieci",
-        [WastePaper] = "Papier (odpad)",
-        [WasteAluminium] = "Aluminium (odpad)",
-        [WasteCopper] = "Miedź (odpad)",
-        [WastePlastic] = "Plastik (odpad)",
-        [WasteGlass] = "Szkło (odpad)",
+        [WastePaper] = "Makulatura",
+        [WasteAluminium] = "Złom aluminium",
+        [WasteCopper] = "Złom miedzi",
+        [WastePlastic] = "Plastik z odzysku",
+        [WasteGlass] = "Stłuczka szklana",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
