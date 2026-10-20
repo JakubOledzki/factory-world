@@ -1,3 +1,4 @@
+using FactoryWorld.Modules.Abstractions;
 using Microsoft.EntityFrameworkCore;
 
 namespace FactoryWorld.Modules.Characters;
@@ -21,7 +22,7 @@ public sealed class Character
     public DateTimeOffset CreatedAt { get; set; }
 }
 
-public sealed class CharactersDbContext(DbContextOptions<CharactersDbContext> options) : DbContext(options)
+public sealed class CharactersDbContext(DbContextOptions<CharactersDbContext> options, GameDb gameDb) : ModuleDbContext(options, gameDb)
 {
     public const string Schema = "characters";
 

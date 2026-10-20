@@ -1,5 +1,5 @@
 using FactoryWorld.Modules.Abstractions;
-using Microsoft.EntityFrameworkCore;
+using FactoryWorld.Modules.Abstractions.Contracts;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -12,18 +12,14 @@ public sealed class CharactersModule : IGameModule
 
     public void RegisterServices(IServiceCollection services, IConfiguration configuration)
     {
-        services.AddDbContext<CharactersDbContext>(options => options.UseNpgsql(
-            configuration.GetConnectionString("Game"),
-            npgsql => npgsql.MigrationsHistoryTable("__migrations", CharactersDbContext.Schema)));
+        services.AddModuleDbContext<CharactersDbContext>(CharactersDbContext.Schema);
         services.AddScoped<CharacterService>();
+        services.AddScoped<ICharacterProgress, CharacterProgress>();
         services.AddSingleton<IMessageHandler, OptionsHandler>();
         services.AddSingleton<IMessageHandler, GetCharacterHandler>();
         services.AddSingleton<IMessageHandler, CreateCharacterHandler>();
     }
 
-    public async Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken)
-    {
-        await using var scope = services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<CharactersDbContext>().Database.MigrateAsync(cancellationToken);
-    }
+    public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>
+        services.MigrateModuleAsync<CharactersDbContext>(cancellationToken);
 }

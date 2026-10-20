@@ -11,7 +11,6 @@ public sealed class SessionModule : IGameModule
 
     public void RegisterServices(IServiceCollection services, IConfiguration configuration)
     {
-        services.AddSingleton(TimeProvider.System);
         services.AddSingleton<IMessageHandler, HelloHandler>();
         services.AddSingleton<IMessageHandler, PingHandler>();
     }
