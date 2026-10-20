@@ -1,0 +1,45 @@
+# Production: run on the server from the directory holding this file and .env.
+#   docker compose pull && docker compose up -d
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: factory_world
+      POSTGRES_USER: factory
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U factory -d factory_world"]
+      interval: 5s
+      retries: 10
+
+  server:
+    image: ghcr.io/jakuboledzki/factory-world-server:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__Game: "Host=db;Port=5432;Database=factory_world;Username=factory;Password=${POSTGRES_PASSWORD}"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    image: ghcr.io/jakuboledzki/factory-world-web:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - server
+
+volumes:
+  db-data:
+  caddy-data:
+  caddy-config:

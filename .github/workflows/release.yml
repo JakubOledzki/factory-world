@@ -1,0 +1,60 @@
+name: Release images
+
+# Builds the server image and the web client image and pushes them to GitHub Container Registry.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  GODOT_VERSION: 4.5.1
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Godot and web export templates
+        run: |
+          curl -sSL -o godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q godot.zip && mv "Godot_v${GODOT_VERSION}-stable_linux.x86_64" godot
+          curl -sSL -o templates.tpz "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_export_templates.tpz"
+          dir="$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.stable"
+          mkdir -p "$dir"
+          unzip -q -j templates.tpz 'templates/web_*' -d "$dir"
+
+      - name: Export web client
+        working-directory: client
+        run: |
+          mkdir -p build/web
+          ../godot --headless --import
+          ../godot --headless --export-release "Web" build/web/index.html
+          test -f build/web/index.wasm
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: server
+          push: true
+          tags: |
+            ghcr.io/jakuboledzki/factory-world-server:latest
+            ghcr.io/jakuboledzki/factory-world-server:${{ github.sha }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/web.Dockerfile
+          push: true
+          tags: |
+            ghcr.io/jakuboledzki/factory-world-web:latest
+            ghcr.io/jakuboledzki/factory-world-web:${{ github.sha }}

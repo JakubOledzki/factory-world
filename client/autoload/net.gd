@@ -20,6 +20,10 @@ func _ready() -> void:
 
 
 func server_url() -> String:
+	# In the browser the game is served by the same host as the server, behind one domain.
+	if OS.has_feature("web"):
+		return str(JavaScriptBridge.eval(
+			"(location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws'"))
 	return ProjectSettings.get_setting("factory_world/server_url", "ws://localhost:5080/ws")
 
 

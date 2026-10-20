@@ -11,6 +11,7 @@ Projekt gry: [dokument projektowy](https://claude.ai/code/artifact/50d66faa-a0b4
 | `server/` | Serwer gry w C#/.NET 10, modularny monolit |
 | `server/src/Modules/` | Moduły gry (na razie `Session`: powitanie i ping) |
 | `docker-compose.yml` | PostgreSQL i serwer do lokalnego uruchomienia |
+| `deploy/` | Wdrożenie produkcyjne: Caddy (HTTPS + gra w przeglądarce), compose, `.env` |
 
 ## Uruchomienie lokalne
 
@@ -23,6 +24,8 @@ Wymagane: [.NET 10 SDK](https://dotnet.microsoft.com/download), [Godot 4.5](http
 Całość w Dockerze: `docker compose up --build`.
 
 Testy serwera: `cd server && dotnet test`.
+
+Wdrożenie na serwer Linux: [docs/deploy.md](docs/deploy.md).
 
 Adres serwera dla klienta ustawia się w Godot w *Project Settings → factory_world/server_url*.
 
