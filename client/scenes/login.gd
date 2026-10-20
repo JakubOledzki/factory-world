@@ -8,8 +8,9 @@ var _buttons: Array[Button] = []
 
 
 func _ready() -> void:
-	var box := UI.centered_panel(self, 280)
-	box.add_child(UI.label("Factory World", Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER))
+	var box := UI.centered_panel(self, 440)
+	box.add_child(UI.title("Factory World"))
+	box.add_child(UI.label("Zbuduj fabrykę od kosza na śmieci", UI.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 
 	_email = UI.line_edit("E-mail")
 	box.add_child(_email)
@@ -24,7 +25,7 @@ func _ready() -> void:
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	_buttons = [
-		UI.button("Zaloguj", _submit.bind("auth.login")),
+		UI.button("Zaloguj", _submit.bind("auth.login"), true),
 		UI.button("Załóż konto", _submit.bind("auth.register")),
 	]
 	for b in _buttons:

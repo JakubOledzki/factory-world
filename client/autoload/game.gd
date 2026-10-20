@@ -20,6 +20,13 @@ const ERRORS := {
 	"name_taken": "Ta nazwa jest już zajęta.",
 	"invalid_appearance": "Nieznana opcja wyglądu.",
 	"character_exists": "To konto ma już postać.",
+	"no_character": "Najpierw stwórz postać.",
+	"not_enough_items": "Nie masz tylu przedmiotów.",
+	"not_enough_money": "Nie masz tyle pieniędzy.",
+	"queue_full": "Kolejka segregacji jest pełna.",
+	"bad_quantity": "Nieprawidłowa ilość.",
+	"not_traded": "Handlarz nie handluje tym przedmiotem.",
+	"unknown_item": "Nieznany przedmiot.",
 }
 
 var token := ""
@@ -30,6 +37,7 @@ var character := {}
 
 
 func _ready() -> void:
+	get_tree().root.theme = UI.theme()
 	var config := ConfigFile.new()
 	if config.load(SESSION_FILE) == OK:
 		token = config.get_value("session", "token", "")

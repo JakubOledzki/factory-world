@@ -1,5 +1,4 @@
 using FactoryWorld.Modules.Abstractions;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -12,9 +11,7 @@ public sealed class AccountsModule : IGameModule
 
     public void RegisterServices(IServiceCollection services, IConfiguration configuration)
     {
-        services.AddDbContext<AccountsDbContext>(options => options.UseNpgsql(
-            configuration.GetConnectionString("Game"),
-            npgsql => npgsql.MigrationsHistoryTable("__migrations", AccountsDbContext.Schema)));
+        services.AddModuleDbContext<AccountsDbContext>(AccountsDbContext.Schema);
         services.AddScoped<AccountService>();
         services.AddSingleton<IMessageHandler, RegisterHandler>();
         services.AddSingleton<IMessageHandler, LoginHandler>();
@@ -22,9 +19,6 @@ public sealed class AccountsModule : IGameModule
         services.AddSingleton<IMessageHandler, LogoutHandler>();
     }
 
-    public async Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken)
-    {
-        await using var scope = services.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<AccountsDbContext>().Database.MigrateAsync(cancellationToken);
-    }
+    public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>
+        services.MigrateModuleAsync<AccountsDbContext>(cancellationToken);
 }

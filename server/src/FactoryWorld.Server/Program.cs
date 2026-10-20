@@ -1,7 +1,12 @@
+using Npgsql;
 using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Accounts;
 using FactoryWorld.Modules.Characters;
+using FactoryWorld.Modules.Inventory;
+using FactoryWorld.Modules.Market;
+using FactoryWorld.Modules.Recycling;
 using FactoryWorld.Modules.Session;
+using FactoryWorld.Modules.Wallet;
 using FactoryWorld.Server;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -12,6 +17,10 @@ IGameModule[] modules =
     new SessionModule(),
     new AccountsModule(),
     new CharactersModule(),
+    new InventoryModule(),
+    new WalletModule(),
+    new MarketModule(),
+    new RecyclingModule(),
 ];
 
 foreach (var module in modules)
@@ -19,6 +28,7 @@ foreach (var module in modules)
     module.RegisterServices(builder.Services, builder.Configuration);
 }
 
+builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<MessageDispatcher>();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
     policy.WithOrigins(builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [])
@@ -32,6 +42,8 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 builder.Services.AddHealthChecks().AddNpgSql(connectionString, name: "postgres");
+builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
+builder.Services.AddScoped<GameDb>();
 
 var app = builder.Build();
 

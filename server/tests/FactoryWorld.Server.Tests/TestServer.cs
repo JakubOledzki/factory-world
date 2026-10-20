@@ -3,6 +3,9 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Time.Testing;
 using Npgsql;
 
 namespace FactoryWorld.Server.Tests;
@@ -19,9 +22,15 @@ public sealed class ServerFactory : WebApplicationFactory<Program>
 
     private readonly string _database = $"fw_test_{Guid.NewGuid():N}";
 
-    protected override void ConfigureWebHost(IWebHostBuilder builder) =>
+    /// <summary>The server's clock; tests move it forward instead of waiting.</summary>
+    public FakeTimeProvider Time { get; } = new(DateTimeOffset.UtcNow);
+
+    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    {
         builder.UseSetting("ConnectionStrings:Game",
             new NpgsqlConnectionStringBuilder(_admin) { Database = _database }.ConnectionString);
+        builder.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(Time));
+    }
 
     public override async ValueTask DisposeAsync()
     {
@@ -65,6 +74,26 @@ public sealed class GameClient(WebSocket socket) : IDisposable
         Assert.Equal("auth.ok", reply.Type());
         return reply.Payload().GetProperty("token").GetString()!;
     }
+
+    /// <summary>Registers and creates a character, so the player can earn XP.</summary>
+    public async Task RegisterWithCharacterAsync()
+    {
+        await RegisterAsync();
+        var look = new { skinTone = 0, hairStyle = 0, hairColor = 0, shirtStyle = 0, shirtColor = 0, pantsColor = 0, shoesColor = 0 };
+        var reply = await SendAsync("character.create", new { name = "P" + Guid.NewGuid().ToString("N")[..10], appearance = look });
+        Assert.Equal("character", reply.Type());
+    }
+
+    /// <summary>Item id → quantity from "inventory.get".</summary>
+    public async Task<Dictionary<string, long>> InventoryAsync()
+    {
+        var reply = await SendAsync("inventory.get");
+        return reply.Payload().GetProperty("items").EnumerateArray()
+            .ToDictionary(i => i.GetProperty("id").GetString()!, i => i.GetProperty("quantity").GetInt64());
+    }
+
+    public async Task<long> BalanceAsync() =>
+        (await SendAsync("wallet.get")).Payload().GetProperty("balanceCents").GetInt64();
 
     public void Dispose() => socket.Dispose();
 }

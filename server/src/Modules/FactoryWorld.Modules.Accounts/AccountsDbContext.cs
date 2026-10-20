@@ -1,3 +1,4 @@
+using FactoryWorld.Modules.Abstractions;
 using Microsoft.EntityFrameworkCore;
 
 namespace FactoryWorld.Modules.Accounts;
@@ -28,7 +29,7 @@ public sealed class Session
     public DateTimeOffset ExpiresAt { get; set; }
 }
 
-public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> options) : DbContext(options)
+public sealed class AccountsDbContext(DbContextOptions<AccountsDbContext> options, GameDb gameDb) : ModuleDbContext(options, gameDb)
 {
     public const string Schema = "accounts";
 

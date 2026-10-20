@@ -1,114 +1,122 @@
 class_name CharacterPreview
 extends Control
-## Draws the player character as 16×24 pixel art from layers: body, clothes, hair.
-## Colours come from the server's palettes, so the editor and the game always agree.
+## Draws the player character from 3D renders (see tools/render_art.py): a grey shading image
+## per hair and shirt style, tinted by a shader with the colours picked in the editor.
 
-const WIDTH := 16
-const HEIGHT := 24
-const EYE := Color("#1a1a22")
+const SHADER := preload("res://ui/character_tint.gdshader")
+## Shader uniform, appearance key and palette for each tinted part.
+const TINTS := [
+	["skin", "skinTone", "skinTones"],
+	["shirt", "shirtColor", "clothColors"],
+	["pants", "pantsColor", "clothColors"],
+	["hair", "hairColor", "hairColors"],
+	["shoes", "shoesColor", "clothColors"],
+]
+
+static var _meta: Dictionary
 
 ## Indexes into the palettes: skinTone, hairStyle, hairColor, shirtStyle, shirtColor, pantsColor, shoesColor.
 var appearance := {}:
 	set(value):
 		appearance = value
-		queue_redraw()
+		_update()
 
 ## Palettes from "character.options".
 var options := {}:
 	set(value):
 		options = value
-		queue_redraw()
+		_update()
 
-## Screen pixels per art pixel.
-var pixel := 6:
+## Size on screen relative to the rendered images.
+var display_scale := 1.0:
 	set(value):
-		pixel = value
-		custom_minimum_size = Vector2(WIDTH, HEIGHT) * pixel
-		queue_redraw()
+		display_scale = value
+		_resize()
+
+## Part of the image to show, as fractions of its size (the HUD shows only the head and chest).
+var region := Rect2(0, 0, 1, 1):
+	set(value):
+		region = value
+		_resize()
+
+## Multiplied into the colours, to match the lighting of the place the character stands in.
+var light := Color.WHITE:
+	set(value):
+		light = value
+		(material as ShaderMaterial).set_shader_parameter("light", Vector3(light.r, light.g, light.b))
+
+## Draws the soft shadow on the floor under the character.
+var show_shadow := false:
+	set(value):
+		show_shadow = value
+		_shadow.visible = value
+
+var _shade: Texture2D
+var _shadow := TextureRect.new()
 
 
 func _init() -> void:
-	custom_minimum_size = Vector2(WIDTH, HEIGHT) * pixel
+	material = ShaderMaterial.new()
+	material.shader = SHADER
+	_shadow.texture = load("res://art/character/shadow.png")
+	_shadow.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_shadow.show_behind_parent = true
+	_shadow.use_parent_material = false
+	_shadow.material = CanvasItemMaterial.new()
+	_shadow.visible = false
+	_shadow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_shadow)
+	_resize()
+
+
+## Image size and the feet position inside it, written by the renderer.
+static func meta() -> Dictionary:
+	if _meta.is_empty():
+		_meta = JSON.parse_string(FileAccess.get_file_as_string("res://art/character/meta.json"))
+	return _meta
+
+
+## Where the feet are, relative to this control's top-left corner.
+func feet_offset() -> Vector2:
+	var m := meta()
+	return (Vector2(m["feetX"], m["feetY"]) - _region_px().position) * display_scale
+
+
+func _region_px() -> Rect2:
+	var m := meta()
+	var full := Vector2(m["width"], m["height"])
+	return Rect2(region.position * full, region.size * full)
+
+
+func _resize() -> void:
+	var src := _region_px()
+	custom_minimum_size = src.size * display_scale
+	size = custom_minimum_size
+	var full := Vector2(meta()["width"], meta()["height"])
+	_shadow.position = -src.position * display_scale
+	_shadow.size = full * display_scale
+	queue_redraw()
+
+
+func _update() -> void:
+	if appearance.is_empty() or options.is_empty():
+		return
+	var prefix := "res://art/character/h%d_s%d" % [appearance.get("hairStyle", 0), appearance.get("shirtStyle", 0)]
+	_shade = load(prefix + ".png")
+	var shader := material as ShaderMaterial
+	shader.set_shader_parameter("mask_a", load(prefix + "_mask_a.png"))
+	shader.set_shader_parameter("mask_b", load(prefix + "_mask_b.png"))
+	for tint: Array in TINTS:
+		var c := _color(tint[2], tint[1])
+		shader.set_shader_parameter(tint[0], Vector3(c.r, c.g, c.b))
+	queue_redraw()
 
 
 func _draw() -> void:
-	if appearance.is_empty() or options.is_empty():
+	if _shade == null:
 		return
-	var skin := _color("skinTones", "skinTone")
-	var hair := _color("hairColors", "hairColor")
-	var shirt := _color("clothColors", "shirtColor")
-	var pants := _color("clothColors", "pantsColor")
-	var shoes := _color("clothColors", "shoesColor")
-	var hair_style: int = appearance.get("hairStyle", 0)
-	var shirt_style: int = appearance.get("shirtStyle", 0)
-
-	# Hair that hangs behind the body.
-	if hair_style == 3:
-		_rect(4, 3, 8, 7, hair)
-	elif hair_style == 4:
-		_rect(11, 4, 2, 5, hair)
-
-	# Head, neck and eyes.
-	_rect(5, 2, 6, 6, skin)
-	_rect(7, 8, 2, 1, skin)
-	_rect(6, 5, 1, 1, EYE)
-	_rect(9, 5, 1, 1, EYE)
-
-	# Arms: skin, covered by sleeves depending on the shirt.
-	_rect(3, 9, 1, 7, skin)
-	_rect(12, 9, 1, 7, skin)
-	match shirt_style:
-		0:  # T-shirt: short sleeves.
-			_rect(3, 9, 1, 2, shirt)
-			_rect(12, 9, 1, 2, shirt)
-		2:  # Hoodie: long sleeves and a hood around the neck.
-			_rect(3, 9, 1, 6, shirt)
-			_rect(12, 9, 1, 6, shirt)
-			_rect(6, 8, 4, 1, shirt.darkened(0.25))
-
-	# Torso; a tank top leaves the shoulders bare.
-	if shirt_style == 1:
-		_rect(5, 9, 6, 7, shirt)
-		_rect(4, 9, 1, 1, skin)
-		_rect(11, 9, 1, 1, skin)
-	else:
-		_rect(4, 9, 8, 7, shirt)
-
-	# Legs with a shaded gap between them, then shoes.
-	_rect(5, 16, 6, 6, pants)
-	_rect(7, 18, 2, 4, pants.darkened(0.35))
-	_rect(4, 22, 3, 2, shoes)
-	_rect(9, 22, 3, 2, shoes)
-
-	# Hair on top of the head.
-	match hair_style:
-		1:  # Short.
-			_rect(5, 1, 6, 2, hair)
-			_rect(5, 3, 1, 1, hair)
-			_rect(10, 3, 1, 1, hair)
-		2:  # Spiky.
-			_rect(5, 1, 6, 2, hair)
-			_rect(5, 0, 1, 1, hair)
-			_rect(7, 0, 1, 1, hair)
-			_rect(9, 0, 1, 1, hair)
-		3:  # Long.
-			_rect(5, 1, 6, 2, hair)
-			_rect(4, 2, 1, 1, hair)
-			_rect(11, 2, 1, 1, hair)
-		4:  # Ponytail.
-			_rect(5, 1, 6, 2, hair)
-			_rect(11, 3, 1, 2, hair)
-		5:  # Curly.
-			_rect(4, 1, 8, 2, hair)
-			_rect(5, 0, 2, 1, hair)
-			_rect(9, 0, 2, 1, hair)
-			_rect(4, 3, 1, 2, hair)
-			_rect(11, 3, 1, 2, hair)
-
-
-func _rect(x: int, y: int, w: int, h: int, color: Color) -> void:
-	var origin := (size - Vector2(WIDTH, HEIGHT) * pixel) / 2
-	draw_rect(Rect2(origin + Vector2(x, y) * pixel, Vector2(w, h) * pixel), color)
+	var src := _region_px()
+	draw_texture_rect_region(_shade, Rect2(Vector2.ZERO, src.size * display_scale), src)
 
 
 func _color(palette: String, key: String) -> Color:
