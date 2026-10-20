@@ -19,6 +19,9 @@ public sealed class Character
 
     public long Xp { get; set; }
 
+    /// <summary>The item in the tool slot, or null.</summary>
+    public string? Tool { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 }
 
@@ -39,6 +42,7 @@ public sealed class CharactersDbContext(DbContextOptions<CharactersDbContext> op
             e.HasIndex(c => c.NormalizedName).IsUnique();
             e.Property(c => c.Name).HasMaxLength(CharacterRules.MaxNameLength);
             e.Property(c => c.NormalizedName).HasMaxLength(CharacterRules.MaxNameLength);
+            e.Property(c => c.Tool).HasMaxLength(32);
             e.ComplexProperty(c => c.Appearance, a => a.ToJson());
         });
     }

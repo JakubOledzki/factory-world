@@ -55,6 +55,105 @@ namespace FactoryWorld.Modules.World.Migrations
 
                     b.ToTable("plots", "world");
                 });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotHarvest", b =>
+                {
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.Property<int>("TileX")
+                        .HasColumnType("integer")
+                        .HasColumnName("tile_x");
+
+                    b.Property<int>("TileY")
+                        .HasColumnType("integer")
+                        .HasColumnName("tile_y");
+
+                    b.HasKey("X", "Y", "TileX", "TileY");
+
+                    b.ToTable("plot_harvests", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.ShipmentRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("ArrivesAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("arrives_at");
+
+                    b.Property<int>("FromX")
+                        .HasColumnType("integer")
+                        .HasColumnName("from_x");
+
+                    b.Property<int>("FromY")
+                        .HasColumnType("integer")
+                        .HasColumnName("from_y");
+
+                    b.Property<string>("Item")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("item");
+
+                    b.Property<long>("Quantity")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity");
+
+                    b.Property<Guid>("SenderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("sender_id");
+
+                    b.Property<int>("ToX")
+                        .HasColumnType("integer")
+                        .HasColumnName("to_x");
+
+                    b.Property<int>("ToY")
+                        .HasColumnType("integer")
+                        .HasColumnName("to_y");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FromX", "FromY");
+
+                    b.HasIndex("ToX", "ToY", "ArrivesAt");
+
+                    b.ToTable("shipments", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.StationItem", b =>
+                {
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.Property<string>("Item")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("item");
+
+                    b.Property<long>("Quantity")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity");
+
+                    b.HasKey("X", "Y", "Item");
+
+                    b.ToTable("station_items", "world");
+                });
 #pragma warning restore 612, 618
         }
     }

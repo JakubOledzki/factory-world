@@ -61,10 +61,18 @@ public sealed class GameClient(WebSocket socket) : IDisposable
     {
         await socket.SendAsync(Encoding.UTF8.GetBytes(frame), WebSocketMessageType.Text, true, CancellationToken.None);
 
+        // Large replies (a plot's tiles) can come in several frames.
+        using var message = new MemoryStream();
         var buffer = new byte[64 * 1024];
-        var result = await socket.ReceiveAsync(buffer, CancellationToken.None);
-        Assert.True(result.EndOfMessage);
-        return JsonDocument.Parse(buffer.AsMemory(0, result.Count)).RootElement.Clone();
+        WebSocketReceiveResult result;
+        do
+        {
+            result = await socket.ReceiveAsync(buffer, CancellationToken.None);
+            message.Write(buffer, 0, result.Count);
+        }
+        while (!result.EndOfMessage);
+
+        return JsonDocument.Parse(message.ToArray()).RootElement.Clone();
     }
 
     public Task<JsonElement> SendAsync(string type, object? payload = null) =>

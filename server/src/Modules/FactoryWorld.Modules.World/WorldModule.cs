@@ -23,6 +23,52 @@ public sealed class Plot
     public DateTimeOffset BoughtAt { get; set; }
 }
 
+/// <summary>A tile of a plot whose tree, rock or dune has been gathered.</summary>
+public sealed class PlotHarvest
+{
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public int TileX { get; set; }
+
+    public int TileY { get; set; }
+}
+
+/// <summary>Goods waiting in a plot's railway station.</summary>
+public sealed class StationItem
+{
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public required string Item { get; set; }
+
+    public long Quantity { get; set; }
+}
+
+/// <summary>A train on its way from one plot's station to another's.</summary>
+public sealed class ShipmentRow
+{
+    public long Id { get; set; }
+
+    public int FromX { get; set; }
+
+    public int FromY { get; set; }
+
+    public int ToX { get; set; }
+
+    public int ToY { get; set; }
+
+    public required string Item { get; set; }
+
+    public long Quantity { get; set; }
+
+    public Guid SenderId { get; set; }
+
+    public DateTimeOffset ArrivesAt { get; set; }
+}
+
 public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, GameDb gameDb) : ModuleDbContext(options, gameDb)
 {
     public const string Schema = "world";
@@ -43,6 +89,39 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(p => p.BoughtAt).HasColumnName("bought_at");
             e.HasIndex(p => p.OwnerId);
         });
+        model.Entity<PlotHarvest>(e =>
+        {
+            e.ToTable("plot_harvests");
+            e.HasKey(h => new { h.X, h.Y, h.TileX, h.TileY });
+            e.Property(h => h.X).HasColumnName("x");
+            e.Property(h => h.Y).HasColumnName("y");
+            e.Property(h => h.TileX).HasColumnName("tile_x");
+            e.Property(h => h.TileY).HasColumnName("tile_y");
+        });
+        model.Entity<StationItem>(e =>
+        {
+            e.ToTable("station_items");
+            e.HasKey(i => new { i.X, i.Y, i.Item });
+            e.Property(i => i.X).HasColumnName("x");
+            e.Property(i => i.Y).HasColumnName("y");
+            e.Property(i => i.Item).HasColumnName("item").HasMaxLength(32);
+            e.Property(i => i.Quantity).HasColumnName("quantity");
+        });
+        model.Entity<ShipmentRow>(e =>
+        {
+            e.ToTable("shipments");
+            e.Property(s => s.Id).HasColumnName("id");
+            e.Property(s => s.FromX).HasColumnName("from_x");
+            e.Property(s => s.FromY).HasColumnName("from_y");
+            e.Property(s => s.ToX).HasColumnName("to_x");
+            e.Property(s => s.ToY).HasColumnName("to_y");
+            e.Property(s => s.Item).HasColumnName("item").HasMaxLength(32);
+            e.Property(s => s.Quantity).HasColumnName("quantity");
+            e.Property(s => s.SenderId).HasColumnName("sender_id");
+            e.Property(s => s.ArrivesAt).HasColumnName("arrives_at");
+            e.HasIndex(s => new { s.ToX, s.ToY, s.ArrivesAt });
+            e.HasIndex(s => new { s.FromX, s.FromY });
+        });
     }
 }
 
@@ -51,9 +130,11 @@ public sealed record PlotOwner(Guid AccountId, string? Name);
 /// <param name="PriceCents">What the asking player would pay for it now; null when it cannot be bought.</param>
 public sealed record PlotState(int X, int Y, Biome Biome, PlotOwner? Owner, long? PriceCents);
 
-public sealed record Purchase(PlotState Plot, long BalanceCents, XpGain Xp);
+/// <param name="Tool">The tool that came with the plot, or null.</param>
+public sealed record Purchase(PlotState Plot, long BalanceCents, XpGain Xp, string? Tool);
 
-public sealed class WorldService(GameDb db, WorldMap map, IWallet wallet, ICharacterProgress progress, ICharacterNames names, TimeProvider time)
+public sealed class WorldService(
+    GameDb db, WorldMap map, IWallet wallet, ICharacterProgress progress, ICharacterNames names, IEquipment equipment, TimeProvider time)
 {
     /// <summary>Most owned plots one area request returns.</summary>
     public const int MaxAreaPlots = 5000;
@@ -160,8 +241,15 @@ public sealed class WorldService(GameDb db, WorldMap map, IWallet wallet, IChara
 
             var balance = await wallet.DebitAsync(owner, price, $"plot {x}:{y}", cancellationToken);
             var xp = await progress.AddXpAsync(owner, PlotRules.XpPerPlot, cancellationToken);
+            // A forest comes with an axe, a desert with a shovel, mountains with a pickaxe.
+            var tool = PlotLayout.StarterTool(biome);
+            if (tool is not null)
+            {
+                await equipment.GiveToolAsync(owner, tool, cancellationToken);
+            }
+
             var name = (await names.NamesAsync([owner], cancellationToken)).GetValueOrDefault(owner);
-            return new Purchase(new PlotState(x, y, biome, new PlotOwner(owner, name), null), balance, xp);
+            return new Purchase(new PlotState(x, y, biome, new PlotOwner(owner, name), null), balance, xp, tool);
         }, cancellationToken);
     }
 
@@ -272,6 +360,7 @@ public sealed class BuyPlotHandler(IServiceScopeFactory scopes) : WorldHandler(s
             plot = PlotJson(purchase.Plot, player),
             balanceCents = purchase.BalanceCents,
             xp = new { xp = purchase.Xp.Xp, level = purchase.Xp.Level, leveledUp = purchase.Xp.LeveledUp },
+            tool = purchase.Tool is { } tool ? new { id = tool, name = Items.Names[tool] } : null,
         });
     }
 }
@@ -286,10 +375,18 @@ public sealed class WorldModule : IGameModule
         services.AddModuleDbContext<WorldDbContext>(WorldDbContext.Schema);
         services.AddSingleton(_ => WorldMap.Load());
         services.AddScoped<WorldService>();
+        services.AddScoped<PlotService>();
+        services.AddScoped<StationService>();
         services.AddSingleton<IMessageHandler, InfoHandler>();
         services.AddSingleton<IMessageHandler, AreaHandler>();
         services.AddSingleton<IMessageHandler, GetPlotHandler>();
         services.AddSingleton<IMessageHandler, BuyPlotHandler>();
+        services.AddSingleton<IMessageHandler, EnterPlotHandler>();
+        services.AddSingleton<IMessageHandler, HarvestHandler>();
+        services.AddSingleton<IMessageHandler, GetStationHandler>();
+        services.AddSingleton<IMessageHandler, LoadStationHandler>();
+        services.AddSingleton<IMessageHandler, UnloadStationHandler>();
+        services.AddSingleton<IMessageHandler, SendHandler>();
     }
 
     public async Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken)

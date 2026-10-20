@@ -46,6 +46,10 @@ namespace FactoryWorld.Modules.Characters.Migrations
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)");
 
+                    b.Property<string>("Tool")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<long>("Xp")
                         .HasColumnType("bigint");
 

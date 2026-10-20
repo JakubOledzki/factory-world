@@ -39,3 +39,13 @@ public interface ICharacterNames
     /// <summary>Name by account id; accounts without a character are left out.</summary>
     Task<IReadOnlyDictionary<Guid, string>> NamesAsync(IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken);
 }
+
+/// <summary>The character's tool slot: one tool (e.g. an axe) held in hand, outside the inventory.</summary>
+public interface IEquipment
+{
+    /// <summary>The tool in the slot, or null.</summary>
+    Task<string?> ToolAsync(Guid accountId, CancellationToken cancellationToken);
+
+    /// <summary>Gives a new tool: into the slot when it is empty, otherwise into the inventory.</summary>
+    Task GiveToolAsync(Guid accountId, string tool, CancellationToken cancellationToken);
+}
