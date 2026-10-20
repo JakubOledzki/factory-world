@@ -8,7 +8,7 @@ var _buttons: Array[Button] = []
 
 
 func _ready() -> void:
-	var box := UI.centered_panel(self, 280)
+	var box := UI.centered_panel(self, 440)
 	box.add_child(UI.title("Factory World"))
 	box.add_child(UI.label("Zbuduj fabrykę od kosza na śmieci", UI.MUTED, HORIZONTAL_ALIGNMENT_CENTER))
 

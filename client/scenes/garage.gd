@@ -1,15 +1,18 @@
 extends Control
-## The player's garage: a pixel-art room with the trash bin, and a side panel
+## The player's garage: a 3D-rendered room with the trash bin, and a side panel
 ## with sorting, the storage and the trader.
 
-## Room art is drawn at 2× in a 320×180 space; the side panel covers its right part.
-const ROOM_SCALE := 2
-const FLOOR_Y := 130
-const PANEL_X := 404
+## Positions of the rendered sprites on the 1280×720 screen, written by tools/render_art.py.
+const LAYOUT_FILE := "res://art/garage/layout.json"
+## Pixels per metre of the room and of the character renders; the character is scaled to match.
+const PANEL_WIDTH := 380
 const SLOTS := 10
+## The garage is lit by one bulb, so the character is drawn darker than in the editor.
+const ROOM_LIGHT := Color(0.66, 0.62, 0.58)
 
 const TABS := ["Segregacja", "Magazyn", "Rynek"]
 
+var _layout := {}
 var _garage := {}
 var _items: Array = []
 var _prices: Array = []
@@ -19,9 +22,7 @@ var _clock_offset := 0.0
 var _refreshing := false
 var _next_poll := 0.0
 
-var _room: Control
 var _bin: TextureButton
-var _player: TextureRect
 var _effects: Control
 
 var _level: Label
@@ -44,6 +45,7 @@ var _market: VBoxContainer
 
 
 func _ready() -> void:
+	_layout = JSON.parse_string(FileAccess.get_file_as_string(LAYOUT_FILE))
 	_build_room()
 	_build_hud()
 	_build_side_panel()
@@ -55,114 +57,84 @@ func _ready() -> void:
 # --- Room ------------------------------------------------------------------------
 
 func _build_room() -> void:
-	var sky := ColorRect.new()
-	sky.color = UI.BACKGROUND
-	sky.set_anchors_preset(Control.PRESET_FULL_RECT)
-	add_child(sky)
+	var background := TextureRect.new()
+	background.texture = load("res://art/garage/background.jpg")
+	background.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(background)
 
-	_room = Control.new()
-	_room.scale = Vector2.ONE * ROOM_SCALE
-	_room.size = Vector2(320, 180)
-	_room.mouse_filter = Control.MOUSE_FILTER_PASS
-	add_child(_room)
-
-	# Dimmed a little: it's indoors, and the bright bin and items should stand out.
-	_tile("bricks", Rect2(0, 0, 320, FLOOR_Y - 6), Color(0.78, 0.72, 0.76))
-	_tile("baseboard", Rect2(0, FLOOR_Y - 6, 320, 6))
-	_tile("floor", Rect2(0, FLOOR_Y, 320, 180 - FLOOR_Y), Color(0.62, 0.62, 0.7))
-	# Soft dark band where the wall meets the floor.
-	_shade(Rect2(0, FLOOR_Y, 320, 2), 0.35)
-
-	_sprite("garage_door", Vector2(10, FLOOR_Y - 6 - 56))
-	_sprite("window", Vector2(98, 30))
-	_sprite("shelf", Vector2(150, 62))
-	_shade(Rect2(132, FLOOR_Y + 3, 40, 2), 0.3)
-	_sprite("workbench", Vector2(132, FLOOR_Y - 17))
-
-	_shade(Rect2(91, FLOOR_Y + 3, 22, 2), 0.3)
+	# The bin is already in the background; this copy only lights up under the mouse.
+	var spot: Dictionary = _layout["bin"]
 	_bin = TextureButton.new()
-	_bin.texture_normal = UI.texture("trash_bin")
-	_bin.position = Vector2(90, FLOOR_Y - 25)
+	_bin.texture_normal = load("res://art/garage/bin.png")
+	_bin.texture_click_mask = _alpha_mask(_bin.texture_normal)
+	_bin.position = Vector2(spot["x"], spot["y"])
+	_bin.self_modulate = Color(1, 1, 1, 0)
 	_bin.tooltip_text = "Kosz na śmieci: kliknij, aby segregować"
 	_bin.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	_bin.pressed.connect(_sort.bind(1))
-	_bin.mouse_entered.connect(func() -> void: _bin.modulate = Color(1.25, 1.25, 1.25))
-	_bin.mouse_exited.connect(func() -> void: _bin.modulate = Color.WHITE)
-	_room.add_child(_bin)
+	_bin.mouse_entered.connect(func() -> void: _bin.self_modulate = Color(1.6, 1.5, 1.3, 1))
+	_bin.mouse_exited.connect(func() -> void: _bin.self_modulate = Color(1, 1, 1, 0))
+	add_child(_bin)
 
-	_shade(Rect2(69, FLOOR_Y + 3, 14, 2), 0.3)
-	_player = TextureRect.new()
-	_player.position = Vector2(67, FLOOR_Y - 21)
-	_player.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_room.add_child(_player)
+	var player := CharacterPreview.new()
+	player.options = Game.appearance_options
+	player.appearance = Game.character.get("appearance", {})
+	player.display_scale = float(_layout["pixelsPerMetre"]) / float(CharacterPreview.meta()["pixelsPerMetre"])
+	player.light = ROOM_LIGHT
+	player.show_shadow = true
+	player.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	player.position = Vector2(_layout["player"]["x"], _layout["player"]["y"]) - player.feet_offset()
+	add_child(player)
 
-	# Floating "+5 XP" texts live at screen scale, so the font stays crisp.
 	_effects = Control.new()
 	_effects.set_anchors_preset(Control.PRESET_FULL_RECT)
 	_effects.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_effects)
 
 
-func _tile(art: String, rect: Rect2, tint := Color.WHITE) -> void:
-	var t := TextureRect.new()
-	t.modulate = tint
-	t.texture = UI.texture(art)
-	t.stretch_mode = TextureRect.STRETCH_TILE
-	t.position = rect.position
-	t.size = rect.size
-	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_room.add_child(t)
-
-
-func _sprite(art: String, at: Vector2) -> void:
-	var t := TextureRect.new()
-	t.texture = UI.texture(art)
-	t.position = at
-	t.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_room.add_child(t)
-
-
-func _shade(rect: Rect2, alpha: float) -> void:
-	var c := ColorRect.new()
-	c.color = Color(UI.BACKGROUND, alpha)
-	c.position = rect.position
-	c.size = rect.size
-	c.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_room.add_child(c)
+func _alpha_mask(texture: Texture2D) -> BitMap:
+	var mask := BitMap.new()
+	mask.create_from_image_alpha(texture.get_image(), 0.3)
+	return mask
 
 
 # --- HUD -------------------------------------------------------------------------
 
 func _build_hud() -> void:
-	var parts := UI.panel(1)
+	var parts := UI.panel(2)
 	var hud: PanelContainer = parts[0]
-	hud.position = Vector2(4, 4)
+	hud.position = Vector2(16, 16)
 	add_child(hud)
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
+	row.add_theme_constant_override("separation", 12)
 	parts[1].add_child(row)
 
 	var portrait := CharacterPreview.new()
-	portrait.pixel = 2
 	portrait.options = Game.appearance_options
 	portrait.appearance = Game.character.get("appearance", {})
+	portrait.region = Rect2(0.12, 0.0, 0.76, 0.36)
+	portrait.display_scale = 1.0
 	row.add_child(portrait)
-	_player.texture = ImageTexture.create_from_image(portrait.render())
 
 	var info := VBoxContainer.new()
-	info.add_theme_constant_override("separation", 3)
+	info.add_theme_constant_override("separation", 4)
 	info.alignment = BoxContainer.ALIGNMENT_CENTER
 	row.add_child(info)
 	var name_row := HBoxContainer.new()
-	name_row.add_child(UI.label(Game.character.get("name", "")))
+	name_row.add_theme_constant_override("separation", 10)
+	var name_label := UI.label(Game.character.get("name", ""))
+	name_label.add_theme_font_override("font", UI.bold())
+	name_label.add_theme_font_size_override("font_size", 22)
+	name_row.add_child(name_label)
 	_level = UI.label("", UI.GOLD)
+	_level.add_theme_font_override("font", UI.bold())
 	name_row.add_child(_level)
 	info.add_child(name_row)
 	_xp_bar = ProgressBar.new()
 	_xp_bar.theme_type_variation = "XpBar"
 	_xp_bar.show_percentage = false
-	_xp_bar.custom_minimum_size = Vector2(120, 7)
+	_xp_bar.custom_minimum_size = Vector2(220, 14)
 	info.add_child(_xp_bar)
 	_xp_text = UI.label("", UI.MUTED)
 	info.add_child(_xp_text)
@@ -173,7 +145,7 @@ func _refresh_character() -> void:
 	var xp: int = c.get("xp", 0)
 	var level_xp: int = c.get("levelXp", 0)
 	var next_xp: Variant = c.get("nextLevelXp")
-	_level.text = " Poz. %d" % c.get("level", 1)
+	_level.text = "Poziom %d" % c.get("level", 1)
 	_xp_bar.max_value = (next_xp - level_xp) if next_xp != null else 1.0
 	_xp_bar.value = xp - level_xp if next_xp != null else 1.0
 	_xp_text.text = "%d / %d XP" % [xp, next_xp] if next_xp != null else "%d XP" % xp
@@ -194,24 +166,26 @@ func _gain_xp(gain: Dictionary) -> void:
 # --- Side panel --------------------------------------------------------------------
 
 func _build_side_panel() -> void:
-	var parts := UI.panel(5)
+	var parts := UI.panel(10)
 	var side: PanelContainer = parts[0]
-	side.position = Vector2(PANEL_X, 4)
-	side.size = Vector2(640 - PANEL_X - 4, 352)
+	side.position = Vector2(1280 - PANEL_WIDTH - 16, 16)
+	side.size = Vector2(PANEL_WIDTH, 720 - 32)
 	add_child(side)
 	var box: VBoxContainer = parts[1]
 
 	var header := HBoxContainer.new()
-	header.add_theme_constant_override("separation", 4)
-	header.add_child(UI.icon("coin", 2))
+	header.add_theme_constant_override("separation", 8)
+	header.add_child(UI.icon("coin", 30))
 	_money = UI.label("", UI.GOLD)
+	_money.add_theme_font_override("font", UI.bold())
+	_money.add_theme_font_size_override("font_size", 22)
 	_money.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	header.add_child(_money)
 	header.add_child(UI.button("Wyloguj", Game.logout))
 	box.add_child(header)
 
 	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation", 3)
+	tabs.add_theme_constant_override("separation", 4)
 	for i in TABS.size():
 		var b := UI.button(TABS[i], _show_tab.bind(i))
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -237,14 +211,17 @@ func _show_tab(index: int) -> void:
 
 func _build_sorting() -> VBoxContainer:
 	var page := VBoxContainer.new()
-	page.add_theme_constant_override("separation", 5)
+	page.add_theme_constant_override("separation", 8)
 
 	var bin := HBoxContainer.new()
-	bin.add_theme_constant_override("separation", 6)
-	bin.add_child(UI.icon("item_trash", 2))
+	bin.add_theme_constant_override("separation", 10)
+	bin.add_child(UI.icon("item_trash", 56))
 	var bin_text := VBoxContainer.new()
 	bin_text.add_theme_constant_override("separation", 0)
-	bin_text.add_child(UI.label("Kosz na śmieci"))
+	bin_text.alignment = BoxContainer.ALIGNMENT_CENTER
+	var bin_title := UI.label("Kosz na śmieci")
+	bin_title.add_theme_font_override("font", UI.bold())
+	bin_text.add_child(bin_title)
 	_trash = UI.label("", UI.MUTED)
 	bin_text.add_child(_trash)
 	bin.add_child(bin_text)
@@ -253,7 +230,7 @@ func _build_sorting() -> VBoxContainer:
 	page.add_child(UI.label("Segregacja worka trwa 10 s i daje losowy surowiec oraz 5 XP.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	var buttons := HBoxContainer.new()
-	buttons.add_theme_constant_override("separation", 4)
+	buttons.add_theme_constant_override("separation", 8)
 	for count in [1, 10]:
 		var b := UI.button("Segreguj %d" % count, _sort.bind(count), count == 10)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -267,32 +244,34 @@ func _build_sorting() -> VBoxContainer:
 	var job := HBoxContainer.new()
 	_job_bar = ProgressBar.new()
 	_job_bar.show_percentage = false
-	_job_bar.custom_minimum_size.y = 8
+	_job_bar.custom_minimum_size.y = 14
 	_job_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_job_bar.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	job.add_child(_job_bar)
 	_job_text = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
-	_job_text.custom_minimum_size.x = 30
+	_job_text.custom_minimum_size.x = 44
 	job.add_child(_job_text)
 	page.add_child(job)
 
 	page.add_child(HSeparator.new())
 	page.add_child(UI.label("Ostatnio wysegregowane:", UI.MUTED))
 	_recent = HFlowContainer.new()
-	_recent.add_theme_constant_override("h_separation", 2)
-	_recent.add_theme_constant_override("v_separation", 2)
+	_recent.add_theme_constant_override("h_separation", 4)
+	_recent.add_theme_constant_override("v_separation", 4)
 	page.add_child(_recent)
 	return page
 
 
 func _build_storage() -> VBoxContainer:
 	var page := VBoxContainer.new()
-	page.add_theme_constant_override("separation", 6)
-	page.add_child(UI.label("Magazyn garażu", UI.TEXT))
+	page.add_theme_constant_override("separation", 10)
+	var heading := UI.label("Magazyn garażu")
+	heading.add_theme_font_override("font", UI.bold())
+	page.add_child(heading)
 	_slots = GridContainer.new()
 	_slots.columns = 5
-	_slots.add_theme_constant_override("h_separation", 3)
-	_slots.add_theme_constant_override("v_separation", 3)
+	_slots.add_theme_constant_override("h_separation", 6)
+	_slots.add_theme_constant_override("v_separation", 6)
 	page.add_child(_slots)
 	page.add_child(UI.label("Surowce sprzedasz handlarzowi w zakładce Rynek.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	return page
@@ -302,7 +281,7 @@ func _build_market() -> VBoxContainer:
 	var page := VBoxContainer.new()
 	page.add_theme_constant_override("separation", 4)
 	_market = VBoxContainer.new()
-	_market.add_theme_constant_override("separation", 1)
+	_market.add_theme_constant_override("separation", 2)
 	page.add_child(_market)
 	return page
 
@@ -335,7 +314,7 @@ func _apply_garage(garage: Dictionary) -> void:
 	for i in results.size():
 		var item: Dictionary = results[i]
 		_float_text("+1 %s" % item["name"], UI.TEXT, i * 0.25)
-		var icon := UI.icon("item_" + item["id"])
+		var icon := UI.icon("item_" + item["id"], 40)
 		icon.tooltip_text = item["name"]
 		icon.mouse_filter = Control.MOUSE_FILTER_STOP
 		_recent.add_child(icon)
@@ -343,7 +322,7 @@ func _apply_garage(garage: Dictionary) -> void:
 	while _recent.get_child_count() > 24:
 		_recent.get_child(_recent.get_child_count() - 1).free()
 	if garage.get("xp") != null:
-		_float_text("+%d XP" % (results.size() * 5), UI.GOLD, 0.0, -16)
+		_float_text("+%d XP" % (results.size() * 5), UI.GOLD, 0.0, -30)
 		_gain_xp(garage["xp"])
 	if not results.is_empty():
 		_reload_inventory()
@@ -433,7 +412,7 @@ func _sort(count: int) -> void:
 		_show_error({"payload": {"code": "queue_full" if _garage.get("trash", 0) > 0 else "not_enough_items"}})
 		return
 	_hide_error()
-	_shake(_bin)
+	_pulse()
 	var reply := await Net.request("recycling.sort", {"count": count})
 	if reply["type"] == "garage":
 		_apply_garage(reply["payload"])
@@ -446,21 +425,23 @@ func _sort(count: int) -> void:
 func _slot(stack: Dictionary) -> Control:
 	var slot := PanelContainer.new()
 	var frame := StyleBoxTexture.new()
-	frame.texture = UI.texture("ui_slot")
-	frame.set_texture_margin_all(3)
+	frame.texture = UI.texture("ui/inset")
+	frame.set_texture_margin_all(8)
+	frame.set_content_margin_all(4)
 	slot.add_theme_stylebox_override("panel", frame)
-	slot.custom_minimum_size = Vector2(40, 40)
+	slot.custom_minimum_size = Vector2(64, 64)
 	if stack.is_empty():
 		return slot
 	slot.tooltip_text = "%s: %d" % [stack["name"], int(stack["quantity"])]
-	var icon := UI.icon("item_" + stack["id"], 2)
+	var icon := UI.icon("item_" + stack["id"], 52)
 	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	slot.add_child(icon)
 	var count := UI.label(str(int(stack["quantity"])), Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
 	count.size_flags_horizontal = Control.SIZE_SHRINK_END
 	count.size_flags_vertical = Control.SIZE_SHRINK_END
-	count.add_theme_constant_override("outline_size", 3)
+	count.add_theme_font_override("font", UI.bold())
+	count.add_theme_constant_override("outline_size", 5)
 	count.add_theme_color_override("font_outline_color", UI.BACKGROUND)
 	slot.add_child(count)
 	return slot
@@ -474,23 +455,22 @@ func _rebuild_market() -> void:
 		var owned := _count(item)
 
 		var top := HBoxContainer.new()
-		top.add_theme_constant_override("separation", 4)
-		top.add_child(UI.icon("item_" + item))
+		top.add_theme_constant_override("separation", 8)
+		top.add_child(UI.icon("item_" + item, 36))
 		var name_label := UI.label(price["name"])
+		name_label.add_theme_font_override("font", UI.bold())
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		top.add_child(name_label)
 		top.add_child(UI.label("masz %d" % owned, UI.MUTED))
 		_market.add_child(top)
 
 		var bottom := HBoxContainer.new()
-		bottom.add_theme_constant_override("separation", 3)
+		bottom.add_theme_constant_override("separation", 6)
 		var buying: bool = price.get("sellCents") == null
 		var cents := int(price["buyCents"] if buying else price["sellCents"])
-		bottom.add_child(UI.label(("cena %s" if buying else "skup %s") % UI.money(cents), UI.GOLD if buying else UI.GOOD))
-		bottom.add_child(UI.icon("coin"))
-		var spacer := Control.new()
-		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		bottom.add_child(spacer)
+		var price_label := UI.label(("cena %s" if buying else "skup %s") % UI.money(cents), UI.GOLD if buying else UI.GOOD)
+		price_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		bottom.add_child(price_label)
 		if buying:
 			for amount in [1, 10]:
 				var b := UI.button("Kup %d" % amount, _trade.bind("market.buy", item, amount))
@@ -527,27 +507,29 @@ func _trade(type: String, item: String, quantity: int) -> void:
 
 func _float_text(text: String, color: Color, delay := 0.0, lift := 0) -> void:
 	var l := UI.label(text, color, HORIZONTAL_ALIGNMENT_CENTER)
-	l.add_theme_constant_override("outline_size", 4)
-	l.add_theme_color_override("font_outline_color", UI.BACKGROUND)
+	l.add_theme_font_override("font", UI.bold())
+	l.add_theme_font_size_override("font_size", 22)
+	l.add_theme_constant_override("outline_size", 6)
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
 	l.modulate.a = 0.0
-	l.size = Vector2(120, 14)
-	var start := (_bin.position + Vector2(12, -4)) * ROOM_SCALE - Vector2(60, -lift)
+	l.size = Vector2(280, 32)
+	var start := _bin.position + Vector2(_bin.size.x / 2 - 140, -10 + lift)
 	l.position = start
 	_effects.add_child(l)
 	var tween := create_tween()
 	tween.tween_interval(delay)
-	tween.tween_property(l, "modulate:a", 1.0, 0.1)
-	tween.parallel().tween_property(l, "position:y", start.y - 30, 1.2).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tween.tween_property(l, "modulate:a", 0.0, 0.3)
+	tween.tween_property(l, "modulate:a", 1.0, 0.15)
+	tween.parallel().tween_property(l, "position:y", start.y - 60, 1.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tween.tween_property(l, "modulate:a", 0.0, 0.4)
 	tween.tween_callback(l.queue_free)
 
 
 func _banner(text: String) -> void:
-	var l := UI.title(text)
-	l.add_theme_constant_override("outline_size", 6)
-	l.add_theme_color_override("font_outline_color", UI.BACKGROUND)
-	l.size = Vector2(PANEL_X, 30)
-	l.position = Vector2(0, 120)
+	var l := UI.title(text, 48)
+	l.add_theme_constant_override("outline_size", 10)
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	l.size = Vector2(1280 - PANEL_WIDTH - 32, 70)
+	l.position = Vector2(0, 280)
 	l.pivot_offset = l.size / 2
 	l.scale = Vector2.ZERO
 	_effects.add_child(l)
@@ -558,11 +540,11 @@ func _banner(text: String) -> void:
 	tween.tween_callback(l.queue_free)
 
 
-func _shake(node: Control) -> void:
-	var base := Vector2(90, FLOOR_Y - 25)
+## Flashes the bin, as feedback that sorting started.
+func _pulse() -> void:
 	var tween := create_tween()
-	for dx in [-1, 1, -1, 0]:
-		tween.tween_property(node, "position", base + Vector2(dx, 0), 0.04)
+	tween.tween_property(_bin, "self_modulate", Color(1.8, 1.6, 1.2, 1), 0.08)
+	tween.tween_property(_bin, "self_modulate", Color(1, 1, 1, 0), 0.35)
 
 
 func _show_error(reply: Dictionary) -> void:

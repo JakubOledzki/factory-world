@@ -11,7 +11,8 @@ Projekt gry: [dokument projektowy](https://claude.ai/code/artifact/50d66faa-a0b4
 | `server/` | Serwer gry w C#/.NET 10, modularny monolit |
 | `server/src/Modules/` | Moduły gry: `Session` (powitanie, ping), `Accounts` (rejestracja, logowanie, sesje), `Characters` (postać, wygląd, poziom), `Inventory` (przedmioty), `Wallet` (pieniądze i historia operacji), `Market` (handlarz NPC), `Recycling` (garaż, kosz na śmieci, segregacja) |
 | `docker-compose.yml` | PostgreSQL i serwer do lokalnego uruchomienia |
-| `tools/generate_art.py` | Rysuje grafikę pixel art do `client/art/` (sprite'y zapisane jako siatki znaków); uruchom po zmianie: `python3 tools/generate_art.py` |
+| `tools/render_art.py` | Renderuje grafikę 3D (garaż, postać, ikony) w Blenderze do `client/art/`; modele są budowane w kodzie. Wymaga modułu `bpy` (instrukcja w pliku) |
+| `tools/generate_ui.py` | Rysuje tekstury interfejsu (panele, przyciski, paski) do `client/art/ui/` |
 | `deploy/` | Wdrożenie produkcyjne: Caddy (HTTPS + gra w przeglądarce), compose, `.env` |
 
 ## Uruchomienie lokalne
