@@ -3,10 +3,16 @@
   <ItemGroup>
     <ProjectReference Include="..\FactoryWorld.Modules.Abstractions\FactoryWorld.Modules.Abstractions.csproj" />
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Session\FactoryWorld.Modules.Session.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Accounts\FactoryWorld.Modules.Accounts.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Characters\FactoryWorld.Modules.Characters.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="AspNetCore.HealthChecks.NpgSql" Version="9.0.0" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13">
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+      <PrivateAssets>all</PrivateAssets>
+    </PackageReference>
     <PackageReference Include="Npgsql" Version="10.0.3" />
   </ItemGroup>
 

@@ -6,7 +6,7 @@ namespace FactoryWorld.Server;
 /// <summary>Routes each incoming envelope to the module handler registered for its type.</summary>
 public sealed class MessageDispatcher(IEnumerable<IMessageHandler> handlers, ILogger<MessageDispatcher> logger)
 {
-    public static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    public static JsonSerializerOptions Json => Payload.Json;
 
     private readonly Dictionary<string, IMessageHandler> _handlers =
         handlers.ToDictionary(h => h.Type, StringComparer.Ordinal);
@@ -31,6 +31,11 @@ public sealed class MessageDispatcher(IEnumerable<IMessageHandler> handlers, ILo
         if (!_handlers.TryGetValue(request.Type, out var handler))
         {
             return Error(request.Id, "unknown_type", $"Unknown message type '{request.Type}'.");
+        }
+
+        if (handler.RequiresAccount && client.AccountId is null)
+        {
+            return Error(request.Id, "not_logged_in", "Log in first.");
         }
 
         try

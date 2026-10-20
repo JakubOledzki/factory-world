@@ -1,4 +1,6 @@
 using FactoryWorld.Modules.Abstractions;
+using FactoryWorld.Modules.Accounts;
+using FactoryWorld.Modules.Characters;
 using FactoryWorld.Modules.Session;
 using FactoryWorld.Server;
 
@@ -8,6 +10,8 @@ var builder = WebApplication.CreateBuilder(args);
 IGameModule[] modules =
 [
     new SessionModule(),
+    new AccountsModule(),
+    new CharactersModule(),
 ];
 
 foreach (var module in modules)
@@ -21,14 +25,20 @@ builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
         .AllowAnyHeader()
         .AllowAnyMethod()));
 
-var health = builder.Services.AddHealthChecks();
 var connectionString = builder.Configuration.GetConnectionString("Game");
-if (!string.IsNullOrWhiteSpace(connectionString))
+if (string.IsNullOrWhiteSpace(connectionString))
 {
-    health.AddNpgSql(connectionString, name: "postgres");
+    throw new InvalidOperationException("Set the ConnectionStrings:Game setting to a PostgreSQL connection string.");
 }
 
+builder.Services.AddHealthChecks().AddNpgSql(connectionString, name: "postgres");
+
 var app = builder.Build();
+
+foreach (var module in modules)
+{
+    await module.InitializeAsync(app.Services, app.Lifetime.ApplicationStopping);
+}
 
 app.UseCors();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });

@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FactoryWorld.Server\FactoryWorld.Server.csproj" />
+    <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Characters\FactoryWorld.Modules.Characters.csproj" />
   </ItemGroup>
 
 </Project>

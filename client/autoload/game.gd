@@ -1,0 +1,101 @@
+extends Node
+## Player session: login token, character and moving between screens.
+
+const SESSION_FILE := "user://session.cfg"
+
+const LOGIN_SCENE := "res://scenes/login.tscn"
+const EDITOR_SCENE := "res://scenes/editor.tscn"
+const GARAGE_SCENE := "res://scenes/garage.tscn"
+
+## Server error codes shown to the player in Polish.
+const ERRORS := {
+	"disconnected": "Brak połączenia z serwerem.",
+	"invalid_email": "Nieprawidłowy adres e-mail.",
+	"weak_password": "Hasło musi mieć od 8 do 128 znaków.",
+	"email_taken": "Konto z tym adresem e-mail już istnieje.",
+	"invalid_credentials": "Zły e-mail lub hasło.",
+	"too_many_attempts": "Za dużo nieudanych prób. Odśwież grę i spróbuj ponownie.",
+	"session_expired": "Sesja wygasła. Zaloguj się ponownie.",
+	"invalid_name": "Nazwa: 3–16 znaków, litery, cyfry lub _.",
+	"name_taken": "Ta nazwa jest już zajęta.",
+	"invalid_appearance": "Nieznana opcja wyglądu.",
+	"character_exists": "To konto ma już postać.",
+}
+
+var token := ""
+## Palettes and option counts of the character editor, from the server.
+var appearance_options := {}
+## The logged-in player's character, as sent by the server, or empty.
+var character := {}
+
+
+func _ready() -> void:
+	var config := ConfigFile.new()
+	if config.load(SESSION_FILE) == OK:
+		token = config.get_value("session", "token", "")
+	Net.connected.connect(_on_reconnected)
+
+
+func error_text(reply: Dictionary) -> String:
+	var payload: Variant = reply.get("payload")
+	var code: String = payload.get("code", "") if payload is Dictionary else ""
+	return ERRORS.get(code, "Błąd serwera (%s)." % code)
+
+
+## Called by the start screen once connected: logs in with the saved token or shows the login screen.
+func start() -> void:
+	if appearance_options.is_empty():
+		var options := await Net.request("character.options")
+		if options["type"] == "character.options":
+			appearance_options = options["payload"]
+
+	if token != "":
+		var reply := await Net.request("auth.resume", {"token": token})
+		if reply["type"] == "auth.ok":
+			await enter_game()
+			return
+		_save_token("")
+
+	get_tree().change_scene_to_file(LOGIN_SCENE)
+
+
+## Stores the session from an "auth.ok" reply and opens the right screen.
+func logged_in(reply: Dictionary) -> void:
+	_save_token(reply["payload"]["token"])
+	await enter_game()
+
+
+## Goes to the garage, or to the character editor when the account has no character yet.
+func enter_game() -> void:
+	var reply := await Net.request("character.get")
+	if reply["type"] == "character":
+		character = reply["payload"]
+		get_tree().change_scene_to_file(GARAGE_SCENE)
+	else:
+		character = {}
+		get_tree().change_scene_to_file(EDITOR_SCENE)
+
+
+func logout() -> void:
+	await Net.request("auth.logout", {"token": token})
+	_save_token("")
+	character = {}
+	get_tree().change_scene_to_file(LOGIN_SCENE)
+
+
+## After a dropped connection, logs back in quietly so the player stays where they were.
+func _on_reconnected() -> void:
+	var scene := get_tree().current_scene
+	if token == "" or scene == null or scene.scene_file_path == "res://scenes/main.tscn":
+		return
+	var reply := await Net.request("auth.resume", {"token": token})
+	if reply["type"] != "auth.ok":
+		_save_token("")
+		get_tree().change_scene_to_file(LOGIN_SCENE)
+
+
+func _save_token(value: String) -> void:
+	token = value
+	var config := ConfigFile.new()
+	config.set_value("session", "token", value)
+	config.save(SESSION_FILE)
