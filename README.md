@@ -9,10 +9,11 @@ Projekt gry: [dokument projektowy](https://claude.ai/code/artifact/50d66faa-a0b4
 | --- | --- |
 | `client/` | Klient gry w Godot 4.5 (GDScript) |
 | `server/` | Serwer gry w C#/.NET 10, modularny monolit |
-| `server/src/Modules/` | Moduły gry: `Session` (powitanie, ping), `Accounts` (rejestracja, logowanie, sesje), `Characters` (postać, wygląd, poziom), `Inventory` (przedmioty), `Wallet` (pieniądze i historia operacji), `Market` (handlarz NPC), `Recycling` (garaż, kosz na śmieci, segregacja) |
+| `server/src/Modules/` | Moduły gry: `Session` (powitanie, ping), `Accounts` (rejestracja, logowanie, sesje), `Characters` (postać, wygląd, poziom), `Inventory` (przedmioty), `Wallet` (pieniądze i historia operacji), `Market` (handlarz NPC), `Recycling` (garaż, kosz na śmieci, segregacja), `World` (mapa Ziemi, działki 5 × 5 km, zakup działek) |
 | `docker-compose.yml` | PostgreSQL i serwer do lokalnego uruchomienia |
 | `tools/render_art.py` | Renderuje grafikę (pusty garaż, meble z cieniami, postać w 4 kierunkach z animacją chodu, ikony) w Blenderze do `client/art/`; modele są budowane w kodzie, a gra wyświetla gotowe obrazki 2D. Wymaga modułu `bpy` (instrukcja w pliku) |
 | `tools/generate_ui.py` | Rysuje tekstury interfejsu (panele, przyciski, paski) do `client/art/ui/` |
+| `tools/build_world.py` | Buduje mapę świata z otwartych danych: biom każdej działki 5 × 5 km (`client/world/biomes.bin.gz`, ta sama kopia w module `World` serwera) i miejscowości (`client/world/towns.tsv.gz`); źródła i zasady opisane w pliku |
 | `deploy/` | Wdrożenie produkcyjne: Caddy (HTTPS + gra w przeglądarce), compose, `.env` |
 
 ## Uruchomienie lokalne
@@ -59,10 +60,16 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `wallet.get` | | `wallet` `{ balanceCents }` |
 | `market.prices` | | `market.prices` `{ items: [{ id, name, buyCents, sellCents }] }` |
 | `market.buy` / `market.sell` | `{ item, quantity }` | `market.traded` `{ item, quantity, balanceCents }` |
+| `world.info` | | `world.info` `{ width, height, plotKm, biomes: [{ id, name, buyable, priceFactor, bonuses: [{ text, good }] }], priceTiersCents, nextBasePriceCents, plots: [{ x, y, biome }] }` (`plots` to działki gracza) |
+| `world.area` | `{ x, y, width, height }` | `world.area` `{ x, y, width, height, plots: [{ x, y, mine }] }`: kupione działki w prostokącie (do 10 000 × 10 000) |
+| `world.plot` | `{ x, y }` | `world.plot` `{ x, y, biome, owner: { name, mine } \| null, priceCents }`; `priceCents` to cena dla pytającego gracza albo `null` (woda, działka zajęta) |
+| `world.buy` | `{ x, y }` | `world.bought` `{ plot, balanceCents, xp }` |
 
 Czasy w `garage` to milisekundy uniksowe według zegara serwera; `xp` to `{ xp, level, leveledUp }` albo `null`.
 Podłoga garażu to kratownica `room.width` × `room.depth` pól o boku `room.cellSize` metrów. Mebel zajmuje `width` × `depth` pól (po obrocie o 90° lub 270° na odwrót); `x`, `y` to jego lewe przednie pole. Meble nie mogą wystawać poza podłogę ani nachodzić na siebie.
 Kwoty są w centach. `buyCents` to cena, za którą gracz kupuje od handlarza, `sellCents` to cena skupu.
+
+Mapa świata to siatka działek 5 × 5 km w odwzorowaniu równopowierzchniowym Behrmanna (każda działka ma 25 km² na całym globie). Kolumna `x` liczy się od 180° W na wschód, wiersz `y` od bieguna północnego; mapa zawija się ze wschodu na zachód. Biomy mają stałe numery (0 ocean, 1 jezioro, 2 las, 3 żyzne gleby, 4 step i łąki, 5 pustynia, 6 góry, 7 tundra, 8 lodowiec, 9 miasto, 10 wybrzeże, 11 pojezierze). Wody nie można kupić. Cena n-tej działki gracza to 1 000 $, 10 000 $, 100 000 $, 1 000 000 $, a piątej i każdej kolejnej 1 000 000 000 $, razy mnożnik biomu (żyzne gleby, wybrzeże i pojezierze ×1,5, miasto ×2). Zakup daje 500 XP.
 
 Wszystko poza `hello`, `ping`, `auth.*` i `character.options` wymaga zalogowania.
 
@@ -76,3 +83,7 @@ Nowa migracja: `cd server && dotnet tool restore && dotnet ef migrations add <Na
 3. Dodaj moduł do listy w `server/src/FactoryWorld.Server/Program.cs`.
 
 Moduły nie czytają nawzajem swoich tabel; korzystają tylko z publicznych serwisów innych modułów.
+
+## Dane mapy świata
+
+Mapa powstaje z otwartych danych (`tools/build_world.py`): strefy klimatyczne Köppena-Geigera (Rubel i Kottek, przez pakiet [kgcpy](https://pypi.org/project/kgcpy/)), warstwy [Natural Earth](https://www.naturalearthdata.com/) (miasta, jeziora, lodowce, pasma górskie, polskie nazwy dużych miast) i miejscowości z [GeoNames](https://www.geonames.org/) (CC BY 4.0, przez pakiet [all-the-cities](https://www.npmjs.com/package/all-the-cities)). Podział lądu na las, pola i łąki w obrębie jednej strefy klimatycznej jest przybliżony szumem, bo nie ma darmowej mapy lasów dość małej, by trzymać ją w repozytorium.

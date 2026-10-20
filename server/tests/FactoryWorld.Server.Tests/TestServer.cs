@@ -54,6 +54,9 @@ public sealed class GameClient(WebSocket socket) : IDisposable
 {
     private int _nextId;
 
+    /// <summary>The account made by <see cref="RegisterAsync"/>.</summary>
+    public Guid AccountId { get; private set; }
+
     public async Task<JsonElement> SendRawAsync(string frame)
     {
         await socket.SendAsync(Encoding.UTF8.GetBytes(frame), WebSocketMessageType.Text, true, CancellationToken.None);
@@ -72,6 +75,7 @@ public sealed class GameClient(WebSocket socket) : IDisposable
     {
         var reply = await SendAsync("auth.register", new { email = email ?? $"{Guid.NewGuid():N}@example.com", password = "secret-password" });
         Assert.Equal("auth.ok", reply.Type());
+        AccountId = reply.Payload().GetProperty("accountId").GetGuid();
         return reply.Payload().GetProperty("token").GetString()!;
     }
 

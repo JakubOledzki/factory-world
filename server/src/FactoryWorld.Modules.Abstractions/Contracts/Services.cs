@@ -32,3 +32,10 @@ public interface ICharacterProgress
 {
     Task<XpGain> AddXpAsync(Guid accountId, long xp, CancellationToken cancellationToken);
 }
+
+/// <summary>Character names, e.g. to show who owns something.</summary>
+public interface ICharacterNames
+{
+    /// <summary>Name by account id; accounts without a character are left out.</summary>
+    Task<IReadOnlyDictionary<Guid, string>> NamesAsync(IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken);
+}

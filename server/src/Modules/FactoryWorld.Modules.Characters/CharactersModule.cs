@@ -15,6 +15,7 @@ public sealed class CharactersModule : IGameModule
         services.AddModuleDbContext<CharactersDbContext>(CharactersDbContext.Schema);
         services.AddScoped<CharacterService>();
         services.AddScoped<ICharacterProgress, CharacterProgress>();
+        services.AddScoped<ICharacterNames, CharacterNames>();
         services.AddSingleton<IMessageHandler, OptionsHandler>();
         services.AddSingleton<IMessageHandler, GetCharacterHandler>();
         services.AddSingleton<IMessageHandler, CreateCharacterHandler>();

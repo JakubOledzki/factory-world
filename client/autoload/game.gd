@@ -6,6 +6,7 @@ const SESSION_FILE := "user://session.cfg"
 const LOGIN_SCENE := "res://scenes/login.tscn"
 const EDITOR_SCENE := "res://scenes/editor.tscn"
 const GARAGE_SCENE := "res://scenes/garage.tscn"
+const WORLD_MAP_SCENE := "res://scenes/world_map.tscn"
 
 ## Server error codes shown to the player in Polish.
 const ERRORS := {
@@ -32,6 +33,9 @@ const ERRORS := {
 	"bad_position": "To się tu nie zmieści.",
 	"blocked": "To miejsce jest zajęte.",
 	"no_object": "Tego już tu nie ma.",
+	"bad_plot": "Nie ma takiej działki.",
+	"not_buyable": "Wody nie da się kupić.",
+	"plot_taken": "Ktoś już kupił tę działkę.",
 }
 
 var token := ""
@@ -87,6 +91,23 @@ func enter_game() -> void:
 	else:
 		character = {}
 		get_tree().change_scene_to_file(EDITOR_SCENE)
+
+
+func open_garage() -> void:
+	get_tree().change_scene_to_file(GARAGE_SCENE)
+
+
+func open_world_map() -> void:
+	get_tree().change_scene_to_file(WORLD_MAP_SCENE)
+
+
+## Applies an XP gain from the server ({ xp, level }); level thresholds follow 200 × (L − 1)².
+func gain_xp(gain: Dictionary) -> void:
+	var level: int = gain["level"]
+	character["xp"] = gain["xp"]
+	character["level"] = level
+	character["levelXp"] = 200 * (level - 1) * (level - 1)
+	character["nextLevelXp"] = 200 * level * level
 
 
 func logout() -> void:

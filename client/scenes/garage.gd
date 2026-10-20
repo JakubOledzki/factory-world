@@ -25,6 +25,7 @@ const ACTIONS := {
 	"market": [KEY_M],
 	"cancel": [KEY_ESCAPE],
 	"rotate": [KEY_R],
+	"world_map": [KEY_N],
 }
 
 var _garage := {}
@@ -387,6 +388,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_inventory_window.toggle()
 	elif event.is_action_pressed("market"):
 		_market_window.toggle()
+	elif event.is_action_pressed("world_map"):
+		Game.open_world_map()
 
 
 func _build_menu() -> void:
@@ -584,6 +587,7 @@ func _build_hud() -> void:
 	bar.add_theme_constant_override("separation", 6)
 	bar.add_child(UI.button("Ekwipunek  [I]", func() -> void: _inventory_window.toggle()))
 	bar.add_child(UI.button("Rynek  [M]", func() -> void: _market_window.toggle()))
+	bar.add_child(UI.button("Mapa świata  [N]", Game.open_world_map))
 	bar.add_child(UI.button("Wyloguj", Game.logout))
 	add_child(bar)
 	bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 10)

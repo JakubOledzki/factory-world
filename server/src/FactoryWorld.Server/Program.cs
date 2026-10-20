@@ -7,6 +7,7 @@ using FactoryWorld.Modules.Market;
 using FactoryWorld.Modules.Recycling;
 using FactoryWorld.Modules.Session;
 using FactoryWorld.Modules.Wallet;
+using FactoryWorld.Modules.World;
 using FactoryWorld.Server;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -21,6 +22,7 @@ IGameModule[] modules =
     new WalletModule(),
     new MarketModule(),
     new RecyclingModule(),
+    new WorldModule(),
 ];
 
 foreach (var module in modules)
