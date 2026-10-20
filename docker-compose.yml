@@ -1,0 +1,31 @@
+# Local development: `docker compose up` starts the database and the server.
+# To run the server from your IDE instead, start only the database: `docker compose up db`.
+services:
+  db:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: factory_world
+      POSTGRES_USER: factory
+      POSTGRES_PASSWORD: factory
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U factory -d factory_world"]
+      interval: 5s
+      retries: 10
+
+  server:
+    build: ./server
+    environment:
+      ConnectionStrings__Game: "Host=db;Port=5432;Database=factory_world;Username=factory;Password=factory"
+      Cors__Origins__0: "http://localhost:8060"
+    ports:
+      - "5080:5080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:
