@@ -11,7 +11,7 @@ Projekt gry: [dokument projektowy](https://claude.ai/code/artifact/50d66faa-a0b4
 | `server/` | Serwer gry w C#/.NET 10, modularny monolit |
 | `server/src/Modules/` | Moduły gry: `Session` (powitanie, ping), `Accounts` (rejestracja, logowanie, sesje), `Characters` (postać, wygląd, poziom), `Inventory` (przedmioty), `Wallet` (pieniądze i historia operacji), `Market` (handlarz NPC), `Recycling` (garaż, kosz na śmieci, segregacja) |
 | `docker-compose.yml` | PostgreSQL i serwer do lokalnego uruchomienia |
-| `tools/render_art.py` | Renderuje grafikę 3D (garaż, postać, ikony) w Blenderze do `client/art/`; modele są budowane w kodzie. Wymaga modułu `bpy` (instrukcja w pliku) |
+| `tools/render_art.py` | Renderuje grafikę (pusty garaż, meble z cieniami, postać w 4 kierunkach z animacją chodu, ikony) w Blenderze do `client/art/`; modele są budowane w kodzie, a gra wyświetla gotowe obrazki 2D. Wymaga modułu `bpy` (instrukcja w pliku) |
 | `tools/generate_ui.py` | Rysuje tekstury interfejsu (panele, przyciski, paski) do `client/art/ui/` |
 | `deploy/` | Wdrożenie produkcyjne: Caddy (HTTPS + gra w przeglądarce), compose, `.env` |
 
@@ -51,14 +51,17 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `character.options` | | palety i liczby opcji edytora |
 | `character.get` | | `character` albo `character.none` |
 | `character.create` | `{ name, appearance }` | `character` `{ name, appearance, level, xp, levelXp, nextLevelXp }` |
-| `garage.get` | | `garage` `{ trash, queue: [finishesAtMs], serverTime, sortSeconds, maxQueue, results: [{ id, name }], xp }`; przy okazji wydaje zakończone segregacje |
-| `recycling.sort` | `{ count }` | `garage` |
+| `garage.get` | | `garage` `{ trash, queue: [finishesAtMs], serverTime, sortSeconds, maxQueue, results: [{ id, name }], xp, room: { width, depth }, objects: [{ id, kind, x, y }], furniture: { kind: { name, width, depth } } }`; przy okazji wydaje zakończone segregacje |
+| `recycling.sort` | `{ count }` | `garage`; wymaga kosza stojącego w garażu |
+| `garage.pickup` | `{ id }` | `garage`; mebel trafia do ekwipunku |
+| `garage.place` | `{ kind, x, y }` | `garage`; stawia mebel z ekwipunku, środkiem w punkcie (x, y) w metrach |
 | `inventory.get` | | `inventory` `{ items: [{ id, name, quantity }] }` |
 | `wallet.get` | | `wallet` `{ balanceCents }` |
 | `market.prices` | | `market.prices` `{ items: [{ id, name, buyCents, sellCents }] }` |
 | `market.buy` / `market.sell` | `{ item, quantity }` | `market.traded` `{ item, quantity, balanceCents }` |
 
 Czasy w `garage` to milisekundy uniksowe według zegara serwera; `xp` to `{ xp, level, leveledUp }` albo `null`.
+Garaż ma podłogę `room.width` × `room.depth` metrów; meble nie mogą wystawać poza nią ani nachodzić na siebie.
 Kwoty są w centach. `buyCents` to cena, za którą gracz kupuje od handlarza, `sellCents` to cena skupu.
 
 Wszystko poza `hello`, `ping`, `auth.*` i `character.options` wymaga zalogowania.

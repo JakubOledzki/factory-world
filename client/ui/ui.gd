@@ -8,8 +8,8 @@ const MUTED := Color("#9a968e")
 const GOOD := Color("#8fd65a")
 const GOLD := Color("#f5b041")
 
-const FONT_SIZE := 18
-const TITLE_SIZE := 36
+const FONT_SIZE := 15
+const TITLE_SIZE := 28
 
 static var _theme: Theme
 static var _bold: Font
@@ -23,7 +23,7 @@ static func theme() -> Theme:
 	t.default_font = load("res://fonts/TitilliumWeb-Regular.ttf")
 	t.default_font_size = FONT_SIZE
 
-	var window := _box("panel", 12, 16, 14)
+	var window := _box("panel", 12, 12, 10)
 	t.set_stylebox("panel", "PanelContainer", window)
 	t.set_stylebox("panel", "Panel", window)
 
@@ -31,10 +31,10 @@ static func theme() -> Theme:
 
 	for type in ["Button", "AccentButton"]:
 		var prefix := "button" if type == "Button" else "button_accent"
-		t.set_stylebox("normal", type, _box(prefix, 8, 14, 5))
-		t.set_stylebox("hover", type, _box(prefix + "_hover", 8, 14, 5))
-		t.set_stylebox("pressed", type, _box("button_pressed", 8, 14, 5, 1))
-		t.set_stylebox("disabled", type, _box("button_pressed", 8, 14, 5, 1, Color(1, 1, 1, 0.55)))
+		t.set_stylebox("normal", type, _box(prefix, 8, 10, 3))
+		t.set_stylebox("hover", type, _box(prefix + "_hover", 8, 10, 3))
+		t.set_stylebox("pressed", type, _box("button_pressed", 8, 10, 3, 1))
+		t.set_stylebox("disabled", type, _box("button_pressed", 8, 10, 3, 1, Color(1, 1, 1, 0.55)))
 		t.set_stylebox("focus", type, StyleBoxEmpty.new())
 		t.set_font("font", type, bold())
 		var ink := TEXT if type == "Button" else Color("#2a1604")
@@ -45,8 +45,8 @@ static func theme() -> Theme:
 		t.set_color("font_disabled_color", type, Color(MUTED, 0.55))
 	t.set_type_variation("AccentButton", "Button")
 
-	t.set_stylebox("normal", "LineEdit", _box("inset", 8, 10, 7))
-	t.set_stylebox("focus", "LineEdit", _box("inset", 8, 10, 7, 0, Color(1.25, 1.2, 1.1)))
+	t.set_stylebox("normal", "LineEdit", _box("inset", 8, 8, 5))
+	t.set_stylebox("focus", "LineEdit", _box("inset", 8, 8, 5, 0, Color(1.25, 1.2, 1.1)))
 	t.set_color("font_color", "LineEdit", Color.WHITE)
 	t.set_color("font_placeholder_color", "LineEdit", Color(MUTED, 0.7))
 	t.set_color("caret_color", "LineEdit", GOLD)
@@ -57,14 +57,21 @@ static func theme() -> Theme:
 		t.set_stylebox("fill", bar[0], _box(bar[1], 3, 0))
 	t.set_type_variation("XpBar", "ProgressBar")
 
-	t.set_stylebox("panel", "TooltipPanel", _box("panel", 12, 8, 5))
+	t.set_stylebox("panel", "TooltipPanel", _box("panel", 12, 8, 4))
+
+	t.set_stylebox("panel", "PopupMenu", _box("panel", 12, 6, 6))
+	t.set_stylebox("hover", "PopupMenu", _box("button_accent", 8, 6, 2))
+	t.set_color("font_color", "PopupMenu", TEXT)
+	t.set_color("font_hover_color", "PopupMenu", Color("#2a1604"))
+	t.set_color("font_disabled_color", "PopupMenu", Color(MUTED, 0.55))
+	t.set_constant("v_separation", "PopupMenu", 6)
 	t.set_color("font_color", "TooltipLabel", TEXT)
 
 	var line := StyleBoxLine.new()
 	line.color = Color("#3a3a3e")
 	line.thickness = 1
 	t.set_stylebox("separator", "HSeparator", line)
-	t.set_constant("separation", "HSeparator", 10)
+	t.set_constant("separation", "HSeparator", 6)
 
 	_theme = t
 	return t
@@ -117,7 +124,7 @@ static func centered_panel(parent: Control, width: int) -> VBoxContainer:
 	center.add_child(frame)
 
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 10)
+	box.add_theme_constant_override("separation", 8)
 	frame.add_child(box)
 	return box
 
@@ -147,6 +154,11 @@ static func label(text: String, color := TEXT, align := HORIZONTAL_ALIGNMENT_LEF
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	l.add_theme_color_override("font_color", color)
 	return l
+
+
+## The icon of an inventory item: furniture icons are named after the item, others "item_<id>".
+static func item_icon(item: String, size := 32) -> TextureRect:
+	return icon(item if item.begins_with("furniture_") else "item_" + item, size)
 
 
 ## An item or coin icon from art/icons, shown at `size` pixels.

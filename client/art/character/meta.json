@@ -1,7 +1,27 @@
 {
- "width": 128,
- "height": 240,
- "pixelsPerMetre": 160.0,
- "feetX": 64,
- "feetY": 217
+ "portrait": {
+  "width": 128,
+  "height": 320,
+  "feetX": 64,
+  "feetY": 313,
+  "pixelsPerMetre": 160.0
+ },
+ "walk": {
+  "frameWidth": 96,
+  "frameHeight": 168,
+  "feetX": 48,
+  "feetY": 139,
+  "pixelsPerMetre": 96,
+  "directions": [
+   "down",
+   "left",
+   "right",
+   "up"
+  ],
+  "poses": [
+   "idle",
+   "step_a",
+   "step_b"
+  ]
+ }
 }

@@ -27,7 +27,7 @@ var _create: Button
 
 
 func _ready() -> void:
-	var box := UI.centered_panel(self, 720)
+	var box := UI.centered_panel(self, 640)
 	box.add_child(UI.title("Stwórz swoją postać"))
 
 	var columns := HBoxContainer.new()
@@ -35,7 +35,7 @@ func _ready() -> void:
 	box.add_child(columns)
 
 	_preview = CharacterPreview.new()
-	_preview.display_scale = 1.4
+	_preview.display_scale = 0.9
 	_preview.options = Game.appearance_options
 	_preview.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	columns.add_child(_preview)
