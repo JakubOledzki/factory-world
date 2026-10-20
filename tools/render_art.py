@@ -487,18 +487,20 @@ ROOM_SCREEN_X = 640
 
 PLAYER_AT = Vector((4.0, 2.6, 0))
 
-# Furniture the player can move, at the spots of the starter layout (the server's GarageLayout).
-# Each one is rendered alone at that spot, so the lighting matches the room it starts in.
+# Furniture the player can move: centres (metres) of the starter layout (the server's
+# GarageLayout, in 0.5 m cells). Each one is rendered alone at that spot, so the lighting matches
+# the room it starts in, turned by 0-3 quarter turns anticlockwise.
 FURNITURE_AT = {
-    "furniture_trash_bin": (2.6, 4.2),
-    "furniture_workbench": (6.3, 5.55),
-    "furniture_gas_cylinder": (4.75, 5.65),
-    "furniture_shelf": (1.2, 2.3),
-    "furniture_barrel_blue": (7.45, 2.6),
-    "furniture_barrel_red": (7.4, 1.85),
-    "furniture_tyres": (6.6, 1.0),
-    "furniture_pallet": (1.6, 0.9),
+    "furniture_trash_bin": (3.0, 4.5),
+    "furniture_workbench": (6.25, 5.5),
+    "furniture_gas_cylinder": (4.75, 5.75),
+    "furniture_shelf": (1.5, 2.75),
+    "furniture_barrel_blue": (7.75, 2.75),
+    "furniture_barrel_red": (7.75, 1.75),
+    "furniture_tyres": (6.5, 1.0),
+    "furniture_pallet": (1.5, 1.0),
 }
+ROTATIONS = 4
 
 
 def garage_camera(scene):
@@ -654,11 +656,11 @@ def build_shelf(coll, at: Vector):
 
 def build_barrel(coll, at: Vector, color):
     m = rusty_metal(f"barrel{color}", color, 0.5)
-    cylinder("barrel", 0.28, 0.9, at + Vector((0, 0, 0.45)), m, coll, bevel=0.01)
-    for z in (0.3, 0.6):
-        torus("rib", 0.28, 0.015, at + Vector((0, 0, z)), m, coll)
-    cylinder("lid", 0.25, 0.01, at + Vector((0, 0, 0.905)), m, coll)
-    cylinder("cap", 0.04, 0.02, at + Vector((0.12, 0.08, 0.915)), m, coll)
+    cylinder("barrel", 0.235, 0.85, at + Vector((0, 0, 0.425)), m, coll, bevel=0.01)
+    for z in (0.28, 0.57):
+        torus("rib", 0.235, 0.013, at + Vector((0, 0, z)), m, coll)
+    cylinder("lid", 0.21, 0.01, at + Vector((0, 0, 0.855)), m, coll)
+    cylinder("cap", 0.035, 0.02, at + Vector((0.1, -0.07, 0.865)), m, coll)
 
 
 def build_tyres(coll, at: Vector):
@@ -672,12 +674,12 @@ def build_tyres(coll, at: Vector):
 def build_pallet(coll, at: Vector):
     pallet_m = wood("pallet", (0.2, 0.13, 0.07))
     for i in range(6):
-        box("pallet_board", (1.2, 0.13, 0.03), at + Vector((0, -0.43 + i * 0.172, 0.13)), pallet_m, coll, bevel=0.005)
-    for x in (-0.55, 0, 0.55):
-        box("pallet_block", (0.1, 1.0, 0.1), at + Vector((x, 0, 0.05)), pallet_m, coll)
+        box("pallet_board", (0.98, 0.12, 0.03), at + Vector((0, -0.4 + i * 0.16, 0.13)), pallet_m, coll, bevel=0.005)
+    for x in (-0.44, 0, 0.44):
+        box("pallet_block", (0.1, 0.94, 0.1), at + Vector((x, 0, 0.05)), pallet_m, coll)
     cardboard = plain("cardboard_p", (0.28, 0.18, 0.09), 0.85, variation=0.25)
     box("pallet_box", (0.5, 0.4, 0.35), at + Vector((-0.25, 0.1, 0.32)), cardboard, coll, bevel=0.01, rotation=(0, 0, 0.1))
-    box("pallet_box2", (0.35, 0.3, 0.25), at + Vector((0.3, -0.15, 0.27)), cardboard, coll, bevel=0.01, rotation=(0, 0, -0.2))
+    box("pallet_box2", (0.35, 0.3, 0.25), at + Vector((0.22, -0.15, 0.27)), cardboard, coll, bevel=0.01, rotation=(0, 0, -0.2))
 
 
 def build_gas(coll, at: Vector):
@@ -689,7 +691,7 @@ def build_gas(coll, at: Vector):
 
 
 def build_bin(coll, at: Vector):
-    """A big wheelie bin with its lid thrown open and bags of trash inside and beside it."""
+    """A big wheelie bin with its lid thrown open and bags of trash inside."""
     green = plain("bin", (0.035, 0.11, 0.05), 0.5, variation=0.25, grime=0.85, bump=0.2)
     lid_m = plain("bin_lid", (0.03, 0.09, 0.04), 0.45, variation=0.2, grime=0.7)
     rubber = plain("wheel", (0.02, 0.02, 0.02), 0.8)
@@ -723,13 +725,9 @@ def build_bin(coll, at: Vector):
     for x in (-0.23, 0.23):
         cylinder("bin_wheel", 0.1, 0.07, at + Vector((x, d0 + 0.05, 0.1)), rubber, coll, rotation=(0, math.pi / 2, 0))
     cylinder("bin_axle", 0.02, 0.55, at + Vector((0, d0 + 0.05, 0.1)), steel, coll, rotation=(0, math.pi / 2, 0))
-    # Bags inside, poking out of the top, and two more on the floor beside it.
+    # Bags inside, poking out of the top.
     for (dx, dy, r) in ((-0.11, -0.07, 0.18), (0.13, 0.05, 0.17), (0.0, 0.11, 0.15)):
         displace(sphere("bin_trash", r, at + Vector((dx, dy, h - 0.05)), bag_m, coll, scale=(1, 1, 0.8)), 0.06, 0.15)
-    for (dx, dy, r) in ((-0.5, -0.12, 0.17), (0.48, -0.2, 0.15)):
-        bag = sphere("bag", r, at + Vector((dx, dy, r * 0.8)), bag_m, coll, scale=(1, 1, 0.85))
-        displace(bag, 0.06, 0.15)
-        cylinder("bag_knot", 0.03, 0.1, at + Vector((dx, dy, r * 1.6)), bag_m, coll, radius2=0.01)
 
 
 FURNITURE_BUILDERS = {
@@ -777,6 +775,48 @@ def icon_from(sprite: Image.Image, out: Path, size=64) -> None:
     square.resize((size, size), Image.LANCZOS).save(out, optimize=True)
 
 
+def render_furniture(scene, coll, kind, turn, at, lights, catcher, shadow_sun, out: Path, icons: Path) -> dict:
+    """Renders one turn of a piece of furniture and its shadow; returns where the centre of its
+    footprint is in the sprite."""
+    objs = [o for o in coll.objects if o.type == "MESH"]
+    rect = screen_bounds(scene, objs)
+    name = f"{kind}_r{turn}"
+
+    # The object itself, lit by the room's lights.
+    catcher.hide_render = True
+    shadow_sun.hide_render = True
+    for lt in lights:
+        lt.hide_render = False
+    for o in objs:
+        o.visible_camera = True
+    render_border(scene, rect, TMP / f"{name}.png")
+
+    # Its shadow alone: invisible to the camera but still casting onto the catcher.
+    catcher.hide_render = False
+    shadow_sun.hide_render = False
+    for lt in lights:
+        lt.hide_render = True
+    for o in objs:
+        o.visible_camera = False
+    sx0, sy0, sx1, sy1 = rect
+    render_border(scene, (max(0, sx0 - 40), max(0, sy0 - 40), min(SCREEN_W, sx1 + 40), min(SCREEN_H, sy1 + 40)),
+                  TMP / f"{name}_shadow.png")
+
+    # Same crop for both, so they share an anchor.
+    sprite = Image.open(TMP / f"{name}.png").convert("RGBA")
+    shadow = Image.open(TMP / f"{name}_shadow.png").convert("RGBA")
+    a = sprite.getchannel("A").point(lambda v: 255 if v > 3 else 0).getbbox()
+    b = shadow.getchannel("A").point(lambda v: 255 if v > 6 else 0).getbbox() or a
+    box_ = (max(0, min(a[0], b[0]) - 2), max(0, min(a[1], b[1]) - 2),
+            min(SCREEN_W, max(a[2], b[2]) + 2), min(SCREEN_H, max(a[3], b[3]) + 2))
+    sprite.crop(box_).save(out / f"{name}.png", optimize=True)
+    shadow.crop(box_).save(out / f"{name}_shadow.png", optimize=True)
+    if turn == 0:
+        icon_from(sprite, icons / f"{kind}.png")
+    fx, fy = screen_pos(scene, at)
+    return {"anchorX": round(fx - box_[0]), "anchorY": round(fy - box_[1])}
+
+
 def render_garage(only=None):
     """The empty room as the background, then every piece of furniture as its own sprite with
     a separate soft shadow, so the game can move it around the floor."""
@@ -798,8 +838,6 @@ def render_garage(only=None):
         scene.render.film_transparent = False
         render(TMP / "garage_full.png")
         vignette(Image.open(TMP / "garage_full.png").convert("RGBA")).convert("RGB").save(out / "background.jpg", quality=92)
-        for old in ("bin.png",):
-            (out / old).unlink(missing_ok=True)
 
     # The room stays out of the furniture renders: it would only block light and catch shadows.
     for obj in room.objects:
@@ -811,47 +849,28 @@ def render_garage(only=None):
     # Shadows come from almost straight above, so they look right wherever the object is moved.
     shadow_sun = light("SUN", (0, 0, 5), 4.0, size=0.35, rotation=(math.radians(10), math.radians(6), 0))
 
+    from mathutils import Matrix
     for kind, (x, y) in FURNITURE_AT.items():
         if only and kind not in only:
             continue
         coll = collection(kind)
         at = Vector((x, y, 0))
         FURNITURE_BUILDERS[kind](coll, at)
-        rect = screen_bounds(scene, list(coll.objects))
-
-        # The object itself, lit by the room's lights.
-        catcher.hide_render = True
-        shadow_sun.hide_render = True
-        for lt in lights:
-            lt.hide_render = False
-        render_border(scene, rect, TMP / f"{kind}.png")
-
-        # Its shadow alone: invisible to the camera but still casting onto the catcher.
-        catcher.hide_render = False
-        shadow_sun.hide_render = False
-        for lt in lights:
-            lt.hide_render = True
+        # Everything hangs from a pivot in the middle of the footprint, which turns the piece.
+        pivot = bpy.data.objects.new(kind + "_pivot", None)
+        pivot.location = at
+        link(pivot, coll)
         for o in coll.objects:
-            o.visible_camera = False
-        sx0, sy0, sx1, sy1 = rect
-        render_border(scene, (max(0, sx0 - 40), max(0, sy0 - 40), min(SCREEN_W, sx1 + 40), min(SCREEN_H, sy1 + 40)),
-                      TMP / f"{kind}_shadow.png")
-
-        # Same crop for both, so they share an anchor.
-        sprite = Image.open(TMP / f"{kind}.png").convert("RGBA")
-        shadow = Image.open(TMP / f"{kind}_shadow.png").convert("RGBA")
-        a = sprite.getchannel("A").point(lambda v: 255 if v > 3 else 0).getbbox()
-        b = shadow.getchannel("A").point(lambda v: 255 if v > 6 else 0).getbbox() or a
-        box_ = (max(0, min(a[0], b[0]) - 2), max(0, min(a[1], b[1]) - 2),
-                min(SCREEN_W, max(a[2], b[2]) + 2), min(SCREEN_H, max(a[3], b[3]) + 2))
-        sprite.crop(box_).save(out / f"{kind}.png", optimize=True)
-        shadow.crop(box_).save(out / f"{kind}_shadow.png", optimize=True)
-        icon_from(sprite, icons / f"{kind}.png")
-        fx, fy = screen_pos(scene, at)
-        layout["objects"][kind] = {"anchorX": round(fx - box_[0]), "anchorY": round(fy - box_[1])}
-
+            if o is not pivot:
+                o.parent = pivot
+                o.matrix_parent_inverse = Matrix.Translation(-at)
+        anchors = []
+        for turn in range(ROTATIONS):
+            pivot.rotation_euler = (0, 0, turn * math.pi / 2)
+            anchors.append(render_furniture(scene, coll, kind, turn, at, lights, catcher, shadow_sun, out, icons))
+        layout["objects"][kind] = anchors
         bpy.data.collections.remove(coll)
-        print("furniture", kind, layout["objects"][kind])
+        print("furniture", kind, anchors, flush=True)
 
     # How world metres map to screen pixels: screen = origin + x * axisX + y * axisY + z * axisZ.
     ox, oy = screen_pos(scene, Vector((0, 0, 0)))

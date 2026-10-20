@@ -60,12 +60,16 @@ namespace FactoryWorld.Modules.Recycling.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");
 
-                    b.Property<double>("X")
-                        .HasColumnType("double precision")
+                    b.Property<int>("Rotation")
+                        .HasColumnType("integer")
+                        .HasColumnName("rotation");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
                         .HasColumnName("x");
 
-                    b.Property<double>("Y")
-                        .HasColumnType("double precision")
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
                         .HasColumnName("y");
 
                     b.HasKey("Id");
