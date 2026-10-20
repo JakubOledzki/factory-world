@@ -47,11 +47,78 @@ public static class RecyclingRules
     }
 }
 
+/// <summary>The garage floor and the furniture that can stand on it. Positions are metres from the
+/// front-left corner of the floor: x to the right, y towards the back wall.</summary>
+public static class GarageLayout
+{
+    public const double Width = 8.0;
+    public const double Depth = 6.0;
+
+    /// <summary>Size on the floor (width along x, depth along y) of everything that can be placed.</summary>
+    public static readonly IReadOnlyDictionary<string, (double Width, double Depth)> Footprints =
+        new Dictionary<string, (double, double)>
+        {
+            [Items.TrashBin] = (1.0, 0.8),
+            [Items.Workbench] = (2.4, 0.8),
+            [Items.Shelf] = (2.0, 0.6),
+            [Items.BarrelBlue] = (0.6, 0.6),
+            [Items.BarrelRed] = (0.6, 0.6),
+            [Items.Tyres] = (0.8, 0.8),
+            [Items.Pallet] = (1.2, 1.0),
+            [Items.GasCylinder] = (0.3, 0.3),
+        };
+
+    /// <summary>How a new garage is furnished.</summary>
+    public static readonly (string Kind, double X, double Y)[] Starter =
+    [
+        (Items.TrashBin, 2.6, 4.2),
+        (Items.Workbench, 6.3, 5.55),
+        (Items.GasCylinder, 4.75, 5.65),
+        (Items.Shelf, 1.2, 2.3),
+        (Items.BarrelBlue, 7.45, 2.6),
+        (Items.BarrelRed, 7.4, 1.85),
+        (Items.Tyres, 6.6, 1.0),
+        (Items.Pallet, 1.6, 0.9),
+    ];
+
+    /// <summary>Whether a piece of furniture at (x, y) fits inside the walls.</summary>
+    public static bool InsideRoom(string kind, double x, double y)
+    {
+        var (w, d) = Footprints[kind];
+        return double.IsFinite(x) && double.IsFinite(y)
+            && x - w / 2 >= -0.001 && x + w / 2 <= Width + 0.001
+            && y - d / 2 >= -0.001 && y + d / 2 <= Depth + 0.001;
+    }
+
+    public static bool Overlaps(string kind, double x, double y, string otherKind, double otherX, double otherY)
+    {
+        var (w, d) = Footprints[kind];
+        var (ow, od) = Footprints[otherKind];
+        return Math.Abs(x - otherX) < (w + ow) / 2 - 0.001 && Math.Abs(y - otherY) < (d + od) / 2 - 0.001;
+    }
+}
+
 public sealed class Garage
 {
     public Guid OwnerId { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
+
+    /// <summary>Set once the starter furniture has been put in, so it is never put in twice.</summary>
+    public bool Furnished { get; set; }
+}
+
+public sealed class GarageObject
+{
+    public Guid Id { get; set; }
+
+    public Guid OwnerId { get; set; }
+
+    public string Kind { get; set; } = "";
+
+    public double X { get; set; }
+
+    public double Y { get; set; }
 }
 
 /// <summary>One queued sorting. The trash is taken when queued; the result is rolled when it finishes.</summary>
@@ -77,6 +144,18 @@ public sealed class RecyclingDbContext(DbContextOptions<RecyclingDbContext> opti
             e.HasKey(g => g.OwnerId);
             e.Property(g => g.OwnerId).HasColumnName("owner_id");
             e.Property(g => g.CreatedAt).HasColumnName("created_at");
+            e.Property(g => g.Furnished).HasColumnName("furnished");
+        });
+        model.Entity<GarageObject>(e =>
+        {
+            e.ToTable("garage_objects");
+            e.HasKey(o => o.Id);
+            e.Property(o => o.Id).HasColumnName("id");
+            e.Property(o => o.OwnerId).HasColumnName("owner_id");
+            e.Property(o => o.Kind).HasColumnName("kind").HasMaxLength(32);
+            e.Property(o => o.X).HasColumnName("x");
+            e.Property(o => o.Y).HasColumnName("y");
+            e.HasIndex(o => o.OwnerId);
         });
         model.Entity<SortingJob>(e =>
         {
@@ -89,12 +168,15 @@ public sealed class RecyclingDbContext(DbContextOptions<RecyclingDbContext> opti
     }
 }
 
+public sealed record PlacedObject(Guid Id, string Kind, double X, double Y);
+
 public sealed record GarageState(
     long Trash,
     IReadOnlyList<DateTimeOffset> Queue,
     DateTimeOffset ServerTime,
     IReadOnlyList<string> Results,
-    XpGain? Xp);
+    XpGain? Xp,
+    IReadOnlyList<PlacedObject> Objects);
 
 public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacterProgress progress, TimeProvider time)
 {
@@ -120,11 +202,11 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
             var (results, xp) = await CompleteDueAsync(owner, cancellationToken);
 
             // Lock the garage row so two requests cannot both fill the last queue slots.
-            await using (var lockGarage = await db.CommandAsync(
-                "SELECT 1 FROM recycling.garages WHERE owner_id = @owner FOR UPDATE", cancellationToken))
+            await LockGarageAsync(owner, cancellationToken);
+
+            if (!(await ObjectsAsync(owner, cancellationToken)).Any(o => o.Kind == Items.TrashBin))
             {
-                lockGarage.Parameters.AddWithValue("owner", owner);
-                await lockGarage.ExecuteNonQueryAsync(cancellationToken);
+                throw new GameException("no_bin", "Put the trash bin in the garage first.");
             }
 
             var queue = await QueueAsync(owner, cancellationToken);
@@ -149,16 +231,108 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
             return await ReadStateAsync(owner, results, xp, cancellationToken);
         }, cancellationToken);
 
+    /// <summary>Puts a piece of furniture from the inventory on the floor at (x, y).</summary>
+    public Task<GarageState> PlaceAsync(Guid owner, string kind, double x, double y, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            if (!GarageLayout.Footprints.ContainsKey(kind))
+            {
+                throw new GameException("not_placeable", "This item cannot be placed.");
+            }
+
+            if (!GarageLayout.InsideRoom(kind, x, y))
+            {
+                throw new GameException("bad_position", "It does not fit inside the garage there.");
+            }
+
+            await EnsureGarageAsync(owner, cancellationToken);
+            var (results, xp) = await CompleteDueAsync(owner, cancellationToken);
+            await LockGarageAsync(owner, cancellationToken);
+            if ((await ObjectsAsync(owner, cancellationToken)).Any(o => GarageLayout.Overlaps(kind, x, y, o.Kind, o.X, o.Y)))
+            {
+                throw new GameException("blocked", "Something else already stands there.");
+            }
+
+            await inventory.RemoveAsync(owner, kind, 1, cancellationToken);
+            await InsertObjectAsync(owner, kind, x, y, cancellationToken);
+            return await ReadStateAsync(owner, results, xp, cancellationToken);
+        }, cancellationToken);
+
+    /// <summary>Takes a piece of furniture off the floor into the inventory.</summary>
+    public Task<GarageState> PickUpAsync(Guid owner, Guid id, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            await EnsureGarageAsync(owner, cancellationToken);
+            var (results, xp) = await CompleteDueAsync(owner, cancellationToken);
+            await using var command = await db.CommandAsync(
+                "DELETE FROM recycling.garage_objects WHERE id = @id AND owner_id = @owner RETURNING kind", cancellationToken);
+            command.Parameters.AddWithValue("id", id);
+            command.Parameters.AddWithValue("owner", owner);
+            var kind = await command.ExecuteScalarAsync(cancellationToken) as string
+                ?? throw new GameException("no_object", "There is no such object in your garage.");
+            await inventory.AddAsync(owner, kind, 1, cancellationToken);
+            return await ReadStateAsync(owner, results, xp, cancellationToken);
+        }, cancellationToken);
+
     private async Task EnsureGarageAsync(Guid owner, CancellationToken cancellationToken)
     {
-        await using var command = await db.CommandAsync(
-            "INSERT INTO recycling.garages (owner_id, created_at) VALUES (@owner, @at) ON CONFLICT DO NOTHING", cancellationToken);
-        command.Parameters.AddWithValue("owner", owner);
-        command.Parameters.AddWithValue("at", time.GetUtcNow());
-        if (await command.ExecuteNonQueryAsync(cancellationToken) == 1)
+        await using (var command = await db.CommandAsync(
+            "INSERT INTO recycling.garages (owner_id, created_at) VALUES (@owner, @at) ON CONFLICT DO NOTHING", cancellationToken))
         {
-            await inventory.AddAsync(owner, Items.Trash, RecyclingRules.StartingTrash, cancellationToken);
+            command.Parameters.AddWithValue("owner", owner);
+            command.Parameters.AddWithValue("at", time.GetUtcNow());
+            if (await command.ExecuteNonQueryAsync(cancellationToken) == 1)
+            {
+                await inventory.AddAsync(owner, Items.Trash, RecyclingRules.StartingTrash, cancellationToken);
+            }
         }
+
+        // Garages made before furniture existed get theirs here too, exactly once.
+        await using var furnish = await db.CommandAsync(
+            "UPDATE recycling.garages SET furnished = TRUE WHERE owner_id = @owner AND NOT furnished", cancellationToken);
+        furnish.Parameters.AddWithValue("owner", owner);
+        if (await furnish.ExecuteNonQueryAsync(cancellationToken) == 1)
+        {
+            foreach (var (kind, x, y) in GarageLayout.Starter)
+            {
+                await InsertObjectAsync(owner, kind, x, y, cancellationToken);
+            }
+        }
+    }
+
+    private async Task LockGarageAsync(Guid owner, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            "SELECT 1 FROM recycling.garages WHERE owner_id = @owner FOR UPDATE", cancellationToken);
+        command.Parameters.AddWithValue("owner", owner);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private async Task InsertObjectAsync(Guid owner, string kind, double x, double y, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            "INSERT INTO recycling.garage_objects (id, owner_id, kind, x, y) VALUES (@id, @owner, @kind, @x, @y)", cancellationToken);
+        command.Parameters.AddWithValue("id", Guid.NewGuid());
+        command.Parameters.AddWithValue("owner", owner);
+        command.Parameters.AddWithValue("kind", kind);
+        command.Parameters.AddWithValue("x", x);
+        command.Parameters.AddWithValue("y", y);
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private async Task<List<PlacedObject>> ObjectsAsync(Guid owner, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            "SELECT id, kind, x, y FROM recycling.garage_objects WHERE owner_id = @owner ORDER BY y DESC, x", cancellationToken);
+        command.Parameters.AddWithValue("owner", owner);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var objects = new List<PlacedObject>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            objects.Add(new PlacedObject(reader.GetGuid(0), reader.GetString(1), reader.GetDouble(2), reader.GetDouble(3)));
+        }
+
+        return objects;
     }
 
     private async Task<(IReadOnlyList<string> Results, XpGain? Xp)> CompleteDueAsync(Guid owner, CancellationToken cancellationToken)
@@ -214,10 +388,15 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
             await QueueAsync(owner, cancellationToken),
             time.GetUtcNow(),
             results,
-            xp);
+            xp,
+            await ObjectsAsync(owner, cancellationToken));
 }
 
 public sealed record SortRequest(int Count);
+
+public sealed record PlaceRequest(string Kind, double X, double Y);
+
+public sealed record PickUpRequest(Guid Id);
 
 public abstract class GarageHandler(IServiceScopeFactory scopes) : IMessageHandler
 {
@@ -237,6 +416,10 @@ public abstract class GarageHandler(IServiceScopeFactory scopes) : IMessageHandl
             maxQueue = RecyclingRules.MaxQueue,
             results = state.Results.Select(id => new { id, name = Items.Names[id] }),
             xp = state.Xp is { } xp ? new { xp = xp.Xp, level = xp.Level, leveledUp = xp.LeveledUp } : null,
+            room = new { width = GarageLayout.Width, depth = GarageLayout.Depth },
+            objects = state.Objects.Select(o => new { id = o.Id, kind = o.Kind, x = o.X, y = o.Y }),
+            furniture = GarageLayout.Footprints.ToDictionary(
+                f => f.Key, f => new { name = Items.Names[f.Key], width = f.Value.Width, depth = f.Value.Depth }),
         });
     }
 
@@ -260,7 +443,26 @@ public sealed class SortHandler(IServiceScopeFactory scopes) : GarageHandler(sco
         recycling.SortAsync(owner, Payload.Read<SortRequest>(payload).Count, cancellationToken);
 }
 
-/// <summary>The garage with its trash bin and sorting. Owns the <c>recycling</c> schema.</summary>
+public sealed class PlaceHandler(IServiceScopeFactory scopes) : GarageHandler(scopes)
+{
+    public override string Type => "garage.place";
+
+    protected override Task<GarageState> RunAsync(RecyclingService recycling, Guid owner, JsonElement? payload, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<PlaceRequest>(payload);
+        return recycling.PlaceAsync(owner, request.Kind ?? "", request.X, request.Y, cancellationToken);
+    }
+}
+
+public sealed class PickUpHandler(IServiceScopeFactory scopes) : GarageHandler(scopes)
+{
+    public override string Type => "garage.pickup";
+
+    protected override Task<GarageState> RunAsync(RecyclingService recycling, Guid owner, JsonElement? payload, CancellationToken cancellationToken) =>
+        recycling.PickUpAsync(owner, Payload.Read<PickUpRequest>(payload).Id, cancellationToken);
+}
+
+/// <summary>The garage with its furniture, trash bin and sorting. Owns the <c>recycling</c> schema.</summary>
 public sealed class RecyclingModule : IGameModule
 {
     public string Name => "Recycling";
@@ -271,6 +473,8 @@ public sealed class RecyclingModule : IGameModule
         services.AddScoped<RecyclingService>();
         services.AddSingleton<IMessageHandler, GetGarageHandler>();
         services.AddSingleton<IMessageHandler, SortHandler>();
+        services.AddSingleton<IMessageHandler, PlaceHandler>();
+        services.AddSingleton<IMessageHandler, PickUpHandler>();
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>
