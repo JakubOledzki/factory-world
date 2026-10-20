@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/FactoryWorld.Modules.Abstractions/FactoryWorld.Modules.Abstractions.csproj" />
+    <Project Path="src/FactoryWorld.Server/FactoryWorld.Server.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/">
+    <Project Path="src/Modules/FactoryWorld.Modules.Session/FactoryWorld.Modules.Session.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FactoryWorld.Server.Tests/FactoryWorld.Server.Tests.csproj" />
+  </Folder>
+</Solution>

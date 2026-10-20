@@ -1,0 +1,18 @@
+# Serves the web build of the game and forwards /ws and /health to the game server.
+# Caddy gets and renews the HTTPS certificate for $DOMAIN automatically.
+{$DOMAIN} {
+	encode zstd gzip
+
+	handle /ws {
+		reverse_proxy server:5080
+	}
+
+	handle /health {
+		reverse_proxy server:5080
+	}
+
+	handle {
+		root * /srv
+		file_server
+	}
+}
