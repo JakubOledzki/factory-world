@@ -22,6 +22,8 @@ var _reconnect_in := 0.0
 
 
 func _ready() -> void:
+	# A plot's tiles come in one message of up to a few hundred kilobytes.
+	_socket.inbound_buffer_size = 1 << 20
 	connect_to_server()
 
 

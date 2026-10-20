@@ -13,6 +13,7 @@ Projekt gry: [dokument projektowy](https://claude.ai/code/artifact/50d66faa-a0b4
 | `docker-compose.yml` | PostgreSQL i serwer do lokalnego uruchomienia |
 | `tools/render_art.py` | Renderuje grafikę (pusty garaż, meble z cieniami, postać w 4 kierunkach z animacją chodu, ikony) w Blenderze do `client/art/`; modele są budowane w kodzie, a gra wyświetla gotowe obrazki 2D. Wymaga modułu `bpy` (instrukcja w pliku) |
 | `tools/generate_ui.py` | Rysuje tekstury interfejsu (panele, przyciski, paski) do `client/art/ui/` |
+| `tools/render_plot_art.py` | Renderuje grafikę wnętrza działek (podłogi biomów, drzewa, skały, krzaki, wydmy z cieniami, tory, stacja) do `client/art/plot/` i ikony narzędzi oraz surowców; korzysta z pomocników `render_art.py` |
 | `tools/build_world.py` | Buduje mapę świata z otwartych danych: biom każdej działki 5 × 5 km (`client/world/biomes.bin.gz`, ta sama kopia w module `World` serwera) i miejscowości (`client/world/towns.tsv.gz`); źródła i zasady opisane w pliku |
 | `deploy/` | Wdrożenie produkcyjne: Caddy (HTTPS + gra w przeglądarce), compose, `.env` |
 
@@ -51,7 +52,7 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `auth.logout` | `{ token }` | `auth.loggedOut` |
 | `character.options` | | palety i liczby opcji edytora |
 | `character.get` | | `character` albo `character.none` |
-| `character.create` | `{ name, appearance }` | `character` `{ name, appearance, level, xp, levelXp, nextLevelXp }` |
+| `character.create` | `{ name, appearance }` | `character` `{ name, appearance, level, xp, levelXp, nextLevelXp, tool: { id, name } \| null }` |
 | `garage.get` | | `garage` `{ trash, queue: [finishesAtMs], serverTime, sortSeconds, maxQueue, results: [{ id, name }], xp, room: { width, depth, cellSize }, objects: [{ id, kind, x, y, rotation }], furniture: { kind: { name, width, depth } } }`; przy okazji wydaje zakończone segregacje |
 | `recycling.sort` | `{ count }` | `garage`; wymaga kosza stojącego w garażu |
 | `garage.pickup` | `{ id }` | `garage`; mebel trafia do ekwipunku |
@@ -63,13 +64,22 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `world.info` | | `world.info` `{ width, height, plotKm, biomes: [{ id, name, buyable, priceFactor, bonuses: [{ text, good }] }], priceTiersCents, nextBasePriceCents, plots: [{ x, y, biome }] }` (`plots` to działki gracza) |
 | `world.area` | `{ x, y, width, height }` | `world.area` `{ x, y, width, height, plots: [{ x, y, mine }] }`: kupione działki w prostokącie (do 10 000 × 10 000) |
 | `world.plot` | `{ x, y }` | `world.plot` `{ x, y, biome, owner: { name, mine } \| null, priceCents }`; `priceCents` to cena dla pytającego gracza albo `null` (woda, działka zajęta) |
-| `world.buy` | `{ x, y }` | `world.bought` `{ plot, balanceCents, xp }` |
+| `world.buy` | `{ x, y }` | `world.bought` `{ plot, balanceCents, xp, tool: { id, name } \| null }` |
+| `character.equip` | `{ item }` | `character`: narzędzie z ekwipunku trafia do ręki, poprzednie wraca do ekwipunku |
+| `character.unequip` | | `character`: narzędzie z ręki wraca do ekwipunku |
+| `plot.enter` | `{ x, y }` | `plot` `{ x, y, biome, size, tileMeters, tiles, railRow, station: { x, y, width, height }, spawn: { x, y }, tool, harvestSeconds }`; `tiles` to gzip w base64, bajt na pole (wiersz po wierszu): 0 nic, 1 drzewo, 2 skała, 3 wydma, 4 tory, 5 stacja, 6 krzak |
+| `plot.harvest` | `{ x, y, tileX, tileY }` | `plot.harvested` `{ tileX, tileY, items: [{ id, name, quantity }], xp }` |
+| `station.get` | `{ x, y }` | `station` `{ x, y, items, incoming, outgoing, serverTime, rates }`; pociągi to `{ fromX, fromY, toX, toY, item, name, quantity, arrivesAt }` |
+| `station.load` / `station.unload` | `{ x, y, item, quantity }` | `station`: z ekwipunku na stację albo ze stacji do ekwipunku |
+| `station.send` | `{ x, y, toX, toY, item, quantity }` | `station`: pociąg jedzie na stację innej kupionej działki (swojej albo innego gracza) |
 
 Czasy w `garage` to milisekundy uniksowe według zegara serwera; `xp` to `{ xp, level, leveledUp }` albo `null`.
 Podłoga garażu to kratownica `room.width` × `room.depth` pól o boku `room.cellSize` metrów. Mebel zajmuje `width` × `depth` pól (po obrocie o 90° lub 270° na odwrót); `x`, `y` to jego lewe przednie pole. Meble nie mogą wystawać poza podłogę ani nachodzić na siebie.
 Kwoty są w centach. `buyCents` to cena, za którą gracz kupuje od handlarza, `sellCents` to cena skupu.
 
 Mapa świata to siatka działek 5 × 5 km w odwzorowaniu równopowierzchniowym Behrmanna (każda działka ma 25 km² na całym globie). Kolumna `x` liczy się od 180° W na wschód, wiersz `y` od bieguna północnego; mapa zawija się ze wschodu na zachód. Biomy mają stałe numery (0 ocean, 1 jezioro, 2 las, 3 żyzne gleby, 4 step i łąki, 5 pustynia, 6 góry, 7 tundra, 8 lodowiec, 9 miasto, 10 wybrzeże, 11 pojezierze). Wody nie można kupić. Cena n-tej działki gracza to 1 000 $, 10 000 $, 100 000 $, 1 000 000 $, a piątej i każdej kolejnej 1 000 000 000 $, razy mnożnik biomu (żyzne gleby, wybrzeże i pojezierze ×1,5, miasto ×2). Zakup daje 500 XP.
+
+Za zakup lasu gracz dostaje siekierę, pustyni łopatę, gór kilof (do pustej ręki, a jeśli coś już trzyma, do ekwipunku); pozostałe biomy nie dają narzędzia. Wnętrze działki to 250 × 250 pól po 20 m, generowane zawsze tak samo z położenia działki; serwer zapisuje tylko to, co gracze zebrali. Drzewo ścina się siekierą (3 drewna), skałę rozbija kilofem (2 kamienie i szansa na węgiel, rudę żelaza lub miedzi), wydmę przekopuje łopatą (3 piasku); jedno pole to 1,5 s pracy i 2 XP. Wzdłuż północnej krawędzi każdej działki biegną tory ze stacją. Pociąg jedzie 5 s na 100 km (najkrócej 10 s), opłata to 1 $ plus 1 cent za sztukę na każde 100 km.
 
 Wszystko poza `hello`, `ping`, `auth.*` i `character.options` wymaga zalogowania.
 

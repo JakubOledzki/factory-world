@@ -111,6 +111,8 @@ func _ready() -> void:
 	_center = _data.from_geo(30.0, 15.0)
 	_zoom = 0.0
 	_apply_camera()
+	if Game.plot.x >= 0:
+		_go_to(Game.plot, 16.0)
 	_load()
 
 
@@ -604,6 +606,8 @@ func _show_plot() -> void:
 			var mine: bool = owner["mine"]
 			_plot_box.add_child(UI.label("Twoja działka" if mine else "Właściciel: %s" % owner.get("name", "?"),
 				UI.GOLD if mine else UI.TEXT))
+			if mine:
+				_plot_box.add_child(UI.button("Wejdź na działkę", Game.enter_plot.bind(plot), true))
 		elif _plot.get("priceCents") != null:
 			var price: int = _plot["priceCents"]
 			var price_row := HBoxContainer.new()
@@ -651,6 +655,11 @@ func _on_buy() -> void:
 	var gained := int(xp["xp"]) - int(Game.character.get("xp", 0))
 	Game.gain_xp(xp)
 	var text := "Kupiłeś działkę %d × %d!  +%d XP" % [plot.x, plot.y, gained]
+	if bought.get("tool") != null:
+		text += "  ·  Dostajesz: %s" % bought["tool"]["name"]
+		# The new tool goes into an empty hand, otherwise into the inventory.
+		if Game.tool().is_empty():
+			Game.character["tool"] = bought["tool"]
 	if xp.get("leveledUp", false):
 		text += "  ·  Awans na poziom %d" % xp["level"]
 	_show_toast(text, UI.GOLD)

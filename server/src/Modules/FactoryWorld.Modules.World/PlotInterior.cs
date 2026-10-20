@@ -35,8 +35,8 @@ public static class PlotLayout
     /// <summary>The station building, standing on the track's north side.</summary>
     public static readonly (int X, int Y, int Width, int Height) Station = (119, 3, 12, 6);
 
-    /// <summary>Where the player appears, in front of the station.</summary>
-    public static readonly (int X, int Y) Spawn = (125, 13);
+    /// <summary>Where the player appears, in front of the station, on the cleared strip south of the track.</summary>
+    public static readonly (int X, int Y) Spawn = (125, 11);
 
     /// <summary>Rows kept clear around the railway.</summary>
     private const int ClearRows = 12;

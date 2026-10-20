@@ -26,6 +26,7 @@ const ACTIONS := {
 	"cancel": [KEY_ESCAPE],
 	"rotate": [KEY_R],
 	"world_map": [KEY_N],
+	"tool": [KEY_Q],
 }
 
 var _garage := {}
@@ -77,6 +78,7 @@ var _level: Label
 var _xp_bar: ProgressBar
 var _xp_text: Label
 var _money: Label
+var _tool_slot: ToolSlot
 
 var _sorting_window: GameWindow
 var _inventory_window: GameWindow
@@ -390,6 +392,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_market_window.toggle()
 	elif event.is_action_pressed("world_map"):
 		Game.open_world_map()
+	elif event.is_action_pressed("tool"):
+		_tool_slot.open()
 
 
 func _build_menu() -> void:
@@ -581,6 +585,20 @@ func _build_hud() -> void:
 	add_child(money_panel)
 	money_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 12)
 	money_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+
+	# The tool in hand, bottom left.
+	var tool_parts := UI.panel(2)
+	var tool_panel: PanelContainer = tool_parts[0]
+	var tool_label := UI.label("Narzędzie", UI.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	tool_label.add_theme_font_size_override("font_size", 12)
+	tool_parts[1].add_child(tool_label)
+	_tool_slot = ToolSlot.new()
+	_tool_slot.changed.connect(_reload_inventory)
+	_tool_slot.failed.connect(_show_error)
+	tool_parts[1].add_child(_tool_slot)
+	add_child(tool_panel)
+	tool_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 12)
+	tool_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
 	# Toolbar at the bottom: the windows and logging out.
 	var bar := HBoxContainer.new()
@@ -877,6 +895,12 @@ func _slot(stack: Dictionary) -> Control:
 		return slot
 	var item: String = stack["id"]
 	slot.tooltip_text = "%s: %d" % [stack["name"], int(stack["quantity"])]
+	if item in ToolSlot.TOOLS:
+		slot.tooltip_text += "\nKliknij, aby wziąć do ręki"
+		slot.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+		slot.gui_input.connect(func(event: InputEvent) -> void:
+			if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+				_tool_slot.equip(item))
 	if _furniture_info.has(item):
 		# Furniture: click to place it in the garage.
 		slot.tooltip_text += "\nKliknij, aby postawić"

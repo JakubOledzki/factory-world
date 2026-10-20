@@ -1,0 +1,64 @@
+{
+ "tile": {
+  "width": 64,
+  "height": 45,
+  "pixelsPerMetre": 32
+ },
+ "tree_0": {
+  "anchorX": 128,
+  "anchorY": 203
+ },
+ "tree_1": {
+  "anchorX": 128,
+  "anchorY": 198
+ },
+ "tree_2": {
+  "anchorX": 128,
+  "anchorY": 207
+ },
+ "tree_3": {
+  "anchorX": 128,
+  "anchorY": 178
+ },
+ "tree_4": {
+  "anchorX": 128,
+  "anchorY": 173
+ },
+ "rock_0": {
+  "anchorX": 80,
+  "anchorY": 88
+ },
+ "rock_1": {
+  "anchorX": 80,
+  "anchorY": 86
+ },
+ "rock_2": {
+  "anchorX": 80,
+  "anchorY": 90
+ },
+ "bush_0": {
+  "anchorX": 56,
+  "anchorY": 57
+ },
+ "bush_1": {
+  "anchorX": 56,
+  "anchorY": 57
+ },
+ "dune_0": {
+  "anchorX": 80,
+  "anchorY": 63
+ },
+ "dune_1": {
+  "anchorX": 80,
+  "anchorY": 63
+ },
+ "rail": {
+  "anchorX": 128,
+  "anchorY": 48,
+  "lengthPx": 256
+ },
+ "station": {
+  "anchorX": 416,
+  "anchorY": 448
+ }
+}
