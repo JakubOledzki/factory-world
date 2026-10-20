@@ -1,37 +1,149 @@
 {
  "objects": {
-  "furniture_trash_bin": {
-   "anchorX": 71,
-   "anchorY": 106
-  },
-  "furniture_workbench": {
-   "anchorX": 181,
-   "anchorY": 159
-  },
-  "furniture_gas_cylinder": {
-   "anchorX": 31,
-   "anchorY": 58
-  },
-  "furniture_shelf": {
-   "anchorX": 142,
-   "anchorY": 142
-  },
-  "furniture_barrel_blue": {
-   "anchorX": 94,
-   "anchorY": 144
-  },
-  "furniture_barrel_red": {
-   "anchorX": 51,
-   "anchorY": 83
-  },
-  "furniture_tyres": {
-   "anchorX": 50,
-   "anchorY": 67
-  },
-  "furniture_pallet": {
-   "anchorX": 64,
-   "anchorY": 58
-  }
+  "furniture_trash_bin": [
+   {
+    "anchorX": 102,
+    "anchorY": 168
+   },
+   {
+    "anchorX": 73,
+    "anchorY": 99
+   },
+   {
+    "anchorX": 63,
+    "anchorY": 96
+   },
+   {
+    "anchorX": 62,
+    "anchorY": 99
+   }
+  ],
+  "furniture_workbench": [
+   {
+    "anchorX": 141,
+    "anchorY": 97
+   },
+   {
+    "anchorX": 105,
+    "anchorY": 211
+   },
+   {
+    "anchorX": 141,
+    "anchorY": 102
+   },
+   {
+    "anchorX": 105,
+    "anchorY": 211
+   }
+  ],
+  "furniture_gas_cylinder": [
+   {
+    "anchorX": 30,
+    "anchorY": 57
+   },
+   {
+    "anchorX": 30,
+    "anchorY": 57
+   },
+   {
+    "anchorX": 30,
+    "anchorY": 57
+   },
+   {
+    "anchorX": 30,
+    "anchorY": 57
+   }
+  ],
+  "furniture_shelf": [
+   {
+    "anchorX": 163,
+    "anchorY": 204
+   },
+   {
+    "anchorX": 70,
+    "anchorY": 193
+   },
+   {
+    "anchorX": 168,
+    "anchorY": 204
+   },
+   {
+    "anchorX": 70,
+    "anchorY": 193
+   }
+  ],
+  "furniture_barrel_blue": [
+   {
+    "anchorX": 46,
+    "anchorY": 76
+   },
+   {
+    "anchorX": 46,
+    "anchorY": 76
+   },
+   {
+    "anchorX": 46,
+    "anchorY": 76
+   },
+   {
+    "anchorX": 46,
+    "anchorY": 76
+   }
+  ],
+  "furniture_barrel_red": [
+   {
+    "anchorX": 46,
+    "anchorY": 76
+   },
+   {
+    "anchorX": 46,
+    "anchorY": 76
+   },
+   {
+    "anchorX": 46,
+    "anchorY": 76
+   },
+   {
+    "anchorX": 46,
+    "anchorY": 76
+   }
+  ],
+  "furniture_tyres": [
+   {
+    "anchorX": 49,
+    "anchorY": 67
+   },
+   {
+    "anchorX": 50,
+    "anchorY": 70
+   },
+   {
+    "anchorX": 54,
+    "anchorY": 70
+   },
+   {
+    "anchorX": 54,
+    "anchorY": 67
+   }
+  ],
+  "furniture_pallet": [
+   {
+    "anchorX": 115,
+    "anchorY": 120
+   },
+   {
+    "anchorX": 50,
+    "anchorY": 58
+   },
+   {
+    "anchorX": 53,
+    "anchorY": 52
+   },
+   {
+    "anchorX": 50,
+    "anchorY": 71
+   }
+  ]
  },
  "projection": {
   "origin": [

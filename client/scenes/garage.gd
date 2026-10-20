@@ -10,7 +10,7 @@ const ROOM_LIGHT := Color(0.74, 0.7, 0.66)
 ## must stand to use it, and when the sorting window closes again after walking away.
 const REACH := 0.55
 const LEAVE := 1.2
-## Furniture is placed on this grid; the walking paths use it too. Metres.
+## Walking paths use this grid. Metres.
 const GRID := 0.1
 const BIN := "furniture_trash_bin"
 
@@ -24,6 +24,7 @@ const ACTIONS := {
 	"inventory": [KEY_I],
 	"market": [KEY_M],
 	"cancel": [KEY_ESCAPE],
+	"rotate": [KEY_R],
 }
 
 var _garage := {}
@@ -35,7 +36,9 @@ var _clock_offset := 0.0
 var _refreshing := false
 var _next_poll := 0.0
 
+## Floor size in metres, and the side of one cell of the furniture grid.
 var _room := Vector2(8, 6)
+var _cell_size := 0.5
 ## Name and footprint (width, depth) of every kind of furniture, from the server.
 var _furniture_info := {}
 ## Furniture on the floor by id.
@@ -59,6 +62,8 @@ var _menu_box: VBoxContainer
 var _placing := ""
 var _ghost: Furniture
 var _ghost_valid := false
+var _ghost_rotation := 0
+var _grid: Node2D
 
 var _prompt: Label
 var _bin_status: VBoxContainer
@@ -114,6 +119,10 @@ func _build_room() -> void:
 	# Shadows lie on the floor under everything; the rest is drawn back to front.
 	_shadows = Node2D.new()
 	add_child(_shadows)
+	_grid = Node2D.new()
+	_grid.visible = false
+	_grid.draw.connect(_draw_grid)
+	add_child(_grid)
 	_footprint = Polygon2D.new()
 	_footprint.visible = false
 	_footprint.z_index = 1
@@ -181,11 +190,14 @@ func _sync_objects(objects: Array) -> void:
 	for object: Dictionary in objects:
 		var id: String = object["id"]
 		seen[id] = true
-		var pos := Vector2(object["x"], object["y"])
+		var at := Vector2i(object["x"], object["y"])
+		var steps: int = object.get("rotation", 0)
 		if _objects.has(id):
-			_objects[id].move_to(pos)
+			_objects[id].place(at, steps)
 			continue
-		var piece := Furniture.new(object, _furniture_info.get(object["kind"], {}))
+		var piece := Furniture.new(object["kind"], _furniture_info.get(object["kind"], {}), _cell_size)
+		piece.id = id
+		piece.place(at, steps)
 		_objects[id] = piece
 		_shadows.add_child(piece.shadow)
 		_sorted.add_child(piece)
@@ -343,6 +355,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_confirm_place()
 			elif event.button_index == MOUSE_BUTTON_RIGHT:
 				_stop_placing()
+			elif event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+				_turn_ghost(1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -1)
 		elif _menu.visible:
 			_menu.visible = false
 		elif event.button_index == MOUSE_BUTTON_LEFT:
@@ -363,6 +377,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			for window: GameWindow in [_sorting_window, _inventory_window, _market_window]:
 				window.hide_window()
+	elif event.is_action_pressed("rotate") and _placing != "":
+		_turn_ghost(1)
 	elif event.is_action_pressed("interact"):
 		var bin := _bin()
 		if bin != null and _near(bin):
@@ -412,6 +428,7 @@ func _open_menu(object: Furniture, at: Vector2) -> void:
 func _pick_up(object: Furniture, then_place: bool) -> void:
 	var kind := object.kind
 	var piece_name := object.display_name
+	var steps := object.rotation_steps
 	var reply := await Net.request("garage.pickup", {"id": object.id})
 	if reply["type"] != "garage":
 		_show_error(reply)
@@ -419,12 +436,12 @@ func _pick_up(object: Furniture, then_place: bool) -> void:
 	_apply_garage(reply["payload"])
 	await _reload_inventory()
 	if then_place:
-		_start_placing(kind)
+		_start_placing(kind, steps)
 	else:
 		_show_toast("%s: schowano do ekwipunku." % piece_name)
 
 
-func _start_placing(kind: String) -> void:
+func _start_placing(kind: String, steps := 0) -> void:
 	_stop_placing()
 	if _count(kind) < 1:
 		return
@@ -432,33 +449,43 @@ func _start_placing(kind: String) -> void:
 	_inventory_window.hide_window()
 	_menu.visible = false
 	_path = PackedVector2Array()
-	_ghost = Furniture.new({"kind": kind}, _furniture_info.get(kind, {}))
+	_ghost = Furniture.new(kind, _furniture_info.get(kind, {}), _cell_size)
+	_ghost_rotation = steps
+	_ghost.place(Vector2i.ZERO, steps)
 	_ghost.z_index = 2  # Over everything, so it shows even behind tall furniture.
 	_sorted.add_child(_ghost)
 	_footprint.visible = true
+	_grid.visible = true
+	_grid.queue_redraw()
 	_update_ghost()
-	_show_toast("Kliknij, aby postawić. Prawy przycisk myszy lub Esc anuluje.")
+	_show_toast("Kliknij, aby postawić. R lub kółko myszy obraca, prawy przycisk lub Esc anuluje.")
 
 
 func _stop_placing() -> void:
 	_placing = ""
 	_footprint.visible = false
+	_grid.visible = false
 	if _ghost != null:
 		_ghost.queue_free()
 		_ghost = null
 
 
+func _turn_ghost(direction: int) -> void:
+	_ghost_rotation = posmod(_ghost_rotation + direction, 4)
+	_update_ghost()
+
+
 func _update_ghost() -> void:
-	var size := _ghost.footprint
-	var pos := RoomProjection.to_floor(get_global_mouse_position())
-	# Snap so the edges, not the centre, land on the grid; keep it inside the room.
-	var corner := ((pos - size / 2) / GRID).round() * GRID
-	corner = corner.clamp(Vector2.ZERO, _room - size)
-	_ghost.move_to(corner + size / 2)
+	var size := _ghost.size_cells(_ghost_rotation)
+	var pos := RoomProjection.to_floor(get_global_mouse_position()) / _cell_size
+	# The mouse points at the footprint's centre; keep the footprint inside the room.
+	var corner := Vector2i((pos - Vector2(size) / 2).round())
+	corner = corner.clamp(Vector2i.ZERO, _grid_size() - size)
+	_ghost.place(corner, _ghost_rotation)
 	var rect := _ghost.rect()
 	_ghost_valid = not rect.grow(GaragePlayer.RADIUS).has_point(_player.floor_pos)
 	for object: Furniture in _objects.values():
-		if rect.grow(-0.001).intersects(object.rect().grow(-0.001)):
+		if _ghost.cell_rect().intersects(object.cell_rect()):
 			_ghost_valid = false
 	_ghost.set_ghost(_ghost_valid)
 	var corners := PackedVector2Array()
@@ -473,14 +500,29 @@ func _confirm_place() -> void:
 		_show_toast("Tu nie można tego postawić.", UI.ERROR)
 		return
 	var kind := _placing
-	var pos := _ghost.floor_pos
+	var at := _ghost.cell
+	var steps := _ghost.rotation_steps
 	_stop_placing()
-	var reply := await Net.request("garage.place", {"kind": kind, "x": snappedf(pos.x, 0.01), "y": snappedf(pos.y, 0.01)})
+	var reply := await Net.request("garage.place", {"kind": kind, "x": at.x, "y": at.y, "rotation": steps})
 	if reply["type"] != "garage":
 		_show_error(reply)
 		return
 	_apply_garage(reply["payload"])
 	_reload_inventory()
+
+
+func _grid_size() -> Vector2i:
+	return Vector2i((_room / _cell_size).round())
+
+
+## The furniture grid on the floor, shown while placing.
+func _draw_grid() -> void:
+	var cells := _grid_size()
+	var colour := Color(1, 1, 1, 0.12)
+	for x in cells.x + 1:
+		_grid.draw_line(RoomProjection.to_screen(Vector2(x, 0) * _cell_size), RoomProjection.to_screen(Vector2(x, cells.y) * _cell_size), colour)
+	for y in cells.y + 1:
+		_grid.draw_line(RoomProjection.to_screen(Vector2(0, y) * _cell_size), RoomProjection.to_screen(Vector2(cells.x, y) * _cell_size), colour)
 
 
 # --- HUD -------------------------------------------------------------------------
@@ -670,7 +712,8 @@ func _load() -> void:
 func _apply_garage(garage: Dictionary) -> void:
 	_garage = garage
 	_clock_offset = float(garage["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
-	_room = Vector2(garage["room"]["width"], garage["room"]["depth"])
+	_cell_size = garage["room"]["cellSize"]
+	_room = Vector2(garage["room"]["width"], garage["room"]["depth"]) * _cell_size
 	_furniture_info = garage["furniture"]
 	_sync_objects(garage["objects"])
 	_trash.text = "Śmieci: %d" % garage["trash"]

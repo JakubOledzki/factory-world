@@ -51,17 +51,17 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `character.options` | | palety i liczby opcji edytora |
 | `character.get` | | `character` albo `character.none` |
 | `character.create` | `{ name, appearance }` | `character` `{ name, appearance, level, xp, levelXp, nextLevelXp }` |
-| `garage.get` | | `garage` `{ trash, queue: [finishesAtMs], serverTime, sortSeconds, maxQueue, results: [{ id, name }], xp, room: { width, depth }, objects: [{ id, kind, x, y }], furniture: { kind: { name, width, depth } } }`; przy okazji wydaje zakończone segregacje |
+| `garage.get` | | `garage` `{ trash, queue: [finishesAtMs], serverTime, sortSeconds, maxQueue, results: [{ id, name }], xp, room: { width, depth, cellSize }, objects: [{ id, kind, x, y, rotation }], furniture: { kind: { name, width, depth } } }`; przy okazji wydaje zakończone segregacje |
 | `recycling.sort` | `{ count }` | `garage`; wymaga kosza stojącego w garażu |
 | `garage.pickup` | `{ id }` | `garage`; mebel trafia do ekwipunku |
-| `garage.place` | `{ kind, x, y }` | `garage`; stawia mebel z ekwipunku, środkiem w punkcie (x, y) w metrach |
+| `garage.place` | `{ kind, x, y, rotation }` | `garage`; stawia mebel z ekwipunku na polu (x, y), obróconym o `rotation` × 90° (0–3) |
 | `inventory.get` | | `inventory` `{ items: [{ id, name, quantity }] }` |
 | `wallet.get` | | `wallet` `{ balanceCents }` |
 | `market.prices` | | `market.prices` `{ items: [{ id, name, buyCents, sellCents }] }` |
 | `market.buy` / `market.sell` | `{ item, quantity }` | `market.traded` `{ item, quantity, balanceCents }` |
 
 Czasy w `garage` to milisekundy uniksowe według zegara serwera; `xp` to `{ xp, level, leveledUp }` albo `null`.
-Garaż ma podłogę `room.width` × `room.depth` metrów; meble nie mogą wystawać poza nią ani nachodzić na siebie.
+Podłoga garażu to kratownica `room.width` × `room.depth` pól o boku `room.cellSize` metrów. Mebel zajmuje `width` × `depth` pól (po obrocie o 90° lub 270° na odwrót); `x`, `y` to jego lewe przednie pole. Meble nie mogą wystawać poza podłogę ani nachodzić na siebie.
 Kwoty są w centach. `buyCents` to cena, za którą gracz kupuje od handlarza, `sellCents` to cena skupu.
 
 Wszystko poza `hello`, `ping`, `auth.*` i `character.options` wymaga zalogowania.

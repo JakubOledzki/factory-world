@@ -47,54 +47,64 @@ public static class RecyclingRules
     }
 }
 
-/// <summary>The garage floor and the furniture that can stand on it. Positions are metres from the
-/// front-left corner of the floor: x to the right, y towards the back wall.</summary>
+/// <summary>The garage floor, a grid of square cells, and the furniture that can stand on it.
+/// Cells are counted from the front-left corner of the floor: x to the right, y towards the back
+/// wall. A piece of furniture stands on whole cells; its position is its front-left cell. Its
+/// rotation (0-3) counts quarter turns anticlockwise seen from above; 0 faces the camera.</summary>
 public static class GarageLayout
 {
-    public const double Width = 8.0;
-    public const double Depth = 6.0;
+    /// <summary>Side of one cell, in metres.</summary>
+    public const double CellSize = 0.5;
 
-    /// <summary>Size on the floor (width along x, depth along y) of everything that can be placed.</summary>
-    public static readonly IReadOnlyDictionary<string, (double Width, double Depth)> Footprints =
-        new Dictionary<string, (double, double)>
+    public const int Width = 16;
+    public const int Depth = 12;
+
+    /// <summary>Cells taken (width along x, depth along y) by everything that can be placed.</summary>
+    public static readonly IReadOnlyDictionary<string, (int Width, int Depth)> Footprints =
+        new Dictionary<string, (int, int)>
         {
-            [Items.TrashBin] = (1.0, 0.8),
-            [Items.Workbench] = (2.4, 0.8),
-            [Items.Shelf] = (2.0, 0.6),
-            [Items.BarrelBlue] = (0.6, 0.6),
-            [Items.BarrelRed] = (0.6, 0.6),
-            [Items.Tyres] = (0.8, 0.8),
-            [Items.Pallet] = (1.2, 1.0),
-            [Items.GasCylinder] = (0.3, 0.3),
+            [Items.TrashBin] = (2, 2),
+            [Items.Workbench] = (5, 2),
+            [Items.Shelf] = (4, 1),
+            [Items.BarrelBlue] = (1, 1),
+            [Items.BarrelRed] = (1, 1),
+            [Items.Tyres] = (2, 2),
+            [Items.Pallet] = (2, 2),
+            [Items.GasCylinder] = (1, 1),
         };
 
     /// <summary>How a new garage is furnished.</summary>
-    public static readonly (string Kind, double X, double Y)[] Starter =
+    public static readonly (string Kind, int X, int Y)[] Starter =
     [
-        (Items.TrashBin, 2.6, 4.2),
-        (Items.Workbench, 6.3, 5.55),
-        (Items.GasCylinder, 4.75, 5.65),
-        (Items.Shelf, 1.2, 2.3),
-        (Items.BarrelBlue, 7.45, 2.6),
-        (Items.BarrelRed, 7.4, 1.85),
-        (Items.Tyres, 6.6, 1.0),
-        (Items.Pallet, 1.6, 0.9),
+        (Items.TrashBin, 5, 8),
+        (Items.Workbench, 10, 10),
+        (Items.GasCylinder, 9, 11),
+        (Items.Shelf, 1, 5),
+        (Items.BarrelBlue, 15, 5),
+        (Items.BarrelRed, 15, 3),
+        (Items.Tyres, 12, 1),
+        (Items.Pallet, 2, 1),
     ];
 
-    /// <summary>Whether a piece of furniture at (x, y) fits inside the walls.</summary>
-    public static bool InsideRoom(string kind, double x, double y)
+    /// <summary>Cells taken by a piece of furniture turned by `rotation` quarter turns.</summary>
+    public static (int Width, int Depth) Size(string kind, int rotation)
     {
         var (w, d) = Footprints[kind];
-        return double.IsFinite(x) && double.IsFinite(y)
-            && x - w / 2 >= -0.001 && x + w / 2 <= Width + 0.001
-            && y - d / 2 >= -0.001 && y + d / 2 <= Depth + 0.001;
+        return rotation % 2 == 0 ? (w, d) : (d, w);
     }
 
-    public static bool Overlaps(string kind, double x, double y, string otherKind, double otherX, double otherY)
+    /// <summary>Whether a piece of furniture on cell (x, y) fits inside the walls.</summary>
+    public static bool InsideRoom(string kind, int x, int y, int rotation = 0)
     {
-        var (w, d) = Footprints[kind];
-        var (ow, od) = Footprints[otherKind];
-        return Math.Abs(x - otherX) < (w + ow) / 2 - 0.001 && Math.Abs(y - otherY) < (d + od) / 2 - 0.001;
+        var (w, d) = Size(kind, rotation);
+        return x >= 0 && y >= 0 && x + w <= Width && y + d <= Depth;
+    }
+
+    public static bool Overlaps(PlacedObject a, PlacedObject b)
+    {
+        var (aw, ad) = Size(a.Kind, a.Rotation);
+        var (bw, bd) = Size(b.Kind, b.Rotation);
+        return a.X < b.X + bw && b.X < a.X + aw && a.Y < b.Y + bd && b.Y < a.Y + ad;
     }
 }
 
@@ -116,9 +126,11 @@ public sealed class GarageObject
 
     public string Kind { get; set; } = "";
 
-    public double X { get; set; }
+    public int X { get; set; }
 
-    public double Y { get; set; }
+    public int Y { get; set; }
+
+    public int Rotation { get; set; }
 }
 
 /// <summary>One queued sorting. The trash is taken when queued; the result is rolled when it finishes.</summary>
@@ -155,6 +167,7 @@ public sealed class RecyclingDbContext(DbContextOptions<RecyclingDbContext> opti
             e.Property(o => o.Kind).HasColumnName("kind").HasMaxLength(32);
             e.Property(o => o.X).HasColumnName("x");
             e.Property(o => o.Y).HasColumnName("y");
+            e.Property(o => o.Rotation).HasColumnName("rotation");
             e.HasIndex(o => o.OwnerId);
         });
         model.Entity<SortingJob>(e =>
@@ -168,7 +181,7 @@ public sealed class RecyclingDbContext(DbContextOptions<RecyclingDbContext> opti
     }
 }
 
-public sealed record PlacedObject(Guid Id, string Kind, double X, double Y);
+public sealed record PlacedObject(Guid Id, string Kind, int X, int Y, int Rotation = 0);
 
 public sealed record GarageState(
     long Trash,
@@ -231,8 +244,8 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
             return await ReadStateAsync(owner, results, xp, cancellationToken);
         }, cancellationToken);
 
-    /// <summary>Puts a piece of furniture from the inventory on the floor at (x, y).</summary>
-    public Task<GarageState> PlaceAsync(Guid owner, string kind, double x, double y, CancellationToken cancellationToken) =>
+    /// <summary>Puts a piece of furniture from the inventory on the floor, its front-left corner on cell (x, y).</summary>
+    public Task<GarageState> PlaceAsync(Guid owner, string kind, int x, int y, int rotation, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
             if (!GarageLayout.Footprints.ContainsKey(kind))
@@ -240,7 +253,7 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
                 throw new GameException("not_placeable", "This item cannot be placed.");
             }
 
-            if (!GarageLayout.InsideRoom(kind, x, y))
+            if (rotation is < 0 or > 3 || !GarageLayout.InsideRoom(kind, x, y, rotation))
             {
                 throw new GameException("bad_position", "It does not fit inside the garage there.");
             }
@@ -248,13 +261,14 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
             await EnsureGarageAsync(owner, cancellationToken);
             var (results, xp) = await CompleteDueAsync(owner, cancellationToken);
             await LockGarageAsync(owner, cancellationToken);
-            if ((await ObjectsAsync(owner, cancellationToken)).Any(o => GarageLayout.Overlaps(kind, x, y, o.Kind, o.X, o.Y)))
+            var placed = new PlacedObject(Guid.Empty, kind, x, y, rotation);
+            if ((await ObjectsAsync(owner, cancellationToken)).Any(o => GarageLayout.Overlaps(placed, o)))
             {
                 throw new GameException("blocked", "Something else already stands there.");
             }
 
             await inventory.RemoveAsync(owner, kind, 1, cancellationToken);
-            await InsertObjectAsync(owner, kind, x, y, cancellationToken);
+            await InsertObjectAsync(owner, kind, x, y, rotation, cancellationToken);
             return await ReadStateAsync(owner, results, xp, cancellationToken);
         }, cancellationToken);
 
@@ -295,7 +309,7 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
         {
             foreach (var (kind, x, y) in GarageLayout.Starter)
             {
-                await InsertObjectAsync(owner, kind, x, y, cancellationToken);
+                await InsertObjectAsync(owner, kind, x, y, 0, cancellationToken);
             }
         }
     }
@@ -308,28 +322,29 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    private async Task InsertObjectAsync(Guid owner, string kind, double x, double y, CancellationToken cancellationToken)
+    private async Task InsertObjectAsync(Guid owner, string kind, int x, int y, int rotation, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync(
-            "INSERT INTO recycling.garage_objects (id, owner_id, kind, x, y) VALUES (@id, @owner, @kind, @x, @y)", cancellationToken);
+            "INSERT INTO recycling.garage_objects (id, owner_id, kind, x, y, rotation) VALUES (@id, @owner, @kind, @x, @y, @rotation)", cancellationToken);
         command.Parameters.AddWithValue("id", Guid.NewGuid());
         command.Parameters.AddWithValue("owner", owner);
         command.Parameters.AddWithValue("kind", kind);
         command.Parameters.AddWithValue("x", x);
         command.Parameters.AddWithValue("y", y);
+        command.Parameters.AddWithValue("rotation", rotation);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private async Task<List<PlacedObject>> ObjectsAsync(Guid owner, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync(
-            "SELECT id, kind, x, y FROM recycling.garage_objects WHERE owner_id = @owner ORDER BY y DESC, x", cancellationToken);
+            "SELECT id, kind, x, y, rotation FROM recycling.garage_objects WHERE owner_id = @owner ORDER BY y DESC, x", cancellationToken);
         command.Parameters.AddWithValue("owner", owner);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var objects = new List<PlacedObject>();
         while (await reader.ReadAsync(cancellationToken))
         {
-            objects.Add(new PlacedObject(reader.GetGuid(0), reader.GetString(1), reader.GetDouble(2), reader.GetDouble(3)));
+            objects.Add(new PlacedObject(reader.GetGuid(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4)));
         }
 
         return objects;
@@ -394,7 +409,7 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
 
 public sealed record SortRequest(int Count);
 
-public sealed record PlaceRequest(string Kind, double X, double Y);
+public sealed record PlaceRequest(string Kind, int X, int Y, int Rotation = 0);
 
 public sealed record PickUpRequest(Guid Id);
 
@@ -416,8 +431,8 @@ public abstract class GarageHandler(IServiceScopeFactory scopes) : IMessageHandl
             maxQueue = RecyclingRules.MaxQueue,
             results = state.Results.Select(id => new { id, name = Items.Names[id] }),
             xp = state.Xp is { } xp ? new { xp = xp.Xp, level = xp.Level, leveledUp = xp.LeveledUp } : null,
-            room = new { width = GarageLayout.Width, depth = GarageLayout.Depth },
-            objects = state.Objects.Select(o => new { id = o.Id, kind = o.Kind, x = o.X, y = o.Y }),
+            room = new { width = GarageLayout.Width, depth = GarageLayout.Depth, cellSize = GarageLayout.CellSize },
+            objects = state.Objects.Select(o => new { id = o.Id, kind = o.Kind, x = o.X, y = o.Y, rotation = o.Rotation }),
             furniture = GarageLayout.Footprints.ToDictionary(
                 f => f.Key, f => new { name = Items.Names[f.Key], width = f.Value.Width, depth = f.Value.Depth }),
         });
@@ -450,7 +465,7 @@ public sealed class PlaceHandler(IServiceScopeFactory scopes) : GarageHandler(sc
     protected override Task<GarageState> RunAsync(RecyclingService recycling, Guid owner, JsonElement? payload, CancellationToken cancellationToken)
     {
         var request = Payload.Read<PlaceRequest>(payload);
-        return recycling.PlaceAsync(owner, request.Kind ?? "", request.X, request.Y, cancellationToken);
+        return recycling.PlaceAsync(owner, request.Kind ?? "", request.X, request.Y, request.Rotation, cancellationToken);
     }
 }
 
