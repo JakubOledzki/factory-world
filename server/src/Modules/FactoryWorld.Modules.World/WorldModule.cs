@@ -51,6 +51,20 @@ public sealed class PlotField
     public DateTimeOffset? PlantedAt { get; set; }
 }
 
+/// <summary>A tree a player planted on a plot, growing until <see cref="ReadyAt"/>.</summary>
+public sealed class PlotTree
+{
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public int TileX { get; set; }
+
+    public int TileY { get; set; }
+
+    public DateTimeOffset ReadyAt { get; set; }
+}
+
 /// <summary>What a geological survey found under a plot.</summary>
 public sealed class SurveyRow
 {
@@ -138,6 +152,16 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(f => f.TileY).HasColumnName("tile_y");
             e.Property(f => f.Crop).HasColumnName("crop").HasMaxLength(32);
             e.Property(f => f.PlantedAt).HasColumnName("planted_at");
+        });
+        model.Entity<PlotTree>(e =>
+        {
+            e.ToTable("plot_trees");
+            e.HasKey(t => new { t.X, t.Y, t.TileX, t.TileY });
+            e.Property(t => t.X).HasColumnName("x");
+            e.Property(t => t.Y).HasColumnName("y");
+            e.Property(t => t.TileX).HasColumnName("tile_x");
+            e.Property(t => t.TileY).HasColumnName("tile_y");
+            e.Property(t => t.ReadyAt).HasColumnName("ready_at");
         });
         model.Entity<SurveyRow>(e =>
         {
@@ -435,6 +459,7 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<PlotService>();
         services.AddScoped<StationService>();
         services.AddScoped<FarmService>();
+        services.AddScoped<ForestService>();
         services.AddScoped<SurveyService>();
         services.AddSingleton<IMessageHandler, InfoHandler>();
         services.AddSingleton<IMessageHandler, AreaHandler>();
@@ -449,6 +474,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, TillHandler>();
         services.AddSingleton<IMessageHandler, PlantHandler>();
         services.AddSingleton<IMessageHandler, ReapHandler>();
+        services.AddSingleton<IMessageHandler, PlantTreeHandler>();
         services.AddSingleton<IMessageHandler, SurveyHandler>();
     }
 

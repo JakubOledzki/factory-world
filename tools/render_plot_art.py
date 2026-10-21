@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [icons]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station, the middle of its south edge).
@@ -417,6 +417,28 @@ def render_farming(layout: dict):
                                                       lambda b=build, s=scale: b(s))
 
 
+# --- Forestry -------------------------------------------------------------------------------------
+
+def planted(height, width, color):
+    """A planted conifer on a mound of fresh soil."""
+    mound = ra.sphere("mound", 0.55, (0, 0, -0.05), soil_mat(), scale=(1, 1, 0.3), segments=16)
+    ra.displace(mound, 0.04, 0.3, 1)
+    return conifer(height, width, color)
+
+
+FORESTRY = {
+    # name: (canvas width, height, camera target height, builder); a grown planted tree uses tree_0-2.
+    "sapling": (112, 128, 0.6, lambda: planted(1.5, 0.9, (0.07, 0.17, 0.07))),
+    "tree_young": (176, 192, 1.2, lambda: planted(3.0, 1.5, (0.055, 0.13, 0.06))),
+}
+
+
+def render_forestry(layout: dict):
+    for name, (w, h, tz, build) in FORESTRY.items():
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), build)
+
+
 # --- Railway --------------------------------------------------------------------------------------
 
 def track(length):
@@ -606,6 +628,16 @@ def icon_models():
             s = ra.sphere("lump", random.uniform(0.06, 0.1), (math.cos(a) * 0.12, math.sin(a) * 0.1, 0.06), m, segments=8)
             ra.displace(s, 0.035, 0.2, 1)
 
+    def sapling():
+        ball = ra.sphere("ball", 0.13, (0, 0, 0.05), soil_mat(), scale=(1, 1, 0.75), segments=16)
+        ra.displace(ball, 0.015, 0.2, 1)
+        ra.cylinder("stem", 0.012, 0.3, (0, 0, 0.2), bark(), verts=6)
+        needles = foliage("needles", (0.08, 0.2, 0.07), 0.3)
+        for i in range(3):
+            t = i / 3
+            cone = ra.cylinder("tier", 0.13 * (1 - t * 0.6), 0.14, (0, 0, 0.17 + t * 0.12), needles, radius2=0.01, verts=12)
+            ra.displace(cone, 0.015, 0.4, 1)
+
     def sand():
         d = ra.sphere("pile", 0.22, (0, 0, -0.04), sand_mat(), scale=(1, 1, 0.75), segments=24)
         ra.displace(d, 0.02, 0.2, 2)
@@ -615,14 +647,17 @@ def icon_models():
         "item_wheat": wheat_sheaf, "item_carrot": carrots, "item_cabbage": cabbage_head, "item_corn": corn_cob,
         "item_potato": potatoes, "item_sunflower": sunflower_head,
         "item_wood": wood, "item_stone": stones((0.2, 0.19, 0.18)), "item_sand": sand, "item_coal": coal,
+        "item_sapling": sapling,
         "item_iron_ore": stones((0.18, 0.09, 0.05), (0.4, 0.4, 0.42)),
         "item_copper_ore": stones((0.14, 0.13, 0.12), (0.75, 0.35, 0.12)),
     }
 
 
-def render_icons():
+def render_icons(only=()):
     ICONS.mkdir(parents=True, exist_ok=True)
     for name, build in icon_models().items():
+        if only and name not in only:
+            continue
         random.seed(zlib.crc32(name.encode()))
         ra.icon_scene()
         build()
@@ -632,7 +667,7 @@ def render_icons():
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "forestry", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -646,8 +681,11 @@ if __name__ == "__main__":
         render_rail(layout)
     if "farming" in args:
         render_farming(layout)
+    if "forestry" in args:
+        render_forestry(layout)
     if "station" in args:
         render_station(layout)
-    if "icons" in args:
-        render_icons()
+    # "item_<id>" arguments render just those icons.
+    if "icons" in args or any(a.startswith("item_") for a in args):
+        render_icons([a for a in args if a.startswith("item_")])
     layout_file.write_text(json.dumps(layout, indent=1))

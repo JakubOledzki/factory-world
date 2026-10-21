@@ -116,5 +116,13 @@
  "sunflower_ripe": {
   "anchorX": 64,
   "anchorY": 87
+ },
+ "sapling": {
+  "anchorX": 56,
+  "anchorY": 78
+ },
+ "tree_young": {
+  "anchorX": 88,
+  "anchorY": 123
  }
 }

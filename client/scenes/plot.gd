@@ -14,6 +14,7 @@ const ACTIONS := {
 	"inventory": [KEY_I],
 	"station": [KEY_T],
 	"tool": [KEY_Q],
+	"plant": [KEY_P],
 	"cancel": [KEY_ESCAPE],
 	"world_map": [KEY_N],
 	"garage": [KEY_G],
@@ -65,6 +66,10 @@ const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa"}
 const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower"]
 ## A crop shows as a sprout until this much of its growing time is left, then half grown.
 const SPROUT_UNTIL := 0.6
+## A planted tree shows as a sapling until this much of its growing time is left, then young;
+## grown, it looks like one of the conifers of the forest.
+const SAPLING_UNTIL := 0.5
+const GROWN_TREES := ["tree_0", "tree_1", "tree_2"]
 ## Ground texture by biome id (see WorldData).
 const FLOORS := {
 	2: "forest", 3: "dry_grass", 4: "grass", 5: "sand", 6: "gravel", 7: "tundra",
@@ -82,6 +87,9 @@ var _at := Vector2i(-1, -1)
 var _size := 250
 var _tiles := PackedByteArray()
 var _harvest_seconds := 1.5
+var _chop_seconds := 5.0
+## Seconds of work on the tile being worked.
+var _work_seconds := 1.5
 var _world_width := 6933
 var _biome_names := {}
 var _my_plots: Array[Vector2i] = []
@@ -92,7 +100,15 @@ var _ready_to_play := false
 var _fields := {}
 var _crops := {}
 var _fertile := false
-## Which crop sprite each drawn field shows, to swap it when the crop grows.
+## Planted trees: Vector2i → readyAt (server milliseconds).
+var _trees := {}
+## How long a sapling grows on this plot; 0 when nothing can be planted here.
+var _tree_grow_seconds := 0.0
+## Saplings in the inventory, and whether a click on free ground plants one.
+var _saplings := 0
+var _planting := false
+var _plant_button: Button
+## Which crop or tree sprite each drawn field or planted tree shows, to swap it when it grows.
 var _stages := {}
 var _next_stage_check := 0.0
 
@@ -236,6 +252,7 @@ func _tile_set(shadows: bool) -> TileSet:
 	var sprites: Array[String] = []
 	for kind: int in SPRITES:
 		sprites.append_array(SPRITES[kind])
+	sprites.append_array(["sapling", "tree_young"])
 	for sprite in sprites:
 		_add_source(set, sprite, sprite + ("_shadow" if shadows else ""), not shadows)
 	if not shadows:
@@ -276,6 +293,9 @@ func _apply_plot(plot: Dictionary) -> void:
 	_plot = plot
 	_size = plot["size"]
 	_harvest_seconds = plot["harvestSeconds"]
+	_chop_seconds = plot.get("chopSeconds", _harvest_seconds)
+	var grow: Variant = plot.get("treeGrowSeconds")
+	_tree_grow_seconds = float(grow) if grow != null else 0.0
 	var packed := Marshalls.base64_to_raw(plot["tiles"])
 	_tiles = packed.decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP)
 	if plot.get("tool") != null:
@@ -289,6 +309,8 @@ func _apply_plot(plot: Dictionary) -> void:
 	_clock_offset = float(plot["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
 	for field: Dictionary in plot.get("fields", []):
 		_fields[Vector2i(field["tileX"], field["tileY"])] = {"crop": field["crop"], "readyAt": field["readyAt"]}
+	for tree: Dictionary in plot.get("trees", []):
+		_trees[Vector2i(tree["tileX"], tree["tileY"])] = tree["readyAt"]
 
 	# The ground: the biome's texture repeated over the plot, squashed to the 45° view.
 	var floor_name: String = FLOORS.get(int(plot["biome"]), "grass")
@@ -412,17 +434,20 @@ func _draw_cell(cell: Vector2i) -> void:
 	var id: int = _sources[sprite]
 	var look := 1 if cell == _hovered else (2 if _faded.has(cell) else 0)
 	_objects.set_cell(cell, id, Vector2i.ZERO, look)
-	if _fields.has(cell):
+	if _fields.has(cell) or _trees.has(cell):
 		_stages[cell] = sprite
+	if _fields.has(cell):
 		_shadows.erase_cell(cell)
 	else:
 		_shadows.set_cell(cell, id, Vector2i.ZERO)
 
 
-## The sprite standing on a tile: nature, or the crop growing on a field; "" for nothing.
+## The sprite standing on a tile: nature, the crop growing on a field or a planted tree; "" for nothing.
 func _sprite_at(cell: Vector2i) -> String:
 	if _fields.has(cell):
 		return _crop_sprite(cell)
+	if _trees.has(cell):
+		return _tree_sprite(cell)
 	var kind := _tile(cell)
 	return _variant(kind, cell) if SPRITES.has(kind) else ""
 
@@ -438,6 +463,28 @@ func _crop_sprite(cell: Vector2i) -> String:
 	return "sprout" if left > grow * SPROUT_UNTIL else field["crop"] + "_young"
 
 
+func _tree_sprite(cell: Vector2i) -> String:
+	var left := _tree_left(cell)
+	if left <= 0.0:
+		var h := (cell.x * 73856093) ^ (cell.y * 19349663)
+		return GROWN_TREES[absi(h) % GROWN_TREES.size()]
+	return "sapling" if left > _tree_grow_seconds * SAPLING_UNTIL else "tree_young"
+
+
+## Seconds until a planted tree can be cut (0 when it can).
+func _tree_left(cell: Vector2i) -> float:
+	return maxf((float(_trees[cell]) - _server_now()) / 1000.0, 0.0)
+
+
+func _tree_grown(cell: Vector2i) -> bool:
+	return _trees.has(cell) and _tree_left(cell) <= 0.0
+
+
+## What is worked on a tile: a grown planted tree counts as a tree.
+func _work_kind(cell: Vector2i) -> int:
+	return TREE if _tree_grown(cell) else _tile(cell)
+
+
 ## Seconds until the crop on a field is ripe (0 when it is).
 func _crop_left(cell: Vector2i) -> float:
 	var ready_at: Variant = _fields[cell]["readyAt"]
@@ -448,14 +495,14 @@ func _ripe(cell: Vector2i) -> bool:
 	return _fields.has(cell) and _fields[cell]["crop"] != null and _crop_left(cell) <= 0.0
 
 
-## Swaps the sprites of crops that grew into their next stage.
+## Swaps the sprites of crops and trees that grew into their next stage.
 func _update_stages() -> void:
 	var now := Time.get_ticks_msec() / 1000.0
 	if now < _next_stage_check:
 		return
 	_next_stage_check = now + 1.0
 	for cell: Vector2i in _stages.keys():
-		if _crop_sprite(cell) != _stages[cell]:
+		if _sprite_at(cell) != _stages[cell]:
 			_draw_cell(cell)
 
 
@@ -630,11 +677,11 @@ func _update_hover() -> void:
 	elif _station != null:
 		_station.modulate = Color.WHITE
 	var ground := _ground_cell()
-	var pointing := cell.x >= 0 or station or _fields.has(ground) or _can_till(ground)
+	var pointing := cell.x >= 0 or station or _fields.has(ground) or _can_till(ground) or _can_plant(ground)
 	Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND if pointing else Input.CURSOR_ARROW)
 	_marks.queue_redraw()
 	_update_prompt()
-	_update_field_label(cell if cell.x >= 0 and _fields.has(cell) else ground)
+	_update_field_label(cell if cell.x >= 0 and (_fields.has(cell) or _trees.has(cell)) else ground)
 
 
 ## The tile under the mouse, or (-1, -1) when the mouse is over the interface.
@@ -649,13 +696,24 @@ func _can_till(cell: Vector2i) -> bool:
 	return _fertile and Game.tool().get("id", "") == "tool_hoe" and _tile(cell) == NONE and not _fields.has(cell)
 
 
-## The name of the crop under the mouse and how long until it is ripe.
+## Whether a sapling can be planted on this tile now.
+func _can_plant(cell: Vector2i) -> bool:
+	return _planting and _tree_grow_seconds > 0.0 and _tile(cell) == NONE and not _fields.has(cell) and not _trees.has(cell)
+
+
+## The name of the crop or planted tree under the mouse and how long until it is ripe.
 func _update_field_label(cell: Vector2i) -> void:
-	_field_label.visible = _fields.has(cell) and _menu_cell.x < 0
+	_field_label.visible = (_fields.has(cell) or _trees.has(cell)) and _menu_cell.x < 0
 	if not _field_label.visible:
 		return
-	var crop: Variant = _fields[cell]["crop"]
-	if crop == null:
+	var crop: Variant = _fields[cell]["crop"] if _fields.has(cell) else null
+	if _trees.has(cell):
+		if _tree_grown(cell):
+			_field_label.text = "Drzewo: urosło, zetnij je siekierą"
+		else:
+			var left := ceili(_tree_left(cell))
+			_field_label.text = "Sadzonka: urośnie za %d:%02d" % [left / 60, left % 60]
+	elif crop == null:
 		_field_label.text = "Zaorane pole: kliknij, aby zasiać"
 	elif _ripe(cell):
 		_field_label.text = "%s: dojrzała, kliknij, aby zebrać" % _crops[crop]["name"]
@@ -667,11 +725,11 @@ func _update_field_label(cell: Vector2i) -> void:
 
 
 func _draw_marks() -> void:
-	if _hovered.x >= 0 and WORK.has(_tile(_hovered)) and not _fields.has(_hovered):
-		var ok: bool = Game.tool().get("id", "") == WORK[_tile(_hovered)]["tool"]
+	if _hovered.x >= 0 and WORK.has(_work_kind(_hovered)) and not _fields.has(_hovered):
+		var ok: bool = Game.tool().get("id", "") == WORK[_work_kind(_hovered)]["tool"]
 		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8) if ok else Color(1.0, 0.42, 0.35, 0.8))
 	var ground := _ground_cell()
-	if _hovered.x < 0 and (_fields.has(ground) or _can_till(ground)):
+	if _hovered.x < 0 and (_fields.has(ground) or _can_till(ground) or _can_plant(ground)):
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8))
 	if _work.x >= 0:
 		_draw_ring(_cell_centre(_work), Color(1, 1, 1, 0.7))
@@ -700,6 +758,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_go_to_station()
 			elif _fields.has(cell):
 				_act_on(cell)
+			elif _can_plant(cell):
+				_go_and(cell, _plant_tree)
 			elif _can_till(cell):
 				_till(cell)
 			else:
@@ -711,6 +771,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _station_window.visible or _inventory_window.visible:
 			_station_window.hide_window()
 			_inventory_window.hide_window()
+		elif _planting:
+			_set_planting(false)
 		else:
 			_stop_work()
 			_path = PackedVector2Array()
@@ -731,6 +793,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_go_to_station()
 	elif event.is_action_pressed("tool"):
 		_tool_slot.open()
+	elif event.is_action_pressed("plant"):
+		_set_planting(not _planting)
 	elif event.is_action_pressed("world_map"):
 		Game.open_world_map()
 	elif event.is_action_pressed("garage"):
@@ -777,14 +841,18 @@ func _nearest_work() -> Vector2i:
 	for dy in range(-2, 3):
 		for dx in range(-2, 3):
 			var cell := here + Vector2i(dx, dy)
-			if (WORK.has(_tile(cell)) or _ripe(cell)) and _near(cell) and (best.x < 0 or _player.floor_pos.distance_to(Vector2(cell)) < _player.floor_pos.distance_to(Vector2(best))):
+			if (WORK.has(_work_kind(cell)) or _ripe(cell)) and _near(cell) and (best.x < 0 or _player.floor_pos.distance_to(Vector2(cell)) < _player.floor_pos.distance_to(Vector2(best))):
 				best = cell
 	return best
 
 
 ## Walks up to a tree, rock or dune and works it with the tool in hand.
 func _work_on(cell: Vector2i) -> void:
-	var kind := _tile(cell)
+	var kind := _work_kind(cell)
+	if _trees.has(cell) and not _tree_grown(cell):
+		var left := ceili(_tree_left(cell))
+		_show_toast("Sadzonka urośnie za %d:%02d." % [left / 60, left % 60], UI.MUTED)
+		return
 	if not WORK.has(kind):
 		_show_toast("%s: nie da się tego zebrać." % OBJECT_NAMES.get(kind, "To"), UI.MUTED)
 		return
@@ -797,18 +865,20 @@ func _work_on(cell: Vector2i) -> void:
 		_start_work(cell)
 		return
 	_walk_to(cell, func() -> void:
-		if _near(cell) and _tile(cell) == kind:
+		if _near(cell) and _work_kind(cell) == kind:
 			_start_work(cell)
-		elif _tile(cell) == kind:
+		elif _work_kind(cell) == kind:
 			_show_toast("Nie da się tam podejść.", UI.ERROR), true)
 
 
 func _start_work(cell: Vector2i, mode := "harvest") -> void:
 	_work = cell
 	_work_mode = mode
-	_work_left = _harvest_seconds
+	# Cutting a tree down takes longer than a swing at a rock or a dune.
+	_work_seconds = _chop_seconds if mode == "harvest" and _work_kind(cell) == TREE else _harvest_seconds
+	_work_left = _work_seconds
 	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
-	_work_bar.max_value = _harvest_seconds
+	_work_bar.max_value = _work_seconds
 	_work_bar.visible = true
 
 
@@ -822,10 +892,10 @@ func _update_work(delta: float) -> void:
 	if _work.x < 0:
 		return
 	_work_left -= delta
-	_work_bar.value = _harvest_seconds - _work_left
+	_work_bar.value = _work_seconds - _work_left
 	_work_bar.position = _screen(_cell_centre(_work)) - Vector2(_work_bar.size.x / 2, 90 * _zoom + 12)
 	# Swing: the body leans into each stroke.
-	_player.rotation = sin((_harvest_seconds - _work_left) * TAU * 2.0) * 0.08
+	_player.rotation = sin((_work_seconds - _work_left) * TAU * 2.0) * 0.08
 	if _work_left <= 0.0:
 		var cell := _work
 		_stop_work()
@@ -849,6 +919,8 @@ func _harvest(cell: Vector2i) -> void:
 	for i in items.size():
 		var item: Dictionary = items[i]
 		_float_text("+%d %s" % [int(item["quantity"]), item["name"]], UI.TEXT, _cell_centre(cell), i * 0.25, item["id"])
+		if item["id"] == "sapling":
+			_set_saplings(_saplings + int(item["quantity"]))
 	var gained := int(result["xp"]["xp"]) - int(Game.character.get("xp", 0))
 	if gained > 0:
 		_float_text("+%d XP" % gained, UI.GOLD, _cell_centre(cell), items.size() * 0.25)
@@ -862,6 +934,15 @@ func _harvest(cell: Vector2i) -> void:
 
 ## Removes a worked object: it falls over (a tree) or crumbles, and the tile becomes free.
 func _clear_tile(cell: Vector2i, kind: int) -> void:
+	if _trees.has(cell):
+		var sprite := _sprite_at(cell)
+		_trees.erase(cell)
+		if _hovered == cell:
+			_hovered = Vector2i(-1, -1)
+		_draw_cell(cell)
+		_set_minimap(cell, NONE)
+		_vanish(sprite, cell, true)
+		return
 	if not SPRITES.has(kind):
 		return
 	var sprite_name := _variant(kind, cell)
@@ -995,6 +1076,77 @@ func _apply_field(reply: Dictionary) -> void:
 		_reload_inventory()
 
 
+# --- Forestry -----------------------------------------------------------------------------------
+
+## Turns planting on or off: while on, a click on free ground plants a sapling from the inventory.
+func _set_planting(on: bool) -> void:
+	if on and _tree_grow_seconds <= 0.0:
+		_show_toast("Na lodowcu nic nie wyrośnie.", UI.ERROR)
+		on = false
+	elif on and _saplings <= 0:
+		_show_toast("Nie masz sadzonek. Kupisz je na rynku w garażu (od handlarza albo od innych graczy).", UI.ERROR)
+		on = false
+	_planting = on
+	if on:
+		_stop_work()
+		var minutes := _tree_grow_seconds / 60.0
+		_show_toast("Sadzenie: kliknij wolne pole. Drzewo urośnie tu w %s min." % str(snappedf(minutes, 0.1)).trim_suffix(".0").replace(".", ","))
+	_update_plant_button()
+	_update_hint()
+
+
+func _set_saplings(count: int) -> void:
+	_saplings = maxi(count, 0)
+	if _saplings == 0:
+		_planting = false
+	_update_plant_button()
+	_update_hint()
+
+
+func _update_plant_button() -> void:
+	if _plant_button == null:
+		return
+	_plant_button.text = ("Koniec sadzenia  [P]" if _planting else "Sadź drzewa  [P]") + "  · %d" % _saplings
+	_plant_button.modulate = Color(0.75, 1.0, 0.6) if _planting else Color.WHITE
+
+
+## Saplings in the inventory, counted from an "inventory" reply.
+func _count_saplings(items: Array) -> void:
+	var count := 0
+	for item: Dictionary in items:
+		if item["id"] == "sapling":
+			count += int(item["quantity"])
+	_set_saplings(count)
+
+
+func _plant_tree(cell: Vector2i) -> void:
+	if not _can_plant(cell):
+		return
+	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
+	var reply := await Net.request("plot.plantTree", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y})
+	if reply["type"] != "plot.tree":
+		_show_error(reply)
+		return
+	var result: Dictionary = reply["payload"]
+	_clock_offset = float(result["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
+	var tree: Dictionary = result["tree"]
+	var at := Vector2i(tree["tileX"], tree["tileY"])
+	_trees[at] = tree["readyAt"]
+	_draw_cell(at)
+	_set_minimap(at, NONE)
+	_float_text("−1 Sadzonka drzewa", UI.MUTED, _cell_centre(at), 0.0, "sapling")
+	var gained := int(result["xp"]["xp"]) - int(Game.character.get("xp", 0))
+	if gained > 0:
+		_float_text("+%d XP" % gained, UI.GOLD, _cell_centre(at), 0.25)
+	Game.gain_xp(result["xp"])
+	_refresh_character()
+	_set_saplings(_saplings - 1)
+	if _saplings == 0:
+		_show_toast("To była ostatnia sadzonka.", UI.MUTED)
+	if _inventory_window.visible or _station_window.visible:
+		_reload_inventory()
+
+
 # --- Station -------------------------------------------------------------------------------------
 
 func _station_rect() -> Rect2:
@@ -1058,7 +1210,7 @@ func _update_prompt() -> void:
 			if _fields.has(cell):
 				text = "[E] Zbierz: %s" % _crops[_fields[cell]["crop"]]["name"].to_lower()
 			else:
-				var work: Dictionary = WORK[_tile(cell)]
+				var work: Dictionary = WORK[_work_kind(cell)]
 				text = "[E] %s: %s" % [work["verb"], work["name"].to_lower()]
 	_prompt.visible = text != ""
 	if _prompt.visible:
@@ -1140,6 +1292,10 @@ func _build_hud() -> void:
 		if _inventory_window.visible:
 			_reload_inventory()))
 	bar.add_child(UI.button("Stacja  [T]", _go_to_station))
+	_plant_button = UI.button("", func() -> void: _set_planting(not _planting))
+	_plant_button.tooltip_text = "Sadzonki kupisz na rynku w garażu. Z każdego ściętego drzewa jest szansa na nową."
+	bar.add_child(_plant_button)
+	_update_plant_button()
 	bar.add_child(UI.button("Mapa świata  [N]", Game.open_world_map))
 	bar.add_child(UI.button("Garaż  [G]", Game.open_garage))
 	_hud.add_child(bar)
@@ -1247,6 +1403,9 @@ func _update_hint() -> void:
 		"tool_shovel": "Kliknij wydmę, aby ją przekopać łopatą.",
 		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile else "Motyką orze się tylko żyzne gleby.",
 	}
+	if _planting:
+		_hint.text = "Sadzenie: kliknij wolne pole, aby posadzić sadzonkę (masz %d). [P] lub Esc kończy." % _saplings
+		return
 	var held: String = Game.tool().get("id", "")
 	if held == "" and _fertile:
 		lines[""] = "Kliknij pole, aby zasiać lub zebrać plony. Do orania weź motykę [Q]."
@@ -1272,6 +1431,8 @@ func _build_minimap() -> void:
 				_minimap_image.set_pixel(x, y, MINIMAP_COLORS[kind])
 	for cell: Vector2i in _fields:
 		_minimap_image.set_pixelv(cell, FIELD_COLOR)
+	for cell: Vector2i in _trees:
+		_minimap_image.set_pixelv(cell, MINIMAP_COLORS[TREE])
 	_minimap.texture = ImageTexture.create_from_image(_minimap_image)
 	# The plot is wider than tall on screen; keep the minimap's proportions the same.
 	_minimap.custom_minimum_size = Vector2(170, 170 * TILE.y / TILE.x)
@@ -1279,6 +1440,8 @@ func _build_minimap() -> void:
 
 func _set_minimap(cell: Vector2i, kind: int) -> void:
 	var colour: Color = MINIMAP_COLORS[kind] if kind != NONE else Color(0.16, 0.16, 0.15)
+	if _trees.has(cell):
+		colour = MINIMAP_COLORS[TREE]
 	_minimap_image.set_pixelv(cell, FIELD_COLOR if _fields.has(cell) else colour)
 	(_minimap.texture as ImageTexture).update(_minimap_image)
 
@@ -1301,11 +1464,19 @@ func _build_windows() -> void:
 	_inventory_window = GameWindow.new("Ekwipunek", 0)
 	_inventory_window.position = Vector2(12, 150)
 	_slots = InventoryGrid.new()
-	_slots.hint = func(item: String) -> String: return "Kliknij, aby wziąć do ręki" if item in ToolSlot.TOOLS else ""
+	_slots.hint = func(item: String) -> String:
+		if item == "sapling":
+			return "Kliknij, aby sadzić na działce"
+		return "Kliknij, aby wziąć do ręki" if item in ToolSlot.TOOLS else ""
 	_slots.clicked.connect(func(item: String) -> void:
 		if item in ToolSlot.TOOLS:
-			_tool_slot.equip(item))
-	_slots.changed.connect(func(items: Array) -> void: _items = items)
+			_tool_slot.equip(item)
+		elif item == "sapling":
+			_inventory_window.hide_window()
+			_set_planting(true))
+	_slots.changed.connect(func(items: Array) -> void:
+		_items = items
+		_count_saplings(items))
 	_slots.failed.connect(_show_error)
 	_inventory_window.content.add_child(_slots)
 	_inventory_window.content.add_child(UI.label("Przeciągnij przedmiot na inny kafelek, aby zmienić kolejność.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
@@ -1329,6 +1500,7 @@ func _reload_inventory() -> void:
 	if reply["type"] != "inventory":
 		return
 	_items = reply["payload"]["items"]
+	_count_saplings(_items)
 	_slots.show_items(reply["payload"])
 	if _station_window.visible and not _station_state.is_empty():
 		_show_station()

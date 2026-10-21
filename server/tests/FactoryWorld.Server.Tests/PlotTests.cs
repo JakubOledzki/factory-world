@@ -143,22 +143,24 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
 
         var chopped = await client.SendAsync("plot.harvest", new { x = forest.X, y = forest.Y, tileX = tx, tileY = ty });
         Assert.Equal("plot.harvested", chopped.Type());
-        Assert.Equal(3, (await client.InventoryAsync())[Items.Wood]);
+        Assert.Equal(1, (await client.InventoryAsync())[Items.Wood]);
 
-        factory.Time.Advance(HarvestRules.Time);
+        factory.Time.Advance(HarvestRules.ChopTime);
         Assert.Equal("nothing_here", (await client.SendAsync("plot.harvest", new { x = forest.X, y = forest.Y, tileX = tx, tileY = ty })).ErrorCode());
         var (_, after) = await EnterAsync(client, forest);
         Assert.Equal((byte)TileObject.None, after[ty * PlotLayout.Size + tx]);
 
         // Too quick after the last swing.
         var (nx, ny) = Find(after, TileObject.Tree);
-        factory.Time.Advance(HarvestRules.Time);
+        factory.Time.Advance(HarvestRules.ChopTime);
         Assert.Equal("plot.harvested", (await client.SendAsync("plot.harvest", new { x = forest.X, y = forest.Y, tileX = nx, tileY = ny })).Type());
         var (mx, my) = Find((await EnterAsync(client, forest)).Tiles, TileObject.Tree);
+        // Cutting a tree takes longer than a swing at a rock.
+        factory.Time.Advance(HarvestRules.Time);
         Assert.Equal("too_fast", (await client.SendAsync("plot.harvest", new { x = forest.X, y = forest.Y, tileX = mx, tileY = my })).ErrorCode());
 
         await client.SendAsync("character.unequip");
-        factory.Time.Advance(HarvestRules.Time);
+        factory.Time.Advance(HarvestRules.ChopTime);
         Assert.Equal("wrong_tool", (await client.SendAsync("plot.harvest", new { x = forest.X, y = forest.Y, tileX = mx, tileY = my })).ErrorCode());
     }
 
@@ -182,9 +184,10 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         using var sender = await PlayerAsync();
         var from = await BuyAsync(sender, Biome.Forest);
         var (_, tiles) = await EnterAsync(sender, from);
-        var (tx, ty) = Find(tiles, TileObject.Tree);
-        factory.Time.Advance(HarvestRules.Time);
-        await sender.SendAsync("plot.harvest", new { x = from.X, y = from.Y, tileX = tx, tileY = ty });
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IInventory>().AddAsync(sender.AccountId, Items.Wood, 3, CancellationToken.None);
+        }
 
         using var receiver = await PlayerAsync();
         var to = await BuyAsync(receiver, Biome.Grassland);
@@ -260,6 +263,77 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         var forest = await BuyAsync(client, Biome.Forest);
         factory.Time.Advance(HarvestRules.Time);
         Assert.Equal("not_fertile", (await client.SendAsync("plot.till", new { x = forest.X, y = forest.Y, tileX = tx, tileY = ty })).ErrorCode());
+    }
+
+    [Fact]
+    public void A_cut_tree_gives_one_wood_and_four_times_in_five_a_sapling()
+    {
+        Assert.Equal([(Items.Wood, 1), (Items.Sapling, 1)], PlotLayout.Yield(TileObject.Tree, 0));
+        Assert.Equal([(Items.Wood, 1), (Items.Sapling, 1)], PlotLayout.Yield(TileObject.Tree, 79));
+        Assert.Equal([(Items.Wood, 1)], PlotLayout.Yield(TileObject.Tree, 80));
+        Assert.Equal(TimeSpan.FromSeconds(5), HarvestRules.TimeFor(TileObject.Tree));
+    }
+
+    [Fact]
+    public async Task A_sapling_from_the_trader_grows_into_a_tree_faster_in_a_forest_and_is_cut_with_an_axe()
+    {
+        using var client = await PlayerAsync();
+        var prices = (await client.SendAsync("market.prices")).Payload().GetProperty("items").EnumerateArray()
+            .ToDictionary(i => i.GetProperty("id").GetString()!);
+        Assert.Equal(200, prices[Items.Sapling].GetProperty("buyCents").GetInt64());
+        Assert.Equal(200, prices[Items.Wood].GetProperty("sellCents").GetInt64());
+
+        var balance = await client.BalanceAsync();
+        Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.Sapling, quantity = 3 })).Type());
+        Assert.Equal(balance - 600, await client.BalanceAsync());
+
+        var forest = await BuyAsync(client, Biome.Forest);
+        var (plot, tiles) = await EnterAsync(client, forest);
+        Assert.Equal(450, plot.GetProperty("treeGrowSeconds").GetDouble());
+        var (tx, ty) = (plot.GetProperty("spawn").GetProperty("x").GetInt32(), plot.GetProperty("spawn").GetProperty("y").GetInt32());
+        object At(int tileX, int tileY) => new { x = forest.X, y = forest.Y, tileX, tileY };
+
+        var planted = await client.SendAsync("plot.plantTree", At(tx, ty));
+        Assert.Equal("plot.tree", planted.Type());
+        var readyAt = planted.Payload().GetProperty("tree").GetProperty("readyAt").GetInt64();
+        Assert.Equal((factory.Time.GetUtcNow() + TimeSpan.FromMinutes(7.5)).ToUnixTimeMilliseconds(), readyAt);
+        Assert.Equal(2, (await client.InventoryAsync())[Items.Sapling]);
+
+        Assert.Equal("blocked", (await client.SendAsync("plot.plantTree", At(tx, ty))).ErrorCode());
+        var (nx, ny) = Find(tiles, TileObject.Tree);
+        Assert.Equal("blocked", (await client.SendAsync("plot.plantTree", At(nx, ny))).ErrorCode());
+        Assert.Equal("blocked", (await client.SendAsync("plot.plantTree", At(0, PlotLayout.RailRow))).ErrorCode());
+
+        var (again, _) = await EnterAsync(client, forest);
+        var tree = Assert.Single(again.GetProperty("trees").EnumerateArray());
+        Assert.Equal(readyAt, tree.GetProperty("readyAt").GetInt64());
+
+        factory.Time.Advance(TimeSpan.FromMinutes(7));
+        Assert.Equal("not_grown", (await client.SendAsync("plot.harvest", At(tx, ty))).ErrorCode());
+        factory.Time.Advance(TimeSpan.FromMinutes(0.5));
+        var cut = await client.SendAsync("plot.harvest", At(tx, ty));
+        Assert.Equal("plot.harvested", cut.Type());
+        Assert.Equal(1, (await client.InventoryAsync())[Items.Wood]);
+        Assert.Equal(0, (await EnterAsync(client, forest)).Plot.GetProperty("trees").GetArrayLength());
+        factory.Time.Advance(HarvestRules.ChopTime);
+        Assert.Equal("nothing_here", (await client.SendAsync("plot.harvest", At(tx, ty))).ErrorCode());
+
+        // Elsewhere a sapling grows the full ten minutes, and nothing grows on ice.
+        var meadow = await BuyAsync(client, Biome.Grassland);
+        var (meadowPlot, _) = await EnterAsync(client, meadow);
+        Assert.Equal(600, meadowPlot.GetProperty("treeGrowSeconds").GetDouble());
+        var ice = await BuyAsync(client, Biome.Ice);
+        Assert.Equal("no_forestry", (await client.SendAsync("plot.plantTree", new { x = ice.X, y = ice.Y, tileX = tx, tileY = ty })).ErrorCode());
+
+        // The cut tree may have dropped a sapling; plant them all, then there is none left.
+        var saplings = (int)(await client.InventoryAsync())[Items.Sapling];
+        Assert.InRange(saplings, 2, 3);
+        for (var i = 0; i < saplings; i++)
+        {
+            Assert.Equal("plot.tree", (await client.SendAsync("plot.plantTree", At(tx + i, ty))).Type());
+        }
+
+        Assert.Equal("not_enough_items", (await client.SendAsync("plot.plantTree", At(tx + saplings, ty))).ErrorCode());
     }
 
     [Fact]

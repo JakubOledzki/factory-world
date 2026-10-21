@@ -75,8 +75,7 @@ public sealed class FarmService(GameDb db, PlotService plots, IInventory invento
                 throw new GameException("wrong_tool", "You need a hoe in your hand.");
             }
 
-            var tiles = await plots.TilesAsync(player, x, y, cancellationToken);
-            if (!PlotLayout.Inside(tileX, tileY) || tiles[tileY * PlotLayout.Size + tileX] != (byte)TileObject.None)
+            if (!await plots.FreeAsync(player, x, y, tileX, tileY, cancellationToken))
             {
                 throw new GameException("blocked", "Something stands here.");
             }
@@ -218,7 +217,7 @@ public sealed class TillHandler(IServiceScopeFactory scopes, TimeProvider time) 
     protected override async Task<FieldChange> RunAsync(FarmService farm, ClientContext client, FieldRequest r, CancellationToken cancellationToken)
     {
         // Tilling is a swing of a tool like chopping, with the same pace.
-        HarvestHandler.CheckPace(client, Time);
+        HarvestHandler.CheckPace(client, Time, HarvestRules.Time);
         var change = await farm.TillAsync(client.RequireAccount(), r.X, r.Y, r.TileX, r.TileY, cancellationToken);
         HarvestHandler.Swung(client, Time);
         return change;

@@ -111,6 +111,33 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plot_harvests", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotTree", b =>
+                {
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.Property<int>("TileX")
+                        .HasColumnType("integer")
+                        .HasColumnName("tile_x");
+
+                    b.Property<int>("TileY")
+                        .HasColumnType("integer")
+                        .HasColumnName("tile_y");
+
+                    b.Property<DateTimeOffset>("ReadyAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ready_at");
+
+                    b.HasKey("X", "Y", "TileX", "TileY");
+
+                    b.ToTable("plot_trees", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.ShipmentRow", b =>
                 {
                     b.Property<long>("Id")
