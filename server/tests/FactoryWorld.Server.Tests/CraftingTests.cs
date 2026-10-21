@@ -109,7 +109,23 @@ public sealed class CraftingTests(ServerFactory factory) : IClassFixture<ServerF
         await client.SendAsync("crafting.craft", new { workbench = bench, recipe = Items.Nails });
         factory.Time.Advance(TimeSpan.FromSeconds(10));
         await client.SendAsync("crafting.get");
-        Assert.Equal(15, Count(await client.InventoryAsync(), Items.Nails));
+        Assert.Equal(10, Count(await client.InventoryAsync(), Items.Nails));
+    }
+
+    [Fact]
+    public async Task The_trader_buys_workbenches_and_furnaces()
+    {
+        using var client = await PlayerAsync();
+        await GiveAsync(client, Items.Workbench, 1);
+        await GiveAsync(client, Items.Furnace, 1);
+
+        Assert.Equal("market.traded", (await client.SendAsync("market.sell", new { item = Items.Workbench, quantity = 1 })).Type());
+        Assert.Equal("market.traded", (await client.SendAsync("market.sell", new { item = Items.Furnace, quantity = 1 })).Type());
+
+        Assert.Equal(4500, await client.BalanceAsync());
+        var inventory = await client.InventoryAsync();
+        Assert.Equal(0, Count(inventory, Items.Workbench));
+        Assert.Equal(0, Count(inventory, Items.Furnace));
     }
 
     [Fact]

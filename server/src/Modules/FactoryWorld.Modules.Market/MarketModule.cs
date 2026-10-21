@@ -52,6 +52,8 @@ public static class NpcPrices
         [Items.Cabbage] = 250,
         [Items.Sunflower] = 300,
         [Items.SortingMachine] = 50_000,
+        [Items.Workbench] = 3000,
+        [Items.Furnace] = 1500,
         [Items.Axe] = 500,
         [Items.Shovel] = 500,
         [Items.Pickaxe] = 500,

@@ -23,7 +23,7 @@ public static class Workshop
     [
         new(Items.Workbench, 1, TimeSpan.FromSeconds(30), [(Items.Wood, 20), (Items.Nails, 5)], 10),
         new(Items.Furnace, 1, TimeSpan.FromSeconds(45), [(Items.Stone, 20)], 15),
-        new(Items.Nails, 10, TimeSpan.FromSeconds(10), [(Items.IronIngot, 1)], 2),
+        new(Items.Nails, 5, TimeSpan.FromSeconds(10), [(Items.IronIngot, 1)], 2),
     ];
 
     public static Recipe? Find(string id) => Recipes.FirstOrDefault(r => r.Id == id);
