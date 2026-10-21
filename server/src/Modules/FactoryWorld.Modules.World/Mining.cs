@@ -29,7 +29,7 @@ public static class Mining
     [
         (Items.GoldOre, 1),
         (Items.SilverOre, 50),
-        (Items.BronzeOre, 100),
+        (Items.TinOre, 100),
         (Items.CopperOre, 200),
         (Items.IronOre, 200),
         (Items.Coal, 350),

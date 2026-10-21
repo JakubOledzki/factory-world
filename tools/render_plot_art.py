@@ -708,7 +708,7 @@ def icon_models():
         "item_sapling": sapling,
         "item_iron_ore": stones((0.18, 0.09, 0.05), (0.4, 0.4, 0.42)),
         "item_copper_ore": stones((0.14, 0.13, 0.12), (0.75, 0.35, 0.12)),
-        "item_bronze_ore": stones((0.13, 0.11, 0.09), (0.45, 0.3, 0.14)),
+        "item_tin_ore": stones((0.08, 0.06, 0.05), (0.62, 0.62, 0.58)),
         "item_silver_ore": stones((0.11, 0.11, 0.12), (0.85, 0.86, 0.9)),
         "item_gold_ore": stones((0.1, 0.09, 0.08), (1.0, 0.82, 0.18)),
     }

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bqpq1j4r4hkis"
-path="res://.godot/imported/item_bronze_ore.png-08fe9bed4b4b8f91b819c7820db84fcb.ctex"
+uid="uid://nekwm5h5c88u"
+path="res://.godot/imported/item_tin_ore.png-c1e335d5f32330b7fef0e670727a1efd.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/icons/item_bronze_ore.png"
-dest_files=["res://.godot/imported/item_bronze_ore.png-08fe9bed4b4b8f91b819c7820db84fcb.ctex"]
+source_file="res://art/icons/item_tin_ore.png"
+dest_files=["res://.godot/imported/item_tin_ore.png-c1e335d5f32330b7fef0e670727a1efd.ctex"]
 
 [params]
 

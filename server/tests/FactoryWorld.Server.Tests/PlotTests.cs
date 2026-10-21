@@ -369,16 +369,16 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         Assert.Equal([(Items.Stone, 1)], Mining.Load(Rolls(Items.Stone)));
         Assert.Equal([(Items.Coal, 1), (Items.Stone, 1)], Mining.Load(Rolls(Items.Coal, Items.Stone)));
         Assert.Equal([(Items.GoldOre, 1), (Items.SilverOre, 1)], Mining.Load(Rolls(Items.Stone, Items.Coal, Items.SilverOre, Items.GoldOre)));
-        Assert.Equal([(Items.BronzeOre, 1), (Items.IronOre, 1)], Mining.Load(Rolls(Items.Stone, Items.IronOre, Items.BronzeOre)));
+        Assert.Equal([(Items.TinOre, 1), (Items.IronOre, 1)], Mining.Load(Rolls(Items.Stone, Items.IronOre, Items.TinOre)));
         Assert.Empty(Mining.Load(Rolls()));
 
-        // The chances, in thousandths: stone 99%, coal 35%, iron and copper 20%, bronze 10%, silver 5%, gold 0.1%.
+        // The chances, in thousandths: stone 99%, coal 35%, iron and copper 20%, tin 10%, silver 5%, gold 0.1%.
         var chances = Mining.Drops.ToDictionary(d => d.Item, d => d.PerMille);
         Assert.Equal(990, chances[Items.Stone]);
         Assert.Equal(350, chances[Items.Coal]);
         Assert.Equal(200, chances[Items.IronOre]);
         Assert.Equal(200, chances[Items.CopperOre]);
-        Assert.Equal(100, chances[Items.BronzeOre]);
+        Assert.Equal(100, chances[Items.TinOre]);
         Assert.Equal(50, chances[Items.SilverOre]);
         Assert.Equal(1, chances[Items.GoldOre]);
         Assert.Equal(1, Mining.Load(Mining.Drops.Select(d => d.PerMille - 1).ToArray()).Count(i => i.Item == Items.GoldOre));
