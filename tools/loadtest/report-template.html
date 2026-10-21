@@ -31,7 +31,7 @@ p { margin: 0; max-width: 72ch; }
 .lede { color: var(--ink-2); display: grid; gap: 8px; }
 .eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
 section { display: grid; gap: 12px; min-width: 0; }
-.panel { background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 16px; min-width: 0; }
+.panel { align-content: start; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 16px; min-width: 0; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; }
 .note { font-size: 13px; color: var(--ink-2); }
 .scroll { overflow-x: auto; }
@@ -210,7 +210,7 @@ function logTicks(min, max) {
   return t;
 }
 
-/* Line chart over the player counts (x is log: 10, 100, 1000, 10000). Hover shows every series at that level. */
+/* Line chart over the player counts, one evenly spaced step per measured level. Hover shows every series at that level. */
 function levelChart(id, { series, yLog = false, yFmt = (v) => fmt(v), marked = () => false }) {
   const host = $(id); host.innerHTML = "";
   const W = 480, H = 250, L = 52, R = 14, T = 12, B = 34;
@@ -218,9 +218,8 @@ function levelChart(id, { series, yLog = false, yFmt = (v) => fmt(v), marked = (
   const xs = RUNS.map(r => r.summary.players);
   const vals = series.flatMap(s => s.values).filter(v => v != null && (!yLog || v > 0));
   if (!vals.length) return;
-  const lx = (v) => Math.log10(v);
-  const x0 = lx(Math.min(...xs)), x1 = lx(Math.max(...xs));
-  const X = (v) => L + (xs.length === 1 ? (W - L - R) / 2 : (lx(v) - x0) / (x1 - x0) * (W - L - R));
+  // Player counts are evenly spaced (10, 100, 1000 … need not be powers of ten), so labels never crowd.
+  const X = (v) => L + (xs.length === 1 ? (W - L - R) / 2 : xs.indexOf(v) / (xs.length - 1) * (W - L - R));
   let ticks, Y;
   if (yLog) {
     const lo = Math.min(...vals), hi = Math.max(...vals);
@@ -365,7 +364,11 @@ function render() {
   const tp = [{ name: "obsłużone", values: S.map(s => s.throughput), color: c[0] }, { name: "zadane przez graczy", values: S.map(s => s.offeredLoad), color: css("--muted"), dash: "5 4" }];
   legend("tp-legend", tp);
   levelChart("tp-chart", { series: tp, yLog: true, marked });
-  barChart("err-chart", { values: S.map(s => s.errorRate), color: css("--bad"), yFmt: (v) => fmt(v, 2), unit: " %" });
+  if (S.every(s => !s.errorRate)) {
+    $("err-chart").innerHTML = `<p class="note">Na żadnym poziomie nie było błędów ani przekroczeń czasu (${fmt(S.reduce((a, s) => a + s.requests, 0))} zapytań).</p>`;
+  } else {
+    barChart("err-chart", { values: S.map(s => s.errorRate), color: css("--bad"), yFmt: (v) => fmt(v, 2), unit: " %" });
+  }
   const cpu = [{ name: "serwer gry", values: S.map(s => s.serverCpuAvg), color: c[0] }, { name: "PostgreSQL", values: S.map(s => s.dbCpuAvg), color: c[1] }, { name: "boty (generator)", values: S.map(s => s.loadgenCpuAvg), color: c[2] }];
   legend("cpu-legend", cpu);
   levelChart("cpu-chart", { series: cpu, yFmt: (v) => fmt(v) + "%", marked });
