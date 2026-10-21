@@ -18,7 +18,7 @@ public static class PlotObjects
     {
         Items.Workbench, Items.Furnace,
         Items.Mill, Items.OilPress, Items.PicklingBarrel, Items.Bakery, Items.Kitchen,
-        Items.Belt, Items.Inserter,
+        Items.Belt, Items.Inserter, Items.Splitter,
         Items.WoodenChest, Items.IronChest, Items.WoodPile, Items.Heap, Items.GrainSilo,
     };
 }

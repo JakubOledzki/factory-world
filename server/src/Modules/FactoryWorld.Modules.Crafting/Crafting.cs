@@ -26,6 +26,7 @@ public static class Workshop
         new(Items.Nails, 5, TimeSpan.FromSeconds(10), [(Items.IronIngot, 1)], 2),
         new(Items.Belt, 4, TimeSpan.FromSeconds(10), [(Items.IronIngot, 2), (Items.Wood, 1)], 3),
         new(Items.Inserter, 1, TimeSpan.FromSeconds(15), [(Items.IronIngot, 2), (Items.CopperIngot, 1), (Items.Nails, 5)], 5),
+        new(Items.Splitter, 1, TimeSpan.FromSeconds(20), [(Items.Belt, 2), (Items.IronIngot, 4), (Items.CopperIngot, 2)], 6),
         new(Items.WoodenChest, 1, TimeSpan.FromSeconds(10), [(Items.Wood, 10), (Items.Nails, 5)], 3),
         new(Items.IronChest, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 8)], 6),
         new(Items.WoodPile, 1, TimeSpan.FromSeconds(5), [(Items.Wood, 4)], 1),

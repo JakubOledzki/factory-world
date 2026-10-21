@@ -10,8 +10,11 @@ public static class LogisticsRules
 {
     public static readonly TimeSpan Tick = TimeSpan.FromMilliseconds(200);
 
-    /// <summary>Places for items along one belt tile; an item moves one place per tick.</summary>
+    /// <summary>Places for items along one lane of a belt tile; an item moves one place per tick.</summary>
     public const int BeltSlots = 4;
+
+    /// <summary>Lanes side by side on a belt, the left one (as the belt runs) first.</summary>
+    public const int BeltLanes = 2;
 
     /// <summary>Ticks an inserter's arm takes to swing from where it picks up to where it drops, and as many back.</summary>
     public const int SwingTicks = 4;
@@ -28,12 +31,20 @@ public static class LogisticsRules
         2 => (0, -1),
         _ => (-1, 0),
     };
+
+    /// <summary>The tile on the left of something going the way a rotation faces.</summary>
+    public static (int Dx, int Dy) Left(int rotation)
+    {
+        var (dx, dy) = Facing(rotation);
+        return (dy, -dx);
+    }
 }
 
 /// <summary>What a belt, an inserter or a storage holds; kept as JSON, one row per object.</summary>
 public sealed class Contents
 {
-    /// <summary>A belt's places, from where items come on to where they leave; null is empty.</summary>
+    /// <summary>A belt's places, lane after lane (left, then right), each from where items come on
+    /// to where they leave; null is empty.</summary>
     public string?[]? Belt { get; set; }
 
     /// <summary>The item in an inserter's hand.</summary>
@@ -44,6 +55,16 @@ public sealed class Contents
 
     /// <summary>What a storage holds.</summary>
     public List<ItemStack>? Items { get; set; }
+
+    /// <summary>A splitter's filter: these items go out on <see cref="FilterSide"/> only, the rest on
+    /// the other side. Without one it sends items left and right in turn.</summary>
+    public List<string>? Filter { get; set; }
+
+    /// <summary>The side a splitter sends filtered items to: 0 left, 1 right (as the splitter runs).</summary>
+    public int FilterSide { get; set; }
+
+    /// <summary>The side a splitter without a filter sends the next item to.</summary>
+    public int Turn { get; set; }
 
     /// <summary>The stack of a storage inserters take from next: they go round all of them in turn,
     /// so ore and coal stored together both reach a furnace.</summary>
@@ -118,22 +139,33 @@ public sealed class StoragePort(StorageKind kind, Contents contents, Action chan
 
 /// <summary>
 /// One plot's belts and inserters, with the machines and storage they reach, run step by step.
-/// Belts move their items forward, onto the belt they face (from behind or from the side, not head
-/// on); an inserter picks one item from the tile behind it (a belt, a machine's output or a storage),
-/// swings round and drops it on the tile in front, when that takes it.
+/// Belts move their items forward along two lanes, onto the belt they face (not head on). A belt fed
+/// from behind, or from one side only, carries both lanes on as they are, so belts can turn corners;
+/// a belt that joins another from the side as well puts all it carries on the near lane of that one.
+/// An inserter picks one item from the tile behind it (a belt, a machine's output or a storage),
+/// swings round and drops it on the tile in front, when that takes it: on a belt, on the far lane
+/// first.
 /// </summary>
 public sealed class PlotLogistics
 {
-    private sealed class Belt(Guid id, int x, int y, int rotation, string?[] slots)
+    /// <summary>A belt or a splitter: lanes of places that items move along.</summary>
+    private sealed class Belt(Guid id, int x, int y, int rotation, Contents contents, bool splitter)
     {
         public Guid Id { get; } = id;
         public int X { get; } = x;
         public int Y { get; } = y;
         public int Rotation { get; } = rotation;
-        public string?[] Slots { get; } = slots;
-        public Belt? Next { get; set; }
-        public int Entry { get; set; }
+        public Contents Contents { get; } = contents;
+        public string?[] Slots => Contents.Belt!;
+        public bool IsSplitter { get; } = splitter;
+
+        /// <summary>Where items go at the end of the lanes: a belt has one way on, a splitter two
+        /// (its left and its right), either of which may lead nowhere.</summary>
+        public Link?[] Out { get; } = splitter ? new Link?[2] : new Link?[1];
     }
+
+    /// <summary>The belt items go on to, the lane each lane leads to and the place on it they come on at.</summary>
+    private sealed record Link(Belt To, int[] Into, int Entry);
 
     private sealed class Inserter(Guid id, Contents contents)
     {
@@ -143,9 +175,12 @@ public sealed class PlotLogistics
         public IMachinePort? FromPort { get; set; }
         public Belt? ToBelt { get; set; }
         public IMachinePort? ToPort { get; set; }
+
+        /// <summary>The lanes of the belt in front to drop on, the far one first.</summary>
+        public int[] Lanes { get; set; } = [1, 0];
     }
 
-    // An inserter drops on a belt in the middle first, where the item has room to move on.
+    // An inserter drops on a lane in the middle first, where the item has room to move on.
     private static readonly int[] DropOrder = [1, 2, 0, 3];
 
     private readonly List<Belt> _belts = [];
@@ -162,43 +197,41 @@ public sealed class PlotLogistics
     {
         var at = objects.ToDictionary(o => (o.TileX, o.TileY));
         var belts = new Dictionary<(int, int), Belt>();
-        foreach (var o in objects.Where(o => o.Kind == Items.Belt).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
+        foreach (var o in objects.Where(o => o.Kind is Items.Belt or Items.Splitter).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
         {
             var c = Contents(contents, o.Id);
-            if (c.Belt is not { Length: LogisticsRules.BeltSlots })
+            if (c.Belt is not { Length: LogisticsRules.BeltSlots * LogisticsRules.BeltLanes })
             {
-                var slots = new string?[LogisticsRules.BeltSlots];
-                c.Belt?.Take(LogisticsRules.BeltSlots).ToArray().CopyTo(slots, 0);
+                // A belt from before there were two lanes keeps what it had on the left one.
+                var slots = new string?[LogisticsRules.BeltSlots * LogisticsRules.BeltLanes];
+                c.Belt?.Take(slots.Length).ToArray().CopyTo(slots, 0);
                 c.Belt = slots;
             }
 
-            belts[(o.TileX, o.TileY)] = new Belt(o.Id, o.TileX, o.TileY, o.Rotation, c.Belt);
+            belts[(o.TileX, o.TileY)] = new Belt(o.Id, o.TileX, o.TileY, o.Rotation, c, o.Kind == Items.Splitter);
         }
 
+        // Only belts turn corners; a splitter always runs straight.
+        var rotations = belts.Where(b => !b.Value.IsSplitter).ToDictionary(b => b.Key, b => b.Value.Rotation);
         foreach (var belt in belts.Values)
         {
-            var (dx, dy) = LogisticsRules.Facing(belt.Rotation);
-            if (belts.TryGetValue((belt.X + dx, belt.Y + dy), out var next) && (next.Rotation & 3) != ((belt.Rotation + 2) & 3))
+            if (belt.IsSplitter)
             {
-                belt.Next = next;
-                // From behind onto the start of the next belt, from the side into its middle.
-                belt.Entry = (next.Rotation & 3) == (belt.Rotation & 3) ? 0 : 1;
+                var left = LogisticsRules.Left(belt.Rotation);
+                belt.Out[0] = Connect(belts, rotations, belt, left);
+                belt.Out[1] = Connect(belts, rotations, belt, (-left.Dx, -left.Dy));
+            }
+            else
+            {
+                belt.Out[0] = Connect(belts, rotations, belt, LogisticsRules.Facing(belt.Rotation));
             }
         }
 
         // Downstream belts move first, so a full line of items moves all together.
-        var state = new Dictionary<Belt, bool>();
+        var seen = new HashSet<Belt>();
         foreach (var start in belts.Values)
         {
-            var path = new List<Belt>();
-            for (var b = start; b is not null && !state.ContainsKey(b); b = b.Next)
-            {
-                state[b] = false;
-                path.Add(b);
-            }
-
-            path.Reverse();
-            _belts.AddRange(path);
+            Downstream(start, seen);
         }
 
         foreach (var o in objects.Where(o => o.Kind == Items.Inserter).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
@@ -209,6 +242,11 @@ public sealed class PlotLogistics
             var to = (o.TileX + dx, o.TileY + dy);
             inserter.FromBelt = belts.GetValueOrDefault(from);
             inserter.ToBelt = belts.GetValueOrDefault(to);
+            if (inserter.ToBelt is { } onto && LogisticsRules.Left(onto.Rotation) == (dx, dy))
+            {
+                // Standing on the belt's right, it reaches over to the left lane first.
+                inserter.Lanes = [0, 1];
+            }
             if (at.TryGetValue(from, out var source))
             {
                 inserter.FromPort = ports.GetValueOrDefault(source.Id);
@@ -223,6 +261,76 @@ public sealed class PlotLogistics
         }
 
         _ports.AddRange(ports.Values.Distinct());
+    }
+
+    /// <summary>How items leave <paramref name="belt"/> towards <paramref name="way"/>: onto the belt
+    /// there, unless that one runs head on into it.</summary>
+    private static Link? Connect(Dictionary<(int, int), Belt> belts, Dictionary<(int, int), int> rotations, Belt belt, (int Dx, int Dy) way)
+    {
+        if (!belts.TryGetValue((belt.X + way.Dx, belt.Y + way.Dy), out var next) || LogisticsRules.Facing(next.Rotation) == (-way.Dx, -way.Dy))
+        {
+            return null;
+        }
+
+        if (LogisticsRules.Facing(next.Rotation) == way)
+        {
+            // From behind onto the start of it.
+            return new Link(next, [0, 1], 0);
+        }
+
+        if (!next.IsSplitter && Bend(rotations, next.X, next.Y, next.Rotation) is not 0)
+        {
+            // From the side of a belt fed from that side only: it is a corner, the lanes go round it.
+            return new Link(next, [0, 1], 0);
+        }
+
+        // From the side into the middle of the near lane.
+        var near = LogisticsRules.Left(next.Rotation) == (-way.Dx, -way.Dy) ? 0 : 1;
+        return new Link(next, [near, near], 1);
+    }
+
+    private void Downstream(Belt belt, HashSet<Belt> seen)
+    {
+        if (!seen.Add(belt))
+        {
+            return;
+        }
+
+        foreach (var link in belt.Out)
+        {
+            if (link is not null)
+            {
+                Downstream(link.To, seen);
+            }
+        }
+
+        _belts.Add(belt);
+    }
+
+    /// <summary>Which side a belt turns in from: -1 when the only belt feeding it comes from its left,
+    /// 1 from its right, 0 when it runs straight (fed from behind, from both sides or not at all).</summary>
+    private static int Bend(Dictionary<(int, int), int> belts, int x, int y, int rotation)
+    {
+        bool Feeds((int Dx, int Dy) from)
+        {
+            if (!belts.TryGetValue((x + from.Dx, y + from.Dy), out var r))
+            {
+                return false;
+            }
+
+            var (dx, dy) = LogisticsRules.Facing(r);
+            return (dx, dy) == (-from.Dx, -from.Dy);
+        }
+
+        var (fx, fy) = LogisticsRules.Facing(rotation);
+        var left = LogisticsRules.Left(rotation);
+        var (fromLeft, fromRight) = (Feeds(left), Feeds((-left.Dx, -left.Dy)));
+        if (Feeds((-fx, -fy)) || fromLeft == fromRight)
+        {
+            return 0;
+        }
+
+        return fromLeft ? -1 : 1;
     }
 
     /// <summary>The tiles that inserters pick up from and drop on, which the machines there must be opened for.</summary>
@@ -281,27 +389,30 @@ public sealed class PlotLogistics
     private bool Step(DateTimeOffset now)
     {
         var moved = false;
+        const int size = LogisticsRules.BeltSlots;
         foreach (var belt in _belts)
         {
             var slots = belt.Slots;
-            var end = slots.Length - 1;
-            if (slots[end] is { } leaving && belt.Next is { } next && next.Slots[belt.Entry] is null)
+            for (var lane = 0; lane < LogisticsRules.BeltLanes; lane++)
             {
-                next.Slots[belt.Entry] = leaving;
-                slots[end] = null;
-                Changed.Add(next.Id);
-                Changed.Add(belt.Id);
-                moved = true;
-            }
-
-            for (var i = end - 1; i >= 0; i--)
-            {
-                if (slots[i] is not null && slots[i + 1] is null)
+                var start = lane * size;
+                var end = start + size - 1;
+                if (slots[end] is { } leaving && Pass(belt, lane, leaving))
                 {
-                    slots[i + 1] = slots[i];
-                    slots[i] = null;
+                    slots[end] = null;
                     Changed.Add(belt.Id);
                     moved = true;
+                }
+
+                for (var i = end - 1; i >= start; i--)
+                {
+                    if (slots[i] is not null && slots[i + 1] is null)
+                    {
+                        slots[i + 1] = slots[i];
+                        slots[i] = null;
+                        Changed.Add(belt.Id);
+                        moved = true;
+                    }
                 }
             }
         }
@@ -344,6 +455,38 @@ public sealed class PlotLogistics
         return moved;
     }
 
+    /// <summary>Puts the item at the end of a lane on the belt it goes on to, when there is room there.
+    /// A splitter sends items left and right in turn, or filtered items one way and the rest the other.</summary>
+    private bool Pass(Belt belt, int lane, string item)
+    {
+        var c = belt.Contents;
+        int[] ways = !belt.IsSplitter ? [0]
+            : c.Filter is { Count: > 0 } filter ? [filter.Contains(item) ? c.FilterSide : 1 - c.FilterSide]
+            : [c.Turn, 1 - c.Turn];
+        foreach (var way in ways)
+        {
+            if (belt.Out[way] is not { } link)
+            {
+                continue;
+            }
+
+            var at = link.Into[lane] * LogisticsRules.BeltSlots + link.Entry;
+            if (link.To.Slots[at] is null)
+            {
+                link.To.Slots[at] = item;
+                Changed.Add(link.To.Id);
+                if (belt.IsSplitter)
+                {
+                    c.Turn = 1 - way;
+                }
+
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private string? Pick(Inserter inserter, DateTimeOffset now)
     {
         Func<string, bool> wanted;
@@ -362,14 +505,18 @@ public sealed class PlotLogistics
 
         if (inserter.FromBelt is { } belt)
         {
-            // The item furthest along goes first.
-            for (var i = belt.Slots.Length - 1; i >= 0; i--)
+            // The item furthest along goes first, from either lane.
+            for (var i = LogisticsRules.BeltSlots - 1; i >= 0; i--)
             {
-                if (belt.Slots[i] is { } item && wanted(item))
+                for (var lane = 0; lane < LogisticsRules.BeltLanes; lane++)
                 {
-                    belt.Slots[i] = null;
-                    Changed.Add(belt.Id);
-                    return item;
+                    var at = lane * LogisticsRules.BeltSlots + i;
+                    if (belt.Slots[at] is { } item && wanted(item))
+                    {
+                        belt.Slots[at] = null;
+                        Changed.Add(belt.Id);
+                        return item;
+                    }
                 }
             }
 
@@ -389,13 +536,17 @@ public sealed class PlotLogistics
     {
         if (inserter.ToBelt is { } belt)
         {
-            foreach (var i in DropOrder)
+            foreach (var lane in inserter.Lanes)
             {
-                if (belt.Slots[i] is null)
+                foreach (var i in DropOrder)
                 {
-                    belt.Slots[i] = item;
-                    Changed.Add(belt.Id);
-                    return true;
+                    var at = lane * LogisticsRules.BeltSlots + i;
+                    if (belt.Slots[at] is null)
+                    {
+                        belt.Slots[at] = item;
+                        Changed.Add(belt.Id);
+                        return true;
+                    }
                 }
             }
 

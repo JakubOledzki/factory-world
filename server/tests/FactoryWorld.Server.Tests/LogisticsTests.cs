@@ -46,12 +46,17 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
 
     private static int Stored(Contents c, string item) => c.Items?.FirstOrDefault(s => s.Item == item)?.Quantity ?? 0;
 
+    // A belt's places: the left lane, then the right one.
+    private static string?[] Lanes(string?[] left, string?[]? right = null) => [.. left, .. right ?? [null, null, null, null]];
+
+    private static string?[] Lane(Contents c, int lane) => c.Belt![(lane * LogisticsRules.BeltSlots)..((lane + 1) * LogisticsRules.BeltSlots)];
+
     [Fact]
     public void A_belt_moves_an_item_one_place_a_tick_onto_the_next_belt_and_stops_at_the_end()
     {
         var a = Obj(Items.Belt, 0, 0);
         var b = Obj(Items.Belt, 1, 0);
-        var contents = new Dictionary<Guid, Contents> { [a.Id] = new() { Belt = [Items.Wood, null, null, null] } };
+        var contents = new Dictionary<Guid, Contents> { [a.Id] = new() { Belt = Lanes([Items.Wood, null, null, null], [Items.Stone, null, null, null]) } };
         var (logistics, _) = Build([a, b], contents);
 
         logistics.Run(Start, Start + LogisticsRules.Tick * 3);
@@ -60,39 +65,68 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         logistics.Run(Start, Start + LogisticsRules.Tick * 1);
         Assert.Equal(Items.Wood, contents[b.Id].Belt![0]);
 
+        // Each lane keeps to itself.
         logistics.Run(Start, Start + LogisticsRules.Tick * 10);
-        Assert.Equal(new string?[] { null, null, null, Items.Wood }, contents[b.Id].Belt!);
+        Assert.Equal(Lanes([null, null, null, Items.Wood], [null, null, null, Items.Stone]), contents[b.Id].Belt!);
     }
 
     [Fact]
-    public void Belts_facing_each_other_pass_nothing_but_one_from_the_side_feeds_into_the_middle()
+    public void A_belt_from_before_the_lanes_keeps_its_items_on_the_left_lane()
+    {
+        var a = Obj(Items.Belt, 0, 0);
+        var contents = new Dictionary<Guid, Contents> { [a.Id] = new() { Belt = [Items.Wood, null, null, null] } };
+        Build([a], contents);
+        Assert.Equal(Lanes([Items.Wood, null, null, null]), contents[a.Id].Belt!);
+    }
+
+    [Fact]
+    public void Belts_facing_each_other_pass_nothing_and_a_belt_fed_from_one_side_turns_the_corner()
     {
         var a = Obj(Items.Belt, 0, 0, East);
         var b = Obj(Items.Belt, 1, 0, West);
-        var contents = new Dictionary<Guid, Contents> { [a.Id] = new() { Belt = [null, null, null, Items.Stone] } };
+        var contents = new Dictionary<Guid, Contents> { [a.Id] = new() { Belt = Lanes([null, null, null, Items.Stone]) } };
         Build([a, b], contents).Logistics.Run(Start, Start + TimeSpan.FromSeconds(5));
         Assert.Equal(Items.Stone, contents[a.Id].Belt![3]);
 
+        // Going south, then east: the left lane stays the left one round the corner.
+        var down = Obj(Items.Belt, 5, 4, 0);
+        var corner = Obj(Items.Belt, 5, 5, East);
+        contents = new Dictionary<Guid, Contents> { [down.Id] = new() { Belt = Lanes([null, null, null, Items.Stone], [null, null, null, Items.Coal]) } };
+        Build([down, corner], contents).Logistics.Run(Start, Start + LogisticsRules.Tick);
+        Assert.Equal(Lanes([Items.Stone, null, null, null], [Items.Coal, null, null, null]), contents[corner.Id].Belt!);
+    }
+
+    [Fact]
+    public void A_belt_joining_a_running_line_from_the_side_puts_everything_on_the_near_lane()
+    {
+        // A line going east, fed from behind, and a belt coming down into it from the north: its left side.
+        var behind = Obj(Items.Belt, 4, 5, East);
         var side = Obj(Items.Belt, 5, 4, 0);
         var line = Obj(Items.Belt, 5, 5, East);
-        contents = new Dictionary<Guid, Contents> { [side.Id] = new() { Belt = [null, null, null, Items.Stone] } };
-        Build([side, line], contents).Logistics.Run(Start, Start + LogisticsRules.Tick);
-        Assert.Equal(Items.Stone, contents[line.Id].Belt![1]);
+        var contents = new Dictionary<Guid, Contents> { [side.Id] = new() { Belt = Lanes([null, null, null, Items.Stone], [null, null, null, Items.Coal]) } };
+        var (logistics, _) = Build([behind, side, line], contents);
+
+        logistics.Run(Start, Start + LogisticsRules.Tick);
+        Assert.Equal(Lanes([null, Items.Stone, null, null]), contents[line.Id].Belt!);
+        logistics.Run(Start, Start + LogisticsRules.Tick * 3);
+        Assert.Equal(Lanes([null, null, Items.Coal, Items.Stone]), contents[line.Id].Belt!);
     }
 
     [Fact]
     public void A_full_line_of_belts_moves_together_and_waits_at_its_end()
     {
         var belts = Enumerable.Range(0, 3).Select(x => Obj(Items.Belt, x, 0)).ToList();
-        var contents = belts.ToDictionary(b => b.Id, _ => new Contents { Belt = [Items.Coal, Items.Coal, Items.Coal, null] });
+        var contents = belts.ToDictionary(b => b.Id, _ => new Contents { Belt = Lanes([Items.Coal, Items.Coal, Items.Coal, null], [Items.IronOre, null, null, null]) });
         var (logistics, _) = Build(belts, contents);
 
         logistics.Run(Start, Start + LogisticsRules.Tick);
-        Assert.All(belts, b => Assert.Equal(new string?[] { null, Items.Coal, Items.Coal, Items.Coal }, contents[b.Id].Belt!));
+        Assert.All(belts, b => Assert.Equal(Lanes([null, Items.Coal, Items.Coal, Items.Coal], [null, Items.IronOre, null, null]), contents[b.Id].Belt!));
 
+        // Two lanes carry twice as much.
         logistics.Run(Start, Start + TimeSpan.FromMinutes(1));
-        Assert.Equal(9, belts.Sum(b => contents[b.Id].Belt!.Count(i => i is not null)));
-        Assert.All(contents[belts[2].Id].Belt!, i => Assert.Equal(Items.Coal, i));
+        Assert.Equal(12, belts.Sum(b => contents[b.Id].Belt!.Count(i => i is not null)));
+        Assert.All(Lane(contents[belts[2].Id], 0), i => Assert.Equal(Items.Coal, i));
+        Assert.All(Lane(contents[belts[2].Id], 1)[1..], i => Assert.Equal(Items.IronOre, i));
     }
 
     [Fact]
@@ -115,6 +149,68 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         logistics.Run(end, end + TimeSpan.FromHours(5));
         Assert.Equal(0, Stored(contents[from.Id], Items.Wood));
         Assert.Equal(20, Stored(contents[to.Id], Items.Wood));
+    }
+
+    [Fact]
+    public void An_inserter_beside_a_belt_drops_on_the_far_lane_first()
+    {
+        // A belt going east; the inserter stands north of it (its left) and drops south onto it.
+        var chest = Obj(Items.WoodenChest, 2, -1);
+        var belt = Obj(Items.Belt, 2, 1);
+        var contents = new Dictionary<Guid, Contents> { [chest.Id] = new() { Items = [new() { Item = Items.Stone, Quantity = 1 }] } };
+        Build([chest, Obj(Items.Inserter, 2, 0, 0), belt], contents).Logistics.Run(Start, Start + TimeSpan.FromSeconds(5));
+
+        Assert.Equal(Lanes([null, null, null, null], [null, null, null, Items.Stone]), contents[belt.Id].Belt!);
+    }
+
+    private static (PlotObject Input, PlotObject Splitter, PlotObject Left, PlotObject Right) SplitterLine()
+    {
+        // In from the west; out to the north (the splitter's left) and the south (its right).
+        return (Obj(Items.Belt, 0, 0, East), Obj(Items.Splitter, 1, 0, East), Obj(Items.Belt, 1, -1, 2), Obj(Items.Belt, 1, 1, 0));
+    }
+
+    private static int Count(Contents c, string item) => c.Belt!.Count(i => i == item);
+
+    [Fact]
+    public void A_splitter_sends_items_left_and_right_in_turn()
+    {
+        var (input, splitter, left, right) = SplitterLine();
+        var contents = new Dictionary<Guid, Contents> { [input.Id] = new() { Belt = Lanes([Items.Wood, Items.Wood, Items.Wood, Items.Wood]) } };
+        Build([input, splitter, left, right], contents).Logistics.Run(Start, Start + TimeSpan.FromSeconds(10));
+
+        Assert.Equal(2, Count(contents[left.Id], Items.Wood));
+        Assert.Equal(2, Count(contents[right.Id], Items.Wood));
+    }
+
+    [Fact]
+    public void A_splitter_with_a_filter_sends_those_items_one_way_and_the_rest_the_other()
+    {
+        var (input, splitter, left, right) = SplitterLine();
+        var contents = new Dictionary<Guid, Contents>
+        {
+            [input.Id] = new() { Belt = Lanes([Items.Wood, Items.Stone, Items.Wood, Items.Stone], [Items.Stone, Items.Wood, null, null]) },
+            [splitter.Id] = new() { Filter = [Items.Stone], FilterSide = 1 },
+        };
+        Build([input, splitter, left, right], contents).Logistics.Run(Start, Start + TimeSpan.FromSeconds(10));
+
+        Assert.Equal(3, Count(contents[left.Id], Items.Wood));
+        Assert.Equal(3, Count(contents[right.Id], Items.Stone));
+        Assert.Equal(0, Count(contents[left.Id], Items.Stone) + Count(contents[right.Id], Items.Wood));
+    }
+
+    [Fact]
+    public void A_filtered_item_waits_when_its_way_out_is_missing()
+    {
+        var (input, splitter, left, _) = SplitterLine();
+        var contents = new Dictionary<Guid, Contents>
+        {
+            [input.Id] = new() { Belt = Lanes([null, null, null, Items.Stone]) },
+            [splitter.Id] = new() { Filter = [Items.Stone], FilterSide = 1 },
+        };
+        Build([input, splitter, left], contents).Logistics.Run(Start, Start + TimeSpan.FromSeconds(10));
+
+        Assert.Equal(1, Count(contents[splitter.Id], Items.Stone));
+        Assert.Equal(0, Count(contents[left.Id], Items.Stone));
     }
 
     [Fact]
@@ -143,9 +239,10 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         };
         Build([chest, Obj(Items.Inserter, 1, 0), belt], contents).Logistics.Run(Start, Start + TimeSpan.FromMinutes(5));
 
-        // Four items fill the belt and a fifth waits in the inserter's hand: ore, coal, ore, coal, ore.
-        Assert.Equal(7, Stored(contents[chest.Id], Items.IronOre));
-        Assert.Equal(8, Stored(contents[chest.Id], Items.Coal));
+        // Eight items fill both lanes of the belt and a ninth waits in the inserter's hand:
+        // ore, coal, ore, coal, ore, coal, ore, coal, ore.
+        Assert.Equal(5, Stored(contents[chest.Id], Items.IronOre));
+        Assert.Equal(6, Stored(contents[chest.Id], Items.Coal));
     }
 
     [Fact]
@@ -248,6 +345,28 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         Assert.Contains(Items.WoodPile, recipes);
         Assert.Contains(Items.Heap, recipes);
         Assert.Contains(Items.GrainSilo, recipes);
+        Assert.Contains(Items.Splitter, recipes);
+    }
+
+    [Fact]
+    public async Task A_splitter_on_a_plot_keeps_its_filter()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty) = await PlotWithFreeRowAsync(client, 1);
+        await GiveAsync(client, Items.Splitter, 1);
+        var splitter = await PlaceAsync(client, x, y, Items.Splitter, tx, ty);
+
+        var set = await client.SendAsync("splitter.set", new { x, y, id = splitter, side = 1, items = new[] { Items.Stone, Items.Coal } });
+        Assert.Equal("logistics", set.Type());
+        var state = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("belts")[0];
+        Assert.Equal([Items.Stone, Items.Coal], state.GetProperty("filter").EnumerateArray().Select(i => i.GetString()));
+        Assert.Equal(1, state.GetProperty("filterSide").GetInt32());
+
+        Assert.Equal("bad_filter", (await client.SendAsync("splitter.set", new { x, y, id = splitter, side = 0, items = new[] { "nothing" } })).ErrorCode());
+        Assert.Equal("bad_side", (await client.SendAsync("splitter.set", new { x, y, id = splitter, side = 2, items = Array.Empty<string>() })).ErrorCode());
+        Assert.Equal("logistics", (await client.SendAsync("splitter.set", new { x, y, id = splitter, side = 0, items = Array.Empty<string>() })).Type());
+        state = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("belts")[0];
+        Assert.Empty(state.GetProperty("filter").EnumerateArray());
     }
 
     [Fact]

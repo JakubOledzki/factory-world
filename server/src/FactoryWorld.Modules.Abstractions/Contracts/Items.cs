@@ -61,6 +61,7 @@ public static class Items
     // Logistics on plots: belts carry items, inserters move them between belts, machines and storage.
     public const string Belt = "logistics_belt";
     public const string Inserter = "logistics_inserter";
+    public const string Splitter = "logistics_splitter";
 
     // Storage put on plots: chests take anything, piles, heaps and silos one kind of bulk goods.
     public const string WoodenChest = "storage_wooden_chest";
@@ -133,6 +134,7 @@ public static class Items
         [Sunflower] = "Słonecznik",
         [Belt] = "Taśmociąg",
         [Inserter] = "Podajnik",
+        [Splitter] = "Rozdzielacz",
         [WoodenChest] = "Skrzynia drewniana",
         [IronChest] = "Skrzynia żelazna",
         [WoodPile] = "Stos drewna",

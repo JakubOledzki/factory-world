@@ -124,6 +124,40 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
             await inventory.AddAsync(player, item, taken, cancellationToken);
         }, cancellationToken);
 
+    /// <summary>Most items a splitter can be set to sort out.</summary>
+    public const int MaxFilter = 8;
+
+    /// <summary>Sets which items a splitter on the player's plot sends to one side (0 left, 1 right) and
+    /// the rest to the other; no items, and it sends items left and right in turn.</summary>
+    public Task<LogisticsState> SetSplitterAsync(
+        Guid player, int x, int y, Guid id, int side, IReadOnlyList<string> items, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            if (side is not (0 or 1))
+            {
+                throw new GameException("bad_side", "A splitter sends items left (0) or right (1).");
+            }
+
+            if (items.Count > MaxFilter || items.Any(i => !Items.Names.ContainsKey(i)))
+            {
+                throw new GameException("bad_filter", $"Choose at most {MaxFilter} items to sort out.");
+            }
+
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            var state = await RunAsync(x, y, cancellationToken);
+            if (!state.Objects.Any(o => o.Id == id && o.Kind == Items.Splitter))
+            {
+                throw new GameException("no_object", "There is no such splitter on this plot.");
+            }
+
+            var contents = state.Contents.GetValueOrDefault(id) ?? new Contents();
+            contents.Filter = items.Count == 0 ? null : items.Distinct().ToList();
+            contents.FilterSide = side;
+            await WriteAsync(id, x, y, contents, cancellationToken);
+            var all = new Dictionary<Guid, Contents>(state.Contents) { [id] = contents };
+            return state with { Contents = all };
+        }, cancellationToken);
+
     private Task<(LogisticsState, PlotObject)> ChangeStorageAsync(
         Guid player, int x, int y, Guid id, Func<StorageKind, List<ItemStack>, Task> change, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -281,6 +315,8 @@ public sealed record LogisticsRequest(int X, int Y);
 
 public sealed record StorageRequest(int X, int Y, Guid Id);
 
+public sealed record SplitterRequest(int X, int Y, Guid Id, int Side, List<string>? Items);
+
 public sealed record StorageItemRequest(int X, int Y, Guid Id, string Item, int Quantity);
 
 /// <summary>The belts, inserters and storage of a plot; the client asks again every moment it watches them.</summary>
@@ -309,9 +345,17 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
             serverTime = state.ServerTime.ToUnixTimeMilliseconds(),
             tickMs = LogisticsRules.Tick.TotalMilliseconds,
             beltSlots = LogisticsRules.BeltSlots,
+            beltLanes = LogisticsRules.BeltLanes,
             swingTicks = LogisticsRules.SwingTicks,
-            belts = state.Objects.Where(o => o.Kind == Items.Belt)
-                .Select(o => new { id = o.Id, items = Of(o.Id).Belt ?? new string?[LogisticsRules.BeltSlots] }),
+            belts = state.Objects.Where(o => o.Kind is Items.Belt or Items.Splitter)
+                .Select(o => new
+                {
+                    id = o.Id,
+                    items = Of(o.Id).Belt ?? new string?[LogisticsRules.BeltSlots * LogisticsRules.BeltLanes],
+                    // Splitters only: the items sorted out and the side they go to.
+                    filter = o.Kind == Items.Splitter ? Of(o.Id).Filter ?? [] : null,
+                    filterSide = Of(o.Id).FilterSide,
+                }),
             inserters = state.Objects.Where(o => o.Kind == Items.Inserter)
                 .Select(o => new { id = o.Id, hand = Of(o.Id).Hand, swing = Of(o.Id).Swing }),
             storages = state.Objects.Where(o => Storages.Find(o.Kind) is not null)
@@ -335,6 +379,21 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
             only = kind.Only?.Select(i => new { id = i, name = Items.Names[i] }),
             items = stacks.Select(s => new { id = s.Item, name = Items.Names.GetValueOrDefault(s.Item, s.Item), quantity = s.Quantity }),
         };
+    }
+}
+
+/// <summary>Sets a splitter's filter; answers with the plot's logistics like "logistics.get".</summary>
+public sealed class SetSplitterHandler(IServiceScopeFactory scopes) : IMessageHandler
+{
+    public string Type => "splitter.set";
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<SplitterRequest>(payload);
+        await using var scope = scopes.CreateAsyncScope();
+        var state = await scope.ServiceProvider.GetRequiredService<LogisticsService>().SetSplitterAsync(
+            client.RequireAccount(), request.X, request.Y, request.Id, request.Side, request.Items ?? [], cancellationToken);
+        return new Reply("logistics", GetLogisticsHandler.Json(request.X, request.Y, state));
     }
 }
 
@@ -408,6 +467,7 @@ public sealed class LogisticsModule : IGameModule
         services.AddScoped<IPlotAutomation>(provider => provider.GetRequiredService<LogisticsService>());
         services.AddScoped<IMachineContents, LogisticsContents>();
         services.AddSingleton<IMessageHandler, GetLogisticsHandler>();
+        services.AddSingleton<IMessageHandler, SetSplitterHandler>();
         services.AddSingleton<IMessageHandler, GetStorageHandler>();
         services.AddSingleton<IMessageHandler, PutStorageHandler>();
         services.AddSingleton<IMessageHandler, TakeStorageHandler>();
