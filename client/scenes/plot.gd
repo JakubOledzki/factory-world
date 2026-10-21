@@ -4,7 +4,8 @@ extends Node2D
 ## The character walks with WSAD or by clicking; clicking a tree, rock or dune walks up to it and
 ## works it with the tool in hand, and a mine is worked with a pickaxe for ore.
 ## The station window loads goods from the inventory and sends them by train to other plots.
-## A workbench or a furnace from the inventory can be put on a free tile and used there, and so can
+## A workbench, a furnace or a machine that processes crops (mill, oil press, pickling barrel,
+## bakery, field kitchen) from the inventory can be put on a free tile and used there, and so can
 ## belts and inserters (turned with R) that move items between machines and chests, piles and silos.
 
 ## Keyboard actions of this screen: name and keys.
@@ -70,10 +71,14 @@ const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalni
 ## What a player can put on a plot from the inventory, and its sprite there; belts are drawn by
 ## PlotLogistics, flat on the ground.
 const PLACED_SPRITES := {
-	"furniture_workbench": "workbench", "furniture_furnace": "furnace", "logistics_inserter": "inserter",
+	"furniture_workbench": "workbench", "furniture_furnace": "furnace",
+	"furniture_mill": "mill", "furniture_oil_press": "oil_press", "furniture_pickling_barrel": "pickling_barrel",
+	"furniture_bakery": "bakery", "furniture_kitchen": "kitchen", "logistics_inserter": "inserter",
 	"storage_wooden_chest": "wooden_chest", "storage_iron_chest": "iron_chest", "storage_wood_pile": "wood_pile",
 	"storage_heap": "heap", "storage_grain_silo": "grain_silo",
 }
+## Placed objects that open the machine window.
+const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen"]
 const BELT := "logistics_belt"
 const INSERTER := "logistics_inserter"
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo"]
@@ -212,6 +217,7 @@ var _station_window: GameWindow
 var _crafting_window: CraftingWindow
 var _furnace_window: FurnaceWindow
 var _storage_window: StorageWindow
+var _machine_window: MachineWindow
 var _station_box: VBoxContainer
 var _station_state := {}
 var _clock_offset := 0.0
@@ -913,8 +919,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("cancel"):
 		if _placing != "":
 			_stop_placing()
-		elif _station_window.visible or _inventory_window.visible or _crafting_window.visible or _furnace_window.visible or _storage_window.visible:
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _storage_window]:
+		elif _station_window.visible or _inventory_window.visible or _using_window_open():
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _storage_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -930,10 +936,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("interact"):
 		if _nearest_placed().x >= 0:
 			var at := _nearest_placed()
-			if _using == at and (_crafting_window.visible or _furnace_window.visible or _storage_window.visible):
-				_crafting_window.hide_window()
-				_furnace_window.hide_window()
-				_storage_window.hide_window()
+			if _using == at and _using_window_open():
+				_hide_placed_windows()
 			else:
 				_use_placed(at)
 		elif _near_station():
@@ -1396,18 +1400,26 @@ func _use_placed(cell: Vector2i) -> void:
 	var object: Dictionary = _placed[cell]
 	_using = cell
 	_station_window.hide_window()
+	_hide_placed_windows()
 	if object["kind"] == "furniture_furnace":
-		_crafting_window.hide_window()
-		_storage_window.hide_window()
 		_furnace_window.open_at(object["id"])
+	elif object["kind"] in MACHINES:
+		_machine_window.open_at(object["id"], object["name"])
 	elif object["kind"] in STORAGES:
-		_crafting_window.hide_window()
-		_furnace_window.hide_window()
 		_storage_window.open_at(_at, object["id"])
 	elif object["kind"] == "furniture_workbench":
-		_furnace_window.hide_window()
-		_storage_window.hide_window()
 		_crafting_window.open_at(object["id"])
+
+
+func _using_window_open() -> bool:
+	return _crafting_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible
+
+
+func _hide_placed_windows() -> void:
+	_crafting_window.hide_window()
+	_furnace_window.hide_window()
+	_machine_window.hide_window()
+	_storage_window.hide_window()
 
 
 func _pick_up_placed(id: String) -> void:
@@ -1424,9 +1436,7 @@ func _pick_up_placed(id: String) -> void:
 				_hovered = Vector2i(-1, -1)
 			_draw_cell(cell)
 	_logistics.set_objects(_placed)
-	_crafting_window.hide_window()
-	_furnace_window.hide_window()
-	_storage_window.hide_window()
+	_hide_placed_windows()
 	_using = Vector2i(-1, -1)
 	_reload_inventory()
 	_poll_logistics()
@@ -1705,9 +1715,7 @@ func _process(delta: float) -> void:
 	if _station_window.visible and not _near_station():
 		_station_window.hide_window()
 	if _using.x >= 0 and (not _placed.has(_using) or not _near(_using, REACH + 1.5)):
-		_crafting_window.hide_window()
-		_furnace_window.hide_window()
-		_storage_window.hide_window()
+		_hide_placed_windows()
 		_using = Vector2i(-1, -1)
 	if _logistics.has_machinery() and Time.get_ticks_msec() >= _next_logistics_poll:
 		_poll_logistics()
@@ -1722,7 +1730,7 @@ func _update_prompt() -> void:
 	var text := ""
 	var placed := _nearest_placed()
 	if _work.x < 0 and placed.x >= 0:
-		if not (_using == placed and (_crafting_window.visible or _furnace_window.visible or _storage_window.visible)):
+		if not (_using == placed and _using_window_open()):
 			text = "[E] %s" % _placed[placed]["name"]
 	elif _work.x < 0 and _near_station() and not _station_window.visible:
 		text = "[E] Stacja kolejowa"
@@ -2053,12 +2061,18 @@ func _build_windows() -> void:
 		_poll_logistics())
 	_storage_window.failed.connect(_show_error)
 	_storage_window.pick_up_requested.connect(_pick_up_placed)
+	_machine_window = MachineWindow.new()
+	_machine_window.position = Vector2(1280 - 420 - 12, 64)
+	_machine_window.inventory_changed.connect(_on_furnace_changed)
+	_machine_window.failed.connect(_show_error)
+	_machine_window.pick_up_requested.connect(_pick_up_placed)
 	var layer := _hud
 	layer.add_child(_inventory_window)
 	layer.add_child(_storage_window)
 	layer.add_child(_station_window)
 	layer.add_child(_crafting_window)
 	layer.add_child(_furnace_window)
+	layer.add_child(_machine_window)
 
 
 func _reload_inventory() -> void:
@@ -2071,6 +2085,7 @@ func _reload_inventory() -> void:
 	_crafting_window.set_items(_items)
 	_furnace_window.set_items(_items)
 	_storage_window.set_items(_items)
+	_machine_window.set_items(_items)
 	if _station_window.visible and not _station_state.is_empty():
 		_show_station()
 

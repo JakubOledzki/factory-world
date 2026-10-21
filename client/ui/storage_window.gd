@@ -18,7 +18,6 @@ var _items: Array = []
 var _next_poll := 0.0
 var _refreshing := false
 
-var _title: Label
 var _fill: ProgressBar
 var _fill_label: Label
 var _stored := VBoxContainer.new()
@@ -29,9 +28,6 @@ var _pick_up_button: Button
 
 func _init() -> void:
 	super("Magazyn", 420)
-	_title = UI.label("", UI.GOLD)
-	_title.add_theme_font_override("font", UI.bold())
-	content.add_child(_title)
 	_fill = ProgressBar.new()
 	_fill.show_percentage = false
 	_fill.custom_minimum_size.y = 10
@@ -109,7 +105,7 @@ func _room(item: String) -> int:
 func _render() -> void:
 	if _state.is_empty():
 		return
-	_title.text = _state["name"]
+	set_title(_state["name"])
 	var stored := int(_state["stored"])
 	_fill.max_value = int(_state["slots"])
 	_fill.value = int(_state["usedSlots"])

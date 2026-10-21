@@ -42,6 +42,31 @@ public sealed class FurnaceRow
     public DateTimeOffset? StartedAt { get; set; }
 }
 
+/// <summary>What a placed processing machine (mill, bakery, ...) holds; keyed by the id of the object on the plot.</summary>
+public sealed class MachineRow
+{
+    public Guid ObjectId { get; set; }
+
+    public Guid OwnerId { get; set; }
+
+    public string Kind { get; set; } = "";
+
+    public string? Recipe { get; set; }
+
+    /// <summary>How much of each ingredient of the recipe is loaded, in the recipe's order.</summary>
+    public int[] Inputs { get; set; } = [];
+
+    public string? FuelItem { get; set; }
+
+    public int Fuel { get; set; }
+
+    public int Heat { get; set; }
+
+    public int Output { get; set; }
+
+    public DateTimeOffset? StartedAt { get; set; }
+}
+
 public sealed class CraftingDbContext(DbContextOptions<CraftingDbContext> options, GameDb gameDb) : ModuleDbContext(options, gameDb)
 {
     public const string Schema = "crafting";
@@ -74,10 +99,25 @@ public sealed class CraftingDbContext(DbContextOptions<CraftingDbContext> option
             e.Property(f => f.OutputQuantity).HasColumnName("output_quantity");
             e.Property(f => f.StartedAt).HasColumnName("started_at");
         });
+        model.Entity<MachineRow>(e =>
+        {
+            e.ToTable("machines");
+            e.HasKey(m => m.ObjectId);
+            e.Property(m => m.ObjectId).HasColumnName("object_id");
+            e.Property(m => m.OwnerId).HasColumnName("owner_id");
+            e.Property(m => m.Kind).HasColumnName("kind").HasMaxLength(32);
+            e.Property(m => m.Recipe).HasColumnName("recipe").HasMaxLength(32);
+            e.Property(m => m.Inputs).HasColumnName("inputs");
+            e.Property(m => m.FuelItem).HasColumnName("fuel_item").HasMaxLength(32);
+            e.Property(m => m.Fuel).HasColumnName("fuel");
+            e.Property(m => m.Heat).HasColumnName("heat");
+            e.Property(m => m.Output).HasColumnName("output");
+            e.Property(m => m.StartedAt).HasColumnName("started_at");
+        });
     }
 }
 
-/// <summary>Making things at a workbench and smelting ore in a furnace. Owns the <c>crafting</c> schema.</summary>
+/// <summary>Making things at a workbench, smelting ore in a furnace and processing crops in machines. Owns the <c>crafting</c> schema.</summary>
 public sealed class CraftingModule : IGameModule
 {
     public string Name => "Crafting";
@@ -89,12 +129,18 @@ public sealed class CraftingModule : IGameModule
         services.AddScoped<FurnaceService>();
         services.AddScoped<IMachineContents, FurnaceContents>();
         services.AddScoped<IMachinePorts, FurnacePorts>();
+        services.AddScoped<IMachinePorts, ProcessingPorts>();
         services.AddSingleton<IMessageHandler, GetCraftingHandler>();
         services.AddSingleton<IMessageHandler, CraftHandler>();
         services.AddSingleton<IMessageHandler, CancelCraftHandler>();
         services.AddSingleton<IMessageHandler, GetFurnaceHandler>();
         services.AddSingleton<IMessageHandler, LoadFurnaceHandler>();
         services.AddSingleton<IMessageHandler, TakeFurnaceHandler>();
+        services.AddScoped<MachineService>();
+        services.AddSingleton<IMessageHandler, GetMachineHandler>();
+        services.AddSingleton<IMessageHandler, SetMachineRecipeHandler>();
+        services.AddSingleton<IMessageHandler, LoadMachineHandler>();
+        services.AddSingleton<IMessageHandler, TakeMachineHandler>();
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>

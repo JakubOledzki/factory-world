@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [logistics] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [logistics] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -458,6 +458,142 @@ CRAFTING = {
 }
 
 
+# --- Food processing ------------------------------------------------------------------------------
+
+def build_mill():
+    """A small timber windmill on a stone footing: a boarded hut with a pitched roof, four lattice
+    sails on a hub facing the camera, and a sack of flour by the door."""
+    stone = rock("mill_stone", (0.2, 0.19, 0.17))
+    planks = ra.wood("mill_planks", (0.2, 0.12, 0.06))
+    dark = ra.wood("mill_dark", (0.09, 0.05, 0.03))
+    roof = ra.plain("mill_roof", (0.18, 0.07, 0.04), 0.8, variation=0.3, bump=0.4)
+    ra.box("footing", (1.3, 1.3, 0.25), (0, 0, 0.125), stone, bevel=0.04)
+    hut = ra.box("hut", (1.1, 1.1, 1.2), (0, 0, 0.85), planks, bevel=0.02)
+    for x in (-0.53, 0.53):
+        for y in (-0.53, 0.53):
+            ra.box("post", (0.08, 0.08, 1.2), (x, y, 0.85), dark)
+    ra.box("door", (0.36, 0.04, 0.7), (-0.2, -0.56, 0.6), dark, bevel=0.01)
+    # A pitched roof along x with gables.
+    v = [(-0.7, -0.68, 1.45), (0.7, -0.68, 1.45), (0.7, 0.68, 1.45), (-0.7, 0.68, 1.45), (-0.7, 0, 2.05), (0.7, 0, 2.05)]
+    ra.mesh_from("roof", v, [(0, 1, 5, 4), (3, 4, 5, 2), (0, 4, 3), (1, 2, 5), (0, 3, 2, 1)], roof)
+    # Sails on a hub at the front gable, turned a little so all four read.
+    hub = (0.15, -0.66, 1.55)
+    ra.cylinder("axle", 0.07, 0.25, hub, dark, rotation=(math.radians(90), 0, 0))
+    sail = ra.plain("sail", (0.55, 0.5, 0.4), 0.9, variation=0.2)
+    for k in range(4):
+        a = k * math.pi / 2 + 0.35
+        d = Vector((math.cos(a), 0, math.sin(a)))
+        ra.box("stock", (0.05, 0.04, 1.1), Vector(hub) + Vector((0, -0.08, 0)) + d * 0.55, dark, rotation=(0, -a + math.pi / 2, 0))
+        side = Vector((math.cos(a + math.pi / 2), 0, math.sin(a + math.pi / 2)))
+        ra.box("sail", (0.26, 0.02, 0.8), Vector(hub) + Vector((0, -0.1, 0)) + d * 0.62 + side * 0.14, sail,
+               rotation=(0, -a + math.pi / 2, 0))
+    sack = ra.plain("mill_sack", (0.55, 0.5, 0.4), 0.95, variation=0.2, bump=0.4)
+    s = ra.sphere("sack", 0.2, (0.45, -0.75, 0.2), sack, scale=(0.9, 0.8, 1.2), segments=16)
+    ra.displace(s, 0.02, 0.2, 1)
+
+
+def build_oil_press():
+    """A wooden screw press: a heavy frame over a tub, a big screw with a capstan bar, a spout
+    running oil into a jug."""
+    frame = ra.wood("press_frame", (0.17, 0.1, 0.05))
+    steel = ra.rusty_metal("press_screw", (0.25, 0.25, 0.27), rust=0.3)
+    ra.box("base", (1.1, 0.8, 0.2), (0, 0, 0.1), frame, bevel=0.02)
+    for x in (-0.45, 0.45):
+        ra.box("upright", (0.14, 0.18, 1.3), (x, 0, 0.85), frame, bevel=0.02)
+    ra.box("beam", (1.1, 0.22, 0.18), (0, 0, 1.45), frame, bevel=0.02)
+    ra.cylinder("tub", 0.3, 0.3, (0, 0, 0.35), ra.wood("press_tub", (0.22, 0.13, 0.06)), verts=24)
+    for z in (0.25, 0.45):
+        ra.cylinder("hoop", 0.31, 0.03, (0, 0, z), steel, verts=24)
+    ra.cylinder("seeds", 0.27, 0.02, (0, 0, 0.5), ra.plain("seeds", (0.05, 0.04, 0.03), 0.6, bump=0.8), verts=24)
+    ra.cylinder("plate", 0.26, 0.06, (0, 0, 0.62), frame, verts=24)
+    ra.cylinder("screw", 0.05, 0.85, (0, 0, 1.05), steel, verts=12)
+    ra.box("bar", (0.9, 0.05, 0.05), (0, 0, 1.25), frame, rotation=(0, 0, math.radians(25)))
+    gold = ra.plain("oil", (0.75, 0.5, 0.05), 0.1, variation=0.05)
+    ra.box("spout", (0.06, 0.25, 0.04), (0, -0.4, 0.3), steel)
+    ra.cylinder("jug", 0.09, 0.22, (0, -0.55, 0.11), ra.plain("jug", (0.55, 0.3, 0.15), 0.4), verts=16)
+    ra.cylinder("jug_oil", 0.08, 0.01, (0, -0.55, 0.22), gold, verts=16)
+
+
+def build_pickling_barrel():
+    """A tall oak barrel with iron hoops, a wooden lid and a stone holding the cabbage down."""
+    staves = ra.wood("barrel_staves", (0.24, 0.14, 0.06))
+    hoop = ra.rusty_metal("barrel_hoop", (0.15, 0.15, 0.16), rust=0.5)
+    ra.cylinder("barrel", 0.42, 1.0, (0, 0, 0.5), staves, verts=28)
+    for z in (0.12, 0.45, 0.88):
+        ra.cylinder("hoop", 0.435, 0.05, (0, 0, z), hoop, verts=28)
+    ra.cylinder("lid", 0.36, 0.04, (0, 0, 1.0), ra.wood("barrel_lid", (0.3, 0.19, 0.09)), verts=28)
+    s = ra.sphere("weight", 0.17, (0.05, 0.02, 1.1), rock("weight", (0.25, 0.24, 0.22)), scale=(1, 0.9, 0.6), segments=12)
+    ra.displace(s, 0.02, 0.15, 1)
+    # A couple of cabbages waiting by the barrel.
+    leaves = foliage("barrel_cabbage", (0.14, 0.28, 0.09), 0.25)
+    for x, y in ((0.5, -0.3), (0.62, -0.05)):
+        c = ra.sphere("cabbage", 0.14, (x, y, 0.12), leaves, scale=(1, 1, 0.85), segments=14)
+        ra.displace(c, 0.015, 0.06, 1)
+
+
+def build_bakery():
+    """A clay bread oven: a domed vault on a brick plinth with a glowing arched mouth, a chimney
+    and a wooden peel leaning on it."""
+    brick = ra.plain("oven_brick", (0.32, 0.12, 0.06), 0.9, variation=0.35, scale=10, bump=0.5)
+    clay = ra.plain("oven_clay", (0.42, 0.28, 0.17), 0.9, variation=0.25, bump=0.4)
+    soot = ra.plain("oven_soot", (0.02, 0.018, 0.017), 0.95)
+    ra.box("plinth", (1.4, 1.3, 0.6), (0, 0, 0.3), brick, bevel=0.03)
+    ra.box("ledge", (1.5, 1.4, 0.06), (0, 0, 0.63), clay, bevel=0.02)
+    dome = ra.sphere("dome", 0.62, (0, 0.05, 0.66), clay, scale=(1, 1, 0.85), segments=32, keep=lambda co: co.z >= -0.01)
+    ra.displace(dome, 0.012, 0.2, 1)
+    ra.cylinder("mouth", 0.24, 0.1, (0, -0.55, 0.85), clay, rotation=(math.radians(90), 0, 0), verts=24)
+    ra.box("mouth_hole", (0.32, 0.12, 0.24), (0, -0.6, 0.8), soot)
+    ember = ra.emission("oven_ember", (1.0, 0.35, 0.06), 5.0)
+    for i in range(5):
+        ra.sphere("ember", 0.04, (-0.1 + i * 0.05, -0.55, 0.7), ember, segments=8)
+    ra.cylinder("chimney", 0.1, 0.55, (0.3, 0.35, 1.3), brick, verts=12)
+    ra.cylinder("peel", 0.025, 1.1, (-0.75, -0.45, 0.6), ra.wood("peel", (0.3, 0.2, 0.1)), rotation=(math.radians(-12), math.radians(8), 0), verts=8)
+    ra.box("peel_blade", (0.22, 0.02, 0.28), (-0.75, -0.39, 0.12), ra.wood("peel", (0.3, 0.2, 0.1)), rotation=(math.radians(-12), 0, 0))
+    crust = ra.plain("loaf", (0.42, 0.2, 0.06), 0.6, variation=0.2, bump=0.4)
+    for x in (0.35, 0.55):
+        ra.sphere("loaf", 0.11, (x, -0.55, 0.72), crust, scale=(1.4, 1, 0.7), segments=12)
+
+
+def build_kitchen():
+    """A field kitchen: a cast-iron stove on two cart wheels with a big lidded cauldron on top,
+    a firebox door glowing below and a stove pipe."""
+    iron = ra.rusty_metal("kitchen_iron", (0.08, 0.09, 0.08), rust=0.35)
+    green = ra.rusty_metal("kitchen_green", (0.12, 0.17, 0.08), rust=0.25)
+    ra.box("stove", (1.2, 0.8, 0.6), (0, 0, 0.55), green, bevel=0.03)
+    ra.box("rim", (1.26, 0.86, 0.05), (0, 0, 0.87), iron, bevel=0.01)
+    ra.cylinder("cauldron", 0.33, 0.5, (-0.15, 0, 1.1), iron, verts=24)
+    ra.cylinder("lid", 0.35, 0.04, (-0.15, 0, 1.37), iron, verts=24)
+    ra.sphere("knob", 0.05, (-0.15, 0, 1.42), iron, segments=10)
+    ra.box("firebox", (0.3, 0.04, 0.22), (0.25, -0.41, 0.45), iron, bevel=0.01)
+    ember = ra.emission("kitchen_ember", (1.0, 0.35, 0.06), 4.0)
+    ra.box("glow", (0.22, 0.03, 0.06), (0.25, -0.43, 0.42), ember)
+    ra.cylinder("pipe", 0.07, 0.9, (0.42, 0.2, 1.3), iron, verts=12)
+    ra.cylinder("cap", 0.12, 0.04, (0.42, 0.2, 1.76), iron, verts=12)
+    tyre = ra.plain("kitchen_tyre", (0.03, 0.03, 0.03), 0.7)
+    for y in (-0.48, 0.48):
+        ra.cylinder("wheel", 0.3, 0.1, (0.0, y, 0.3), tyre, rotation=(math.radians(90), 0, 0), verts=24)
+        ra.cylinder("hub", 0.08, 0.12, (0.0, y, 0.3), iron, rotation=(math.radians(90), 0, 0), verts=12)
+    ra.box("drawbar", (0.7, 0.06, 0.06), (-0.85, 0, 0.35), iron, rotation=(0, math.radians(15), 0))
+
+
+PROCESSING = {
+    # name: (canvas width, height, camera target height, builder); each stands on one tile.
+    "mill": (128, 160, 0.95, build_mill),
+    "oil_press": (112, 120, 0.7, build_oil_press),
+    "pickling_barrel": (96, 96, 0.5, build_pickling_barrel),
+    "bakery": (112, 120, 0.6, build_bakery),
+    "kitchen": (112, 120, 0.75, build_kitchen),
+}
+
+
+def render_processing(layout: dict):
+    for name, (w, h, tz, build) in PROCESSING.items():
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build))
+        # The inventory shows the machine as its sprite, cropped to a square icon.
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
+
+
 def render_crafting(layout: dict):
     for name, (w, h, tz, build) in CRAFTING.items():
         random.seed(zlib.crc32(name.encode()))
@@ -902,7 +1038,100 @@ def icon_models():
         d = ra.sphere("pile", 0.22, (0, 0, -0.04), sand_mat(), scale=(1, 1, 0.75), segments=24)
         ra.displace(d, 0.02, 0.2, 2)
 
+    def sack(color, tie=(0.35, 0.25, 0.12)):
+        def build():
+            cloth = ra.plain("sack", color, 0.95, variation=0.12, scale=12, bump=0.5)
+            body = ra.sphere("sack", 0.17, (0, 0, 0.15), cloth, scale=(1, 0.9, 1.15), segments=20)
+            ra.displace(body, 0.015, 0.2, 1)
+            ra.cylinder("neck", 0.06, 0.12, (0, 0, 0.36), cloth, radius2=0.09, verts=16)
+            ra.cylinder("tie", 0.065, 0.025, (0, 0, 0.33), ra.plain("tie", tie, 0.8), verts=16)
+            # Flour spilt in front of the sack.
+            pile = ra.sphere("spill", 0.09, (0.1, -0.16, -0.02), ra.plain("powder", color, 0.95, variation=0.05), scale=(1.3, 1, 0.4), segments=12)
+            ra.displace(pile, 0.01, 0.1, 1)
+        return build
+
+    def oil_bottle():
+        glass = ra.plain("bottle", (0.75, 0.5, 0.06), 0.08, variation=0.05, grime=0.1)
+        ra.cylinder("bottle", 0.09, 0.3, (0, 0, 0.15), glass, verts=24)
+        ra.cylinder("shoulder", 0.09, 0.08, (0, 0, 0.34), glass, radius2=0.03, verts=24)
+        ra.cylinder("neck", 0.03, 0.08, (0, 0, 0.42), glass, verts=16)
+        ra.cylinder("cork", 0.032, 0.05, (0, 0, 0.48), ra.wood("cork", (0.45, 0.32, 0.18)), verts=16)
+        ra.cylinder("label", 0.092, 0.1, (0, 0, 0.14), ra.plain("label", (0.85, 0.8, 0.6), 0.8), verts=24)
+        ra.sphere("seed", 0.03, (0.0, -0.09, 0.14), ra.plain("petal", (0.95, 0.65, 0.04), 0.5), scale=(1, 0.3, 1), segments=8)
+
+    def jar():
+        # Pale kraut packed to the top, seen through glass: rims of glass at the bottom and neck.
+        glass = ra.plain("jar", (0.55, 0.6, 0.5), 0.05, variation=0.05, grime=0.05)
+        ra.cylinder("kraut", 0.13, 0.28, (0, 0, 0.15), ra.plain("kraut", (0.72, 0.7, 0.42), 0.5, variation=0.25, bump=0.8), verts=24)
+        for z in (0.015, 0.29):
+            ra.cylinder("rim", 0.135, 0.03, (0, 0, z), glass, verts=24)
+        ra.cylinder("lid", 0.12, 0.05, (0, 0, 0.32), ra.rusty_metal("lid", (0.4, 0.08, 0.05), rust=0.1), verts=24)
+
+    def loaf(color, scale=(1.6, 1, 0.75), scored=True):
+        def build():
+            crust = ra.plain("crust", color, 0.6, variation=0.2, bump=0.5)
+            l = ra.sphere("loaf", 0.15, (0, 0, 0.09), crust, scale=scale, segments=24)
+            ra.displace(l, 0.01, 0.1, 1)
+            if scored:
+                cut = ra.plain("cut", tuple(min(1, c * 1.8) for c in color), 0.8)
+                for k in range(3):
+                    ra.box("score", (0.03, 0.18, 0.02), (-0.1 + k * 0.1, 0, 0.2), cut, rotation=(0.2, 0, math.radians(30)))
+        return build
+
+    def corn_bread():
+        crumb = ra.plain("cornbread", (0.75, 0.5, 0.1), 0.7, variation=0.2, bump=0.6)
+        top = ra.plain("cornbread_top", (0.55, 0.3, 0.05), 0.6, variation=0.2, bump=0.4)
+        for i, (x, y) in enumerate(((-0.1, 0), (0.1, 0.02))):
+            ra.box("piece", (0.18, 0.18, 0.1), (x, y, 0.05), crumb, bevel=0.01, rotation=(0, 0, 0.15 * i))
+            ra.box("top", (0.18, 0.18, 0.02), (x, y, 0.105), top, bevel=0.01, rotation=(0, 0, 0.15 * i))
+
+    def carrot_cake():
+        sponge = ra.plain("sponge", (0.45, 0.22, 0.07), 0.7, variation=0.2, bump=0.5)
+        icing = ra.plain("icing", (0.9, 0.86, 0.78), 0.4, variation=0.05)
+        ra.cylinder("cake", 0.2, 0.14, (0, 0, 0.07), sponge, verts=32)
+        ra.cylinder("icing", 0.205, 0.04, (0, 0, 0.155), icing, verts=32)
+        ra.cylinder("plate", 0.25, 0.015, (0, 0, -0.005), ra.plain("plate", (0.85, 0.85, 0.85), 0.3), verts=32)
+        carrot = ra.plain("carrot", (0.75, 0.25, 0.02), 0.5)
+        for k in range(6):
+            a = k / 6 * math.tau
+            ra.cylinder("deco", 0.015, 0.06, (math.cos(a) * 0.13, math.sin(a) * 0.13, 0.19), carrot, radius2=0.003,
+                        rotation=(0, math.radians(90), a), verts=8)
+
+    def fries():
+        paper = ra.plain("cone", (0.75, 0.12, 0.08), 0.6)
+        ra.cylinder("cone", 0.16, 0.24, (0, 0, 0.12), paper, radius2=0.06, rotation=(0, 0, 0), verts=24).rotation_euler = (math.pi, 0, 0)
+        potato = ra.plain("fry", (0.85, 0.62, 0.18), 0.5, variation=0.15)
+        for k in range(16):
+            a = random.random() * math.tau
+            r = random.uniform(0, 0.1)
+            ra.box("fry", (0.03, 0.03, 0.22), (math.cos(a) * r, math.sin(a) * r, 0.26), potato, bevel=0.005,
+                   rotation=(random.uniform(-0.3, 0.3), random.uniform(-0.3, 0.3), random.random()))
+
+    def bowl(color, chunks):
+        def build():
+            ceramic = ra.plain("bowl", (0.75, 0.72, 0.65), 0.3, variation=0.05)
+            ra.sphere("bowl", 0.22, (0, 0, 0.2), ceramic, scale=(1, 1, 0.75), segments=32, keep=lambda co: co.z <= 0.01)
+            ra.cylinder("soup", 0.2, 0.02, (0, 0, 0.19), ra.plain("soup", color, 0.2, variation=0.1), verts=32)
+            for c, n in chunks:
+                m = ra.plain("chunk", c, 0.6)
+                for _ in range(n):
+                    a = random.random() * math.tau
+                    r = random.uniform(0, 0.14)
+                    ra.box("chunk", (0.04, 0.04, 0.03), (math.cos(a) * r, math.sin(a) * r, 0.205), m, bevel=0.008,
+                           rotation=(0, 0, random.random() * 3))
+        return build
+
     return {
+        "item_flour": sack((0.85, 0.83, 0.78)),
+        "item_corn_flour": sack((0.85, 0.65, 0.2)),
+        "item_sunflower_oil": oil_bottle,
+        "item_sauerkraut": jar,
+        "item_bread": loaf((0.42, 0.22, 0.07)),
+        "item_corn_bread": corn_bread,
+        "item_carrot_cake": carrot_cake,
+        "item_fries": fries,
+        "item_vegetable_soup": bowl((0.6, 0.35, 0.08), [((0.75, 0.25, 0.02), 6), ((0.8, 0.7, 0.4), 6), ((0.2, 0.4, 0.1), 4)]),
+        "item_bigos": bowl((0.3, 0.18, 0.06), [((0.65, 0.6, 0.3), 12), ((0.35, 0.12, 0.08), 6)]),
         "item_tool_axe": axe, "item_tool_shovel": shovel, "item_tool_pickaxe": pickaxe, "item_tool_hoe": hoe,
         "item_wheat": wheat_sheaf, "item_carrot": carrots, "item_cabbage": cabbage_head, "item_corn": corn_cob,
         "item_potato": potatoes, "item_sunflower": sunflower_head,
@@ -943,7 +1172,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "forestry", "mine", "crafting", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "forestry", "mine", "crafting", "processing", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -965,6 +1194,8 @@ if __name__ == "__main__":
         render_mine(layout)
     if "crafting" in args:
         render_crafting(layout)
+    if "processing" in args:
+        render_processing(layout)
     if "logistics" in args:
         render_logistics(layout)
     # "item_<id>" arguments render just those icons.

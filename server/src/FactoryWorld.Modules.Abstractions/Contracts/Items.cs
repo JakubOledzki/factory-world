@@ -69,6 +69,23 @@ public static class Items
     public const string Heap = "storage_heap";
     public const string GrainSilo = "storage_grain_silo";
 
+    // Food processing: machines put on a plot turn crops into food, step by step.
+    public const string Mill = "furniture_mill";
+    public const string OilPress = "furniture_oil_press";
+    public const string PicklingBarrel = "furniture_pickling_barrel";
+    public const string Bakery = "furniture_bakery";
+    public const string Kitchen = "furniture_kitchen";
+    public const string Flour = "flour";
+    public const string CornFlour = "corn_flour";
+    public const string SunflowerOil = "sunflower_oil";
+    public const string Sauerkraut = "sauerkraut";
+    public const string Bread = "bread";
+    public const string CornBread = "corn_bread";
+    public const string CarrotCake = "carrot_cake";
+    public const string Fries = "fries";
+    public const string VegetableSoup = "vegetable_soup";
+    public const string Bigos = "bigos";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -121,6 +138,21 @@ public static class Items
         [WoodPile] = "Stos drewna",
         [Heap] = "Hałda",
         [GrainSilo] = "Silos zbożowy",
+        [Mill] = "Młyn",
+        [OilPress] = "Tłocznia oleju",
+        [PicklingBarrel] = "Beczka do kiszenia",
+        [Bakery] = "Piec piekarski",
+        [Kitchen] = "Kuchnia polowa",
+        [Flour] = "Mąka pszenna",
+        [CornFlour] = "Mąka kukurydziana",
+        [SunflowerOil] = "Olej słonecznikowy",
+        [Sauerkraut] = "Kapusta kiszona",
+        [Bread] = "Chleb",
+        [CornBread] = "Chleb kukurydziany",
+        [CarrotCake] = "Ciasto marchewkowe",
+        [Fries] = "Frytki",
+        [VegetableSoup] = "Zupa jarzynowa",
+        [Bigos] = "Bigos",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);

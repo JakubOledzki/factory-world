@@ -338,6 +338,32 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
     }
 
     [Fact]
+    public async Task Inserters_work_a_mill_too_feeding_it_wheat_and_taking_its_flour()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty) = await PlotWithFreeRowAsync(client, 5);
+        await GiveAsync(client, Items.GrainSilo, 1);
+        await GiveAsync(client, Items.WoodenChest, 1);
+        await GiveAsync(client, Items.Inserter, 2);
+        await GiveAsync(client, Items.Mill, 1);
+        await GiveAsync(client, Items.Wheat, 20);
+
+        var silo = await PlaceAsync(client, x, y, Items.GrainSilo, tx, ty);
+        await PlaceAsync(client, x, y, Items.Inserter, tx + 1, ty);
+        var mill = await PlaceAsync(client, x, y, Items.Mill, tx + 2, ty);
+        await PlaceAsync(client, x, y, Items.Inserter, tx + 3, ty);
+        var chest = await PlaceAsync(client, x, y, Items.WoodenChest, tx + 4, ty);
+        Assert.Equal("machine", (await client.SendAsync("machine.recipe", new { machine = mill, recipe = Items.Flour })).Type());
+        await client.SendAsync("storage.put", new { x, y, id = silo, item = Items.Wheat, quantity = 20 });
+
+        factory.Time.Advance(TimeSpan.FromHours(1));
+        var storages = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("storages")
+            .EnumerateArray().ToDictionary(s => s.GetProperty("id").GetString()!);
+        Assert.Equal(0, StoredIn(storages[silo], Items.Wheat));
+        Assert.Equal(10, StoredIn(storages[chest], Items.Flour));
+    }
+
+    [Fact]
     public async Task Picking_up_a_belt_or_inserter_gives_back_what_it_carries()
     {
         using var client = await PlayerAsync();

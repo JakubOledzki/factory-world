@@ -62,6 +62,10 @@ const ERRORS := {
 	"furnace_busy": "W piecu przetapia się inna ruda. Wyjmij ją najpierw.",
 	"furnace_full": "Tyle się nie zmieści w piecu.",
 	"not_smeltable": "Tego nie da się włożyć do pieca.",
+	"choose_recipe": "Najpierw wybierz, co ma powstawać.",
+	"machine_full": "Tyle się nie zmieści w maszynie.",
+	"machine_busy": "Przy ogniu leży już inne paliwo. Wyjmij je najpierw.",
+	"not_processable": "Tego nie da się tu włożyć.",
 }
 
 var token := ""

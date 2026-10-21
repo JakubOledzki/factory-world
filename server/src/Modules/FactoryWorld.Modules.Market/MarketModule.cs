@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FactoryWorld.Modules.Market;
 
 /// <summary>
-/// The NPC trader: always sells trash, saplings, nails, belts, inserters, wooden chests and the sorting machine and always buys raw materials, at fixed prices (cents).
+/// The NPC trader: always sells trash, saplings, nails, belts, inserters, wooden chests, machines, flour, oil and bread and always buys raw materials, at fixed prices (cents).
 /// What it pays is the floor of the market: a quick sale gets it at once, players' listings usually pay more.
 /// </summary>
 public static class NpcPrices
@@ -23,6 +23,14 @@ public static class NpcPrices
         [Items.Belt] = 500,
         [Items.Inserter] = 3000,
         [Items.WoodenChest] = 2000,
+        [Items.Mill] = 40_000,
+        [Items.OilPress] = 40_000,
+        [Items.PicklingBarrel] = 10_000,
+        [Items.Bakery] = 60_000,
+        [Items.Kitchen] = 60_000,
+        [Items.Flour] = 400,
+        [Items.SunflowerOil] = 1500,
+        [Items.Bread] = 1500,
     };
 
     /// <summary>What the NPC pays the player.</summary>
@@ -69,6 +77,21 @@ public static class NpcPrices
         [Items.WoodPile] = 300,
         [Items.Heap] = 500,
         [Items.GrainSilo] = 6000,
+        [Items.Mill] = 3000,
+        [Items.OilPress] = 3000,
+        [Items.PicklingBarrel] = 1000,
+        [Items.Bakery] = 4000,
+        [Items.Kitchen] = 5000,
+        [Items.Flour] = 200,
+        [Items.CornFlour] = 600,
+        [Items.SunflowerOil] = 900,
+        [Items.Sauerkraut] = 350,
+        [Items.Bread] = 700,
+        [Items.CornBread] = 1600,
+        [Items.CarrotCake] = 2400,
+        [Items.Fries] = 900,
+        [Items.VegetableSoup] = 1100,
+        [Items.Bigos] = 750,
     };
 
     public const int MaxQuantity = 1000;
