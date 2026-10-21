@@ -49,6 +49,11 @@ const ERRORS := {
 	"no_field": "Najpierw zaorz tu ziemię motyką.",
 	"not_ripe": "To jeszcze nie dojrzało.",
 	"already_surveyed": "Ta działka jest już zbadana.",
+	"no_offer": "Tej oferty już nie ma.",
+	"own_offer": "To twoja własna oferta.",
+	"not_enough_offered": "W ofercie zostało mniej sztuk.",
+	"too_many_offers": "Możesz mieć najwyżej 20 otwartych ofert każdego rodzaju.",
+	"bad_price": "Cena musi wynosić od 0,01 $ do 1 000 000 $.",
 }
 
 var token := ""

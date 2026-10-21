@@ -9,7 +9,7 @@ Projekt gry: [dokument projektowy](https://claude.ai/code/artifact/50d66faa-a0b4
 | --- | --- |
 | `client/` | Klient gry w Godot 4.5 (GDScript) |
 | `server/` | Serwer gry w C#/.NET 10, modularny monolit |
-| `server/src/Modules/` | Moduły gry: `Session` (powitanie, ping), `Accounts` (rejestracja, logowanie, sesje), `Characters` (postać, wygląd, poziom), `Inventory` (przedmioty), `Wallet` (pieniądze i historia operacji), `Market` (handlarz NPC), `Recycling` (garaż, kosz na śmieci, segregacja), `World` (mapa Ziemi, działki 5 × 5 km, zakup działek) |
+| `server/src/Modules/` | Moduły gry: `Session` (powitanie, ping), `Accounts` (rejestracja, logowanie, sesje), `Characters` (postać, wygląd, poziom), `Inventory` (przedmioty), `Wallet` (pieniądze i historia operacji), `Market` (handlarz NPC, szybka sprzedaż, handel między graczami), `Recycling` (garaż, kosz na śmieci, segregacja), `World` (mapa Ziemi, działki 5 × 5 km, zakup działek) |
 | `docker-compose.yml` | PostgreSQL i serwer do lokalnego uruchomienia |
 | `tools/render_art.py` | Renderuje grafikę (pusty garaż, meble z cieniami, postać w 4 kierunkach z animacją chodu, ikony) w Blenderze do `client/art/`; modele są budowane w kodzie, a gra wyświetla gotowe obrazki 2D. Wymaga modułu `bpy` (instrukcja w pliku) |
 | `tools/generate_ui.py` | Rysuje tekstury interfejsu (panele, przyciski, paski) do `client/art/ui/` |
@@ -71,7 +71,16 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `inventory.move` | `{ item, slot }` | `inventory`; przenosi przedmiot na kafelek `slot`, a przedmiot, który tam leżał, zamienia się z nim miejscami |
 | `wallet.get` | | `wallet` `{ balanceCents }` |
 | `market.prices` | | `market.prices` `{ items: [{ id, name, buyCents, sellCents }] }` |
-| `market.buy` / `market.sell` | `{ item, quantity }` | `market.traded` `{ item, quantity, balanceCents }` |
+| `market.buy` / `market.sell` | `{ item, quantity }` | `market.traded` `{ item, quantity, balanceCents }`; `market.sell` to szybka sprzedaż: handlarz płaci od razu najniższą cenę rynku (`sellCents`) |
+| `market.overview` | | `market.overview` `{ items: [{ id, name, quickSaleCents, lowestCents, listed, highestCents, wanted }] }`: każdy przedmiot z ceną szybkiej sprzedaży (albo `null`), najtańszym ogłoszeniem i najlepszym zleceniem kupna graczy |
+| `market.item` | `{ item }` | `market.item` `{ item, name, listings, orders }`, oferty `[{ id, quantity, priceCents, owner, mine }]`: ogłoszenia od najtańszego, zlecenia od najlepiej płacącego (po 50) |
+| `market.mine` | | `market.mine` `{ listings, orders }`, oferty `[{ id, item, name, quantity, done, priceCents, open }]`: otwarte i zamknięte w ciągu doby |
+| `market.list` | `{ item, quantity, priceCents }` | `market.done` `{ balanceCents }`; wystawia ogłoszenie sprzedaży, przedmioty od razu znikają z ekwipunku i czekają w ogłoszeniu |
+| `market.unlist` | `{ id }` | `market.done`; zamyka własne ogłoszenie, niesprzedane przedmioty wracają do ekwipunku |
+| `market.purchase` | `{ id, quantity }` | `market.done`; kupuje z ogłoszenia innego gracza: pieniądze idą do sprzedającego, przedmioty do kupującego |
+| `market.order` | `{ item, quantity, priceCents }` | `market.done`; zleca kupno, cała kwota od razu schodzi z portfela i czeka w zleceniu |
+| `market.cancelOrder` | `{ id }` | `market.done`; zamyka własne zlecenie, niewydane pieniądze wracają |
+| `market.fill` | `{ id, quantity }` | `market.done`; wypełnia zlecenie innego gracza: przedmioty trafiają do zlecającego, zapłata do wypełniającego. Gracz ma najwyżej 20 otwartych ogłoszeń i 20 zleceń, oferta to 1–10 000 sztuk po 0,01–1 000 000 $ |
 | `world.info` | | `world.info` `{ width, height, plotKm, biomes: [{ id, name, buyable, priceFactor, bonuses: [{ text, good }] }], priceTiersCents, nextBasePriceCents, plots: [{ x, y, biome }] }` (`plots` to działki gracza) |
 | `world.area` | `{ x, y, width, height }` | `world.area` `{ x, y, width, height, plots: [{ x, y, mine }] }`: kupione działki w prostokącie (do 10 000 × 10 000) |
 | `world.plot` | `{ x, y }` | `world.plot` `{ x, y, biome, owner: { name, mine } \| null, priceCents, survey, surveyPriceCents }`; `priceCents` to cena dla pytającego gracza albo `null` (woda, działka zajęta) |

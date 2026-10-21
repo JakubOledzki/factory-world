@@ -30,7 +30,6 @@ const ACTIONS := {
 
 var _garage := {}
 var _items: Array = []
-var _prices: Array = []
 var _balance := 0
 ## Server time minus local time, in ms, so timers follow the server's clock.
 var _clock_offset := 0.0
@@ -81,7 +80,7 @@ var _tool_slot: ToolSlot
 
 var _sorting_window: GameWindow
 var _inventory_window: GameWindow
-var _market_window: GameWindow
+var _market_window: MarketWindow
 
 var _trash: Label
 var _sort_buttons: Array[Button] = []
@@ -94,7 +93,6 @@ var _job_bar: ProgressBar
 var _job_text: Label
 var _recent: HFlowContainer
 var _slots: InventoryGrid
-var _market: VBoxContainer
 
 
 func _ready() -> void:
@@ -296,10 +294,16 @@ func _near(object: Furniture, distance := REACH) -> bool:
 	return p.distance_to(p.clamp(r.position, r.end)) <= distance
 
 
+## Typing a quantity or price in a window must not walk the character.
+func _typing() -> bool:
+	var focus := get_viewport().gui_get_focus_owner()
+	return focus is LineEdit or focus is SpinBox
+
+
 func _move_player(delta: float) -> void:
 	var step := Vector2.ZERO
 	var input := Input.get_vector("move_left", "move_right", "move_down", "move_up")
-	if _placing == "" and input != Vector2.ZERO:
+	if _placing == "" and input != Vector2.ZERO and not _typing():
 		_path = PackedVector2Array()
 		_on_arrival = Callable()
 		step = input * GaragePlayer.SPEED * delta
@@ -649,9 +653,10 @@ func _build_windows() -> void:
 	_inventory_window = GameWindow.new("Ekwipunek", 0)
 	_inventory_window.position = Vector2(12, 120)
 	_build_storage(_inventory_window.content)
-	_market_window = GameWindow.new("Rynek", 340)
-	_market_window.position = Vector2(1280 - 340 - 12, 64)
-	_build_market(_market_window.content)
+	_market_window = MarketWindow.new()
+	_market_window.position = Vector2(1280 - 440 - 12, 64)
+	_market_window.traded.connect(_on_traded)
+	_market_window.failed.connect(_show_error)
 	for window: GameWindow in [_sorting_window, _inventory_window, _market_window]:
 		add_child(window)
 
@@ -715,12 +720,6 @@ func _build_storage(page: VBoxContainer) -> void:
 	page.add_child(UI.label("Kliknij mebel, aby go postawić. Przeciągnij przedmiot na inny kafelek, aby zmienić kolejność.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 
-func _build_market(page: VBoxContainer) -> void:
-	_market = VBoxContainer.new()
-	_market.add_theme_constant_override("separation", 2)
-	page.add_child(_market)
-
-
 # --- Data from the server -------------------------------------------------------------
 
 func _load() -> void:
@@ -734,7 +733,7 @@ func _load() -> void:
 		if reply["type"] == "error":
 			_show_error(reply)
 			return
-	_prices = replies[3]["payload"]["items"]
+	_market_window.set_prices(replies[3]["payload"]["items"])
 	_apply_garage(replies[0]["payload"])
 	_apply_inventory(replies[1]["payload"])
 	_set_balance(int(replies[2]["payload"]["balanceCents"]))
@@ -771,7 +770,7 @@ func _apply_garage(garage: Dictionary) -> void:
 func _apply_inventory(inventory: Dictionary) -> void:
 	_items = inventory["items"]
 	_slots.show_items(inventory)
-	_rebuild_market()
+	_market_window.set_player(_items, _balance)
 
 
 func _reload_inventory() -> void:
@@ -783,7 +782,7 @@ func _reload_inventory() -> void:
 func _set_balance(cents: int) -> void:
 	_balance = cents
 	_money.text = UI.money(cents)
-	_rebuild_market()
+	_market_window.set_player(_items, _balance)
 
 
 func _count(item: String) -> int:
@@ -955,55 +954,11 @@ func _on_slot_clicked(item: String) -> void:
 		_start_placing(item)
 
 
-func _rebuild_market() -> void:
-	for child in _market.get_children():
-		child.free()
-	for price: Dictionary in _prices:
-		var item: String = price["id"]
-		var owned := _count(item)
-
-		var top := HBoxContainer.new()
-		top.add_theme_constant_override("separation", 6)
-		top.add_child(UI.item_icon(item, 26))
-		var name_label := UI.label(price["name"])
-		name_label.add_theme_font_override("font", UI.bold())
-		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		top.add_child(name_label)
-		top.add_child(UI.label("masz %d" % owned, UI.MUTED))
-		_market.add_child(top)
-
-		var bottom := HBoxContainer.new()
-		bottom.add_theme_constant_override("separation", 4)
-		var buying: bool = price.get("sellCents") == null
-		var cents := int(price["buyCents"] if buying else price["sellCents"])
-		var price_label := UI.label(("cena %s" if buying else "skup %s") % UI.money(cents), UI.GOLD if buying else UI.GOOD)
-		price_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		bottom.add_child(price_label)
-		if buying:
-			for amount: int in ([1] if item.begins_with("furniture_") else [1, 10]):
-				var b := UI.button("Kup %d" % amount, _trade.bind("market.buy", item, amount))
-				b.disabled = _balance < cents * amount
-				bottom.add_child(b)
-		else:
-			var one := UI.button("Sprzedaj 1", _trade.bind("market.sell", item, 1))
-			var all := UI.button("Wszystko", _trade.bind("market.sell", item, -1))
-			one.disabled = owned < 1
-			all.disabled = owned < 1
-			bottom.add_child(one)
-			bottom.add_child(all)
-		_market.add_child(bottom)
-
-
-## quantity -1 sells everything the player has.
-func _trade(type: String, item: String, quantity: int) -> void:
-	if quantity < 0:
-		quantity = mini(_count(item), 1000)
-	var reply := await Net.request(type, {"item": item, "quantity": quantity})
-	if reply["type"] != "market.traded":
-		_show_error(reply)
-		return
-	_set_balance(int(reply["payload"]["balanceCents"]))
+## After any trade in the market window: new balance, inventory, and the bin's trash.
+func _on_traded(balance_cents: int, item: String) -> void:
+	_set_balance(balance_cents)
 	await _reload_inventory()
+	_market_window.refresh()
 	if item == "trash":
 		var garage := await Net.request("garage.get")
 		if garage["type"] == "garage":
