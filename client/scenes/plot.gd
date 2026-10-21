@@ -4,7 +4,8 @@ extends Node2D
 ## The character walks with WSAD or by clicking; clicking a tree, rock or dune walks up to it and
 ## works it with the tool in hand, and a mine is worked with a pickaxe for ore.
 ## The station window loads goods from the inventory and sends them by train to other plots.
-## A workbench or a furnace from the inventory can be put on a free tile and used there.
+## A workbench or a furnace from the inventory can be put on a free tile and used there, and so can
+## belts and inserters (turned with R) that move items between machines and chests, piles and silos.
 
 ## Keyboard actions of this screen: name and keys.
 const ACTIONS := {
@@ -20,6 +21,7 @@ const ACTIONS := {
 	"cancel": [KEY_ESCAPE],
 	"world_map": [KEY_N],
 	"garage": [KEY_G],
+	"rotate": [KEY_R],
 }
 
 const LAYOUT_FILE := "res://art/plot/layout.json"
@@ -65,8 +67,21 @@ const WORK := {
 	DUNE: {"name": "Wydma", "tool": "tool_shovel", "verb": "Kop", "need": "łopaty"},
 }
 const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalnia"}
-## What a player can put on a plot from the inventory, and its sprite there.
-const PLACED_SPRITES := {"furniture_workbench": "workbench", "furniture_furnace": "furnace"}
+## What a player can put on a plot from the inventory, and its sprite there; belts are drawn by
+## PlotLogistics, flat on the ground.
+const PLACED_SPRITES := {
+	"furniture_workbench": "workbench", "furniture_furnace": "furnace", "logistics_inserter": "inserter",
+	"storage_wooden_chest": "wooden_chest", "storage_iron_chest": "iron_chest", "storage_wood_pile": "wood_pile",
+	"storage_heap": "heap", "storage_grain_silo": "grain_silo",
+}
+const BELT := "logistics_belt"
+const INSERTER := "logistics_inserter"
+const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo"]
+## Where a rotation faces, as players read it: 0 south, 1 east, 2 north, 3 west.
+const DIRECTIONS := ["na południe", "na wschód", "na północ", "na zachód"]
+const DIRECTION_ARROWS := ["↓", "→", "↑", "←"]
+## How often (ms) the belts and inserters are asked for while the plot has any.
+const LOGISTICS_POLL := 1000.0
 ## Crops in the order of the art; the server sends their names and growing times.
 const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower"]
 ## A crop shows as a sprout until this much of its growing time is left, then half grown.
@@ -129,6 +144,11 @@ var _placed := {}
 var _placing := ""
 ## The placed object whose window is open, or (-1, -1).
 var _using := Vector2i(-1, -1)
+## Which way the next belt or inserter will face (see DIRECTIONS).
+var _place_rotation := 1
+var _logistics: PlotLogistics
+var _next_logistics_poll := 0.0
+var _polling_logistics := false
 
 var _astar := AStarGrid2D.new()
 var _sources := {}
@@ -174,6 +194,9 @@ var _hint: Label
 var _prompt: Label
 var _field_label: Label
 var _crop_menu: PopupMenu
+## Turn or pick up a belt or inserter.
+var _object_menu: PopupMenu
+var _menu_object := Vector2i(-1, -1)
 var _menu_cell := Vector2i(-1, -1)
 var _work_bar: ProgressBar
 var _toast: Label
@@ -188,6 +211,7 @@ var _slots: InventoryGrid
 var _station_window: GameWindow
 var _crafting_window: CraftingWindow
 var _furnace_window: FurnaceWindow
+var _storage_window: StorageWindow
 var _station_box: VBoxContainer
 var _station_state := {}
 var _clock_offset := 0.0
@@ -237,6 +261,12 @@ func _build_world() -> void:
 	_shadows = TileMapLayer.new()
 	_shadows.tile_set = _tile_set(true)
 	add_child(_shadows)
+	# Belts lie on the ground under everything standing; inserter arms stand among the rest.
+	_logistics = PlotLogistics.new()
+	_logistics.tile = TILE
+	_logistics.layout = _layout
+	_logistics.server_now = _server_now
+	add_child(_logistics)
 	# Rings on the ground under the object the mouse points at.
 	_marks = Node2D.new()
 	_marks.draw.connect(_draw_marks)
@@ -248,6 +278,7 @@ func _build_world() -> void:
 	_objects.y_sort_enabled = true
 	_objects.tile_set = _tile_set(false)
 	_sorted.add_child(_objects)
+	_logistics.arms_parent = _sorted
 
 	_player = GaragePlayer.new(Game.character.get("appearance", {}), Game.appearance_options)
 	_player.light = LIGHT
@@ -336,6 +367,7 @@ func _apply_plot(plot: Dictionary) -> void:
 		_trees[Vector2i(tree["tileX"], tree["tileY"])] = tree["readyAt"]
 	for object: Dictionary in plot.get("objects", []):
 		_placed[Vector2i(object["tileX"], object["tileY"])] = object
+	_logistics.set_objects(_placed)
 
 	# The ground: the biome's texture repeated over the plot, squashed to the 45° view.
 	var floor_name: String = FLOORS.get(int(plot["biome"]), "grass")
@@ -472,7 +504,7 @@ func _draw_cell(cell: Vector2i) -> void:
 ## The sprite standing on a tile: nature, the crop growing on a field or a planted tree; "" for nothing.
 func _sprite_at(cell: Vector2i) -> String:
 	if _placed.has(cell):
-		return PLACED_SPRITES.get(_placed[cell]["kind"], "")
+		return PLACED_SPRITES.get(_placed[cell]["kind"], "")  # "" for a belt
 	if _fields.has(cell):
 		return _crop_sprite(cell)
 	if _trees.has(cell):
@@ -547,12 +579,21 @@ func _build_paths() -> void:
 			if _tiles[y * _size + x] in SOLID:
 				_astar.set_point_solid(Vector2i(x, y), true)
 	for cell: Vector2i in _placed:
-		_astar.set_point_solid(cell, true)
+		_astar.set_point_solid(cell, not _is_belt(cell))
 
 
 func _solid(cell: Vector2i) -> bool:
 	var kind := _tile(cell)
-	return kind < 0 or kind in SOLID or _placed.has(cell)
+	return kind < 0 or kind in SOLID or (_placed.has(cell) and not _is_belt(cell))
+
+
+func _is_belt(cell: Vector2i) -> bool:
+	return _placed.has(cell) and _placed[cell]["kind"] == BELT
+
+
+## Belts and inserters are turned and picked up from a menu; other placed objects open a window.
+func _turnable(cell: Vector2i) -> bool:
+	return _placed.has(cell) and _placed[cell]["kind"] in [BELT, INSERTER]
 
 
 ## Whether the player can stand at a position (in tiles).
@@ -695,6 +736,8 @@ func _update_hover() -> void:
 	if _ready_to_play and get_viewport().gui_get_hovered_control() == null:
 		var mouse := get_global_mouse_position()
 		cell = _object_at(mouse)
+		if cell.x < 0 and _is_belt(Vector2i((mouse / TILE).floor())):
+			cell = Vector2i((mouse / TILE).floor())
 		station = cell == Vector2i(-1, -1) and _station_at(mouse)
 		if cell == Vector2i(-1, -1) and not station:
 			mine = _mine_at(mouse)
@@ -758,7 +801,7 @@ func _update_field_label(cell: Vector2i) -> void:
 		return
 	var crop: Variant = _fields[cell]["crop"] if _fields.has(cell) else null
 	if _placed.has(cell):
-		_field_label.text = "%s: kliknij, aby użyć" % _placed[cell]["name"]
+		_field_label.text = _placed_label(cell)
 	elif _trees.has(cell):
 		if _tree_grown(cell):
 			_field_label.text = "Drzewo: urosło, zetnij je siekierą"
@@ -776,6 +819,23 @@ func _update_field_label(cell: Vector2i) -> void:
 	_field_label.position = _screen(_cell_centre(cell)) - Vector2(_field_label.size.x / 2, 70 * _zoom + 24)
 
 
+func _placed_label(cell: Vector2i) -> String:
+	var object: Dictionary = _placed[cell]
+	var facing: String = DIRECTIONS[int(object.get("rotation", 0)) & 3]
+	if object["kind"] == BELT:
+		return "Taśmociąg %s: [R] obróć, kliknij, aby schować" % facing
+	if object["kind"] == INSERTER:
+		var held := _logistics.held(cell)
+		var carrying := ", niesie: %s" % _item_name(held).to_lower() if held != "" else ""
+		return "Podajnik %s%s: [R] obróć, kliknij, aby schować" % [facing, carrying]
+	var summary := _logistics.storage(object["id"])
+	if not summary.is_empty():
+		var fill := "%d/%d miejsc" % [int(summary["usedSlots"]), int(summary["slots"])] if int(summary["slots"]) > 1 \
+			else "%d/%d" % [int(summary["stored"]), int(summary["capacity"])]
+		return "%s (%s): kliknij, aby otworzyć" % [object["name"], fill]
+	return "%s: kliknij, aby użyć" % object["name"]
+
+
 func _draw_marks() -> void:
 	if _hovered.x >= 0 and WORK.has(_work_kind(_hovered)) and not _fields.has(_hovered):
 		var ok: bool = Game.tool().get("id", "") == WORK[_work_kind(_hovered)]["tool"]
@@ -785,10 +845,30 @@ func _draw_marks() -> void:
 		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8))
 	if _placing != "" and ground.x >= 0:
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8))
+		_draw_ghost(ground)
 	elif _hovered.x < 0 and (_fields.has(ground) or _can_till(ground) or _can_plant(ground)):
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8))
 	if _work.x >= 0:
 		_draw_ring(_cell_centre(_work), Color(1, 1, 1, 0.7))
+
+
+## What is being placed, see-through on the tile under the mouse, with the way it will face.
+func _draw_ghost(cell: Vector2i) -> void:
+	var sprite: String = PlotLogistics.BELT_SPRITES[_place_rotation] if _placing == BELT else PLACED_SPRITES.get(_placing, "")
+	if sprite == "" or not _layout.has(sprite):
+		return
+	var texture: Texture2D = load("res://art/plot/%s.png" % sprite)
+	var anchor := Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"])
+	_marks.draw_texture(texture, _cell_centre(cell) - anchor, Color(1, 1, 1, 0.55))
+	if _placing in [BELT, INSERTER]:
+		var dir := Vector2(PlotLogistics.facing(_place_rotation)) * TILE
+		var from := _cell_centre(cell) - dir * 0.35 - Vector2(0, 10)
+		var to := _cell_centre(cell) + dir * 0.45 - Vector2(0, 10)
+		var head := (to - from).normalized()
+		var side := Vector2(-head.y, head.x)
+		var color := Color(0.56, 0.84, 0.35, 0.95)
+		_marks.draw_line(from, to, color, 3.0, true)
+		_marks.draw_colored_polygon([to + head * 4, to - head * 9 + side * 7, to - head * 9 - side * 7], color)
 
 
 func _draw_ring(at: Vector2, color: Color) -> void:
@@ -833,20 +913,27 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("cancel"):
 		if _placing != "":
 			_stop_placing()
-		elif _station_window.visible or _inventory_window.visible or _crafting_window.visible or _furnace_window.visible:
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window]:
+		elif _station_window.visible or _inventory_window.visible or _crafting_window.visible or _furnace_window.visible or _storage_window.visible:
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _storage_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
 		else:
 			_stop_work()
 			_path = PackedVector2Array()
+	elif event.is_action_pressed("rotate"):
+		if _placing != "":
+			_place_rotation = (_place_rotation + 1) % 4
+			_update_hint()
+		elif _turnable(_hovered):
+			_rotate_placed(_hovered)
 	elif event.is_action_pressed("interact"):
 		if _nearest_placed().x >= 0:
 			var at := _nearest_placed()
-			if _using == at and (_crafting_window.visible or _furnace_window.visible):
+			if _using == at and (_crafting_window.visible or _furnace_window.visible or _storage_window.visible):
 				_crafting_window.hide_window()
 				_furnace_window.hide_window()
+				_storage_window.hide_window()
 			else:
 				_use_placed(at)
 		elif _near_station():
@@ -1058,6 +1145,9 @@ func _vanish(sprite_name: String, cell: Vector2i, fall: bool) -> void:
 
 ## What a click on a tile does: work nature, sow an empty field, reap a ripe crop.
 func _act_on(cell: Vector2i) -> void:
+	if _turnable(cell):
+		_open_object_menu(cell)
+		return
 	if _placed.has(cell):
 		_go_and(cell, _use_placed)
 		return
@@ -1238,7 +1328,10 @@ func _start_placing(kind: String) -> void:
 	_stop_work()
 	_inventory_window.hide_window()
 	_placing = kind
-	_show_toast("Kliknij wolne pole, aby postawić: %s. Esc anuluje." % _item_name(kind))
+	if kind in [BELT, INSERTER]:
+		_show_toast("Kliknij wolne pole, aby postawić: %s. [R] obraca, Esc kończy." % _item_name(kind).to_lower())
+	else:
+		_show_toast("Kliknij wolne pole, aby postawić: %s. Esc anuluje." % _item_name(kind))
 	_update_hint()
 
 
@@ -1254,30 +1347,45 @@ func _item_name(item: String) -> String:
 	return item
 
 
+func _count(item: String) -> int:
+	for stack: Dictionary in _items:
+		if stack["id"] == item:
+			return int(stack["quantity"])
+	return 0
+
+
 func _place_object(cell: Vector2i) -> void:
 	if not _can_place(cell):
 		_show_toast("Tu nie można tego postawić.", UI.ERROR)
 		return
 	var kind := _placing
-	_stop_placing()
+	# Belts and inserters are laid one after another until they run out.
+	var more := kind in [BELT, INSERTER] and _count(kind) > 1
+	if not more:
+		_stop_placing()
 	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
-	var reply := await Net.request("plot.place", {"x": _at.x, "y": _at.y, "kind": kind, "tileX": cell.x, "tileY": cell.y})
+	var reply := await Net.request("plot.place", {"x": _at.x, "y": _at.y, "kind": kind, "tileX": cell.x, "tileY": cell.y, "rotation": _place_rotation})
 	if reply["type"] != "plot.placed":
 		_show_error(reply)
 		return
 	var object: Dictionary = reply["payload"]["object"]
 	var at := Vector2i(object["tileX"], object["tileY"])
 	_placed[at] = object
-	_astar.set_point_solid(at, true)
+	_astar.set_point_solid(at, not _is_belt(at))
 	_draw_cell(at)
-	_show_toast("%s stoi na działce. Kliknij, aby użyć." % object["name"])
+	_logistics.set_objects(_placed)
+	if kind in [BELT, INSERTER]:
+		_show_toast("%s stoi %s. %s" % [object["name"], DIRECTIONS[int(object["rotation"])], "Kliknij kolejne pole albo Esc." if more else ""])
+	else:
+		_show_toast("%s stoi na działce. Kliknij, aby użyć." % object["name"])
 	_reload_inventory()
+	_poll_logistics()
 
 
 ## The placed object next to the player, or (-1, -1).
 func _nearest_placed() -> Vector2i:
 	for cell: Vector2i in _placed:
-		if _near(cell):
+		if _near(cell) and not _turnable(cell):
 			return cell
 	return Vector2i(-1, -1)
 
@@ -1290,9 +1398,15 @@ func _use_placed(cell: Vector2i) -> void:
 	_station_window.hide_window()
 	if object["kind"] == "furniture_furnace":
 		_crafting_window.hide_window()
+		_storage_window.hide_window()
 		_furnace_window.open_at(object["id"])
-	else:
+	elif object["kind"] in STORAGES:
+		_crafting_window.hide_window()
 		_furnace_window.hide_window()
+		_storage_window.open_at(_at, object["id"])
+	elif object["kind"] == "furniture_workbench":
+		_furnace_window.hide_window()
+		_storage_window.hide_window()
 		_crafting_window.open_at(object["id"])
 
 
@@ -1309,10 +1423,61 @@ func _pick_up_placed(id: String) -> void:
 			if _hovered == cell:
 				_hovered = Vector2i(-1, -1)
 			_draw_cell(cell)
+	_logistics.set_objects(_placed)
 	_crafting_window.hide_window()
 	_furnace_window.hide_window()
+	_storage_window.hide_window()
 	_using = Vector2i(-1, -1)
 	_reload_inventory()
+	_poll_logistics()
+
+
+func _open_object_menu(cell: Vector2i) -> void:
+	_menu_object = cell
+	_object_menu.clear()
+	_object_menu.add_item("Obróć  [R]", 0)
+	_object_menu.add_item("Schowaj do ekwipunku", 1)
+	_object_menu.reset_size()
+	var at := get_viewport().get_mouse_position() + Vector2(12, 4)
+	_object_menu.popup(Rect2i(Vector2i(at), Vector2i.ZERO))
+
+
+func _on_object_chosen(choice: int) -> void:
+	var cell := _menu_object
+	_menu_object = Vector2i(-1, -1)
+	if not _placed.has(cell):
+		return
+	if choice == 0:
+		_rotate_placed(cell)
+	else:
+		_go_and(cell, func(at: Vector2i) -> void:
+			if _placed.has(at):
+				_pick_up_placed(_placed[at]["id"]))
+
+
+## Turns a belt or inserter a quarter turn anticlockwise: south, east, north, west.
+func _rotate_placed(cell: Vector2i) -> void:
+	var object: Dictionary = _placed[cell]
+	var reply := await Net.request("plot.rotate", {"x": _at.x, "y": _at.y, "id": object["id"], "rotation": (int(object.get("rotation", 0)) + 1) % 4})
+	if reply["type"] != "plot.rotated":
+		_show_error(reply)
+		return
+	_placed[cell] = reply["payload"]["object"]
+	_logistics.set_objects(_placed)
+	_draw_cell(cell)
+	_poll_logistics()
+
+
+## Asks for the belts, inserters and storage as the server has them now.
+func _poll_logistics() -> void:
+	if _polling_logistics:
+		return
+	_polling_logistics = true
+	_next_logistics_poll = Time.get_ticks_msec() + LOGISTICS_POLL
+	var reply := await Net.request("logistics.get", {"x": _at.x, "y": _at.y})
+	_polling_logistics = false
+	if reply["type"] == "logistics":
+		_logistics.apply(reply["payload"])
 
 
 ## Orders from a workbench are done: they are in the inventory now.
@@ -1542,7 +1707,10 @@ func _process(delta: float) -> void:
 	if _using.x >= 0 and (not _placed.has(_using) or not _near(_using, REACH + 1.5)):
 		_crafting_window.hide_window()
 		_furnace_window.hide_window()
+		_storage_window.hide_window()
 		_using = Vector2i(-1, -1)
+	if _logistics.has_machinery() and Time.get_ticks_msec() >= _next_logistics_poll:
+		_poll_logistics()
 	_update_trips()
 
 
@@ -1554,7 +1722,7 @@ func _update_prompt() -> void:
 	var text := ""
 	var placed := _nearest_placed()
 	if _work.x < 0 and placed.x >= 0:
-		if not (_using == placed and (_crafting_window.visible or _furnace_window.visible)):
+		if not (_using == placed and (_crafting_window.visible or _furnace_window.visible or _storage_window.visible)):
 			text = "[E] %s" % _placed[placed]["name"]
 	elif _work.x < 0 and _near_station() and not _station_window.visible:
 		text = "[E] Stacja kolejowa"
@@ -1705,6 +1873,10 @@ func _build_hud() -> void:
 			_menu_cell = Vector2i(-1, -1))
 	_hud.add_child(_crop_menu)
 
+	_object_menu = PopupMenu.new()
+	_object_menu.id_pressed.connect(_on_object_chosen)
+	_hud.add_child(_object_menu)
+
 	_work_bar = ProgressBar.new()
 	_work_bar.show_percentage = false
 	_work_bar.step = 0.0
@@ -1760,6 +1932,10 @@ func _update_hint() -> void:
 		"tool_shovel": "Kliknij wydmę, aby ją przekopać łopatą.",
 		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile else "Motyką orze się tylko żyzne gleby.",
 	}
+	if _placing in [BELT, INSERTER]:
+		_hint.text = "Stawianie: kliknij wolne pole, aby postawić %s %s %s. [R] obraca, Esc kończy." % [
+			_item_name(_placing).to_lower(), DIRECTION_ARROWS[_place_rotation], DIRECTIONS[_place_rotation]]
+		return
 	if _placing != "":
 		_hint.text = "Stawianie: kliknij wolne pole, aby postawić %s. Esc anuluje." % _item_name(_placing).to_lower()
 		return
@@ -1830,7 +2006,7 @@ func _build_windows() -> void:
 	_slots.hint = func(item: String) -> String:
 		if item == "sapling":
 			return "Kliknij, aby sadzić na działce"
-		if PLACED_SPRITES.has(item):
+		if PLACED_SPRITES.has(item) or item == BELT:
 			return "Kliknij, aby postawić na działce"
 		return "Kliknij, aby wziąć do ręki" if item in ToolSlot.TOOLS else ""
 	_slots.clicked.connect(func(item: String) -> void:
@@ -1839,7 +2015,7 @@ func _build_windows() -> void:
 		elif item == "sapling":
 			_inventory_window.hide_window()
 			_set_planting(true)
-		elif PLACED_SPRITES.has(item):
+		elif PLACED_SPRITES.has(item) or item == BELT:
 			_start_placing(item))
 	_slots.changed.connect(func(items: Array) -> void:
 		_items = items
@@ -1870,8 +2046,16 @@ func _build_windows() -> void:
 	_furnace_window.inventory_changed.connect(_on_furnace_changed)
 	_furnace_window.failed.connect(_show_error)
 	_furnace_window.pick_up_requested.connect(_pick_up_placed)
+	_storage_window = StorageWindow.new()
+	_storage_window.position = Vector2(1280 - 420 - 12, 64)
+	_storage_window.inventory_changed.connect(func() -> void:
+		_reload_inventory()
+		_poll_logistics())
+	_storage_window.failed.connect(_show_error)
+	_storage_window.pick_up_requested.connect(_pick_up_placed)
 	var layer := _hud
 	layer.add_child(_inventory_window)
+	layer.add_child(_storage_window)
 	layer.add_child(_station_window)
 	layer.add_child(_crafting_window)
 	layer.add_child(_furnace_window)
@@ -1886,6 +2070,7 @@ func _reload_inventory() -> void:
 	_slots.show_items(reply["payload"])
 	_crafting_window.set_items(_items)
 	_furnace_window.set_items(_items)
+	_storage_window.set_items(_items)
 	if _station_window.visible and not _station_state.is_empty():
 		_show_station()
 
@@ -2179,6 +2364,7 @@ func _load() -> void:
 	_reload_inventory()
 	# Orders made while the player was away land in the inventory now.
 	_crafting_window.refresh()
+	_poll_logistics()
 
 
 # --- Effects ---------------------------------------------------------------------------------------------

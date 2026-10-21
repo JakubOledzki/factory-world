@@ -133,6 +133,22 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
     }
 
     [Fact]
+    public void An_inserter_takes_mixed_goods_out_of_a_chest_in_turn()
+    {
+        var chest = Obj(Items.WoodenChest, 0, 0);
+        var belt = Obj(Items.Belt, 2, 0);
+        var contents = new Dictionary<Guid, Contents>
+        {
+            [chest.Id] = new() { Items = [new() { Item = Items.IronOre, Quantity = 10 }, new() { Item = Items.Coal, Quantity = 10 }] },
+        };
+        Build([chest, Obj(Items.Inserter, 1, 0), belt], contents).Logistics.Run(Start, Start + TimeSpan.FromMinutes(5));
+
+        // Four items fill the belt and a fifth waits in the inserter's hand: ore, coal, ore, coal, ore.
+        Assert.Equal(7, Stored(contents[chest.Id], Items.IronOre));
+        Assert.Equal(8, Stored(contents[chest.Id], Items.Coal));
+    }
+
+    [Fact]
     public void Storages_take_their_goods_up_to_their_size()
     {
         var heap = Storages.Find(Items.Heap)!;

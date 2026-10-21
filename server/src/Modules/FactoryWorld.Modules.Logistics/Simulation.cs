@@ -45,6 +45,10 @@ public sealed class Contents
     /// <summary>What a storage holds.</summary>
     public List<ItemStack>? Items { get; set; }
 
+    /// <summary>The stack of a storage inserters take from next: they go round all of them in turn,
+    /// so ore and coal stored together both reach a furnace.</summary>
+    public int Next { get; set; }
+
     /// <summary>Everything in it, for handing back to the player.</summary>
     public IEnumerable<(string Item, int Quantity)> All()
     {
@@ -73,13 +77,28 @@ public sealed class StoragePort(StorageKind kind, Contents contents, Action chan
 {
     private List<ItemStack> Stacks => contents.Items ??= [];
 
-    public string? Output(DateTimeOffset now, Func<string, bool> wanted) =>
-        Stacks.FirstOrDefault(s => s.Quantity > 0 && wanted(s.Item))?.Item;
+    public string? Output(DateTimeOffset now, Func<string, bool> wanted)
+    {
+        var stacks = Stacks;
+        for (var i = 0; i < stacks.Count; i++)
+        {
+            var stack = stacks[(contents.Next + i) % stacks.Count];
+            if (stack.Quantity > 0 && wanted(stack.Item))
+            {
+                return stack.Item;
+            }
+        }
+
+        return null;
+    }
 
     public void Take(string item, DateTimeOffset now)
     {
+        var at = Stacks.FindIndex(s => s.Item == item);
         if (Storages.Remove(Stacks, item, 1) > 0)
         {
+            // The next stack comes next; one that ran out has made room for it already.
+            contents.Next = Stacks.Count == 0 ? 0 : (Stacks.Count > at && Stacks[at].Item == item ? at + 1 : at) % Stacks.Count;
             changed();
         }
     }
