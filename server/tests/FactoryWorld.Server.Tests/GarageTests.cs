@@ -1,6 +1,23 @@
+using FactoryWorld.Modules.Abstractions.Contracts;
 using FactoryWorld.Modules.Recycling;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FactoryWorld.Server.Tests;
+
+/// <summary>Puts a bought sorting machine in a player's garage, so sortings can queue up.</summary>
+public static class SortingMachine
+{
+    public static async Task InstallAsync(ServerFactory factory, GameClient client)
+    {
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 100_000, "test", CancellationToken.None);
+        }
+
+        Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.SortingMachine, quantity = 1 })).Type());
+        Assert.Equal("garage", (await client.SendAsync("garage.place", new { kind = Items.SortingMachine, x = 6, y = 3 })).Type());
+    }
+}
 
 public sealed class GarageTests(ServerFactory factory) : IClassFixture<ServerFactory>
 {
@@ -38,7 +55,7 @@ public sealed class GarageTests(ServerFactory factory) : IClassFixture<ServerFac
     {
         using var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
-        await client.SendAsync("garage.get");
+        await SortingMachine.InstallAsync(factory, client);
 
         var queued = await client.SendAsync("recycling.sort", new { count = 3 });
         Assert.Equal(47, queued.Payload().GetProperty("trash").GetInt64());
@@ -76,10 +93,47 @@ public sealed class GarageTests(ServerFactory factory) : IClassFixture<ServerFac
     }
 
     [Fact]
+    public async Task By_hand_one_bag_is_sorted_at_a_time_and_walking_away_stops_it()
+    {
+        using var client = await factory.ConnectAsync();
+        await client.RegisterWithCharacterAsync();
+
+        var garage = await client.SendAsync("recycling.sort", new { count = 1 });
+        Assert.Equal(1, garage.Payload().GetProperty("maxQueue").GetInt32());
+        Assert.Equal("queue_full", (await client.SendAsync("recycling.sort", new { count = 1 })).ErrorCode());
+
+        factory.Time.Advance(TimeSpan.FromSeconds(4));
+        var stopped = await client.SendAsync("recycling.stop");
+        Assert.Equal(0, stopped.Payload().GetProperty("queue").GetArrayLength());
+        Assert.Equal(50, stopped.Payload().GetProperty("trash").GetInt64());
+
+        // A bag that finished before walking away is kept.
+        await client.SendAsync("recycling.sort", new { count = 1 });
+        factory.Time.Advance(TimeSpan.FromSeconds(10));
+        var done = await client.SendAsync("recycling.stop");
+        Assert.Equal(1, done.Payload().GetProperty("results").GetArrayLength());
+        Assert.Equal(49, done.Payload().GetProperty("trash").GetInt64());
+    }
+
+    [Fact]
+    public async Task The_sorting_machine_keeps_sorting_when_the_player_walks_away()
+    {
+        using var client = await factory.ConnectAsync();
+        await client.RegisterWithCharacterAsync();
+        await SortingMachine.InstallAsync(factory, client);
+
+        var queued = await client.SendAsync("recycling.sort", new { count = 5 });
+        Assert.Equal(10, queued.Payload().GetProperty("maxQueue").GetInt32());
+        var stopped = await client.SendAsync("recycling.stop");
+        Assert.Equal(5, stopped.Payload().GetProperty("queue").GetArrayLength());
+    }
+
+    [Fact]
     public async Task Queue_holds_at_most_10()
     {
         using var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
+        await SortingMachine.InstallAsync(factory, client);
 
         Assert.Equal("garage", (await client.SendAsync("recycling.sort", new { count = 10 })).Type());
         Assert.Equal("queue_full", (await client.SendAsync("recycling.sort", new { count = 1 })).ErrorCode());
@@ -92,6 +146,7 @@ public sealed class GarageTests(ServerFactory factory) : IClassFixture<ServerFac
     {
         using var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
+        await SortingMachine.InstallAsync(factory, client);
         for (var i = 0; i < 5; i++)
         {
             await client.SendAsync("recycling.sort", new { count = 10 });
@@ -129,6 +184,7 @@ public sealed class MarketTests(ServerFactory factory) : IClassFixture<ServerFac
     {
         using var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
+        await SortingMachine.InstallAsync(factory, client);
         await client.SendAsync("recycling.sort", new { count = 5 });
         factory.Time.Advance(TimeSpan.FromSeconds(50));
         await client.SendAsync("garage.get");
@@ -150,6 +206,7 @@ public sealed class MarketTests(ServerFactory factory) : IClassFixture<ServerFac
     {
         using var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
+        await SortingMachine.InstallAsync(factory, client);
         await client.SendAsync("recycling.sort", new { count = 10 });
         factory.Time.Advance(TimeSpan.FromSeconds(100));
         await client.SendAsync("garage.get");
@@ -195,5 +252,6 @@ public sealed class MarketTests(ServerFactory factory) : IClassFixture<ServerFac
 
         Assert.Equal(200, items.Single(i => i.GetProperty("id").GetString() == "trash").GetProperty("buyCents").GetInt64());
         Assert.Equal(1500, items.Single(i => i.GetProperty("id").GetString() == "waste_copper").GetProperty("sellCents").GetInt64());
+        Assert.Equal(100_000, items.Single(i => i.GetProperty("id").GetString() == "furniture_sorting_machine").GetProperty("buyCents").GetInt64());
     }
 }

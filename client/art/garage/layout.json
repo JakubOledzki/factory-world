@@ -143,6 +143,24 @@
     "anchorX": 50,
     "anchorY": 71
    }
+  ],
+  "furniture_sorting_machine": [
+   {
+    "anchorX": 137,
+    "anchorY": 186
+   },
+   {
+    "anchorX": 113,
+    "anchorY": 172
+   },
+   {
+    "anchorX": 151,
+    "anchorY": 175
+   },
+   {
+    "anchorX": 66,
+    "anchorY": 135
+   }
   ]
  },
  "projection": {

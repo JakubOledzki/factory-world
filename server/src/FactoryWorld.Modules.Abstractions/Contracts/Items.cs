@@ -19,6 +19,7 @@ public static class Items
     public const string Tyres = "furniture_tyres";
     public const string Pallet = "furniture_pallet";
     public const string GasCylinder = "furniture_gas_cylinder";
+    public const string SortingMachine = "furniture_sorting_machine";
 
     // Tools: one can be held in the character's tool slot.
     public const string Axe = "tool_axe";
@@ -50,6 +51,7 @@ public static class Items
         [Tyres] = "Opony",
         [Pallet] = "Paleta",
         [GasCylinder] = "Butla gazowa",
+        [SortingMachine] = "Automatyczna sortownia",
         [Axe] = "Siekiera",
         [Shovel] = "Łopata",
         [Pickaxe] = "Kilof",
