@@ -188,5 +188,25 @@
  "kitchen": {
   "anchorX": 56,
   "anchorY": 77
+ },
+ "belt_ne": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_es": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_sw": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_nw": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "splitter": {
+  "anchorX": 32,
+  "anchorY": 39
  }
 }

@@ -627,6 +627,65 @@ def belt_frame(s=1.0, along_x=True, length=2.0):
         ra.cylinder("belt_roller", 0.07 * s, 1.0 * s, at(a, 0, 0.13), steel, rotation=rot, verts=12)
 
 
+def arc_box(name, r_in, r_out, z0, z1, a0, a1, centre, mat, n=12):
+    """A curved slab: the part of a ring between two radii and two angles (radians), from z0 to z1,
+    about `centre` (x, y)."""
+    verts, faces = [], []
+    for k in range(n + 1):
+        a = a0 + (a1 - a0) * k / n
+        for r in (r_in, r_out):
+            for z in (z0, z1):
+                verts.append((centre[0] + r * math.cos(a), centre[1] + r * math.sin(a), z))
+    for k in range(n):
+        i, j = 4 * k, 4 * (k + 1)
+        # inner, outer, bottom and top faces of the step
+        faces += [(i, i + 1, j + 1, j), (i + 2, j + 2, j + 3, i + 3), (i, j, j + 2, i + 2), (i + 1, i + 3, j + 3, j + 1)]
+    last = 4 * n
+    faces += [(0, 2, 3, 1), (last, last + 1, last + 3, last + 2)]
+    obj = ra.mesh_from(name, verts, faces, mat)
+    for poly in obj.data.polygons:
+        poly.use_smooth = True
+    return obj
+
+
+# The sides of a tile a curve joins, as unit vectors in Blender's (east, north).
+SIDES = {"n": (0, 1), "e": (1, 0), "s": (0, -1), "w": (-1, 0)}
+
+
+def belt_curve(sides):
+    """A belt turning a corner between two sides of its tile: the band and rails bent round the
+    tile's corner between those sides, like belt_frame laid in a quarter circle."""
+    paint = ra.plain("belt_paint", (0.5, 0.33, 0.03), 0.5, 0.4, variation=0.2, grime=0.8)
+    rubber = ra.plain("belt_rubber", (0.025, 0.025, 0.027), 0.8, variation=0.3, scale=20, bump=0.3)
+    steel = ra.rusty_metal("belt_steel", (0.16, 0.16, 0.17), 0.3)
+    (ax, ay), (bx, by) = SIDES[sides[0]], SIDES[sides[1]]
+    centre = (ax + bx, ay + by)
+    mid = math.atan2(-centre[1], -centre[0])
+    a0, a1 = mid - math.pi / 4, mid + math.pi / 4
+    arc_box("belt_band", 1 - 0.48, 1 + 0.48, 0.175, 0.225, a0, a1, centre, rubber, n=16)
+    for r in (1 - 0.53, 1 + 0.53):
+        arc_box("belt_rail", r - 0.05, r + 0.05, 0.14, 0.30, a0, a1, centre, paint, n=16)
+        for a in (a0 + 0.2, a1 - 0.2):
+            ra.box("belt_leg", (0.08, 0.08, 0.16), Vector((centre[0] + r * math.cos(a), centre[1] + r * math.sin(a), 0.08)), steel)
+    for k in range(4):
+        a = a0 + (k + 0.5) * (a1 - a0) / 4
+        ra.cylinder("belt_roller", 0.07, 1.0, Vector((centre[0] + math.cos(a), centre[1] + math.sin(a), 0.13)), steel,
+                    rotation=(0, math.radians(90), a), verts=12)
+
+
+def splitter(s=1.0):
+    """The middle of a splitter: a steel wedge that turns what comes in to both
+    sides, under a yellow cap with a lamp. The game draws the crossed belts under it, so it looks
+    the same turned any way."""
+    paint = ra.plain("splitter_paint", (0.55, 0.36, 0.03), 0.45, 0.4, variation=0.2, grime=0.7)
+    steel = ra.rusty_metal("splitter_steel", (0.15, 0.15, 0.16), 0.25)
+    ra.box("splitter_wedge", (0.62 * s, 0.62 * s, 0.34 * s), Vector((0, 0, 0.36 * s)), steel, bevel=0.03 * s,
+           rotation=(0, 0, math.radians(45)))
+    ra.box("splitter_cap", (0.7 * s, 0.7 * s, 0.08 * s), Vector((0, 0, 0.57 * s)), paint, bevel=0.025 * s,
+           rotation=(0, 0, math.radians(45)))
+    ra.cylinder("splitter_lamp", 0.06 * s, 0.06 * s, Vector((0, 0, 0.64 * s)), ra.emission("splitter_lamp", (0.3, 1.0, 0.25), 3.0), verts=12)
+
+
 def inserter(s=1.0, arm=False):
     """The base of an inserter: a steel foot and a yellow turret; the game draws the arm swinging
     from the tile behind it to the tile in front. With `arm` (for its icon) the arm is modelled too."""
@@ -737,6 +796,11 @@ LOGISTICS = {
     # name: (canvas width, height, camera target height, builder)
     "belt_ew": (72, 64, 0.1, crafted(lambda: belt_frame(along_x=True))),
     "belt_ns": (72, 72, 0.1, crafted(lambda: belt_frame(along_x=False))),
+    "belt_ne": (72, 72, 0.1, crafted(lambda: belt_curve("ne"))),
+    "belt_es": (72, 72, 0.1, crafted(lambda: belt_curve("es"))),
+    "belt_sw": (72, 72, 0.1, crafted(lambda: belt_curve("sw"))),
+    "belt_nw": (72, 72, 0.1, crafted(lambda: belt_curve("nw"))),
+    "splitter": (64, 64, 0.3, crafted(lambda: splitter())),
     "inserter": (64, 64, 0.3, crafted(lambda: inserter())),
     "wooden_chest": (64, 64, 0.3, crafted(lambda: wooden_chest())),
     "iron_chest": (72, 64, 0.3, crafted(lambda: iron_chest())),
@@ -746,8 +810,10 @@ LOGISTICS = {
 }
 
 
-def render_logistics(layout: dict):
+def render_logistics(layout: dict, only=()):
     for name, (w, h, tz, build) in LOGISTICS.items():
+        if only and name not in only:
+            continue
         random.seed(zlib.crc32(name.encode()))
         layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), build, true_scale=True)
 
@@ -1150,6 +1216,7 @@ def icon_models():
         "item_nails": nails,
         "item_logistics_belt": lambda: belt_frame(0.26, True, 1.6),
         "item_logistics_inserter": lambda: inserter(0.4, arm=True),
+        "item_logistics_splitter": lambda: (belt_frame(0.4, True, 1.6), belt_frame(0.4, False, 1.6), splitter(0.6)),
         "item_storage_wooden_chest": lambda: wooden_chest(0.38),
         "item_storage_iron_chest": lambda: iron_chest(0.36),
         "item_storage_wood_pile": lambda: wood_pile(0.3),
@@ -1196,8 +1263,9 @@ if __name__ == "__main__":
         render_crafting(layout)
     if "processing" in args:
         render_processing(layout)
-    if "logistics" in args:
-        render_logistics(layout)
+    if "logistics" in args or any(a in LOGISTICS for a in args):
+        # Names of logistics sprites render just those.
+        render_logistics(layout, [a for a in args if a in LOGISTICS])
     # "item_<id>" arguments render just those icons.
     if "icons" in args or any(a.startswith("item_") for a in args):
         render_icons([a for a in args if a.startswith("item_")])

@@ -355,7 +355,10 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
                     // Splitters only: the items sorted out and the side they go to.
                     filter = o.Kind == Items.Splitter ? Of(o.Id).Filter ?? [] : null,
                     filterSide = Of(o.Id).FilterSide,
+                    turn = Of(o.Id).Turn,
                 }),
+            // What every item is called, for choosing a splitter's filter.
+            names = state.Objects.Any(o => o.Kind == Items.Splitter) ? Items.Names : null,
             inserters = state.Objects.Where(o => o.Kind == Items.Inserter)
                 .Select(o => new { id = o.Id, hand = Of(o.Id).Hand, swing = Of(o.Id).Swing }),
             storages = state.Objects.Where(o => Storages.Find(o.Kind) is not null)

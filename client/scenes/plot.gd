@@ -73,7 +73,7 @@ const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalni
 const PLACED_SPRITES := {
 	"furniture_workbench": "workbench", "furniture_furnace": "furnace",
 	"furniture_mill": "mill", "furniture_oil_press": "oil_press", "furniture_pickling_barrel": "pickling_barrel",
-	"furniture_bakery": "bakery", "furniture_kitchen": "kitchen", "logistics_inserter": "inserter",
+	"furniture_bakery": "bakery", "furniture_kitchen": "kitchen", "logistics_inserter": "inserter", "logistics_splitter": "splitter",
 	"storage_wooden_chest": "wooden_chest", "storage_iron_chest": "iron_chest", "storage_wood_pile": "wood_pile",
 	"storage_heap": "heap", "storage_grain_silo": "grain_silo",
 }
@@ -81,6 +81,9 @@ const PLACED_SPRITES := {
 const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen"]
 const BELT := "logistics_belt"
 const INSERTER := "logistics_inserter"
+const SPLITTER := "logistics_splitter"
+## Belts, inserters and splitters: turned with R and laid one after another.
+const MACHINERY := [BELT, INSERTER, SPLITTER]
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo"]
 ## Where a rotation faces, as players read it: 0 south, 1 east, 2 north, 3 west.
 const DIRECTIONS := ["na południe", "na wschód", "na północ", "na zachód"]
@@ -217,6 +220,7 @@ var _station_window: GameWindow
 var _crafting_window: CraftingWindow
 var _furnace_window: FurnaceWindow
 var _storage_window: StorageWindow
+var _splitter_window: SplitterWindow
 var _machine_window: MachineWindow
 var _station_box: VBoxContainer
 var _station_state := {}
@@ -597,9 +601,9 @@ func _is_belt(cell: Vector2i) -> bool:
 	return _placed.has(cell) and _placed[cell]["kind"] == BELT
 
 
-## Belts and inserters are turned and picked up from a menu; other placed objects open a window.
+## Belts, inserters and splitters are turned and picked up from a menu; other placed objects open a window.
 func _turnable(cell: Vector2i) -> bool:
-	return _placed.has(cell) and _placed[cell]["kind"] in [BELT, INSERTER]
+	return _placed.has(cell) and _placed[cell]["kind"] in MACHINERY
 
 
 ## Whether the player can stand at a position (in tiles).
@@ -834,6 +838,11 @@ func _placed_label(cell: Vector2i) -> String:
 		var held := _logistics.held(cell)
 		var carrying := ", niesie: %s" % _item_name(held).to_lower() if held != "" else ""
 		return "Podajnik %s%s: [R] obróć, kliknij, aby schować" % [facing, carrying]
+	if object["kind"] == SPLITTER:
+		var filter := _logistics.splitter(object["id"])
+		var sorting := "na zmianę w lewo i w prawo" if (filter["items"] as Array).is_empty() \
+			else "wybrane %s" % ("w lewo" if int(filter["side"]) == 0 else "w prawo")
+		return "Rozdzielacz %s, %s: [R] obróć, kliknij po więcej" % [facing, sorting]
 	var summary := _logistics.storage(object["id"])
 	if not summary.is_empty():
 		var fill := "%d/%d miejsc" % [int(summary["usedSlots"]), int(summary["slots"])] if int(summary["slots"]) > 1 \
@@ -866,7 +875,7 @@ func _draw_ghost(cell: Vector2i) -> void:
 	var texture: Texture2D = load("res://art/plot/%s.png" % sprite)
 	var anchor := Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"])
 	_marks.draw_texture(texture, _cell_centre(cell) - anchor, Color(1, 1, 1, 0.55))
-	if _placing in [BELT, INSERTER]:
+	if _placing in MACHINERY:
 		var dir := Vector2(PlotLogistics.facing(_place_rotation)) * TILE
 		var from := _cell_centre(cell) - dir * 0.35 - Vector2(0, 10)
 		var to := _cell_centre(cell) + dir * 0.45 - Vector2(0, 10)
@@ -920,7 +929,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _placing != "":
 			_stop_placing()
 		elif _station_window.visible or _inventory_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _storage_window]:
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _storage_window, _splitter_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -1332,7 +1341,7 @@ func _start_placing(kind: String) -> void:
 	_stop_work()
 	_inventory_window.hide_window()
 	_placing = kind
-	if kind in [BELT, INSERTER]:
+	if kind in MACHINERY:
 		_show_toast("Kliknij wolne pole, aby postawić: %s. [R] obraca, Esc kończy." % _item_name(kind).to_lower())
 	else:
 		_show_toast("Kliknij wolne pole, aby postawić: %s. Esc anuluje." % _item_name(kind))
@@ -1364,7 +1373,7 @@ func _place_object(cell: Vector2i) -> void:
 		return
 	var kind := _placing
 	# Belts and inserters are laid one after another until they run out.
-	var more := kind in [BELT, INSERTER] and _count(kind) > 1
+	var more := kind in MACHINERY and _count(kind) > 1
 	if not more:
 		_stop_placing()
 	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
@@ -1378,7 +1387,7 @@ func _place_object(cell: Vector2i) -> void:
 	_astar.set_point_solid(at, not _is_belt(at))
 	_draw_cell(at)
 	_logistics.set_objects(_placed)
-	if kind in [BELT, INSERTER]:
+	if kind in MACHINERY:
 		_show_toast("%s stoi %s. %s" % [object["name"], DIRECTIONS[int(object["rotation"])], "Kliknij kolejne pole albo Esc." if more else ""])
 	else:
 		_show_toast("%s stoi na działce. Kliknij, aby użyć." % object["name"])
@@ -1412,7 +1421,8 @@ func _use_placed(cell: Vector2i) -> void:
 
 
 func _using_window_open() -> bool:
-	return _crafting_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible
+	return _crafting_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
+		or _splitter_window.visible
 
 
 func _hide_placed_windows() -> void:
@@ -1420,6 +1430,7 @@ func _hide_placed_windows() -> void:
 	_furnace_window.hide_window()
 	_machine_window.hide_window()
 	_storage_window.hide_window()
+	_splitter_window.hide_window()
 
 
 func _pick_up_placed(id: String) -> void:
@@ -1447,6 +1458,8 @@ func _open_object_menu(cell: Vector2i) -> void:
 	_object_menu.clear()
 	_object_menu.add_item("Obróć  [R]", 0)
 	_object_menu.add_item("Schowaj do ekwipunku", 1)
+	if _placed.has(cell) and _placed[cell]["kind"] == SPLITTER:
+		_object_menu.add_item("Ustaw, co idzie w którą stronę", 2)
 	_object_menu.reset_size()
 	var at := get_viewport().get_mouse_position() + Vector2(12, 4)
 	_object_menu.popup(Rect2i(Vector2i(at), Vector2i.ZERO))
@@ -1459,10 +1472,20 @@ func _on_object_chosen(choice: int) -> void:
 		return
 	if choice == 0:
 		_rotate_placed(cell)
+	elif choice == 2:
+		_open_splitter(cell)
 	else:
 		_go_and(cell, func(at: Vector2i) -> void:
 			if _placed.has(at):
 				_pick_up_placed(_placed[at]["id"]))
+
+
+func _open_splitter(cell: Vector2i) -> void:
+	var object: Dictionary = _placed[cell]
+	_hide_placed_windows()
+	_splitter_window.names = _logistics.names
+	_splitter_window.set_items(_items)
+	_splitter_window.open_at(_at, object["id"], int(object.get("rotation", 0)), _logistics.splitter(object["id"]))
 
 
 ## Turns a belt or inserter a quarter turn anticlockwise: south, east, north, west.
@@ -1940,7 +1963,7 @@ func _update_hint() -> void:
 		"tool_shovel": "Kliknij wydmę, aby ją przekopać łopatą.",
 		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile else "Motyką orze się tylko żyzne gleby.",
 	}
-	if _placing in [BELT, INSERTER]:
+	if _placing in MACHINERY:
 		_hint.text = "Stawianie: kliknij wolne pole, aby postawić %s %s %s. [R] obraca, Esc kończy." % [
 			_item_name(_placing).to_lower(), DIRECTION_ARROWS[_place_rotation], DIRECTIONS[_place_rotation]]
 		return
@@ -2061,6 +2084,10 @@ func _build_windows() -> void:
 		_poll_logistics())
 	_storage_window.failed.connect(_show_error)
 	_storage_window.pick_up_requested.connect(_pick_up_placed)
+	_splitter_window = SplitterWindow.new()
+	_splitter_window.position = Vector2(1280 - 400 - 12, 64)
+	_splitter_window.applied.connect(_logistics.apply)
+	_splitter_window.failed.connect(_show_error)
 	_machine_window = MachineWindow.new()
 	_machine_window.position = Vector2(1280 - 420 - 12, 64)
 	_machine_window.inventory_changed.connect(_on_furnace_changed)
@@ -2069,6 +2096,7 @@ func _build_windows() -> void:
 	var layer := _hud
 	layer.add_child(_inventory_window)
 	layer.add_child(_storage_window)
+	layer.add_child(_splitter_window)
 	layer.add_child(_station_window)
 	layer.add_child(_crafting_window)
 	layer.add_child(_furnace_window)
@@ -2085,6 +2113,7 @@ func _reload_inventory() -> void:
 	_crafting_window.set_items(_items)
 	_furnace_window.set_items(_items)
 	_storage_window.set_items(_items)
+	_splitter_window.set_items(_items)
 	_machine_window.set_items(_items)
 	if _station_window.visible and not _station_state.is_empty():
 		_show_station()
