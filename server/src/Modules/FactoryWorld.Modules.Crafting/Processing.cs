@@ -311,7 +311,7 @@ public sealed class MachineService(GameDb db, IEnumerable<IPlacedObjects> places
             else
             {
                 throw recipe is null
-                    ? new GameException("no_recipe", "Choose what the machine makes first.")
+                    ? new GameException("choose_recipe", "Choose what the machine makes first.")
                     : new GameException("not_processable", "This does not go into the machine.");
             }
 

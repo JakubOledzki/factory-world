@@ -11,6 +11,7 @@ const GROUP := "game_windows"
 var content := VBoxContainer.new()
 
 var _dragging := false
+var _title: Label
 var _bar := HBoxContainer.new()
 var _scroll := ScrollContainer.new()
 
@@ -26,11 +27,11 @@ func _init(title: String, width: int) -> void:
 	_bar.mouse_filter = Control.MOUSE_FILTER_STOP
 	_bar.mouse_default_cursor_shape = Control.CURSOR_MOVE
 	_bar.gui_input.connect(_on_bar_input)
-	var label := UI.label(title, UI.GOLD)
-	label.add_theme_font_override("font", UI.bold())
-	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_bar.add_child(label)
+	_title = UI.label(title, UI.GOLD)
+	_title.add_theme_font_override("font", UI.bold())
+	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bar.add_child(_title)
 	var close := UI.button("×", hide_window)
 	close.tooltip_text = "Zamknij (Esc)"
 	_bar.add_child(close)
@@ -84,3 +85,7 @@ func _on_bar_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and _dragging:
 		var area := get_viewport_rect().size
 		position = (position + event.relative).clamp(Vector2.ZERO, area - size)
+
+
+func set_title(title: String) -> void:
+	_title.text = title

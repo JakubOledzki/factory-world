@@ -136,5 +136,25 @@
  "furnace": {
   "anchorX": 48,
   "anchorY": 70
+ },
+ "mill": {
+  "anchorX": 64,
+  "anchorY": 101
+ },
+ "oil_press": {
+  "anchorX": 56,
+  "anchorY": 76
+ },
+ "pickling_barrel": {
+  "anchorX": 48,
+  "anchorY": 59
+ },
+ "bakery": {
+  "anchorX": 56,
+  "anchorY": 74
+ },
+ "kitchen": {
+  "anchorX": 56,
+  "anchorY": 77
  }
 }

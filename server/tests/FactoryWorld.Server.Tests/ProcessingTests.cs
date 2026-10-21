@@ -75,7 +75,7 @@ public sealed class ProcessingTests(ServerFactory factory) : IClassFixture<Serve
         var (_, _, mill) = await MachineOnPlotAsync(client, Items.Mill);
         await GiveAsync(client, Items.Wheat, 7);
 
-        Assert.Equal("no_recipe", (await client.SendAsync("machine.load", new { machine = mill, item = Items.Wheat, quantity = 7 })).ErrorCode());
+        Assert.Equal("choose_recipe", (await client.SendAsync("machine.load", new { machine = mill, item = Items.Wheat, quantity = 7 })).ErrorCode());
         var set = (await client.SendAsync("machine.recipe", new { machine = mill, recipe = Items.Flour })).Payload();
         Assert.Equal(Items.Flour, set.GetProperty("recipe").GetString());
         Assert.False(set.GetProperty("fired").GetBoolean());
