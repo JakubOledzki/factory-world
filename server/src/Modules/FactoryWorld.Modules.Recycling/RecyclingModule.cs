@@ -79,6 +79,7 @@ public static class GarageLayout
             [Items.Pallet] = (2, 2),
             [Items.GasCylinder] = (1, 1),
             [Items.SortingMachine] = (3, 2),
+            [Items.Furnace] = (2, 2),
         };
 
     /// <summary>How a new garage is furnished.</summary>
@@ -199,7 +200,7 @@ public sealed record GarageState(
     XpGain? Xp,
     IReadOnlyList<PlacedObject> Objects);
 
-public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacterProgress progress, TimeProvider time)
+public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacterProgress progress, IMachineContents machines, TimeProvider time)
 {
     /// <summary>The garage as it is now, after finishing every sorting whose time has come.</summary>
     public Task<GarageState> StateAsync(Guid owner, CancellationToken cancellationToken) =>
@@ -318,6 +319,7 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
             command.Parameters.AddWithValue("owner", owner);
             var kind = await command.ExecuteScalarAsync(cancellationToken) as string
                 ?? throw new GameException("no_object", "There is no such object in your garage.");
+            await machines.ReleaseAsync(owner, id, cancellationToken);
             await inventory.AddAsync(owner, kind, 1, cancellationToken);
             return await ReadStateAsync(owner, results, xp, cancellationToken);
         }, cancellationToken);
@@ -441,6 +443,19 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
             await ObjectsAsync(owner, cancellationToken));
 }
 
+/// <summary>Furniture standing in the player's garage, for other modules (e.g. the workbench to craft at).</summary>
+public sealed class GarageObjects(GameDb db) : IPlacedObjects
+{
+    public async Task<string?> KindAsync(Guid owner, Guid id, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            "SELECT kind FROM recycling.garage_objects WHERE id = @id AND owner_id = @owner", cancellationToken);
+        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("owner", owner);
+        return await command.ExecuteScalarAsync(cancellationToken) as string;
+    }
+}
+
 public sealed record SortRequest(int Count);
 
 public sealed record PlaceRequest(string Kind, int X, int Y, int Rotation = 0);
@@ -528,6 +543,7 @@ public sealed class RecyclingModule : IGameModule
     {
         services.AddModuleDbContext<RecyclingDbContext>(RecyclingDbContext.Schema);
         services.AddScoped<RecyclingService>();
+        services.AddScoped<IPlacedObjects, GarageObjects>();
         services.AddSingleton<IMessageHandler, GetGarageHandler>();
         services.AddSingleton<IMessageHandler, SortHandler>();
         services.AddSingleton<IMessageHandler, StopHandler>();

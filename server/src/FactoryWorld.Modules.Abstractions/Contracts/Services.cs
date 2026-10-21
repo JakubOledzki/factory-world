@@ -49,3 +49,18 @@ public interface IEquipment
     /// <summary>Gives a new tool: into the slot when it is empty, otherwise into the inventory.</summary>
     Task GiveToolAsync(Guid accountId, string tool, CancellationToken cancellationToken);
 }
+
+/// <summary>Things a player has put somewhere: furniture in the garage, objects on a plot.
+/// Each module that keeps such objects offers one of these.</summary>
+public interface IPlacedObjects
+{
+    /// <summary>The kind (item id) of the player's object with this id, or null when it is not theirs or not here.</summary>
+    Task<string?> KindAsync(Guid owner, Guid id, CancellationToken cancellationToken);
+}
+
+/// <summary>What a placed machine (e.g. a furnace) holds.</summary>
+public interface IMachineContents
+{
+    /// <summary>The object is being picked up: everything in it goes back to the owner's inventory.</summary>
+    Task ReleaseAsync(Guid owner, Guid id, CancellationToken cancellationToken);
+}

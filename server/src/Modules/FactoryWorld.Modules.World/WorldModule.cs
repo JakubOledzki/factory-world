@@ -79,6 +79,24 @@ public sealed class PlotMine
     public DateTimeOffset? EmptyAt { get; set; }
 }
 
+/// <summary>Something a player put on a tile of their plot, e.g. a workbench or a furnace.</summary>
+public sealed class PlotObjectRow
+{
+    public Guid Id { get; set; }
+
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public int TileX { get; set; }
+
+    public int TileY { get; set; }
+
+    public Guid OwnerId { get; set; }
+
+    public string Kind { get; set; } = "";
+}
+
 /// <summary>What a geological survey found under a plot.</summary>
 public sealed class SurveyRow
 {
@@ -186,6 +204,20 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(m => m.Mine).HasColumnName("mine");
             e.Property(m => m.Used).HasColumnName("used");
             e.Property(m => m.EmptyAt).HasColumnName("empty_at");
+        });
+        model.Entity<PlotObjectRow>(e =>
+        {
+            e.ToTable("plot_objects");
+            e.HasKey(o => o.Id);
+            e.Property(o => o.Id).HasColumnName("id");
+            e.Property(o => o.X).HasColumnName("x");
+            e.Property(o => o.Y).HasColumnName("y");
+            e.Property(o => o.TileX).HasColumnName("tile_x");
+            e.Property(o => o.TileY).HasColumnName("tile_y");
+            e.Property(o => o.OwnerId).HasColumnName("owner_id");
+            e.Property(o => o.Kind).HasColumnName("kind").HasMaxLength(32);
+            // One object per tile.
+            e.HasIndex(o => new { o.X, o.Y, o.TileX, o.TileY }).IsUnique();
         });
         model.Entity<SurveyRow>(e =>
         {
@@ -486,6 +518,8 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<ForestService>();
         services.AddScoped<MineService>();
         services.AddScoped<SurveyService>();
+        services.AddScoped<PlotObjectService>();
+        services.AddScoped<IPlacedObjects>(provider => provider.GetRequiredService<PlotObjectService>());
         services.AddSingleton<IMessageHandler, InfoHandler>();
         services.AddSingleton<IMessageHandler, AreaHandler>();
         services.AddSingleton<IMessageHandler, GetPlotHandler>();
@@ -502,6 +536,8 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, PlantTreeHandler>();
         services.AddSingleton<IMessageHandler, MineHandler>();
         services.AddSingleton<IMessageHandler, SurveyHandler>();
+        services.AddSingleton<IMessageHandler, PlaceOnPlotHandler>();
+        services.AddSingleton<IMessageHandler, PickUpFromPlotHandler>();
     }
 
     public async Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken)

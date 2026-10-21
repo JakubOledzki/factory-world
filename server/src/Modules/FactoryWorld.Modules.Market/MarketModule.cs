@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FactoryWorld.Modules.Market;
 
 /// <summary>
-/// The NPC trader: always sells trash, saplings and the sorting machine and always buys raw materials, at fixed prices (cents).
+/// The NPC trader: always sells trash, saplings, nails and the sorting machine and always buys raw materials, at fixed prices (cents).
 /// What it pays is the floor of the market: a quick sale gets it at once, players' listings usually pay more.
 /// </summary>
 public static class NpcPrices
@@ -18,6 +18,7 @@ public static class NpcPrices
         [Items.Trash] = 200,
         [Items.SortingMachine] = 100_000,
         [Items.Sapling] = 200,
+        [Items.Nails] = 100,
     };
 
     /// <summary>What the NPC pays the player.</summary>
@@ -38,6 +39,12 @@ public static class NpcPrices
         [Items.TinOre] = 2500,
         [Items.SilverOre] = 6000,
         [Items.GoldOre] = 50_000,
+        [Items.IronIngot] = 1000,
+        [Items.CopperIngot] = 1800,
+        [Items.TinIngot] = 3500,
+        [Items.SilverIngot] = 8000,
+        [Items.GoldIngot] = 60_000,
+        [Items.Nails] = 25,
         [Items.Wheat] = 60,
         [Items.Carrot] = 90,
         [Items.Potato] = 150,

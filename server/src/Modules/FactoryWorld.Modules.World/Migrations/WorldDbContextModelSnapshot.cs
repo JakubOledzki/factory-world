@@ -138,6 +138,47 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plot_mines", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotObjectRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<int>("TileX")
+                        .HasColumnType("integer")
+                        .HasColumnName("tile_x");
+
+                    b.Property<int>("TileY")
+                        .HasColumnType("integer")
+                        .HasColumnName("tile_y");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("X", "Y", "TileX", "TileY")
+                        .IsUnique();
+
+                    b.ToTable("plot_objects", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.PlotTree", b =>
                 {
                     b.Property<int>("X")

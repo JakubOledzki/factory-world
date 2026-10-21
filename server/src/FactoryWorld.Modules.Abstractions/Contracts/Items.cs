@@ -20,6 +20,7 @@ public static class Items
     public const string Pallet = "furniture_pallet";
     public const string GasCylinder = "furniture_gas_cylinder";
     public const string SortingMachine = "furniture_sorting_machine";
+    public const string Furnace = "furniture_furnace";
 
     // Tools: one can be held in the character's tool slot.
     public const string Axe = "tool_axe";
@@ -37,6 +38,14 @@ public static class Items
     public const string TinOre = "tin_ore";
     public const string SilverOre = "silver_ore";
     public const string GoldOre = "gold_ore";
+
+    // Smelted in a furnace from ores, and made at a workbench.
+    public const string IronIngot = "iron_ingot";
+    public const string CopperIngot = "copper_ingot";
+    public const string TinIngot = "tin_ingot";
+    public const string SilverIngot = "silver_ingot";
+    public const string GoldIngot = "gold_ingot";
+    public const string Nails = "nails";
 
     // Forestry: a sapling is planted on a plot and grows into a tree.
     public const string Sapling = "sapling";
@@ -67,6 +76,7 @@ public static class Items
         [Pallet] = "Paleta",
         [GasCylinder] = "Butla gazowa",
         [SortingMachine] = "Automatyczna sortownia",
+        [Furnace] = "Piec kamienny",
         [Axe] = "Siekiera",
         [Shovel] = "Łopata",
         [Pickaxe] = "Kilof",
@@ -80,6 +90,12 @@ public static class Items
         [TinOre] = "Ruda cyny",
         [SilverOre] = "Ruda srebra",
         [GoldOre] = "Ruda złota",
+        [IronIngot] = "Sztabka żelaza",
+        [CopperIngot] = "Sztabka miedzi",
+        [TinIngot] = "Sztabka cyny",
+        [SilverIngot] = "Sztabka srebra",
+        [GoldIngot] = "Sztabka złota",
+        [Nails] = "Gwoździe",
         [Sapling] = "Sadzonka drzewa",
         [Wheat] = "Pszenica",
         [Carrot] = "Marchew",
