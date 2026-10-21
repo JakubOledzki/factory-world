@@ -359,6 +359,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_update_hover()  # The mouse may have moved since the last frame.
 		if _placing != "":
 			if event.button_index == MOUSE_BUTTON_LEFT:
+				_update_ghost()  # A tap on a touch screen moves the mouse and clicks at once.
 				_confirm_place()
 			elif event.button_index == MOUSE_BUTTON_RIGHT:
 				_stop_placing()

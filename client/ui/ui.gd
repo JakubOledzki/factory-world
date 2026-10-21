@@ -10,9 +10,24 @@ const GOLD := Color("#f5b041")
 
 const FONT_SIZE := 15
 const TITLE_SIZE := 28
+## On phones and tablets letters are this much bigger, and buttons taller.
+const TOUCH_SCALE := 1.5
 
 static var _theme: Theme
 static var _bold: Font
+static var _touch: Variant = null
+
+
+## Whether the game runs on a touch screen. In the browser, ?touch=1 or ?touch=0 in the
+## address overrides it, for trying the phone controls on a computer.
+static func touch() -> bool:
+	if _touch == null:
+		_touch = DisplayServer.is_touchscreen_available()
+		if OS.has_feature("web"):
+			var param: Variant = JavaScriptBridge.eval("new URLSearchParams(location.search).get('touch')")
+			if param in ["0", "1"]:
+				_touch = param == "1"
+	return _touch
 
 
 ## Game sets this theme on the root window, so every screen uses it.
@@ -21,7 +36,9 @@ static func theme() -> Theme:
 		return _theme
 	var t := Theme.new()
 	t.default_font = load("res://fonts/TitilliumWeb-Regular.ttf")
-	t.default_font_size = FONT_SIZE
+	t.default_font_size = roundi(FONT_SIZE * TOUCH_SCALE) if touch() else FONT_SIZE
+	# Taller buttons and fields on touch screens, so a finger hits them.
+	var pad := 7 if touch() else 0
 
 	var window := _box("panel", 12, 12, 10)
 	t.set_stylebox("panel", "PanelContainer", window)
@@ -31,10 +48,10 @@ static func theme() -> Theme:
 
 	for type in ["Button", "AccentButton"]:
 		var prefix := "button" if type == "Button" else "button_accent"
-		t.set_stylebox("normal", type, _box(prefix, 8, 10, 3))
-		t.set_stylebox("hover", type, _box(prefix + "_hover", 8, 10, 3))
-		t.set_stylebox("pressed", type, _box("button_pressed", 8, 10, 3, 1))
-		t.set_stylebox("disabled", type, _box("button_pressed", 8, 10, 3, 1, Color(1, 1, 1, 0.55)))
+		t.set_stylebox("normal", type, _box(prefix, 8, 10, 3 + pad))
+		t.set_stylebox("hover", type, _box(prefix + "_hover", 8, 10, 3 + pad))
+		t.set_stylebox("pressed", type, _box("button_pressed", 8, 10, 3 + pad, 1))
+		t.set_stylebox("disabled", type, _box("button_pressed", 8, 10, 3 + pad, 1, Color(1, 1, 1, 0.55)))
 		t.set_stylebox("focus", type, StyleBoxEmpty.new())
 		t.set_font("font", type, bold())
 		var ink := TEXT if type == "Button" else Color("#2a1604")
@@ -45,8 +62,8 @@ static func theme() -> Theme:
 		t.set_color("font_disabled_color", type, Color(MUTED, 0.55))
 	t.set_type_variation("AccentButton", "Button")
 
-	t.set_stylebox("normal", "LineEdit", _box("inset", 8, 8, 5))
-	t.set_stylebox("focus", "LineEdit", _box("inset", 8, 8, 5, 0, Color(1.25, 1.2, 1.1)))
+	t.set_stylebox("normal", "LineEdit", _box("inset", 8, 8, 5 + pad))
+	t.set_stylebox("focus", "LineEdit", _box("inset", 8, 8, 5 + pad, 0, Color(1.25, 1.2, 1.1)))
 	t.set_color("font_color", "LineEdit", Color.WHITE)
 	t.set_color("font_placeholder_color", "LineEdit", Color(MUTED, 0.7))
 	t.set_color("caret_color", "LineEdit", GOLD)
