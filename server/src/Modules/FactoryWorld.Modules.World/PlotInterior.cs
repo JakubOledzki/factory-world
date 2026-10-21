@@ -116,6 +116,7 @@ public static class PlotLayout
         Biome.Forest => Items.Axe,
         Biome.Desert => Items.Shovel,
         Biome.Mountains => Items.Pickaxe,
+        Biome.Farmland => Items.Hoe,
         _ => null,
     };
 
@@ -251,7 +252,7 @@ public sealed record EnterRequest(int X, int Y);
 public sealed record HarvestRequest(int X, int Y, int TileX, int TileY);
 
 /// <summary>Enters one of the player's plots: its tiles (gzip, base64) and where things stand.</summary>
-public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map) : IMessageHandler
+public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, TimeProvider time) : IMessageHandler
 {
     public string Type => "plot.enter";
 
@@ -262,6 +263,8 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map) 
         var tiles = await scope.ServiceProvider.GetRequiredService<PlotService>()
             .TilesAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
         var tool = await scope.ServiceProvider.GetRequiredService<IEquipment>().ToolAsync(client.RequireAccount(), cancellationToken);
+        var fields = await scope.ServiceProvider.GetRequiredService<FarmService>().FieldsAsync(request.X, request.Y, cancellationToken);
+        var biome = map.BiomeAt(request.X, request.Y);
 
         using var packed = new MemoryStream();
         using (var gzip = new GZipStream(packed, CompressionLevel.Optimal))
@@ -274,7 +277,7 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map) 
         {
             x = request.X,
             y = request.Y,
-            biome = (int)map.BiomeAt(request.X, request.Y),
+            biome = (int)biome,
             size = PlotLayout.Size,
             tileMeters = PlotLayout.TileMeters,
             tiles = Convert.ToBase64String(packed.ToArray()),
@@ -283,6 +286,17 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map) 
             spawn = new { x = PlotLayout.Spawn.X, y = PlotLayout.Spawn.Y },
             tool = tool is null ? null : new { id = tool, name = Items.Names[tool] },
             harvestSeconds = HarvestRules.Time.TotalSeconds,
+            fertile = Farming.Fertile(biome),
+            fields = fields.Select(FieldHandler.FieldJson),
+            crops = Farming.Crops.Select(c => new
+            {
+                id = c.Item,
+                name = Items.Names[c.Item],
+                growSeconds = c.Grow.TotalSeconds,
+                yield = c.Yield,
+                xp = c.Xp,
+            }),
+            serverTime = time.GetUtcNow().ToUnixTimeMilliseconds(),
         });
     }
 }
@@ -296,17 +310,11 @@ public sealed class HarvestHandler(IServiceScopeFactory scopes, TimeProvider tim
     public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
     {
         var request = Payload.Read<HarvestRequest>(payload);
-        var now = time.GetUtcNow();
-        // A small tolerance for network jitter between the client's swing and the request.
-        if (client.Items.GetValueOrDefault(LastHarvest) is DateTimeOffset last && now - last < HarvestRules.Time * 0.8)
-        {
-            throw new GameException("too_fast", "Wait until the last swing is done.");
-        }
-
+        CheckPace(client, time);
         await using var scope = scopes.CreateAsyncScope();
         var harvest = await scope.ServiceProvider.GetRequiredService<PlotService>()
             .HarvestAsync(client.RequireAccount(), request.X, request.Y, request.TileX, request.TileY, cancellationToken);
-        client.Items[LastHarvest] = now;
+        Swung(client, time);
         return new Reply("plot.harvested", new
         {
             tileX = request.TileX,
@@ -315,4 +323,16 @@ public sealed class HarvestHandler(IServiceScopeFactory scopes, TimeProvider tim
             xp = new { xp = harvest.Xp.Xp, level = harvest.Xp.Level, leveledUp = harvest.Xp.LeveledUp },
         });
     }
+
+    /// <summary>Refuses a swing of a tool that comes before the last one could be done.</summary>
+    public static void CheckPace(ClientContext client, TimeProvider time)
+    {
+        // A small tolerance for network jitter between the client's swing and the request.
+        if (client.Items.GetValueOrDefault(LastHarvest) is DateTimeOffset last && time.GetUtcNow() - last < HarvestRules.Time * 0.8)
+        {
+            throw new GameException("too_fast", "Wait until the last swing is done.");
+        }
+    }
+
+    public static void Swung(ClientContext client, TimeProvider time) => client.Items[LastHarvest] = time.GetUtcNow();
 }

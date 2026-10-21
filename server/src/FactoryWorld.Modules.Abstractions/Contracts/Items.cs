@@ -24,6 +24,7 @@ public static class Items
     public const string Axe = "tool_axe";
     public const string Shovel = "tool_shovel";
     public const string Pickaxe = "tool_pickaxe";
+    public const string Hoe = "tool_hoe";
 
     // Raw materials gathered on plots.
     public const string Wood = "wood";
@@ -32,6 +33,14 @@ public static class Items
     public const string Coal = "coal";
     public const string IronOre = "iron_ore";
     public const string CopperOre = "copper_ore";
+
+    // Crops grown on fertile plots.
+    public const string Wheat = "wheat";
+    public const string Carrot = "carrot";
+    public const string Cabbage = "cabbage";
+    public const string Corn = "corn";
+    public const string Potato = "potato";
+    public const string Sunflower = "sunflower";
 
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
@@ -53,15 +62,22 @@ public static class Items
         [Axe] = "Siekiera",
         [Shovel] = "Łopata",
         [Pickaxe] = "Kilof",
+        [Hoe] = "Motyka",
         [Wood] = "Drewno",
         [Stone] = "Kamień",
         [Sand] = "Piasek",
         [Coal] = "Węgiel",
         [IronOre] = "Ruda żelaza",
         [CopperOre] = "Ruda miedzi",
+        [Wheat] = "Pszenica",
+        [Carrot] = "Marchew",
+        [Cabbage] = "Kapusta",
+        [Corn] = "Kukurydza",
+        [Potato] = "Ziemniaki",
+        [Sunflower] = "Słonecznik",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
 
-    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe;
+    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe;
 }

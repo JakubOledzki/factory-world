@@ -56,6 +56,38 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plots", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotField", b =>
+                {
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.Property<int>("TileX")
+                        .HasColumnType("integer")
+                        .HasColumnName("tile_x");
+
+                    b.Property<int>("TileY")
+                        .HasColumnType("integer")
+                        .HasColumnName("tile_y");
+
+                    b.Property<string>("Crop")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("crop");
+
+                    b.Property<DateTimeOffset?>("PlantedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("planted_at");
+
+                    b.HasKey("X", "Y", "TileX", "TileY");
+
+                    b.ToTable("plot_fields", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.PlotHarvest", b =>
                 {
                     b.Property<int>("X")
@@ -153,6 +185,33 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.HasKey("X", "Y", "Item");
 
                     b.ToTable("station_items", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.SurveyRow", b =>
+                {
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.Property<short>("Gas")
+                        .HasColumnType("smallint")
+                        .HasColumnName("gas");
+
+                    b.Property<short>("Oil")
+                        .HasColumnType("smallint")
+                        .HasColumnName("oil");
+
+                    b.Property<DateTimeOffset>("SurveyedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("surveyed_at");
+
+                    b.HasKey("X", "Y");
+
+                    b.ToTable("surveys", "world");
                 });
 #pragma warning restore 612, 618
         }
