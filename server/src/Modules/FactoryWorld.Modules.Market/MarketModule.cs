@@ -7,8 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FactoryWorld.Modules.Market;
 
 /// <summary>
-/// The NPC trader: always sells trash and the sorting machine and always buys waste, at fixed prices (cents).
-/// Trading between players comes later; these prices are its floor and ceiling.
+/// The NPC trader: always sells trash and the sorting machine and always buys raw materials, at fixed prices (cents).
+/// What it pays is the floor of the market: a quick sale gets it at once, players' listings usually pay more.
 /// </summary>
 public static class NpcPrices
 {
@@ -39,6 +39,11 @@ public static class NpcPrices
         [Items.Corn] = 220,
         [Items.Cabbage] = 250,
         [Items.Sunflower] = 300,
+        [Items.SortingMachine] = 50_000,
+        [Items.Axe] = 500,
+        [Items.Shovel] = 500,
+        [Items.Pickaxe] = 500,
+        [Items.Hoe] = 500,
     };
 
     public const int MaxQuantity = 1000;
@@ -133,16 +138,30 @@ public sealed class SellHandler(IServiceScopeFactory scopes) : TradeHandler(scop
         market.SellAsync(owner, request.Item, request.Quantity, cancellationToken);
 }
 
-/// <summary>Buying from and selling to the NPC trader. Has no tables of its own yet.</summary>
+/// <summary>Buying from and selling to the NPC trader, and trading between players. Owns the <c>market</c> schema.</summary>
 public sealed class MarketModule : IGameModule
 {
     public string Name => "Market";
 
     public void RegisterServices(IServiceCollection services, IConfiguration configuration)
     {
+        services.AddModuleDbContext<MarketDbContext>(MarketDbContext.Schema);
         services.AddScoped<MarketService>();
+        services.AddScoped<PlayerMarketService>();
         services.AddSingleton<IMessageHandler, PricesHandler>();
         services.AddSingleton<IMessageHandler, BuyHandler>();
         services.AddSingleton<IMessageHandler, SellHandler>();
+        services.AddSingleton<IMessageHandler, OverviewHandler>();
+        services.AddSingleton<IMessageHandler, ItemBoardHandler>();
+        services.AddSingleton<IMessageHandler, MineHandler>();
+        services.AddSingleton<IMessageHandler, ListHandler>();
+        services.AddSingleton<IMessageHandler, UnlistHandler>();
+        services.AddSingleton<IMessageHandler, PurchaseHandler>();
+        services.AddSingleton<IMessageHandler, OrderHandler>();
+        services.AddSingleton<IMessageHandler, CancelOrderHandler>();
+        services.AddSingleton<IMessageHandler, FillHandler>();
     }
+
+    public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>
+        services.MigrateModuleAsync<MarketDbContext>(cancellationToken);
 }
