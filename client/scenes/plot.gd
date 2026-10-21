@@ -1,7 +1,8 @@
 extends Node2D
 ## Inside one of the player's plots: 250 × 250 tiles of the biome's ground with its trees, rocks
-## and dunes, the railway along the top with the plot's station. The character walks with WSAD or
-## by clicking; clicking a tree, rock or dune walks up to it and works it with the tool in hand.
+## and dunes, the railway along the top with the plot's station and, on a mountain plot, its mines.
+## The character walks with WSAD or by clicking; clicking a tree, rock or dune walks up to it and
+## works it with the tool in hand, and a mine is worked with a pickaxe for ore.
 ## The station window loads goods from the inventory and sends them by train to other plots.
 
 ## Keyboard actions of this screen: name and keys.
@@ -47,6 +48,7 @@ const DUNE := 3
 const RAIL := 4
 const STATION := 5
 const BUSH := 6
+const MINE := 7
 
 const SPRITES := {
 	TREE: ["tree_0", "tree_1", "tree_2", "tree_3", "tree_4"],
@@ -54,14 +56,14 @@ const SPRITES := {
 	DUNE: ["dune_0", "dune_1"],
 	BUSH: ["bush_0", "bush_1"],
 }
-const SOLID := [TREE, ROCK, DUNE, STATION]
+const SOLID := [TREE, ROCK, DUNE, STATION, MINE]
 ## Objects that can be worked: their name, the tool and how the tool is named in "you need a ...".
 const WORK := {
 	TREE: {"name": "Drzewo", "tool": "tool_axe", "verb": "Zetnij", "need": "siekiery"},
 	ROCK: {"name": "Skała", "tool": "tool_pickaxe", "verb": "Rozbij", "need": "kilofa"},
 	DUNE: {"name": "Wydma", "tool": "tool_shovel", "verb": "Kop", "need": "łopaty"},
 }
-const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa"}
+const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalnia"}
 ## Crops in the order of the art; the server sends their names and growing times.
 const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower"]
 ## A crop shows as a sprout until this much of its growing time is left, then half grown.
@@ -77,7 +79,7 @@ const FLOORS := {
 }
 const MINIMAP_COLORS := {
 	NONE: Color(0, 0, 0, 0), TREE: Color("#2f5a2a"), ROCK: Color("#8a8580"), DUNE: Color("#c9a25a"),
-	RAIL: Color("#4a3a2e"), STATION: Color("#b5663a"), BUSH: Color("#3f6a30"),
+	RAIL: Color("#4a3a2e"), STATION: Color("#b5663a"), BUSH: Color("#3f6a30"), MINE: Color("#e0b040"),
 }
 const FIELD_COLOR := Color("#6a4526")
 
@@ -111,6 +113,13 @@ var _plant_button: Button
 ## Which crop or tree sprite each drawn field or planted tree shows, to swap it when it grows.
 var _stages := {}
 var _next_stage_check := 0.0
+## Mines of this plot by id: { x, y, width, height, units, refillAt, sprite }.
+var _mines := {}
+var _mine_seconds := 5.0
+var _mine_units := 50
+## The mine under the mouse and the one being worked, or -1.
+var _hover_mine := -1
+var _work_mine := -1
 
 var _astar := AStarGrid2D.new()
 var _sources := {}
@@ -142,7 +151,7 @@ var _hover_station := false
 ## The tile being worked, and seconds of work left.
 var _work := Vector2i(-1, -1)
 var _work_left := 0.0
-## "harvest" for trees, rocks and dunes, "till" for the hoe.
+## "harvest" for trees, rocks and dunes, "till" for the hoe, "mine" for a mine.
 var _work_mode := "harvest"
 
 var _hud: Control
@@ -294,6 +303,8 @@ func _apply_plot(plot: Dictionary) -> void:
 	_size = plot["size"]
 	_harvest_seconds = plot["harvestSeconds"]
 	_chop_seconds = plot.get("chopSeconds", _harvest_seconds)
+	_mine_seconds = plot.get("mineSeconds", _chop_seconds)
+	_mine_units = plot.get("mineUnits", _mine_units)
 	var grow: Variant = plot.get("treeGrowSeconds")
 	_tree_grow_seconds = float(grow) if grow != null else 0.0
 	var packed := Marshalls.base64_to_raw(plot["tiles"])
@@ -358,6 +369,8 @@ func _apply_plot(plot: Dictionary) -> void:
 	station_shadow.offset = -station_anchor
 	station_shadow.position = foot
 	_shadows.add_child(station_shadow)
+	for mine: Dictionary in plot.get("mines", []):
+		_add_mine(mine)
 
 	_build_paths()
 	_build_minimap()
@@ -660,10 +673,13 @@ func _station_at(point: Vector2) -> bool:
 func _update_hover() -> void:
 	var cell := Vector2i(-1, -1)
 	var station := false
+	var mine := -1
 	if _ready_to_play and get_viewport().gui_get_hovered_control() == null:
 		var mouse := get_global_mouse_position()
 		cell = _object_at(mouse)
 		station = cell == Vector2i(-1, -1) and _station_at(mouse)
+		if cell == Vector2i(-1, -1) and not station:
+			mine = _mine_at(mouse)
 	if cell != _hovered:
 		var old := _hovered
 		_hovered = cell
@@ -676,12 +692,21 @@ func _update_hover() -> void:
 		_station.modulate = Color(1.2, 1.17, 1.08)
 	elif _station != null:
 		_station.modulate = Color.WHITE
+	if mine != _hover_mine:
+		if _mines.has(_hover_mine):
+			_mines[_hover_mine]["sprite"].modulate = Color.WHITE
+		_hover_mine = mine
+		if mine >= 0:
+			_mines[mine]["sprite"].modulate = Color(1.25, 1.2, 1.1)
 	var ground := _ground_cell()
-	var pointing := cell.x >= 0 or station or _fields.has(ground) or _can_till(ground) or _can_plant(ground)
+	var pointing := cell.x >= 0 or station or mine >= 0 or _fields.has(ground) or _can_till(ground) or _can_plant(ground)
 	Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND if pointing else Input.CURSOR_ARROW)
 	_marks.queue_redraw()
 	_update_prompt()
-	_update_field_label(cell if cell.x >= 0 and (_fields.has(cell) or _trees.has(cell)) else ground)
+	if mine >= 0:
+		_update_mine_label(mine)
+	else:
+		_update_field_label(cell if cell.x >= 0 and (_fields.has(cell) or _trees.has(cell)) else ground)
 
 
 ## The tile under the mouse, or (-1, -1) when the mouse is over the interface.
@@ -756,6 +781,8 @@ func _unhandled_input(event: InputEvent) -> void:
 				_act_on(_hovered)
 			elif _hover_station:
 				_go_to_station()
+			elif _hover_mine >= 0:
+				_go_to_mine(_hover_mine)
 			elif _fields.has(cell):
 				_act_on(cell)
 			elif _can_plant(cell):
@@ -781,6 +808,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_station_window.toggle()
 			if _station_window.visible:
 				_refresh_station()
+		elif _nearest_mine() >= 0 and _nearest_work().x < 0:
+			_go_to_mine(_nearest_mine())
 		else:
 			var cell := _nearest_work()
 			if cell.x >= 0:
@@ -876,6 +905,8 @@ func _start_work(cell: Vector2i, mode := "harvest") -> void:
 	_work_mode = mode
 	# Cutting a tree down takes longer than a swing at a rock or a dune.
 	_work_seconds = _chop_seconds if mode == "harvest" and _work_kind(cell) == TREE else _harvest_seconds
+	if mode == "mine":
+		_work_seconds = _mine_seconds
 	_work_left = _work_seconds
 	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
 	_work_bar.max_value = _work_seconds
@@ -884,6 +915,7 @@ func _start_work(cell: Vector2i, mode := "harvest") -> void:
 
 func _stop_work() -> void:
 	_work = Vector2i(-1, -1)
+	_work_mine = -1
 	_work_bar.visible = false
 	_player.rotation = 0.0
 
@@ -898,9 +930,12 @@ func _update_work(delta: float) -> void:
 	_player.rotation = sin((_work_seconds - _work_left) * TAU * 2.0) * 0.08
 	if _work_left <= 0.0:
 		var cell := _work
+		var mine := _work_mine
 		_stop_work()
 		if _work_mode == "till":
 			_till_request(cell)
+		elif _work_mode == "mine":
+			_mine_request(mine)
 		else:
 			_harvest(cell)
 
@@ -1147,6 +1182,152 @@ func _plant_tree(cell: Vector2i) -> void:
 		_reload_inventory()
 
 
+# --- Mining --------------------------------------------------------------------------------------
+
+## Puts a mine on its tiles, with the middle of its south edge as anchor like the station.
+func _add_mine(mine: Dictionary) -> void:
+	var foot := Vector2((int(mine["x"]) + int(mine["width"]) / 2.0) * TILE.x, (int(mine["y"]) + int(mine["height"])) * TILE.y)
+	var anchor := Vector2(_layout["mine"]["anchorX"], _layout["mine"]["anchorY"])
+	var sprite := Sprite2D.new()
+	sprite.texture = load("res://art/plot/mine.png")
+	sprite.centered = false
+	sprite.offset = -anchor
+	sprite.position = foot
+	_sorted.add_child(sprite)
+	var shadow := Sprite2D.new()
+	shadow.texture = load("res://art/plot/mine_shadow.png")
+	shadow.centered = false
+	shadow.offset = -anchor
+	shadow.position = foot
+	_shadows.add_child(shadow)
+	if not _images.has("mine"):
+		_images["mine"] = sprite.texture.get_image()
+	var state := mine.duplicate()
+	state["sprite"] = sprite
+	_mines[int(mine["id"])] = state
+
+
+## The mine drawn under a point of the world, or -1.
+func _mine_at(point: Vector2) -> int:
+	for id: int in _mines:
+		var sprite: Sprite2D = _mines[id]["sprite"]
+		var pixel := Vector2i(point - sprite.position - sprite.offset)
+		var image: Image = _images["mine"]
+		if Rect2i(Vector2i.ZERO, image.get_size()).has_point(pixel) and image.get_pixelv(pixel).a > 0.4:
+			return id
+	return -1
+
+
+func _mine_rect(id: int) -> Rect2:
+	var mine: Dictionary = _mines[id]
+	return Rect2(mine["x"], mine["y"], mine["width"], mine["height"])
+
+
+func _near_mine(id: int) -> bool:
+	var r := _mine_rect(id)
+	var p := _player.floor_pos
+	return p.distance_to(p.clamp(r.position, r.end)) <= STATION_REACH
+
+
+## The mine the player stands at, or -1.
+func _nearest_mine() -> int:
+	for id: int in _mines:
+		if _near_mine(id):
+			return id
+	return -1
+
+
+## Loads a mine has left now; a worked-out mine is full again once its rest is over.
+func _mine_left_units(id: int) -> int:
+	var mine: Dictionary = _mines[id]
+	if mine["refillAt"] != null and _server_now() >= float(mine["refillAt"]):
+		mine["units"] = _mine_units
+		mine["refillAt"] = null
+	return int(mine["units"])
+
+
+## Seconds until a worked-out mine is full again.
+func _mine_refill_left(id: int) -> int:
+	var refill: Variant = _mines[id]["refillAt"]
+	return ceili(maxf((float(refill) - _server_now()) / 1000.0, 0.0)) if refill != null else 0
+
+
+func _update_mine_label(id: int) -> void:
+	_field_label.visible = _menu_cell.x < 0
+	if _mine_left_units(id) > 0:
+		_field_label.text = "Kopalnia: %d/%d jednostek, kliknij, aby wydobywać kilofem" % [_mine_left_units(id), _mine_units]
+	else:
+		var left := _mine_refill_left(id)
+		_field_label.text = "Kopalnia wyczerpana: odnowi się za %d:%02d" % [left / 60, left % 60]
+	_field_label.reset_size()
+	# Over the entrance, kept on screen when the mine stands at its top edge.
+	var foot: Vector2 = _mines[id]["sprite"].position
+	_field_label.position = _screen(foot) - Vector2(_field_label.size.x / 2, 150 * _zoom)
+	_field_label.position.y = maxf(_field_label.position.y, 130.0)
+
+
+## Walks to the entrance of a mine and starts mining with the pickaxe.
+func _go_to_mine(id: int) -> void:
+	if Game.tool().get("id", "") != "tool_pickaxe":
+		_show_toast("Kopalnia: potrzebujesz kilofa. Zmień narzędzie w slocie [Q].", UI.ERROR)
+		return
+	if _mine_left_units(id) <= 0:
+		var left := _mine_refill_left(id)
+		_show_toast("Kopalnia wyczerpana, odnowi się za %d:%02d." % [left / 60, left % 60], UI.MUTED)
+		return
+	_stop_work()
+	if _near_mine(id):
+		_start_mining(id)
+		return
+	var r := _mine_rect(id)
+	var entrance := Vector2i(int(r.get_center().x), int(r.end.y))
+	_walk_to(entrance, func() -> void:
+		if _near_mine(id):
+			_start_mining(id)
+		else:
+			_show_toast("Nie da się tam podejść.", UI.ERROR))
+
+
+func _start_mining(id: int) -> void:
+	var r := _mine_rect(id)
+	_start_work(Vector2i(int(r.get_center().x), int(r.end.y) - 1), "mine")
+	_work_mine = id
+
+
+## One load of ore; the player keeps mining while standing at the mine until it runs dry.
+func _mine_request(id: int) -> void:
+	var reply := await Net.request("plot.mine", {"x": _at.x, "y": _at.y, "mine": id})
+	if reply["type"] != "plot.mined":
+		_show_error(reply)
+		return
+	var result: Dictionary = reply["payload"]
+	_clock_offset = float(result["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
+	var state: Dictionary = result["mine"]
+	_mines[id]["units"] = state["units"]
+	_mines[id]["refillAt"] = state["refillAt"]
+	var r := _mine_rect(id)
+	var at := Vector2(r.get_center().x, r.end.y - 1.0) * TILE
+	var items: Array = result["items"]
+	if items.is_empty():
+		_float_text("Pusto, tym razem nic", UI.MUTED, at)
+	for i in items.size():
+		var item: Dictionary = items[i]
+		_float_text("+%d %s" % [int(item["quantity"]), item["name"]], UI.TEXT, at, i * 0.25, item["id"])
+	var gained := int(result["xp"]["xp"]) - int(Game.character.get("xp", 0))
+	if gained > 0:
+		_float_text("+%d XP" % gained, UI.GOLD, at, maxi(items.size(), 1) * 0.25)
+	Game.gain_xp(result["xp"])
+	_refresh_character()
+	if result["xp"].get("leveledUp", false):
+		_show_toast("Awans! Poziom %d" % int(result["xp"]["level"]), UI.GOLD)
+	if _inventory_window.visible or _station_window.visible:
+		_reload_inventory()
+	if int(state["units"]) <= 0:
+		_show_toast("Kopalnia wyczerpana. Odnowi się za %d min." % roundi(_mine_refill_left(id) / 60.0), UI.MUTED)
+	elif _work.x < 0 and _path.is_empty() and _near_mine(id) and Game.tool().get("id", "") == "tool_pickaxe":
+		_start_mining(id)
+
+
 # --- Station -------------------------------------------------------------------------------------
 
 func _station_rect() -> Rect2:
@@ -1206,7 +1387,10 @@ func _update_prompt() -> void:
 		text = "[E] Stacja kolejowa"
 	elif _work.x < 0:
 		var cell := _nearest_work()
-		if cell.x >= 0:
+		var mine := _nearest_mine()
+		if cell.x < 0 and mine >= 0:
+			text = "[E] Wydobywaj: kopalnia (%d/%d)" % [_mine_left_units(mine), _mine_units]
+		elif cell.x >= 0:
 			if _fields.has(cell):
 				text = "[E] Zbierz: %s" % _crops[_fields[cell]["crop"]]["name"].to_lower()
 			else:
@@ -1399,7 +1583,7 @@ func _on_tool_changed() -> void:
 func _update_hint() -> void:
 	var lines := {
 		"tool_axe": "Kliknij drzewo, aby je ściąć siekierą.",
-		"tool_pickaxe": "Kliknij skałę, aby ją rozbić kilofem.",
+		"tool_pickaxe": "Kliknij kopalnię, aby wydobywać rudy, albo skałę, aby ją rozbić kilofem." if not _mines.is_empty() else "Kliknij skałę, aby ją rozbić kilofem.",
 		"tool_shovel": "Kliknij wydmę, aby ją przekopać łopatą.",
 		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile else "Motyką orze się tylko żyzne gleby.",
 	}
@@ -1433,6 +1617,9 @@ func _build_minimap() -> void:
 		_minimap_image.set_pixelv(cell, FIELD_COLOR)
 	for cell: Vector2i in _trees:
 		_minimap_image.set_pixelv(cell, MINIMAP_COLORS[TREE])
+	# Mines stand out a little larger than they are, so they are easy to find.
+	for mine: Dictionary in _mines.values():
+		_minimap_image.fill_rect(Rect2i(int(mine["x"]) - 1, int(mine["y"]) - 1, int(mine["width"]) + 2, int(mine["height"]) + 2), MINIMAP_COLORS[MINE])
 	_minimap.texture = ImageTexture.create_from_image(_minimap_image)
 	# The plot is wider than tall on screen; keep the minimap's proportions the same.
 	_minimap.custom_minimum_size = Vector2(170, 170 * TILE.y / TILE.x)

@@ -124,5 +124,9 @@
  "tree_young": {
   "anchorX": 88,
   "anchorY": 123
+ },
+ "mine": {
+  "anchorX": 176,
+  "anchorY": 310
  }
 }
