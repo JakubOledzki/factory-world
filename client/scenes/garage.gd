@@ -1,7 +1,8 @@
 extends Control
 ## The player's garage: the rendered room with furniture the player can move, and the
-## character, who walks with WSAD or by clicking. Sorting opens at the trash bin; the
-## inventory and the market are windows opened from the toolbar.
+## character, who walks with WSAD or by clicking. Sorting opens at the trash bin, crafting at
+## the workbench and smelting at a furnace; the inventory and the market are windows opened
+## from the toolbar.
 
 ## The garage is lit by one bulb, so the character is drawn darker than in the editor.
 const ROOM_LIGHT := Color(0.74, 0.7, 0.66)
@@ -12,6 +13,10 @@ const LEAVE := 1.2
 ## Walking paths use this grid. Metres.
 const GRID := 0.1
 const BIN := "furniture_trash_bin"
+const WORKBENCH := "furniture_workbench"
+const FURNACE := "furniture_furnace"
+## What [E] does next to each piece of furniture that can be used.
+const USE := {BIN: "Segreguj", WORKBENCH: "Wytwarzaj", FURNACE: "Piec kamienny"}
 
 ## Keyboard actions of this screen: name and keys.
 const ACTIONS := {
@@ -81,6 +86,13 @@ var _tool_slot: ToolSlot
 var _sorting_window: GameWindow
 var _inventory_window: GameWindow
 var _market_window: MarketWindow
+var _crafting_window: CraftingWindow
+var _furnace_window: FurnaceWindow
+## The piece of furniture whose window is open (workbench or furnace), to close it when the
+## player walks away.
+var _using: Furniture
+## Last known state of each furnace by id, to show the fire while it burns.
+var _furnaces := {}
 
 var _trash: Label
 var _sort_buttons: Array[Button] = []
@@ -147,7 +159,7 @@ func _build_room() -> void:
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_overlay)
 
-	_prompt = _outlined(UI.label("[E] Segreguj", UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
+	_prompt = _outlined(UI.label("", UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 	_prompt.visible = false
 	_overlay.add_child(_prompt)
 
@@ -186,6 +198,30 @@ func _bin() -> Furniture:
 		if object.kind == BIN:
 			return object
 	return null
+
+
+## The usable piece of furniture (bin, workbench, furnace) nearest the player within reach, or null.
+func _usable_near() -> Furniture:
+	var best: Furniture = null
+	for object: Furniture in _objects.values():
+		if USE.has(object.kind) and _near(object) and (best == null or _player.floor_pos.distance_to(object.floor_pos) < _player.floor_pos.distance_to(best.floor_pos)):
+			best = object
+	return best
+
+
+## Opens what a piece of furniture does: sorting at the bin, crafting at a workbench, a furnace.
+func _use(object: Furniture) -> void:
+	match object.kind:
+		BIN:
+			_sorting_window.show_window()
+		WORKBENCH:
+			_using = object
+			_furnace_window.hide_window()
+			_crafting_window.open_at(object.id)
+		FURNACE:
+			_using = object
+			_crafting_window.hide_window()
+			_furnace_window.open_at(object.id)
 
 
 ## Shows the furniture the server sent: adds new pieces, moves and removes the others.
@@ -386,14 +422,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _menu.visible:
 			_menu.visible = false
 		else:
-			for window: GameWindow in [_sorting_window, _inventory_window, _market_window]:
+			for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _crafting_window, _furnace_window]:
 				window.hide_window()
 	elif event.is_action_pressed("rotate") and _placing != "":
 		_turn_ghost(1)
 	elif event.is_action_pressed("interact"):
-		var bin := _bin()
-		if bin != null and _near(bin):
+		var object := _usable_near()
+		if object == null:
+			pass
+		elif object.kind == BIN:
 			_sorting_window.toggle()
+		elif (object.kind == WORKBENCH and _crafting_window.visible or object.kind == FURNACE and _furnace_window.visible) and _using == object:
+			_crafting_window.hide_window()
+			_furnace_window.hide_window()
+		else:
+			_use(object)
 	elif event.is_action_pressed("inventory"):
 		_inventory_window.toggle()
 	elif event.is_action_pressed("market"):
@@ -421,8 +464,8 @@ func _open_menu(object: Furniture, at: Vector2) -> void:
 	title.add_theme_font_override("font", UI.bold())
 	_menu_box.add_child(title)
 	var actions := []
-	if object.kind == BIN:
-		actions.append(["Użyj  [E]", _walk_up_to.bind(object, _sorting_window.show_window)])
+	if USE.has(object.kind):
+		actions.append(["%s  [E]" % USE[object.kind], _walk_up_to.bind(object, _use.bind(object))])
 	actions.append(["Przenieś", _walk_up_to.bind(object, _pick_up.bind(object, true))])
 	actions.append(["Schowaj do ekwipunku", _walk_up_to.bind(object, _pick_up.bind(object, false))])
 	for action: Array in actions:
@@ -657,7 +700,17 @@ func _build_windows() -> void:
 	_market_window.position = Vector2(1280 - 440 - 12, 64)
 	_market_window.traded.connect(_on_traded)
 	_market_window.failed.connect(_show_error)
-	for window: GameWindow in [_sorting_window, _inventory_window, _market_window]:
+	_crafting_window = CraftingWindow.new()
+	_crafting_window.position = Vector2(1280 - 400 - 12, 64)
+	_crafting_window.finished.connect(_on_crafted)
+	_crafting_window.inventory_changed.connect(_reload_inventory)
+	_crafting_window.failed.connect(_show_error)
+	_furnace_window = FurnaceWindow.new()
+	_furnace_window.position = Vector2(1280 - 400 - 12, 64)
+	_furnace_window.updated.connect(func(furnace: Dictionary) -> void: _furnaces[furnace["id"]] = furnace)
+	_furnace_window.inventory_changed.connect(_on_furnace_emptied)
+	_furnace_window.failed.connect(_show_error)
+	for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _crafting_window, _furnace_window]:
 		add_child(window)
 
 
@@ -737,6 +790,13 @@ func _load() -> void:
 	_apply_garage(replies[0]["payload"])
 	_apply_inventory(replies[1]["payload"])
 	_set_balance(int(replies[2]["payload"]["balanceCents"]))
+	# Orders made while the player was away land in the inventory now.
+	_crafting_window.refresh()
+	for object: Furniture in _objects.values():
+		if object.kind == FURNACE:
+			var furnace := await Net.request("furnace.get", {"furnace": object.id})
+			if furnace["type"] == "furnace":
+				_furnaces[object.id] = furnace["payload"]
 
 
 func _apply_garage(garage: Dictionary) -> void:
@@ -771,6 +831,8 @@ func _apply_inventory(inventory: Dictionary) -> void:
 	_items = inventory["items"]
 	_slots.show_items(inventory)
 	_market_window.set_player(_items, _balance)
+	_crafting_window.set_items(_items)
+	_furnace_window.set_items(_items)
 
 
 func _reload_inventory() -> void:
@@ -800,6 +862,7 @@ func _process(delta: float) -> void:
 		_update_ghost()
 	_update_hover()
 	_update_bin()
+	_update_use()
 	if _garage.is_empty():
 		return
 	_update_queue()
@@ -814,7 +877,6 @@ func _update_bin() -> void:
 	var bin := _bin()
 	if bin == null:
 		_sorting_window.hide_window()
-		_prompt.visible = false
 		_bin_status.visible = false
 		return
 	if not _near(bin, LEAVE):
@@ -822,10 +884,7 @@ func _update_bin() -> void:
 			_sorting_window.hide_window()
 		if not _has_machine() and (_hand_sorting or not _garage.get("queue", []).is_empty()):
 			_stop_hand_sorting()
-	_prompt.visible = _near(bin) and not _sorting_window.visible and _placing == ""
 	var top := RoomProjection.to_screen(bin.floor_pos, 1.25)
-	_prompt.reset_size()
-	_prompt.position = top - Vector2(_prompt.size.x / 2, _prompt.size.y + 26)
 	var queue: Array = _garage.get("queue", [])
 	_bin_status.visible = not queue.is_empty()
 	if _bin_status.visible:
@@ -835,6 +894,69 @@ func _update_bin() -> void:
 		_bin_text.text = "Segregacja: %d" % queue.size()
 		_bin_status.reset_size()
 		_bin_status.position = top - Vector2(_bin_status.size.x / 2, _bin_status.size.y)
+
+
+## The "[E] ..." prompt over the usable furniture nearest the player; closes the workbench or
+## furnace window after walking away, and shows the fire of burning furnaces.
+func _update_use() -> void:
+	if _using != null and (not is_instance_valid(_using) or not _objects.has(_using.id) or not _near(_using, LEAVE)):
+		_crafting_window.hide_window()
+		_furnace_window.hide_window()
+		_using = null
+	var object := _usable_near()
+	var open := object != null and (object.kind == BIN and _sorting_window.visible or _using == object and (_crafting_window.visible or _furnace_window.visible))
+	_prompt.visible = object != null and not open and _placing == ""
+	if _prompt.visible:
+		_prompt.text = "[E] %s" % USE[object.kind]
+		_prompt.reset_size()
+		_prompt.position = RoomProjection.to_screen(object.floor_pos, 1.25) - Vector2(_prompt.size.x / 2, _prompt.size.y + 26)
+	var now := _server_now()
+	for piece: Furniture in _objects.values():
+		if piece.kind != FURNACE or piece == _hovered:
+			continue
+		if FurnaceWindow.burns_until(_furnaces.get(piece.id, {})) > now:
+			# A warm flicker while coal burns inside.
+			var t := Time.get_ticks_msec() / 1000.0
+			var glow := 0.12 + 0.06 * sin(t * 7.0) + 0.04 * sin(t * 13.0 + 1.0)
+			piece.modulate = Color(1.0 + glow, 1.0 + glow * 0.45, 1.0)
+		else:
+			piece.modulate = Color.WHITE
+
+
+## Orders from the workbench are done: they are in the inventory now.
+func _on_crafted(done: Array, xp: Variant) -> void:
+	var bench: Furniture = _using if _using != null and is_instance_valid(_using) and _using.kind == WORKBENCH else _first(WORKBENCH)
+	for i in done.size():
+		var item: Dictionary = done[i]
+		_float_text("+%d %s" % [int(item["quantity"]), item["name"]], UI.TEXT, i * 0.25, 0, bench)
+	if xp != null:
+		var gained := int(xp["xp"]) - int(Game.character.get("xp", 0))
+		if gained > 0:
+			_float_text("+%d XP" % gained, UI.GOLD, done.size() * 0.25, -24, bench)
+		_gain_xp(xp)
+	_show_toast("Gotowe: %s. Leży w ekwipunku." % ", ".join(done.map(func(item: Dictionary) -> String: return item["name"])))
+	_reload_inventory()
+
+
+## Something came out of the furnace (or went in): the inventory changed.
+func _on_furnace_emptied(taken: Array, xp: Variant) -> void:
+	var furnace: Furniture = _using if _using != null and is_instance_valid(_using) else null
+	for i in taken.size():
+		var item: Dictionary = taken[i]
+		_float_text("+%d %s" % [int(item["quantity"]), item["name"]], UI.TEXT, i * 0.25, 0, furnace)
+	if xp != null:
+		var gained := int(xp["xp"]) - int(Game.character.get("xp", 0))
+		if gained > 0:
+			_float_text("+%d XP" % gained, UI.GOLD, taken.size() * 0.25, -24, furnace)
+		_gain_xp(xp)
+	_reload_inventory()
+
+
+func _first(kind: String) -> Furniture:
+	for object: Furniture in _objects.values():
+		if object.kind == kind:
+			return object
+	return null
 
 
 # --- Sorting --------------------------------------------------------------------------
@@ -967,9 +1089,9 @@ func _on_traded(balance_cents: int, item: String) -> void:
 
 # --- Effects ---------------------------------------------------------------------------
 
-func _float_text(text: String, color: Color, delay := 0.0, lift := 0) -> void:
-	var bin := _bin()
-	var origin := RoomProjection.to_screen(bin.floor_pos, 1.3) if bin != null else _player.position + Vector2(0, -150)
+func _float_text(text: String, color: Color, delay := 0.0, lift := 0, over: Furniture = null) -> void:
+	var source := over if over != null else _bin()
+	var origin := RoomProjection.to_screen(source.floor_pos, 1.3) if source != null else _player.position + Vector2(0, -150)
 	var l := _outlined(UI.label(text, color, HORIZONTAL_ALIGNMENT_CENTER))
 	l.add_theme_font_size_override("font_size", 17)
 	l.modulate.a = 0.0

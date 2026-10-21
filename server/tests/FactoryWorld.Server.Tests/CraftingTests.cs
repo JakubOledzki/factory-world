@@ -148,7 +148,7 @@ public sealed class CraftingTests(ServerFactory factory) : IClassFixture<ServerF
             Assert.Equal("crafting", (await client.SendAsync("crafting.craft", new { workbench = bench, recipe = Items.Nails })).Type());
         }
 
-        Assert.Equal("queue_full", (await client.SendAsync("crafting.craft", new { workbench = bench, recipe = Items.Nails })).ErrorCode());
+        Assert.Equal("crafting_queue_full", (await client.SendAsync("crafting.craft", new { workbench = bench, recipe = Items.Nails })).ErrorCode());
         Assert.Equal(1, Count(await client.InventoryAsync(), Items.IronIngot));
     }
 

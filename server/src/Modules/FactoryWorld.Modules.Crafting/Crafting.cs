@@ -84,7 +84,7 @@ public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> place
             var queue = await QueueAsync(owner, cancellationToken);
             if (queue.Count >= Workshop.MaxQueue)
             {
-                throw new GameException("queue_full", $"At most {Workshop.MaxQueue} orders can wait at the workbench.");
+                throw new GameException("crafting_queue_full", $"At most {Workshop.MaxQueue} orders can wait at the workbench.");
             }
 
             foreach (var (item, quantity) in recipe.Ingredients)

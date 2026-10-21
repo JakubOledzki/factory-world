@@ -501,6 +501,7 @@ FURNITURE_AT = {
     "furniture_pallet": (1.5, 1.0),
     # Not in the starter layout: rendered on free floor in the middle of the room.
     "furniture_sorting_machine": (3.75, 2.0),
+    "furniture_furnace": (5.0, 2.5),
 }
 ROTATIONS = 4
 
@@ -771,7 +772,52 @@ def build_sorting_machine(coll, at: Vector):
     box("machine_stripe", (1.01, 0.81, 0.08), o + Vector((0, 0, 0.12)), plain("stripe", (0.05, 0.05, 0.05), 0.6), coll)
 
 
+def build_furnace(coll, at: Vector, size=1.0):
+    """A stone furnace about 0.9 m across: rough blocks laid in courses around a firebox with an
+    arched mouth facing the camera, glowing coals inside and a short chimney at the back."""
+    s = size
+    stone = plain("furnace_stone", (0.2, 0.18, 0.16), 0.9, variation=0.35, scale=8, bump=0.5)
+    dark = plain("furnace_soot", (0.02, 0.018, 0.017), 0.95, variation=0.3, bump=0.4)
+    rnd = random.Random(11)
+    # Four courses of blocks around the firebox, leaving the mouth open at the front.
+    courses, block_h = 4, 0.17
+    for k in range(courses):
+        z = 0.06 + block_h * (k + 0.5)
+        inset = 0.02 * k
+        for side in range(4):
+            count = 3
+            for i in range(count):
+                t = (i + 0.5) / count - 0.5
+                along = t * (0.86 - inset * 2)
+                if side == 0 and k < 2 and i == 1:
+                    continue  # The mouth.
+                pos = {0: (along, -0.42 + inset), 1: (0.42 - inset, along), 2: (-along, 0.42 - inset), 3: (-0.42 + inset, -along)}[side]
+                dims = (0.29 + rnd.uniform(-0.03, 0.02), 0.16, block_h - 0.012) if side in (0, 2) else (0.16, 0.29 + rnd.uniform(-0.03, 0.02), block_h - 0.012)
+                b = box("furnace_block", tuple(d * s for d in dims), at + Vector((pos[0] * s, pos[1] * s, z * s)), stone, coll, bevel=0.025 * s,
+                        rotation=(0, 0, rnd.uniform(-0.04, 0.04)))
+                displace(b, 0.012 * s, 0.08, 1)
+    # Base slab, soot-blackened floor of the firebox and a lintel over the mouth.
+    box("furnace_base", (0.96 * s, 0.96 * s, 0.06 * s), at + Vector((0, 0, 0.03 * s)), stone, coll, bevel=0.01 * s)
+    box("furnace_inside", (0.6 * s, 0.6 * s, 0.4 * s), at + Vector((0, 0.02 * s, 0.26 * s)), dark, coll)
+    box("furnace_lintel", (0.42 * s, 0.18 * s, 0.09 * s), at + Vector((0, -0.42 * s, 0.43 * s)), stone, coll, bevel=0.02 * s)
+    # Coals glowing in the mouth.
+    ember = emission("furnace_ember", (1.0, 0.32, 0.05), 4.0)
+    coal_m = plain("furnace_coal", (0.015, 0.014, 0.014), 0.4, variation=0.5, bump=0.8)
+    for i in range(7):
+        x, y = rnd.uniform(-0.13, 0.13), rnd.uniform(-0.36, -0.2)
+        sphere("furnace_coal", 0.045 * s, at + Vector((x * s, y * s, 0.1 * s)), ember if i % 2 else coal_m, coll, segments=8)
+    # A flat top of slabs and a chimney.
+    box("furnace_top", (0.82 * s, 0.82 * s, 0.07 * s), at + Vector((0, 0, (0.06 + block_h * courses + 0.035) * s)), stone, coll, bevel=0.02 * s)
+    chimney_z = 0.06 + block_h * courses + 0.07
+    for k in range(3):
+        c = box("furnace_chimney", (0.26 * s, 0.26 * s, 0.11 * s), at + Vector((0.12 * s, 0.18 * s, (chimney_z + 0.055 + 0.115 * k) * s)), stone, coll,
+                bevel=0.02 * s, rotation=(0, 0, rnd.uniform(-0.08, 0.08)))
+        displace(c, 0.01 * s, 0.08, 1)
+    box("furnace_flue", (0.14 * s, 0.14 * s, 0.02 * s), at + Vector((0.12 * s, 0.18 * s, (chimney_z + 0.35) * s)), dark, coll)
+
+
 FURNITURE_BUILDERS = {
+    "furniture_furnace": build_furnace,
     "furniture_sorting_machine": build_sorting_machine,
     "furniture_trash_bin": build_bin,
     "furniture_workbench": build_workbench,

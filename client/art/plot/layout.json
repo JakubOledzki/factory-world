@@ -128,5 +128,13 @@
  "mine": {
   "anchorX": 176,
   "anchorY": 310
+ },
+ "workbench": {
+  "anchorX": 72,
+  "anchorY": 78
+ },
+ "furnace": {
+  "anchorX": 48,
+  "anchorY": 70
  }
 }
