@@ -58,3 +58,69 @@ jobs:
           tags: |
             ghcr.io/jakuboledzki/factory-world-web:latest
             ghcr.io/jakuboledzki/factory-world-web:${{ github.sha }}
+
+  # Rolls the new images out on the server over SSH. Skipped until the DEPLOY_* secrets are set.
+  deploy:
+    needs: images
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy
+      cancel-in-progress: false
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT || '22' }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || 'factory-world' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check deploy secrets
+        id: check
+        run: |
+          if [ -z "$DEPLOY_HOST" ] || [ -z "$DEPLOY_USER" ]; then
+            echo "::notice::DEPLOY_HOST / DEPLOY_USER not set, skipping deploy (see docs/deploy.md)"
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up SSH
+        if: steps.check.outputs.enabled == 'true'
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          if [ -n "$KNOWN_HOSTS" ]; then
+            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -p "$DEPLOY_PORT" "$DEPLOY_HOST" > ~/.ssh/known_hosts
+          fi
+          cat > ~/.ssh/config <<CONFIG
+          Host server
+            HostName $DEPLOY_HOST
+            User $DEPLOY_USER
+            Port $DEPLOY_PORT
+            IdentityFile ~/.ssh/id_deploy
+            IdentitiesOnly yes
+          CONFIG
+
+      - name: Copy compose file and restart containers
+        if: steps.check.outputs.enabled == 'true'
+        run: |
+          ssh server "mkdir -p $DEPLOY_PATH"
+          scp deploy/docker-compose.yml "server:$DEPLOY_PATH/docker-compose.yml"
+          ssh server "cd $DEPLOY_PATH && docker compose pull && docker compose up -d --remove-orphans && docker image prune -f"
+
+      - name: Wait for the game server
+        if: steps.check.outputs.enabled == 'true'
+        run: |
+          for i in $(seq 1 30); do
+            if ssh server "cd $DEPLOY_PATH && docker compose exec -T web wget -qO- http://server:5080/health" 2>/dev/null | grep -q Healthy; then
+              echo "Server is healthy"; exit 0
+            fi
+            sleep 5
+          done
+          ssh server "cd $DEPLOY_PATH && docker compose ps && docker compose logs --tail 50 server"
+          exit 1
