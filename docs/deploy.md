@@ -10,6 +10,7 @@ Gra działa na serwerze jako trzy kontenery Docker:
 
 Obrazy `web` i `server` buduje GitHub Actions (`.github/workflows/release.yml`) przy każdym pushu na `main`
 i publikuje w GitHub Container Registry (`ghcr.io/jakuboledzki/...`). Na serwerze nic się nie kompiluje.
+Po skonfigurowaniu sekretów ten sam workflow sam wdraża nową wersję na serwer (zobacz *Automatyczne wdrażanie po merge'u*).
 
 ## Czego potrzebujesz
 
@@ -83,9 +84,60 @@ curl https://gra.twojadomena.pl/health   # powinno zwrócić: Healthy
 docker compose logs -f server           # logi serwera gry
 ```
 
-## Aktualizacja do nowej wersji
+## Automatyczne wdrażanie po merge'u
 
-Po każdym merge'u do `main` GitHub buduje nowe obrazy (ok. 5 minut). Na serwerze:
+Po każdym merge'u do `main` workflow *Release images* buduje obrazy, a potem job `deploy` łączy się z serwerem
+przez SSH, kopiuje aktualny `deploy/docker-compose.yml`, robi `docker compose pull && docker compose up -d`
+i czeka, aż serwer gry odpowie `Healthy`. Dopóki sekrety poniżej nie są ustawione, job `deploy` jest pomijany.
+
+### Jednorazowa konfiguracja
+
+1. **Klucz SSH tylko do wdrożeń.** Na własnym komputerze (nie na serwerze):
+
+   ```bash
+   ssh-keygen -t ed25519 -N "" -C "github-deploy" -f factory-world-deploy
+   ```
+
+   Powstaną dwa pliki: `factory-world-deploy` (prywatny) i `factory-world-deploy.pub` (publiczny).
+
+2. **Klucz publiczny na serwer.** Dopisz zawartość `factory-world-deploy.pub` do `~/.ssh/authorized_keys`
+   użytkownika, który uruchamia Dockera (ten z kroku 1, należący do grupy `docker`):
+
+   ```bash
+   ssh-copy-id -i factory-world-deploy.pub uzytkownik@adres-serwera
+   ```
+
+3. **Odcisk serwera** (zabezpiecza przed podszyciem się pod serwer). Na własnym komputerze:
+
+   ```bash
+   ssh-keyscan adres-serwera
+   ```
+
+4. **Sekrety w GitHubie.** W repozytorium: *Settings → Secrets and variables → Actions → New repository secret*:
+
+   | Sekret | Wartość | Wymagany |
+   | --- | --- | --- |
+   | `DEPLOY_HOST` | adres IP lub domena serwera | tak |
+   | `DEPLOY_USER` | użytkownik SSH na serwerze | tak |
+   | `DEPLOY_SSH_KEY` | cała zawartość pliku `factory-world-deploy` (klucz prywatny) | tak |
+   | `DEPLOY_KNOWN_HOSTS` | wynik `ssh-keyscan` z kroku 3 | zalecany |
+   | `DEPLOY_PORT` | port SSH, domyślnie `22` | nie |
+   | `DEPLOY_PATH` | katalog z `docker-compose.yml` i `.env`, domyślnie `factory-world` (w katalogu domowym) | nie |
+
+   Bez `DEPLOY_KNOWN_HOSTS` workflow pobiera odcisk serwera przy każdym wdrożeniu, co działa, ale nie chroni
+   przed podszyciem się pod serwer.
+
+5. **Dostęp do obrazów.** Serwer musi móc pobrać obrazy z GHCR (krok 2 wyżej: obrazy publiczne albo
+   `docker login ghcr.io` na serwerze).
+
+6. Po ustawieniu sekretów uruchom wdrożenie ręcznie: *Actions → Release images → Run workflow*. Plik
+   prywatny `factory-world-deploy` możesz potem usunąć z komputera.
+
+Plik `.env` zostaje na serwerze i workflow go nie zmienia.
+
+### Ręczna aktualizacja i powrót do starszej wersji
+
+Ręcznie wdrożysz najnowszą wersję tak:
 
 ```bash
 cd ~/factory-world
@@ -93,6 +145,8 @@ docker compose pull && docker compose up -d
 ```
 
 Konkretną wersję uruchomisz, ustawiając w `.env` `TAG=<sha commita>`, co pozwala też wrócić do poprzedniej wersji.
+Dopóki `TAG` wskazuje konkretny commit, automatyczne wdrożenia nie zmieniają wersji gry; przywróć `TAG=latest`,
+żeby znów szły same.
 
 ## Kopie zapasowe bazy
 
@@ -109,3 +163,6 @@ Zrzuty warto też kopiować poza serwer (np. do magazynu obiektowego dostawcy VP
 - **Brak certyfikatu HTTPS:** rekord A domeny musi już wskazywać na serwer, a porty 80 i 443 muszą być otwarte. Logi: `docker compose logs web`.
 - **`/health` zwraca `Unhealthy`:** serwer nie łączy się z bazą; sprawdź `POSTGRES_PASSWORD` i `docker compose logs db`. Hasło bazy ustala się przy pierwszym starcie; zmiana w `.env` później wymaga zmiany hasła także w samej bazie.
 - **`docker compose pull` odmawia dostępu:** obrazy są prywatne, zobacz krok 2.
+- **Job `deploy` kończy się `Permission denied (publickey)`:** klucz publiczny nie trafił do `authorized_keys`
+  użytkownika `DEPLOY_USER` albo `DEPLOY_SSH_KEY` nie zawiera całego klucza prywatnego (z liniami `BEGIN` i `END`).
+- **Job `deploy` kończy się `permission denied ... docker.sock`:** `DEPLOY_USER` nie należy do grupy `docker`.
