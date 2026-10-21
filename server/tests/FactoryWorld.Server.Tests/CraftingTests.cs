@@ -129,6 +129,20 @@ public sealed class CraftingTests(ServerFactory factory) : IClassFixture<ServerF
     }
 
     [Fact]
+    public async Task The_trader_sells_a_workbench_for_500_dollars()
+    {
+        using var client = await PlayerAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 60_000, "test", CancellationToken.None);
+        }
+
+        Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.Workbench, quantity = 1 })).Type());
+        Assert.Equal(10_000, await client.BalanceAsync());
+        Assert.Equal(1, Count(await client.InventoryAsync(), Items.Workbench));
+    }
+
+    [Fact]
     public async Task Orders_are_made_one_after_another_and_a_cancelled_one_gives_its_ingredients_back()
     {
         using var client = await PlayerAsync();

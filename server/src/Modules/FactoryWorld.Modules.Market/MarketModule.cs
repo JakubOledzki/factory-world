@@ -19,6 +19,7 @@ public static class NpcPrices
         [Items.SortingMachine] = 100_000,
         [Items.Sapling] = 200,
         [Items.Nails] = 100,
+        [Items.Workbench] = 50_000,
     };
 
     /// <summary>What the NPC pays the player.</summary>
