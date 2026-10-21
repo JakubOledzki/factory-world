@@ -137,6 +137,38 @@
   "anchorX": 48,
   "anchorY": 70
  },
+ "belt_ew": {
+  "anchorX": 36,
+  "anchorY": 34
+ },
+ "belt_ns": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "inserter": {
+  "anchorX": 32,
+  "anchorY": 39
+ },
+ "wooden_chest": {
+  "anchorX": 32,
+  "anchorY": 39
+ },
+ "iron_chest": {
+  "anchorX": 36,
+  "anchorY": 39
+ },
+ "wood_pile": {
+  "anchorX": 36,
+  "anchorY": 43
+ },
+ "heap": {
+  "anchorX": 40,
+  "anchorY": 41
+ },
+ "grain_silo": {
+  "anchorX": 36,
+  "anchorY": 100
+ },
  "mill": {
   "anchorX": 64,
   "anchorY": 101
@@ -156,5 +188,25 @@
  "kitchen": {
   "anchorX": 56,
   "anchorY": 77
+ },
+ "belt_ne": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_es": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_sw": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_nw": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "splitter": {
+  "anchorX": 32,
+  "anchorY": 39
  }
 }

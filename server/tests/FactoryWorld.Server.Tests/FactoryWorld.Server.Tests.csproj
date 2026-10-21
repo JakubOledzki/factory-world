@@ -27,6 +27,7 @@
     <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Market\FactoryWorld.Modules.Market.csproj" />
     <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.World\FactoryWorld.Modules.World.csproj" />
     <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Crafting\FactoryWorld.Modules.Crafting.csproj" />
+    <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Logistics\FactoryWorld.Modules.Logistics.csproj" />
   </ItemGroup>
 
 </Project>

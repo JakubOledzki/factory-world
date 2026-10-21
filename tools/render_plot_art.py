@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [logistics] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -35,12 +35,14 @@ random.seed(11)
 
 # --- Studio -----------------------------------------------------------------------------------
 
-def outdoor_scene(width_px: int, height_px: int, target: Vector, samples=64, pitch=PITCH):
-    """Dusk under a heavy sky: a warm sun from the front left and a cold blue fill."""
+def outdoor_scene(width_px: int, height_px: int, target: Vector, samples=64, pitch=PITCH, true_scale=False):
+    """Dusk under a heavy sky: a warm sun from the front left and a cold blue fill. Blender fits the
+    camera's width to the longer side of the picture, so a tall one comes out zoomed in unless
+    `true_scale` keeps it at PPM pixels per metre."""
     scene = ra.reset()
     scene.cycles.samples = samples
     ra.set_world((0.035, 0.045, 0.065), 1.0)
-    ra.camera(scene, target, width_px / PPM, (width_px, height_px), pitch=pitch)
+    ra.camera(scene, target, (max(width_px, height_px) if true_scale else width_px) / PPM, (width_px, height_px), pitch=pitch)
     ra.light("SUN", (0, 0, 10), 2.6, (1.0, 0.82, 0.62), size=0.06,
              rotation=(math.radians(36), 0, math.radians(-40)))
     ra.light("SUN", (0, 0, 10), 0.35, (0.55, 0.65, 0.9), size=0.6,
@@ -61,9 +63,9 @@ def shadow_catcher(size=40.0):
     return plane
 
 
-def render_sprite(name: str, width: int, height: int, target: Vector, build) -> dict:
+def render_sprite(name: str, width: int, height: int, target: Vector, build, true_scale=False) -> dict:
     """Renders an object and, separately, the shadow it throws on the ground."""
-    outdoor_scene(width, height, target)
+    outdoor_scene(width, height, target, true_scale=true_scale)
     objs = build()
     catcher = shadow_catcher()
     catcher.hide_render = True
@@ -598,6 +600,224 @@ def render_crafting(layout: dict):
         layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), build)
 
 
+# --- Logistics --------------------------------------------------------------------------------------
+
+def belt_frame(s=1.0, along_x=True, length=2.0):
+    """A conveyor belt the length of a tile, so belts on neighbouring tiles join up: a dark rubber
+    band between two yellow side rails on short legs. The game draws the moving stripes and items."""
+    paint = ra.plain("belt_paint", (0.5, 0.33, 0.03), 0.5, 0.4, variation=0.2, grime=0.8)
+    rubber = ra.plain("belt_rubber", (0.025, 0.025, 0.027), 0.8, variation=0.3, scale=20, bump=0.3)
+    steel = ra.rusty_metal("belt_steel", (0.16, 0.16, 0.17), 0.3)
+
+    def at(a, b, z):
+        return Vector((a * s, b * s, z * s)) if along_x else Vector((b * s, a * s, z * s))
+
+    def size(a, b, z):
+        return (a * s, b * s, z * s) if along_x else (b * s, a * s, z * s)
+
+    ra.box("belt_band", size(length, 0.96, 0.05), at(0, 0, 0.2), rubber)
+    for side in (-0.53, 0.53):
+        ra.box("belt_rail", size(length, 0.1, 0.16), at(0, side, 0.22), paint, bevel=0.015 * s)
+        for a in (-length / 2 + 0.25, length / 2 - 0.25):
+            ra.box("belt_leg", size(0.08, 0.08, 0.16), at(a, side, 0.08), steel)
+    # Rollers under the band show at its sides.
+    for k in range(5):
+        a = -length / 2 + (k + 0.5) * length / 5
+        rot = (math.radians(90), 0, 0) if along_x else (0, math.radians(90), 0)
+        ra.cylinder("belt_roller", 0.07 * s, 1.0 * s, at(a, 0, 0.13), steel, rotation=rot, verts=12)
+
+
+def arc_box(name, r_in, r_out, z0, z1, a0, a1, centre, mat, n=12):
+    """A curved slab: the part of a ring between two radii and two angles (radians), from z0 to z1,
+    about `centre` (x, y)."""
+    verts, faces = [], []
+    for k in range(n + 1):
+        a = a0 + (a1 - a0) * k / n
+        for r in (r_in, r_out):
+            for z in (z0, z1):
+                verts.append((centre[0] + r * math.cos(a), centre[1] + r * math.sin(a), z))
+    for k in range(n):
+        i, j = 4 * k, 4 * (k + 1)
+        # inner, outer, bottom and top faces of the step
+        faces += [(i, i + 1, j + 1, j), (i + 2, j + 2, j + 3, i + 3), (i, j, j + 2, i + 2), (i + 1, i + 3, j + 3, j + 1)]
+    last = 4 * n
+    faces += [(0, 2, 3, 1), (last, last + 1, last + 3, last + 2)]
+    obj = ra.mesh_from(name, verts, faces, mat)
+    for poly in obj.data.polygons:
+        poly.use_smooth = True
+    return obj
+
+
+# The sides of a tile a curve joins, as unit vectors in Blender's (east, north).
+SIDES = {"n": (0, 1), "e": (1, 0), "s": (0, -1), "w": (-1, 0)}
+
+
+def belt_curve(sides):
+    """A belt turning a corner between two sides of its tile: the band and rails bent round the
+    tile's corner between those sides, like belt_frame laid in a quarter circle."""
+    paint = ra.plain("belt_paint", (0.5, 0.33, 0.03), 0.5, 0.4, variation=0.2, grime=0.8)
+    rubber = ra.plain("belt_rubber", (0.025, 0.025, 0.027), 0.8, variation=0.3, scale=20, bump=0.3)
+    steel = ra.rusty_metal("belt_steel", (0.16, 0.16, 0.17), 0.3)
+    (ax, ay), (bx, by) = SIDES[sides[0]], SIDES[sides[1]]
+    centre = (ax + bx, ay + by)
+    mid = math.atan2(-centre[1], -centre[0])
+    a0, a1 = mid - math.pi / 4, mid + math.pi / 4
+    arc_box("belt_band", 1 - 0.48, 1 + 0.48, 0.175, 0.225, a0, a1, centre, rubber, n=16)
+    for r in (1 - 0.53, 1 + 0.53):
+        arc_box("belt_rail", r - 0.05, r + 0.05, 0.14, 0.30, a0, a1, centre, paint, n=16)
+        for a in (a0 + 0.2, a1 - 0.2):
+            ra.box("belt_leg", (0.08, 0.08, 0.16), Vector((centre[0] + r * math.cos(a), centre[1] + r * math.sin(a), 0.08)), steel)
+    for k in range(4):
+        a = a0 + (k + 0.5) * (a1 - a0) / 4
+        ra.cylinder("belt_roller", 0.07, 1.0, Vector((centre[0] + math.cos(a), centre[1] + math.sin(a), 0.13)), steel,
+                    rotation=(0, math.radians(90), a), verts=12)
+
+
+def splitter(s=1.0):
+    """The middle of a splitter: a steel wedge that turns what comes in to both
+    sides, under a yellow cap with a lamp. The game draws the crossed belts under it, so it looks
+    the same turned any way."""
+    paint = ra.plain("splitter_paint", (0.55, 0.36, 0.03), 0.45, 0.4, variation=0.2, grime=0.7)
+    steel = ra.rusty_metal("splitter_steel", (0.15, 0.15, 0.16), 0.25)
+    ra.box("splitter_wedge", (0.62 * s, 0.62 * s, 0.34 * s), Vector((0, 0, 0.36 * s)), steel, bevel=0.03 * s,
+           rotation=(0, 0, math.radians(45)))
+    ra.box("splitter_cap", (0.7 * s, 0.7 * s, 0.08 * s), Vector((0, 0, 0.57 * s)), paint, bevel=0.025 * s,
+           rotation=(0, 0, math.radians(45)))
+    ra.cylinder("splitter_lamp", 0.06 * s, 0.06 * s, Vector((0, 0, 0.64 * s)), ra.emission("splitter_lamp", (0.3, 1.0, 0.25), 3.0), verts=12)
+
+
+def inserter(s=1.0, arm=False):
+    """The base of an inserter: a steel foot and a yellow turret; the game draws the arm swinging
+    from the tile behind it to the tile in front. With `arm` (for its icon) the arm is modelled too."""
+    paint = ra.plain("inserter_paint", (0.55, 0.36, 0.03), 0.45, 0.4, variation=0.2, grime=0.7)
+    steel = ra.rusty_metal("inserter_steel", (0.15, 0.15, 0.16), 0.25)
+    ra.box("inserter_foot", (0.9 * s, 0.9 * s, 0.1 * s), Vector((0, 0, 0.05 * s)), steel, bevel=0.03 * s)
+    ra.cylinder("inserter_base", 0.36 * s, 0.14 * s, Vector((0, 0, 0.17 * s)), steel, bevel=0.02 * s)
+    ra.cylinder("inserter_turret", 0.24 * s, 0.36 * s, Vector((0, 0, 0.42 * s)), paint, bevel=0.03 * s)
+    ra.cylinder("inserter_cap", 0.17 * s, 0.07 * s, Vector((0, 0, 0.635 * s)), steel, bevel=0.015 * s)
+    ra.box("inserter_lamp", (0.08 * s, 0.03 * s, 0.05 * s), Vector((0, -0.24 * s, 0.5 * s)),
+           ra.emission("inserter_lamp", (0.3, 1.0, 0.25), 3.0))
+    if arm:
+        ra.box("inserter_arm", (0.1 * s, 0.75 * s, 0.08 * s), Vector((0, 0.3 * s, 0.75 * s)), paint, bevel=0.02 * s,
+               rotation=(math.radians(-25), 0, 0))
+        ra.box("inserter_hand", (0.22 * s, 0.08 * s, 0.14 * s), Vector((0, 0.66 * s, 0.6 * s)), steel, bevel=0.02 * s)
+
+
+def wooden_chest(s=1.0):
+    """A chest of planks with iron bands and corners."""
+    planks = ra.wood("chest_planks", (0.24, 0.14, 0.07))
+    iron = ra.rusty_metal("chest_iron", (0.12, 0.12, 0.13), 0.4)
+    w, d, h = 1.2, 0.85, 0.62
+    for k in range(4):
+        ra.box("chest_plank", (w * s, d * s, (h / 4 - 0.012) * s), Vector((0, 0, (h / 4) * (k + 0.5) * s)), planks, bevel=0.012 * s)
+    ra.box("chest_lid", ((w + 0.04) * s, (d + 0.04) * s, 0.12 * s), Vector((0, 0, (h + 0.06) * s)), planks, bevel=0.02 * s)
+    for x in (-w / 2 + 0.12, w / 2 - 0.12):
+        ra.box("chest_band", (0.07 * s, (d + 0.03) * s, (h + 0.14) * s), Vector((x * s, 0, (h + 0.12) / 2 * s)), iron, bevel=0.01 * s)
+    ra.box("chest_lock", (0.12 * s, 0.03 * s, 0.14 * s), Vector((0, -(d / 2 + 0.03) * s, (h - 0.02) * s)), iron, bevel=0.01 * s)
+
+
+def iron_chest(s=1.0):
+    """A riveted steel chest, larger than the wooden one."""
+    plate = ra.rusty_metal("chest_plate", (0.24, 0.25, 0.27), 0.2)
+    dark = ra.rusty_metal("chest_frame", (0.09, 0.09, 0.1), 0.35)
+    w, d, h = 1.3, 0.95, 0.7
+    ra.box("chest_body", (w * s, d * s, h * s), Vector((0, 0, h / 2 * s)), plate, bevel=0.03 * s)
+    ra.box("chest_lid", ((w + 0.05) * s, (d + 0.05) * s, 0.1 * s), Vector((0, 0, (h + 0.05) * s)), dark, bevel=0.02 * s)
+    for x in (-w / 2, w / 2):
+        for y in (-d / 2, d / 2):
+            ra.box("chest_corner", (0.09 * s, 0.09 * s, (h + 0.04) * s), Vector((x * s, y * s, (h + 0.04) / 2 * s)), dark, bevel=0.01 * s)
+    for x in (-0.4, 0.0, 0.4):
+        ra.sphere("chest_rivet", 0.025 * s, Vector((x * s, -(d / 2 + 0.01) * s, (h - 0.12) * s)), dark, segments=8)
+    ra.box("chest_handle", (0.3 * s, 0.04 * s, 0.05 * s), Vector((0, -(d / 2 + 0.04) * s, (h - 0.25) * s)), dark, bevel=0.01 * s)
+
+
+def wood_pile(s=1.0):
+    """Logs stacked between two pairs of posts."""
+    bark_m = bark()
+    cut = ra.wood("pile_cut", (0.36, 0.23, 0.11))
+    post = ra.wood("pile_post", (0.12, 0.07, 0.04))
+    r, length = 0.15, 1.5
+    rnd = random.Random(5)
+    for row, count in enumerate((5, 4, 3)):
+        for i in range(count):
+            y = (i - (count - 1) / 2) * 2 * r
+            z = r + row * r * 1.75
+            jitter = rnd.uniform(-0.06, 0.06)
+            ra.cylinder("pile_log", r * s, length * s, Vector((jitter * s, y * s, z * s)), bark_m, rotation=(0, math.radians(90), 0), verts=14)
+            for x in (-length / 2 - 0.002, length / 2 + 0.002):
+                ra.cylinder("pile_end", (r - 0.015) * s, 0.01 * s, Vector(((x + jitter) * s, y * s, z * s)), cut, rotation=(0, math.radians(90), 0), verts=14)
+    for x in (-0.55, 0.55):
+        for y in (-0.85, 0.85):
+            ra.box("pile_post", (0.08 * s, 0.08 * s, 0.85 * s), Vector((x * s, y * s, 0.42 * s)), post, bevel=0.01 * s)
+
+
+def heap(s=1.0):
+    """A bay of stacked stone on three sides with a mound of loose rock and ore in it."""
+    stone = ra.plain("heap_wall", (0.2, 0.19, 0.17), 0.9, variation=0.3, scale=8, bump=0.5)
+    rnd = random.Random(3)
+    for side, (cx, cy, w, d) in enumerate(((0, 0.8, 1.8, 0.22), (-0.8, 0.05, 0.22, 1.5), (0.8, 0.05, 0.22, 1.5))):
+        for k in range(2):
+            b = ra.box("heap_block", (w * s, d * s, 0.17 * s), Vector((cx * s, cy * s, (0.09 + 0.18 * k) * s)), stone, bevel=0.03 * s,
+                       rotation=(0, 0, rnd.uniform(-0.03, 0.03)))
+            ra.displace(b, 0.015 * s, 0.1, 1)
+    mound = ra.sphere("heap_mound", 0.75 * s, Vector((0, 0.1 * s, 0)), rock("heap_rock", (0.15, 0.14, 0.13)), scale=(1, 0.95, 0.6), segments=24)
+    ra.displace(mound, 0.08 * s, 0.25, 2)
+    lumps = (rock("heap_coal", (0.03, 0.03, 0.03)), rock("heap_iron", (0.22, 0.12, 0.08)), rock("heap_copper", (0.2, 0.13, 0.06)))
+    for i in range(14):
+        a, d = rnd.uniform(0, math.tau), rnd.uniform(0.1, 0.6)
+        x, y = math.cos(a) * d, math.sin(a) * d * 0.9 + 0.1
+        z = 0.45 * math.sqrt(max(0.0, 1 - (d / 0.75) ** 2))
+        boulder_m = lumps[i % len(lumps)]
+        b = ra.sphere("heap_lump", rnd.uniform(0.06, 0.1) * s, Vector((x * s, y * s, z * s)), boulder_m, segments=10)
+        ra.displace(b, 0.02 * s, 0.1, 1)
+
+
+def grain_silo(s=1.0):
+    """A corrugated steel silo with a cone roof and a ladder up its front."""
+    sheet = ra.corrugated("silo_sheet", (0.42, 0.43, 0.44), 0.15)
+    roof = ra.rusty_metal("silo_roof", (0.32, 0.33, 0.35), 0.2)
+    steel = ra.rusty_metal("silo_steel", (0.12, 0.12, 0.13), 0.3)
+    r, h = 0.72, 2.4
+    ra.cylinder("silo_base", (r + 0.08) * s, 0.15 * s, Vector((0, 0, 0.075 * s)), ra.plain("silo_concrete", (0.3, 0.3, 0.29), 0.9), verts=40)
+    ra.cylinder("silo_body", r * s, h * s, Vector((0, 0, (0.15 + h / 2) * s)), sheet, verts=48)
+    for z in (0.7, 1.4, 2.1):
+        ra.cylinder("silo_ring", (r + 0.015) * s, 0.04 * s, Vector((0, 0, (0.15 + z) * s)), steel, verts=48)
+    ra.cylinder("silo_roof", (r + 0.06) * s, 0.55 * s, Vector((0, 0, (0.15 + h + 0.275) * s)), roof, verts=48, radius2=0.12 * s)
+    ra.cylinder("silo_vent", 0.12 * s, 0.14 * s, Vector((0, 0, (0.15 + h + 0.6) * s)), steel, verts=16)
+    for x in (-0.12, 0.12):
+        ra.box("silo_ladder", (0.03 * s, 0.03 * s, h * s), Vector((x * s, -(r + 0.07) * s, (0.15 + h / 2) * s)), steel)
+    for k in range(10):
+        ra.box("silo_rung", (0.24 * s, 0.025 * s, 0.025 * s), Vector((0, -(r + 0.07) * s, (0.35 + k * 0.23) * s)), steel)
+    ra.box("silo_hatch", (0.3 * s, 0.05 * s, 0.25 * s), Vector((0.35 * s, -(r - 0.08) * s, 0.4 * s)), steel, bevel=0.02 * s,
+           rotation=(0, 0, math.radians(-25)))
+
+
+LOGISTICS = {
+    # name: (canvas width, height, camera target height, builder)
+    "belt_ew": (72, 64, 0.1, crafted(lambda: belt_frame(along_x=True))),
+    "belt_ns": (72, 72, 0.1, crafted(lambda: belt_frame(along_x=False))),
+    "belt_ne": (72, 72, 0.1, crafted(lambda: belt_curve("ne"))),
+    "belt_es": (72, 72, 0.1, crafted(lambda: belt_curve("es"))),
+    "belt_sw": (72, 72, 0.1, crafted(lambda: belt_curve("sw"))),
+    "belt_nw": (72, 72, 0.1, crafted(lambda: belt_curve("nw"))),
+    "splitter": (64, 64, 0.3, crafted(lambda: splitter())),
+    "inserter": (64, 64, 0.3, crafted(lambda: inserter())),
+    "wooden_chest": (64, 64, 0.3, crafted(lambda: wooden_chest())),
+    "iron_chest": (72, 64, 0.3, crafted(lambda: iron_chest())),
+    "wood_pile": (72, 72, 0.3, crafted(lambda: wood_pile())),
+    "heap": (80, 72, 0.2, crafted(lambda: heap())),
+    "grain_silo": (72, 136, 1.4, crafted(lambda: grain_silo())),
+}
+
+
+def render_logistics(layout: dict, only=()):
+    for name, (w, h, tz, build) in LOGISTICS.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), build, true_scale=True)
+
+
 # --- Railway --------------------------------------------------------------------------------------
 
 def track(length):
@@ -994,6 +1214,14 @@ def icon_models():
         "item_silver_ingot": ingots((0.5, 0.52, 0.56), 0.3),
         "item_gold_ingot": ingots((0.6, 0.36, 0.06), 0.3),
         "item_nails": nails,
+        "item_logistics_belt": lambda: belt_frame(0.26, True, 1.6),
+        "item_logistics_inserter": lambda: inserter(0.4, arm=True),
+        "item_logistics_splitter": lambda: (belt_frame(0.4, True, 1.6), belt_frame(0.4, False, 1.6), splitter(0.6)),
+        "item_storage_wooden_chest": lambda: wooden_chest(0.38),
+        "item_storage_iron_chest": lambda: iron_chest(0.36),
+        "item_storage_wood_pile": lambda: wood_pile(0.3),
+        "item_storage_heap": lambda: heap(0.28),
+        "item_storage_grain_silo": lambda: grain_silo(0.17),
     }
 
 
@@ -1011,7 +1239,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "forestry", "mine", "crafting", "processing", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "forestry", "mine", "crafting", "processing", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -1035,6 +1263,9 @@ if __name__ == "__main__":
         render_crafting(layout)
     if "processing" in args:
         render_processing(layout)
+    if "logistics" in args or any(a in LOGISTICS for a in args):
+        # Names of logistics sprites render just those.
+        render_logistics(layout, [a for a in args if a in LOGISTICS])
     # "item_<id>" arguments render just those icons.
     if "icons" in args or any(a.startswith("item_") for a in args):
         render_icons([a for a in args if a.startswith("item_")])

@@ -276,6 +276,78 @@ public sealed class FurnaceContents(GameDb db, IInventory inventory, TimeProvide
     }
 }
 
+/// <summary>Furnaces as inserters see them: coal and ore go in, ingots come out.</summary>
+public sealed class FurnacePorts(GameDb db) : IMachinePorts
+{
+    public async Task<IMachinePort?> OpenAsync(Guid owner, Guid id, string kind, CancellationToken cancellationToken)
+    {
+        if (kind != Items.Furnace)
+        {
+            return null;
+        }
+
+        return new Port(db, owner, id, await FurnaceRows.ReadAsync(db, id, cancellationToken) ?? FurnaceState.Empty);
+    }
+
+    private sealed class Port(GameDb db, Guid owner, Guid id, FurnaceState state) : IMachinePort
+    {
+        private bool _changed;
+
+        public string? Output(DateTimeOffset now, Func<string, bool> wanted)
+        {
+            state = Smelting.Advance(state, now);
+            return state.Output is { } output && state.OutputQuantity > 0 && wanted(output) ? output : null;
+        }
+
+        public void Take(string item, DateTimeOffset now)
+        {
+            state = Smelting.Advance(state, now);
+            if (state.Output == item && state.OutputQuantity > 0)
+            {
+                state = state.OutputQuantity == 1 ? state with { Output = null, OutputQuantity = 0 } : state with { OutputQuantity = state.OutputQuantity - 1 };
+                _changed = true;
+            }
+        }
+
+        public bool Accepts(string item, DateTimeOffset now)
+        {
+            state = Smelting.Advance(state, now);
+            if (item == Items.Coal)
+            {
+                return state.Fuel < Smelting.MaxFuel;
+            }
+
+            // Ingots of another metal must be taken out before another ore goes in.
+            return Smelting.For(item) is { } recipe
+                && (state.Input is null || state.Input == item) && state.InputQuantity < Smelting.MaxInput
+                && (state.Output is null || state.Output == recipe.Output || state.OutputQuantity == 0);
+        }
+
+        public void Put(string item, DateTimeOffset now)
+        {
+            state = item == Items.Coal
+                ? state with { Fuel = state.Fuel + 1 }
+                : state with { Input = item, InputQuantity = state.InputQuantity + 1 };
+            state = Smelting.Start(state, now);
+            _changed = true;
+        }
+
+        public DateTimeOffset? NextChange(DateTimeOffset now)
+        {
+            state = Smelting.Advance(state, now);
+            return state.StartedAt is { } started && Smelting.For(state.Input) is { } recipe ? started + recipe.Time : null;
+        }
+
+        public async Task SaveAsync(CancellationToken cancellationToken)
+        {
+            if (_changed)
+            {
+                await FurnaceRows.WriteAsync(db, owner, id, state, cancellationToken);
+            }
+        }
+    }
+}
+
 public sealed record FurnaceRequest(Guid Furnace);
 
 public sealed record LoadFurnaceRequest(Guid Furnace, string Item, int Quantity);

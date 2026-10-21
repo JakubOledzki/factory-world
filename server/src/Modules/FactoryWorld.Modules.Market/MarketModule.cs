@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FactoryWorld.Modules.Market;
 
 /// <summary>
-/// The NPC trader: always sells trash, saplings, nails, machines, flour, oil and bread and always buys raw materials, at fixed prices (cents).
+/// The NPC trader: always sells trash, saplings, nails, belts, inserters, wooden chests, machines, flour, oil and bread and always buys raw materials, at fixed prices (cents).
 /// What it pays is the floor of the market: a quick sale gets it at once, players' listings usually pay more.
 /// </summary>
 public static class NpcPrices
@@ -20,6 +20,10 @@ public static class NpcPrices
         [Items.Sapling] = 200,
         [Items.Nails] = 100,
         [Items.Workbench] = 50_000,
+        [Items.Belt] = 500,
+        [Items.Inserter] = 3000,
+        [Items.Splitter] = 4000,
+        [Items.WoodenChest] = 2000,
         [Items.Mill] = 40_000,
         [Items.OilPress] = 40_000,
         [Items.PicklingBarrel] = 10_000,
@@ -67,6 +71,14 @@ public static class NpcPrices
         [Items.Shovel] = 500,
         [Items.Pickaxe] = 500,
         [Items.Hoe] = 500,
+        [Items.Belt] = 200,
+        [Items.Inserter] = 1200,
+        [Items.Splitter] = 1600,
+        [Items.WoodenChest] = 800,
+        [Items.IronChest] = 2500,
+        [Items.WoodPile] = 300,
+        [Items.Heap] = 500,
+        [Items.GrainSilo] = 6000,
         [Items.Mill] = 3000,
         [Items.OilPress] = 3000,
         [Items.PicklingBarrel] = 1000,

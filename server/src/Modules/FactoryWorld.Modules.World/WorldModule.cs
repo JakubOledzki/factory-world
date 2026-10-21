@@ -95,6 +95,9 @@ public sealed class PlotObjectRow
     public Guid OwnerId { get; set; }
 
     public string Kind { get; set; } = "";
+
+    /// <summary>Quarter turns anticlockwise seen from above; 0 faces south.</summary>
+    public int Rotation { get; set; }
 }
 
 /// <summary>What a geological survey found under a plot.</summary>
@@ -216,6 +219,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(o => o.TileY).HasColumnName("tile_y");
             e.Property(o => o.OwnerId).HasColumnName("owner_id");
             e.Property(o => o.Kind).HasColumnName("kind").HasMaxLength(32);
+            e.Property(o => o.Rotation).HasColumnName("rotation");
             // One object per tile.
             e.HasIndex(o => new { o.X, o.Y, o.TileX, o.TileY }).IsUnique();
         });
@@ -520,6 +524,7 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<SurveyService>();
         services.AddScoped<PlotObjectService>();
         services.AddScoped<IPlacedObjects>(provider => provider.GetRequiredService<PlotObjectService>());
+        services.AddScoped<IPlotObjects, PlotObjectsQuery>();
         services.AddSingleton<IMessageHandler, InfoHandler>();
         services.AddSingleton<IMessageHandler, AreaHandler>();
         services.AddSingleton<IMessageHandler, GetPlotHandler>();
@@ -538,6 +543,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, SurveyHandler>();
         services.AddSingleton<IMessageHandler, PlaceOnPlotHandler>();
         services.AddSingleton<IMessageHandler, PickUpFromPlotHandler>();
+        services.AddSingleton<IMessageHandler, RotateOnPlotHandler>();
     }
 
     public async Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken)

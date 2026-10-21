@@ -64,3 +64,57 @@ public interface IMachineContents
     /// <summary>The object is being picked up: everything in it goes back to the owner's inventory.</summary>
     Task ReleaseAsync(Guid owner, Guid id, CancellationToken cancellationToken);
 }
+
+/// <summary>An object standing on a plot. <paramref name="Rotation"/> (0-3) counts quarter turns
+/// anticlockwise seen from above, as in the garage: 0 faces south (the camera), 1 east, 2 north, 3 west.</summary>
+public sealed record PlotObject(Guid Id, string Kind, int TileX, int TileY, int Rotation, Guid Owner);
+
+/// <summary>What stands on plots, for modules that run machinery there.</summary>
+public interface IPlotObjects
+{
+    Task<IReadOnlyList<PlotObject>> ObjectsAsync(int x, int y, CancellationToken cancellationToken);
+
+    /// <summary>Fails with <c>not_owner</c> unless the player owns the plot.</summary>
+    Task RequireOwnerAsync(Guid player, int x, int y, CancellationToken cancellationToken);
+}
+
+/// <summary>Machinery that runs on a plot by itself (belts, inserters). It is brought up to now
+/// before an object is put on the plot or taken off, so it never works with objects that were not there.</summary>
+public interface IPlotAutomation
+{
+    Task CatchUpAsync(int x, int y, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// A placed machine's inputs and outputs as an inserter sees them, during one run of a plot's
+/// logistics. Every call gives the moment of the simulation, which only moves forward; the machine
+/// does its own work (e.g. smelting) up to that moment first.
+/// </summary>
+public interface IMachinePort
+{
+    /// <summary>One item an inserter may take out now and that <paramref name="wanted"/> accepts, or null.</summary>
+    string? Output(DateTimeOffset now, Func<string, bool> wanted);
+
+    /// <summary>Takes out one piece of an item <see cref="Output"/> offered.</summary>
+    void Take(string item, DateTimeOffset now);
+
+    /// <summary>Whether one more piece of the item can go in now.</summary>
+    bool Accepts(string item, DateTimeOffset now);
+
+    /// <summary>Puts in one piece of an item the machine <see cref="Accepts"/>.</summary>
+    void Put(string item, DateTimeOffset now);
+
+    /// <summary>When the machine will next have something new to take out on its own (e.g. its next ingot), or null.</summary>
+    DateTimeOffset? NextChange(DateTimeOffset now);
+
+    /// <summary>Writes the machine back, if anything changed.</summary>
+    Task SaveAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>Offered by each module that keeps machines with inputs and outputs (the furnace, the mill...),
+/// so inserters work with any of them.</summary>
+public interface IMachinePorts
+{
+    /// <summary>The machine, locked until the transaction ends; null when this module keeps no machine of this kind.</summary>
+    Task<IMachinePort?> OpenAsync(Guid owner, Guid id, string kind, CancellationToken cancellationToken);
+}

@@ -58,6 +58,18 @@ public static class Items
     public const string Potato = "potato";
     public const string Sunflower = "sunflower";
 
+    // Logistics on plots: belts carry items, inserters move them between belts, machines and storage.
+    public const string Belt = "logistics_belt";
+    public const string Inserter = "logistics_inserter";
+    public const string Splitter = "logistics_splitter";
+
+    // Storage put on plots: chests take anything, piles, heaps and silos one kind of bulk goods.
+    public const string WoodenChest = "storage_wooden_chest";
+    public const string IronChest = "storage_iron_chest";
+    public const string WoodPile = "storage_wood_pile";
+    public const string Heap = "storage_heap";
+    public const string GrainSilo = "storage_grain_silo";
+
     // Food processing: machines put on a plot turn crops into food, step by step.
     public const string Mill = "furniture_mill";
     public const string OilPress = "furniture_oil_press";
@@ -120,6 +132,14 @@ public static class Items
         [Corn] = "Kukurydza",
         [Potato] = "Ziemniaki",
         [Sunflower] = "Słonecznik",
+        [Belt] = "Taśmociąg",
+        [Inserter] = "Podajnik",
+        [Splitter] = "Rozdzielacz",
+        [WoodenChest] = "Skrzynia drewniana",
+        [IronChest] = "Skrzynia żelazna",
+        [WoodPile] = "Stos drewna",
+        [Heap] = "Hałda",
+        [GrainSilo] = "Silos zbożowy",
         [Mill] = "Młyn",
         [OilPress] = "Tłocznia oleju",
         [PicklingBarrel] = "Beczka do kiszenia",

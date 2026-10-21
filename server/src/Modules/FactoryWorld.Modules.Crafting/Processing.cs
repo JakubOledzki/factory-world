@@ -418,6 +418,95 @@ public sealed class MachineService(GameDb db, IEnumerable<IPlacedObjects> places
     }
 }
 
+/// <summary>Processing machines as inserters see them: ingredients of the chosen recipe and fuel go in, products come out.</summary>
+public sealed class ProcessingPorts(GameDb db) : IMachinePorts
+{
+    public async Task<IMachinePort?> OpenAsync(Guid owner, Guid id, string kind, CancellationToken cancellationToken)
+    {
+        if (!Processing.ByKind.TryGetValue(kind, out var machine))
+        {
+            return null;
+        }
+
+        var state = (await MachineRows.ReadAsync(db, id, cancellationToken))?.State ?? MachineState.Empty;
+        return new Port(db, owner, id, machine, state);
+    }
+
+    private sealed class Port(GameDb db, Guid owner, Guid id, ProcessingMachine machine, MachineState state) : IMachinePort
+    {
+        private bool _changed;
+
+        private ProcessingRecipe? Recipe => machine.Recipe(state.Recipe);
+
+        public string? Output(DateTimeOffset now, Func<string, bool> wanted)
+        {
+            state = Processing.Advance(machine, state, now);
+            return Recipe is { } recipe && state.Output > 0 && wanted(recipe.Id) ? recipe.Id : null;
+        }
+
+        public void Take(string item, DateTimeOffset now)
+        {
+            state = Processing.Advance(machine, state, now);
+            if (Recipe?.Id == item && state.Output > 0)
+            {
+                // Room again for what was waiting on a full machine.
+                state = Processing.Start(machine, state with { Output = state.Output - 1 }, now);
+                _changed = true;
+            }
+        }
+
+        public bool Accepts(string item, DateTimeOffset now)
+        {
+            state = Processing.Advance(machine, state, now);
+            if (Slot(item) is var slot and >= 0)
+            {
+                return state.Input(slot) < Processing.MaxInput;
+            }
+
+            return machine.Fired && Processing.Fuels.ContainsKey(item)
+                && (state.FuelItem is null || state.FuelItem == item || state.Fuel == 0) && state.Fuel < Processing.MaxFuel;
+        }
+
+        public void Put(string item, DateTimeOffset now)
+        {
+            if (Slot(item) is var slot and >= 0)
+            {
+                var inputs = new int[Recipe!.Ingredients.Count];
+                for (var i = 0; i < inputs.Length; i++)
+                {
+                    inputs[i] = state.Input(i);
+                }
+
+                inputs[slot]++;
+                state = state with { Inputs = inputs };
+            }
+            else
+            {
+                state = state with { FuelItem = item, Fuel = state.Fuel + 1 };
+            }
+
+            state = Processing.Start(machine, state, now);
+            _changed = true;
+        }
+
+        public DateTimeOffset? NextChange(DateTimeOffset now)
+        {
+            state = Processing.Advance(machine, state, now);
+            return state.StartedAt is { } started && Recipe is { } recipe ? started + recipe.Time : null;
+        }
+
+        public async Task SaveAsync(CancellationToken cancellationToken)
+        {
+            if (_changed)
+            {
+                await MachineRows.WriteAsync(db, owner, id, machine.Kind, state, cancellationToken);
+            }
+        }
+
+        private int Slot(string item) => Recipe is { } recipe ? recipe.Ingredients.ToList().FindIndex(i => i.Item == item) : -1;
+    }
+}
+
 public sealed record MachineRequest(Guid Machine);
 
 public sealed record MachineRecipeRequest(Guid Machine, string Recipe);
