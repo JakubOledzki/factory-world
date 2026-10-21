@@ -15,6 +15,7 @@ Projekt gry: [dokument projektowy](https://claude.ai/code/artifact/50d66faa-a0b4
 | `tools/generate_ui.py` | Rysuje tekstury interfejsu (panele, przyciski, paski) do `client/art/ui/` |
 | `tools/render_plot_art.py` | Renderuje grafikę wnętrza działek (podłogi biomów, drzewa, skały, krzaki, wydmy z cieniami, tory, stacja, stół warsztatowy, piec, maszyny przetwórcze, taśmociągi z zakrętami, rozdzielacz, podajnik, skrzynie, stos drewna, hałda i silos) do `client/art/plot/` i ikony narzędzi, surowców, sztabek i żywności; korzysta z pomocników `render_art.py` |
 | `tools/build_world.py` | Buduje mapę świata z otwartych danych: biom każdej działki 5 × 5 km (`client/world/biomes.bin.gz`, ta sama kopia w module `World` serwera) i miejscowości (`client/world/towns.tsv.gz`); źródła i zasady opisane w pliku |
+| `tools/loadtest/` | Test obciążenia: boty grające przez WebSocket (10 … 10 000 graczy naraz), czasy odpowiedzi, przepustowość, błędy, CPU i RAM, raport z wykresami ([instrukcja](tools/loadtest/README.md)) |
 | `deploy/` | Wdrożenie produkcyjne: Caddy (HTTPS + gra w przeglądarce), compose, `.env` |
 
 ## Uruchomienie lokalne
