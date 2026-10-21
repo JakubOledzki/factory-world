@@ -337,6 +337,134 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
     }
 
     [Fact]
+    public void A_mining_plot_has_one_to_five_mines_always_in_the_same_places_and_other_plots_none()
+    {
+        var counts = new HashSet<int>();
+        for (var i = 0; i < 200; i++)
+        {
+            var (x, y) = (i * 37 % 6900, i * 13 % 2900);
+            var mines = PlotLayout.Mines(x, y, Biome.Mountains);
+            Assert.InRange(mines.Count, 1, 5);
+            Assert.Equal(mines, PlotLayout.Mines(x, y, Biome.Mountains));
+            counts.Add(mines.Count);
+            if (i < 20)
+            {
+                var tiles = PlotLayout.Generate(x, y, Biome.Mountains);
+                Assert.Equal(mines.Count * MineSite.Width * MineSite.Height, tiles.Count(t => t == (byte)TileObject.Mine));
+                // The ground in front of each entrance is clear.
+                Assert.All(mines, m => Assert.Equal((byte)TileObject.None, tiles[(m.Y + MineSite.Height) * PlotLayout.Size + m.X + 1]));
+            }
+        }
+
+        Assert.Equal([1, 2, 3, 4, 5], counts.Order());
+        Assert.Empty(PlotLayout.Mines(10, 10, Biome.Forest));
+        Assert.DoesNotContain((byte)TileObject.Mine, PlotLayout.Generate(10, 10, Biome.Tundra));
+    }
+
+    [Fact]
+    public void Each_ore_drops_on_its_own_roll_and_a_load_keeps_the_two_rarest()
+    {
+        int[] Rolls(params string[] dropped) => Mining.Drops.Select(d => dropped.Contains(d.Item) ? 0 : 999).ToArray();
+
+        Assert.Equal([(Items.Stone, 1)], Mining.Load(Rolls(Items.Stone)));
+        Assert.Equal([(Items.Coal, 1), (Items.Stone, 1)], Mining.Load(Rolls(Items.Coal, Items.Stone)));
+        Assert.Equal([(Items.GoldOre, 1), (Items.SilverOre, 1)], Mining.Load(Rolls(Items.Stone, Items.Coal, Items.SilverOre, Items.GoldOre)));
+        Assert.Equal([(Items.BronzeOre, 1), (Items.IronOre, 1)], Mining.Load(Rolls(Items.Stone, Items.IronOre, Items.BronzeOre)));
+        Assert.Empty(Mining.Load(Rolls()));
+
+        // The chances, in thousandths: stone 99%, coal 35%, iron and copper 20%, bronze 10%, silver 5%, gold 0.1%.
+        var chances = Mining.Drops.ToDictionary(d => d.Item, d => d.PerMille);
+        Assert.Equal(990, chances[Items.Stone]);
+        Assert.Equal(350, chances[Items.Coal]);
+        Assert.Equal(200, chances[Items.IronOre]);
+        Assert.Equal(200, chances[Items.CopperOre]);
+        Assert.Equal(100, chances[Items.BronzeOre]);
+        Assert.Equal(50, chances[Items.SilverOre]);
+        Assert.Equal(1, chances[Items.GoldOre]);
+        Assert.Equal(1, Mining.Load(Mining.Drops.Select(d => d.PerMille - 1).ToArray()).Count(i => i.Item == Items.GoldOre));
+        Assert.Empty(Mining.Load(Mining.Drops.Select(d => d.PerMille).ToArray()));
+    }
+
+    [Fact]
+    public async Task A_mine_is_worked_with_a_pickaxe_for_fifty_loads_then_rests_ten_minutes()
+    {
+        using var client = await PlayerAsync();
+        var mountains = await BuyAsync(client, Biome.Mountains);
+        var (plot, tiles) = await EnterAsync(client, mountains);
+        Assert.Equal(5, plot.GetProperty("mineSeconds").GetDouble());
+        var mines = plot.GetProperty("mines").EnumerateArray().ToList();
+        Assert.Equal(PlotLayout.Mines(mountains.X, mountains.Y, Biome.Mountains).Count, mines.Count);
+        var first = mines[0];
+        Assert.Equal(Mining.Units, first.GetProperty("units").GetInt32());
+        Assert.Equal((byte)TileObject.Mine, tiles[first.GetProperty("y").GetInt32() * PlotLayout.Size + first.GetProperty("x").GetInt32()]);
+        object At(int mine) => new { x = mountains.X, y = mountains.Y, mine };
+
+        factory.Time.Advance(Mining.Time);
+        var mined = await client.SendAsync("plot.mine", At(0));
+        Assert.Equal("plot.mined", mined.Type());
+        Assert.Equal(Mining.Units - 1, mined.Payload().GetProperty("mine").GetProperty("units").GetInt32());
+        var items = mined.Payload().GetProperty("items").EnumerateArray().ToList();
+        Assert.InRange(items.Count, 0, Mining.MaxOres);
+        var inventory = await client.InventoryAsync();
+        Assert.All(items, i => Assert.Equal(1, inventory[i.GetProperty("id").GetString()!]));
+
+        // Mining takes 5 s like chopping a tree, longer than a swing at a rock.
+        factory.Time.Advance(HarvestRules.Time);
+        Assert.Equal("too_fast", (await client.SendAsync("plot.mine", At(0))).ErrorCode());
+        Assert.Equal("no_mine", (await client.SendAsync("plot.mine", At(mines.Count))).ErrorCode());
+        await client.SendAsync("character.unequip");
+        factory.Time.Advance(Mining.Time);
+        Assert.Equal("wrong_tool", (await client.SendAsync("plot.mine", At(0))).ErrorCode());
+        await client.SendAsync("character.equip", new { item = Items.Pickaxe });
+
+        using (var stranger = await PlayerAsync())
+        {
+            Assert.Equal("not_owner", (await stranger.SendAsync("plot.mine", At(0))).ErrorCode());
+        }
+
+        for (var left = Mining.Units - 2; left >= 0; left--)
+        {
+            factory.Time.Advance(Mining.Time);
+            var load = await client.SendAsync("plot.mine", At(0));
+            Assert.Equal(left, load.Payload().GetProperty("mine").GetProperty("units").GetInt32());
+        }
+
+        var emptyAt = factory.Time.GetUtcNow();
+        factory.Time.Advance(Mining.Time);
+        Assert.Equal("mine_empty", (await client.SendAsync("plot.mine", At(0))).ErrorCode());
+        var dry = (await EnterAsync(client, mountains)).Plot.GetProperty("mines")[0];
+        Assert.Equal(0, dry.GetProperty("units").GetInt32());
+        Assert.Equal((emptyAt + Mining.Refill).ToUnixTimeMilliseconds(), dry.GetProperty("refillAt").GetInt64());
+
+        factory.Time.Advance(Mining.Refill - Mining.Time - TimeSpan.FromSeconds(1));
+        Assert.Equal("mine_empty", (await client.SendAsync("plot.mine", At(0))).ErrorCode());
+        factory.Time.Advance(TimeSpan.FromSeconds(1));
+        var full = await client.SendAsync("plot.mine", At(0));
+        Assert.Equal(Mining.Units - 1, full.Payload().GetProperty("mine").GetProperty("units").GetInt32());
+        Assert.Equal(JsonValueKind.Null, full.Payload().GetProperty("mine").GetProperty("refillAt").ValueKind);
+    }
+
+    [Fact]
+    public async Task Every_ore_has_a_trader_price_and_can_be_listed_for_other_players()
+    {
+        using var client = await PlayerAsync();
+        var prices = (await client.SendAsync("market.prices")).Payload().GetProperty("items").EnumerateArray()
+            .ToDictionary(i => i.GetProperty("id").GetString()!);
+        Assert.All(Mining.Drops, d => Assert.True(prices[d.Item].GetProperty("sellCents").GetInt64() > 0));
+        Assert.Equal(50_000, prices[Items.GoldOre].GetProperty("sellCents").GetInt64());
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IInventory>().AddAsync(client.AccountId, Items.SilverOre, 2, CancellationToken.None);
+        }
+
+        Assert.Equal("market.done", (await client.SendAsync("market.list", new { item = Items.SilverOre, quantity = 1, priceCents = 9000 })).Type());
+        var balance = await client.BalanceAsync();
+        Assert.Equal("market.traded", (await client.SendAsync("market.sell", new { item = Items.SilverOre, quantity = 1 })).Type());
+        Assert.Equal(balance + 6000, await client.BalanceAsync());
+    }
+
+    [Fact]
     public async Task Oil_and_gas_stay_hidden_until_the_owner_pays_for_a_survey()
     {
         using var owner = await PlayerAsync();

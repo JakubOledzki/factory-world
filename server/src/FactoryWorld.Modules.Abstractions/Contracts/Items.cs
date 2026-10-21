@@ -34,6 +34,9 @@ public static class Items
     public const string Coal = "coal";
     public const string IronOre = "iron_ore";
     public const string CopperOre = "copper_ore";
+    public const string BronzeOre = "bronze_ore";
+    public const string SilverOre = "silver_ore";
+    public const string GoldOre = "gold_ore";
 
     // Forestry: a sapling is planted on a plot and grows into a tree.
     public const string Sapling = "sapling";
@@ -74,6 +77,9 @@ public static class Items
         [Coal] = "Węgiel",
         [IronOre] = "Ruda żelaza",
         [CopperOre] = "Ruda miedzi",
+        [BronzeOre] = "Ruda brązu",
+        [SilverOre] = "Ruda srebra",
+        [GoldOre] = "Ruda złota",
         [Sapling] = "Sadzonka drzewa",
         [Wheat] = "Pszenica",
         [Carrot] = "Marchew",

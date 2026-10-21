@@ -5,10 +5,10 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
-centre of the tile (or, for the station, the middle of its south edge).
+centre of the tile (or, for the station and the mine, the middle of its south edge).
 """
 import json
 import math
@@ -519,6 +519,64 @@ def render_station(layout: dict):
     layout["station"] = render_sprite("station", w, h, target, station)
 
 
+# --- Mine -----------------------------------------------------------------------------------------
+
+def mine():
+    """A mine on a mountain plot: a rocky hill 8 × 6 m with a timbered adit in its south face,
+    a short track coming out of it and a cart of ore. Its south edge is y = 0."""
+    stone = rock("hill", (0.11, 0.105, 0.1))
+    hill = ra.sphere("hill", 1.0, (0, 3.6, -0.6), stone, scale=(3.9, 2.7, 3.4), segments=48)
+    ra.displace(hill, 0.55, 0.45, 3)
+    for i, (x, y, s) in enumerate(((-3.2, 1.2, 0.9), (3.1, 1.4, 1.1), (-2.2, 5.4, 1.2), (2.6, 5.2, 1.0), (3.6, 3.2, 0.8))):
+        b = ra.sphere("boulder", s, (x, y, s * 0.2), stone, scale=(1.1, 1, 0.75), segments=14)
+        ra.displace(b, 0.15, 0.4, 2)
+    timber = ra.wood("timber", (0.12, 0.075, 0.04))
+    dark = ra.emission("adit", (0.0, 0.0, 0.0), 0.0)
+    # The adit: a dark opening held by two posts and a lintel, cut into the hill.
+    ra.box("opening", (1.6, 1.6, 2.0), (0, 1.75, 1.0), dark)
+    for x in (-0.95, 0.95):
+        ra.box("post", (0.24, 0.24, 2.3), (x, 1.0, 1.15), timber, bevel=0.02)
+    ra.box("lintel", (2.4, 0.3, 0.3), (0, 1.0, 2.35), timber, bevel=0.02)
+    ra.box("sill", (2.2, 0.4, 0.12), (0, 1.0, 0.06), timber)
+    # Track running out of the adit onto the ground.
+    steel = ra.rusty_metal("rail", (0.3, 0.28, 0.26), rust=0.55)
+    sleeper = ra.wood("sleeper", (0.08, 0.05, 0.03))
+    for i in range(5):
+        ra.box("sleeper", (1.3, 0.18, 0.08), (0, 1.5 - i * 0.45, 0.04), sleeper)
+    for x in (-0.45, 0.45):
+        ra.box("rail", (0.07, 2.4, 0.08), (x, 0.55, 0.12), steel)
+    # A cart full of ore on the track, and a lamp by the entrance.
+    cart = ra.rusty_metal("cart", (0.2, 0.12, 0.07), rust=0.6)
+    ra.box("cart", (0.95, 1.0, 0.55), (0, -0.25, 0.5), cart, bevel=0.04)
+    for x in (-0.5, 0.5):
+        for y in (-0.6, 0.1):
+            ra.cylinder("wheel", 0.15, 0.08, (x * 0.9, y, 0.17), steel, rotation=(0, math.radians(90), 0), verts=16)
+    ore = rock("ore", (0.09, 0.07, 0.06))
+    for k in range(7):
+        a = k / 7 * math.tau
+        o = ra.sphere("ore", 0.19, (math.cos(a) * 0.26, -0.25 + math.sin(a) * 0.28, 0.82), ore, segments=8)
+        ra.displace(o, 0.06, 0.2, 1)
+    ra.box("glint", (0.12, 0.12, 0.12), (0.12, -0.15, 0.95), ra.plain("glint", (0.75, 0.45, 0.15), 0.3, 0.8))
+    # A timber headframe with its sheave wheel on top of the hill, seen from afar.
+    for x in (-0.9, 0.9):
+        ra.box("leg", (0.18, 0.18, 4.4), (x, 3.6, 3.3), timber, rotation=(0, x * math.radians(-9), 0))
+    ra.box("brace", (2.0, 0.14, 0.14), (0, 3.6, 3.2), timber)
+    ra.box("cap", (1.4, 0.4, 0.22), (0, 3.6, 5.45), timber)
+    ra.torus("sheave", 0.55, 0.06, (0, 3.35, 5.6), steel, rotation=(math.radians(90), 0, 0))
+    ra.cylinder("hub", 0.1, 0.2, (0, 3.35, 5.6), steel, rotation=(math.radians(90), 0, 0))
+    ra.cylinder("lamp_post", 0.05, 2.4, (1.55, 0.7, 1.2), steel)
+    ra.sphere("lamp", 0.16, (1.55, 0.7, 2.45), ra.emission("lamp", (1.0, 0.72, 0.4), 30.0), segments=10)
+    ra.light("POINT", (1.4, 0.4, 2.3), 60, (1.0, 0.7, 0.4), size=0.2)
+    return meshes()
+
+
+def render_mine(layout: dict):
+    w, h = 352, 384
+    target = Vector((0, 3.0, 2.2))
+    random.seed(zlib.crc32(b"mine"))
+    layout["mine"] = render_sprite("mine", w, h, target, mine)
+
+
 # --- Icons ------------------------------------------------------------------------------------------
 
 def icon_models():
@@ -650,6 +708,9 @@ def icon_models():
         "item_sapling": sapling,
         "item_iron_ore": stones((0.18, 0.09, 0.05), (0.4, 0.4, 0.42)),
         "item_copper_ore": stones((0.14, 0.13, 0.12), (0.75, 0.35, 0.12)),
+        "item_bronze_ore": stones((0.13, 0.11, 0.09), (0.45, 0.3, 0.14)),
+        "item_silver_ore": stones((0.11, 0.11, 0.12), (0.85, 0.86, 0.9)),
+        "item_gold_ore": stones((0.1, 0.09, 0.08), (1.0, 0.82, 0.18)),
     }
 
 
@@ -667,7 +728,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "forestry", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "forestry", "mine", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -685,6 +746,8 @@ if __name__ == "__main__":
         render_forestry(layout)
     if "station" in args:
         render_station(layout)
+    if "mine" in args:
+        render_mine(layout)
     # "item_<id>" arguments render just those icons.
     if "icons" in args or any(a.startswith("item_") for a in args):
         render_icons([a for a in args if a.startswith("item_")])

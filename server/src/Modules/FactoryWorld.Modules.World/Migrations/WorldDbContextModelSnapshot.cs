@@ -111,6 +111,33 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plot_harvests", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotMine", b =>
+                {
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.Property<int>("Mine")
+                        .HasColumnType("integer")
+                        .HasColumnName("mine");
+
+                    b.Property<DateTimeOffset?>("EmptyAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("empty_at");
+
+                    b.Property<int>("Used")
+                        .HasColumnType("integer")
+                        .HasColumnName("used");
+
+                    b.HasKey("X", "Y", "Mine");
+
+                    b.ToTable("plot_mines", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.PlotTree", b =>
                 {
                     b.Property<int>("X")

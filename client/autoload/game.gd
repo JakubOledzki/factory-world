@@ -48,6 +48,8 @@ const ERRORS := {
 	"unknown_crop": "Nieznana roślina.",
 	"no_field": "Najpierw zaorz tu ziemię motyką.",
 	"not_ripe": "To jeszcze nie dojrzało.",
+	"no_mine": "Na tej działce nie ma takiej kopalni.",
+	"mine_empty": "Kopalnia jest wyczerpana, odnowi się za chwilę.",
 	"already_surveyed": "Ta działka jest już zbadana.",
 	"no_offer": "Tej oferty już nie ma.",
 	"own_offer": "To twoja własna oferta.",

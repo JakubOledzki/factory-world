@@ -16,6 +16,7 @@ public enum TileObject : byte
     Rail = 4,
     Station = 5,
     Bush = 6,
+    Mine = 7,
 }
 
 /// <summary>
@@ -89,6 +90,19 @@ public static class PlotLayout
             tiles[RailRow * Size + x] = (byte)TileObject.Rail;
         }
 
+        // Each mine stands on cleared ground with an open strip in front of its entrance.
+        foreach (var mine in Mines(plotX, plotY, biome))
+        {
+            for (var y = mine.Y - 1; y < mine.Y + MineSite.Height + 3; y++)
+            {
+                for (var x = mine.X - 1; x < mine.X + MineSite.Width + 1; x++)
+                {
+                    var inside = x >= mine.X && x < mine.X + MineSite.Width && y >= mine.Y && y < mine.Y + MineSite.Height;
+                    tiles[y * Size + x] = (byte)(inside ? TileObject.Mine : TileObject.None);
+                }
+            }
+        }
+
         var (sx, sy, sw, sh) = Station;
         for (var y = sy; y < sy + sh; y++)
         {
@@ -99,6 +113,34 @@ public static class PlotLayout
         }
 
         return tiles;
+    }
+
+    /// <summary>
+    /// The mines of a plot: 1-5 on a mining plot, none elsewhere. The first stands near the
+    /// station, the others anywhere, never touching each other. Always the same for a plot.
+    /// </summary>
+    public static IReadOnlyList<MineSite> Mines(int plotX, int plotY, Biome biome)
+    {
+        if (!Mining.HasMines(biome))
+        {
+            return [];
+        }
+
+        var seed = (uint)(plotX * 83492791) ^ (uint)(plotY * 2654435761);
+        var count = 1 + (int)(Hash(seed, 0, 0) % 5);
+        var mines = new List<MineSite>();
+        for (var attempt = 1; mines.Count < count && attempt < 500; attempt++)
+        {
+            var (x, y) = mines.Count == 0
+                ? (Spawn.X - 20 + (int)(Hash(seed, attempt, 1) % 36), ClearRows + 6 + (int)(Hash(seed, attempt, 2) % 14))
+                : (4 + (int)(Hash(seed, attempt, 1) % (Size - 8 - MineSite.Width)), ClearRows + 4 + (int)(Hash(seed, attempt, 2) % (Size - ClearRows - 12)));
+            if (mines.All(m => Math.Abs(m.X - x) > MineSite.Width + 8 || Math.Abs(m.Y - y) > MineSite.Height + 8))
+            {
+                mines.Add(new MineSite(mines.Count, x, y));
+            }
+        }
+
+        return mines;
     }
 
     /// <summary>Which tool a player needs to gather an object, or null when it cannot be gathered.</summary>
@@ -187,7 +229,12 @@ public sealed class PlotService(GameDb db, WorldMap map, IInventory inventory, I
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            tiles[reader.GetInt32(1) * PlotLayout.Size + reader.GetInt32(0)] = (byte)TileObject.None;
+            // A rock broken before the mines came may have stood where a mine is now.
+            var at = reader.GetInt32(1) * PlotLayout.Size + reader.GetInt32(0);
+            if (tiles[at] != (byte)TileObject.Mine)
+            {
+                tiles[at] = (byte)TileObject.None;
+            }
         }
 
         return tiles;
@@ -288,7 +335,7 @@ public sealed class PlotService(GameDb db, WorldMap map, IInventory inventory, I
         return await GiveAsync(player, TileObject.Tree, cancellationToken);
     }
 
-    private async Task RequireToolAsync(Guid player, string tool, CancellationToken cancellationToken)
+    public async Task RequireToolAsync(Guid player, string tool, CancellationToken cancellationToken)
     {
         if (await equipment.ToolAsync(player, cancellationToken) != tool)
         {
@@ -346,6 +393,7 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
         var fields = await scope.ServiceProvider.GetRequiredService<FarmService>().FieldsAsync(request.X, request.Y, cancellationToken);
         var trees = await scope.ServiceProvider.GetRequiredService<ForestService>().TreesAsync(request.X, request.Y, cancellationToken);
         var biome = map.BiomeAt(request.X, request.Y);
+        var mines = await scope.ServiceProvider.GetRequiredService<MineService>().MinesAsync(request.X, request.Y, biome, cancellationToken);
 
         using var packed = new MemoryStream();
         using (var gzip = new GZipStream(packed, CompressionLevel.Optimal))
@@ -367,6 +415,9 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             spawn = new { x = PlotLayout.Spawn.X, y = PlotLayout.Spawn.Y },
             tool = tool is null ? null : new { id = tool, name = Items.Names[tool] },
             harvestSeconds = HarvestRules.Time.TotalSeconds,
+            mineSeconds = Mining.Time.TotalSeconds,
+            mineUnits = Mining.Units,
+            mines = mines.Select(MineHandler.MineJson),
             chopSeconds = HarvestRules.ChopTime.TotalSeconds,
             treeGrowSeconds = Forestry.GrowTime(biome)?.TotalSeconds,
             trees = trees.Select(PlantTreeHandler.TreeJson),

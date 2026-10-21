@@ -65,6 +65,20 @@ public sealed class PlotTree
     public DateTimeOffset ReadyAt { get; set; }
 }
 
+/// <summary>A mine of a plot that has been worked: loads taken since it was last full, and when it ran dry.</summary>
+public sealed class PlotMine
+{
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public int Mine { get; set; }
+
+    public int Used { get; set; }
+
+    public DateTimeOffset? EmptyAt { get; set; }
+}
+
 /// <summary>What a geological survey found under a plot.</summary>
 public sealed class SurveyRow
 {
@@ -162,6 +176,16 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(t => t.TileX).HasColumnName("tile_x");
             e.Property(t => t.TileY).HasColumnName("tile_y");
             e.Property(t => t.ReadyAt).HasColumnName("ready_at");
+        });
+        model.Entity<PlotMine>(e =>
+        {
+            e.ToTable("plot_mines");
+            e.HasKey(m => new { m.X, m.Y, m.Mine });
+            e.Property(m => m.X).HasColumnName("x");
+            e.Property(m => m.Y).HasColumnName("y");
+            e.Property(m => m.Mine).HasColumnName("mine");
+            e.Property(m => m.Used).HasColumnName("used");
+            e.Property(m => m.EmptyAt).HasColumnName("empty_at");
         });
         model.Entity<SurveyRow>(e =>
         {
@@ -460,6 +484,7 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<StationService>();
         services.AddScoped<FarmService>();
         services.AddScoped<ForestService>();
+        services.AddScoped<MineService>();
         services.AddScoped<SurveyService>();
         services.AddSingleton<IMessageHandler, InfoHandler>();
         services.AddSingleton<IMessageHandler, AreaHandler>();
@@ -475,6 +500,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, PlantHandler>();
         services.AddSingleton<IMessageHandler, ReapHandler>();
         services.AddSingleton<IMessageHandler, PlantTreeHandler>();
+        services.AddSingleton<IMessageHandler, MineHandler>();
         services.AddSingleton<IMessageHandler, SurveyHandler>();
     }
 
