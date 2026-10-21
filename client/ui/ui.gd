@@ -178,6 +178,10 @@ static func item_icon(item: String, size := 32) -> TextureRect:
 	return icon(item if item.begins_with("furniture_") else "item_" + item, size)
 
 
+static func item_texture(item: String) -> Texture2D:
+	return texture("icons/" + (item if item.begins_with("furniture_") else "item_" + item))
+
+
 ## An item or coin icon from art/icons, shown at `size` pixels.
 static func icon(name: String, size := 32) -> TextureRect:
 	var rect := TextureRect.new()

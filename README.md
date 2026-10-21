@@ -67,7 +67,8 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `recycling.stop` | | `garage`; bez sortowni przerywa segregację (niedokończony worek wraca do śmieci); z sortownią nic nie robi. Klient wysyła je, gdy postać odchodzi od kosza |
 | `garage.pickup` | `{ id }` | `garage`; mebel trafia do ekwipunku |
 | `garage.place` | `{ kind, x, y, rotation }` | `garage`; stawia mebel z ekwipunku na polu (x, y), obróconym o `rotation` × 90° (0–3) |
-| `inventory.get` | | `inventory` `{ items: [{ id, name, quantity }] }` |
+| `inventory.get` | | `inventory` `{ slots, items: [{ id, name, quantity, slot }] }`; `slot` to kafelek ekwipunku (0 … `slots` − 1), przedmiot bez kafelka dostaje pierwszy wolny |
+| `inventory.move` | `{ item, slot }` | `inventory`; przenosi przedmiot na kafelek `slot`, a przedmiot, który tam leżał, zamienia się z nim miejscami |
 | `wallet.get` | | `wallet` `{ balanceCents }` |
 | `market.prices` | | `market.prices` `{ items: [{ id, name, buyCents, sellCents }] }` |
 | `market.buy` / `market.sell` | `{ item, quantity }` | `market.traded` `{ item, quantity, balanceCents }`; `market.sell` to szybka sprzedaż: handlarz płaci od razu najniższą cenę rynku (`sellCents`) |
