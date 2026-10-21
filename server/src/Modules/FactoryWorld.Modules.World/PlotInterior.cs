@@ -123,7 +123,7 @@ public static class PlotLayout
     /// <summary>What gathering an object gives, for a roll of 0-99.</summary>
     public static IReadOnlyList<(string Item, int Quantity)> Yield(TileObject obj, int roll) => obj switch
     {
-        TileObject.Tree => [(Items.Wood, 3)],
+        TileObject.Tree => roll < Forestry.SaplingChance ? [(Items.Wood, 1), (Items.Sapling, 1)] : [(Items.Wood, 1)],
         TileObject.Dune => [(Items.Sand, 3)],
         TileObject.Rock => roll switch
         {
@@ -163,12 +163,17 @@ public static class HarvestRules
     /// <summary>How long one swing of a tool takes; the server refuses faster gathering.</summary>
     public static readonly TimeSpan Time = TimeSpan.FromSeconds(1.5);
 
+    /// <summary>Cutting down a tree takes longer than any other work.</summary>
+    public static readonly TimeSpan ChopTime = TimeSpan.FromSeconds(5);
+
+    public static TimeSpan TimeFor(TileObject obj) => obj == TileObject.Tree ? ChopTime : Time;
+
     public const int XpPerHarvest = 2;
 }
 
 public sealed record Harvest(TileObject Object, IReadOnlyList<(string Item, int Quantity)> Items, XpGain Xp);
 
-public sealed class PlotService(GameDb db, WorldMap map, IInventory inventory, IEquipment equipment, ICharacterProgress progress)
+public sealed class PlotService(GameDb db, WorldMap map, IInventory inventory, IEquipment equipment, ICharacterProgress progress, TimeProvider time)
 {
     /// <summary>The tiles of a plot as they are now; only its owner may enter.</summary>
     public async Task<byte[]> TilesAsync(Guid player, int x, int y, CancellationToken cancellationToken)
@@ -188,8 +193,32 @@ public sealed class PlotService(GameDb db, WorldMap map, IInventory inventory, I
         return tiles;
     }
 
-    /// <summary>Cuts a tree, breaks a rock or digs a dune with the tool in the player's slot.</summary>
-    public Task<Harvest> HarvestAsync(Guid player, int x, int y, int tileX, int tileY, CancellationToken cancellationToken) =>
+    /// <summary>Whether nothing stands on a tile of the plot: no nature, field or planted tree.</summary>
+    public async Task<bool> FreeAsync(Guid player, int x, int y, int tileX, int tileY, CancellationToken cancellationToken)
+    {
+        if (!PlotLayout.Inside(tileX, tileY) || (await TilesAsync(player, x, y, cancellationToken))[tileY * PlotLayout.Size + tileX] != (byte)TileObject.None)
+        {
+            return false;
+        }
+
+        await using var command = await db.CommandAsync(
+            """
+            SELECT EXISTS (SELECT 1 FROM world.plot_fields WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty)
+                OR EXISTS (SELECT 1 FROM world.plot_trees WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty)
+            """, cancellationToken);
+        command.Parameters.AddWithValue("x", x);
+        command.Parameters.AddWithValue("y", y);
+        command.Parameters.AddWithValue("tx", tileX);
+        command.Parameters.AddWithValue("ty", tileY);
+        return !(bool)(await command.ExecuteScalarAsync(cancellationToken))!;
+    }
+
+    /// <summary>
+    /// Cuts a tree (grown by itself or planted), breaks a rock or digs a dune with the tool in the
+    /// player's slot. <paramref name="pace"/> gets how long the work takes and refuses it if too quick.
+    /// </summary>
+    public Task<Harvest> HarvestAsync(
+        Guid player, int x, int y, int tileX, int tileY, Action<TimeSpan> pace, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
             var biome = await RequireOwnerAsync(player, x, y, cancellationToken);
@@ -198,12 +227,15 @@ public sealed class PlotService(GameDb db, WorldMap map, IInventory inventory, I
                 throw new GameException("nothing_here", "There is nothing to gather here.");
             }
 
+            if (await PlantedReadyAtAsync(x, y, tileX, tileY, cancellationToken) is { } readyAt)
+            {
+                return await CutPlantedAsync(player, x, y, tileX, tileY, readyAt, pace, cancellationToken);
+            }
+
             var obj = (TileObject)PlotLayout.Generate(x, y, biome)[tileY * PlotLayout.Size + tileX];
             var tool = PlotLayout.ToolFor(obj) ?? throw new GameException("nothing_here", "There is nothing to gather here.");
-            if (await equipment.ToolAsync(player, cancellationToken) != tool)
-            {
-                throw new GameException("wrong_tool", $"You need {Items.Names[tool]} in your hand.");
-            }
+            await RequireToolAsync(player, tool, cancellationToken);
+            pace(HarvestRules.TimeFor(obj));
 
             await using (var insert = await db.CommandAsync(
                 "INSERT INTO world.plot_harvests (x, y, tile_x, tile_y) VALUES (@x, @y, @tx, @ty) ON CONFLICT DO NOTHING", cancellationToken))
@@ -218,15 +250,63 @@ public sealed class PlotService(GameDb db, WorldMap map, IInventory inventory, I
                 }
             }
 
-            var items = PlotLayout.Yield(obj, Random.Shared.Next(100));
-            foreach (var (item, quantity) in items)
-            {
-                await inventory.AddAsync(player, item, quantity, cancellationToken);
-            }
-
-            var xp = await progress.AddXpAsync(player, HarvestRules.XpPerHarvest, cancellationToken);
-            return new Harvest(obj, items, xp);
+            return await GiveAsync(player, obj, cancellationToken);
         }, cancellationToken);
+
+    /// <summary>When the tree planted on a tile is grown (locked until the transaction ends), or null when none is.</summary>
+    private async Task<DateTimeOffset?> PlantedReadyAtAsync(int x, int y, int tileX, int tileY, CancellationToken cancellationToken)
+    {
+        await using var select = await db.CommandAsync(
+            "SELECT ready_at FROM world.plot_trees WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty FOR UPDATE", cancellationToken);
+        select.Parameters.AddWithValue("x", x);
+        select.Parameters.AddWithValue("y", y);
+        select.Parameters.AddWithValue("tx", tileX);
+        select.Parameters.AddWithValue("ty", tileY);
+        return await select.ExecuteScalarAsync(cancellationToken) is DateTime at ? new DateTimeOffset(at, TimeSpan.Zero) : null;
+    }
+
+    private async Task<Harvest> CutPlantedAsync(
+        Guid player, int x, int y, int tileX, int tileY, DateTimeOffset readyAt, Action<TimeSpan> pace, CancellationToken cancellationToken)
+    {
+        if (readyAt > time.GetUtcNow())
+        {
+            throw new GameException("not_grown", "The tree has not grown yet.");
+        }
+
+        await RequireToolAsync(player, Items.Axe, cancellationToken);
+        pace(HarvestRules.ChopTime);
+        await using (var delete = await db.CommandAsync(
+            "DELETE FROM world.plot_trees WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty", cancellationToken))
+        {
+            delete.Parameters.AddWithValue("x", x);
+            delete.Parameters.AddWithValue("y", y);
+            delete.Parameters.AddWithValue("tx", tileX);
+            delete.Parameters.AddWithValue("ty", tileY);
+            await delete.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        return await GiveAsync(player, TileObject.Tree, cancellationToken);
+    }
+
+    private async Task RequireToolAsync(Guid player, string tool, CancellationToken cancellationToken)
+    {
+        if (await equipment.ToolAsync(player, cancellationToken) != tool)
+        {
+            throw new GameException("wrong_tool", $"You need {Items.Names[tool]} in your hand.");
+        }
+    }
+
+    private async Task<Harvest> GiveAsync(Guid player, TileObject obj, CancellationToken cancellationToken)
+    {
+        var items = PlotLayout.Yield(obj, Random.Shared.Next(100));
+        foreach (var (item, quantity) in items)
+        {
+            await inventory.AddAsync(player, item, quantity, cancellationToken);
+        }
+
+        var xp = await progress.AddXpAsync(player, HarvestRules.XpPerHarvest, cancellationToken);
+        return new Harvest(obj, items, xp);
+    }
 
     public async Task<Biome> RequireOwnerAsync(Guid player, int x, int y, CancellationToken cancellationToken)
     {
@@ -264,6 +344,7 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             .TilesAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
         var tool = await scope.ServiceProvider.GetRequiredService<IEquipment>().ToolAsync(client.RequireAccount(), cancellationToken);
         var fields = await scope.ServiceProvider.GetRequiredService<FarmService>().FieldsAsync(request.X, request.Y, cancellationToken);
+        var trees = await scope.ServiceProvider.GetRequiredService<ForestService>().TreesAsync(request.X, request.Y, cancellationToken);
         var biome = map.BiomeAt(request.X, request.Y);
 
         using var packed = new MemoryStream();
@@ -286,6 +367,9 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             spawn = new { x = PlotLayout.Spawn.X, y = PlotLayout.Spawn.Y },
             tool = tool is null ? null : new { id = tool, name = Items.Names[tool] },
             harvestSeconds = HarvestRules.Time.TotalSeconds,
+            chopSeconds = HarvestRules.ChopTime.TotalSeconds,
+            treeGrowSeconds = Forestry.GrowTime(biome)?.TotalSeconds,
+            trees = trees.Select(PlantTreeHandler.TreeJson),
             fertile = Farming.Fertile(biome),
             fields = fields.Select(FieldHandler.FieldJson),
             crops = Farming.Crops.Select(c => new
@@ -310,10 +394,9 @@ public sealed class HarvestHandler(IServiceScopeFactory scopes, TimeProvider tim
     public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
     {
         var request = Payload.Read<HarvestRequest>(payload);
-        CheckPace(client, time);
         await using var scope = scopes.CreateAsyncScope();
-        var harvest = await scope.ServiceProvider.GetRequiredService<PlotService>()
-            .HarvestAsync(client.RequireAccount(), request.X, request.Y, request.TileX, request.TileY, cancellationToken);
+        var harvest = await scope.ServiceProvider.GetRequiredService<PlotService>().HarvestAsync(
+            client.RequireAccount(), request.X, request.Y, request.TileX, request.TileY, work => CheckPace(client, time, work), cancellationToken);
         Swung(client, time);
         return new Reply("plot.harvested", new
         {
@@ -324,11 +407,11 @@ public sealed class HarvestHandler(IServiceScopeFactory scopes, TimeProvider tim
         });
     }
 
-    /// <summary>Refuses a swing of a tool that comes before the last one could be done.</summary>
-    public static void CheckPace(ClientContext client, TimeProvider time)
+    /// <summary>Refuses work that ends before it could have been done since the last one ended.</summary>
+    public static void CheckPace(ClientContext client, TimeProvider time, TimeSpan work)
     {
         // A small tolerance for network jitter between the client's swing and the request.
-        if (client.Items.GetValueOrDefault(LastHarvest) is DateTimeOffset last && time.GetUtcNow() - last < HarvestRules.Time * 0.8)
+        if (client.Items.GetValueOrDefault(LastHarvest) is DateTimeOffset last && time.GetUtcNow() - last < work * 0.8)
         {
             throw new GameException("too_fast", "Wait until the last swing is done.");
         }

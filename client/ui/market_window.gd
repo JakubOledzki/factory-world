@@ -1,6 +1,6 @@
 class_name MarketWindow
 extends GameWindow
-## The market: the NPC trader (buys trash and the sorting machine, quick sale at the floor
+## The market: the NPC trader (sells trash, saplings and the sorting machine, quick sale at the floor
 ## price) and trading between players (listings, buy orders and the player's own offers).
 
 ## A trade went through; the garage reloads the inventory and shows the new balance.
