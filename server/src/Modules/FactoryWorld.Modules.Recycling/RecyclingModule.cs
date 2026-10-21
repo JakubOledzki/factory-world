@@ -200,7 +200,7 @@ public sealed record GarageState(
     XpGain? Xp,
     IReadOnlyList<PlacedObject> Objects);
 
-public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacterProgress progress, IMachineContents machines, TimeProvider time)
+public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacterProgress progress, IEnumerable<IMachineContents> machines, TimeProvider time)
 {
     /// <summary>The garage as it is now, after finishing every sorting whose time has come.</summary>
     public Task<GarageState> StateAsync(Guid owner, CancellationToken cancellationToken) =>
@@ -319,7 +319,11 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
             command.Parameters.AddWithValue("owner", owner);
             var kind = await command.ExecuteScalarAsync(cancellationToken) as string
                 ?? throw new GameException("no_object", "There is no such object in your garage.");
-            await machines.ReleaseAsync(owner, id, cancellationToken);
+            foreach (var machine in machines)
+            {
+                await machine.ReleaseAsync(owner, id, cancellationToken);
+            }
+
             await inventory.AddAsync(owner, kind, 1, cancellationToken);
             return await ReadStateAsync(owner, results, xp, cancellationToken);
         }, cancellationToken);

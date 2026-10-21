@@ -1,0 +1,88 @@
+using FactoryWorld.Modules.Abstractions.Contracts;
+
+namespace FactoryWorld.Modules.Logistics;
+
+/// <summary>A kind of storage put on a plot: how many slots it has, how much fits in a slot and,
+/// for piles, heaps and silos, the only goods it takes.</summary>
+public sealed record StorageKind(string Id, int Slots, int SlotSize, IReadOnlySet<string>? Only = null)
+{
+    public int Capacity => Slots * SlotSize;
+
+    public bool Takes(string item) => Only?.Contains(item) ?? Items.Exists(item);
+}
+
+/// <summary>
+/// Chests take any item, a slot of up to <see cref="StorageKind.SlotSize"/> pieces of one kind each.
+/// A pile, a heap and a silo have one big slot for one kind of bulk goods at a time.
+/// </summary>
+public static class Storages
+{
+    public static readonly IReadOnlyList<StorageKind> Kinds =
+    [
+        new(Items.WoodenChest, 8, 100),
+        new(Items.IronChest, 24, 100),
+        new(Items.WoodPile, 1, 400, new HashSet<string> { Items.Wood }),
+        new(Items.Heap, 1, 1000, new HashSet<string>
+        {
+            Items.Stone, Items.Sand, Items.Coal,
+            Items.IronOre, Items.CopperOre, Items.TinOre, Items.SilverOre, Items.GoldOre,
+        }),
+        new(Items.GrainSilo, 1, 2000, new HashSet<string> { Items.Wheat, Items.Corn, Items.Sunflower }),
+    ];
+
+    public static StorageKind? Find(string kind) => Kinds.FirstOrDefault(k => k.Id == kind);
+
+    /// <summary>Slots taken by what is stored: each kind of item fills whole slots.</summary>
+    public static int UsedSlots(StorageKind kind, IEnumerable<ItemStack> stacks) =>
+        stacks.Sum(s => (s.Quantity + kind.SlotSize - 1) / kind.SlotSize);
+
+    /// <summary>How many more pieces of <paramref name="item"/> fit.</summary>
+    public static int Room(StorageKind kind, IReadOnlyCollection<ItemStack> stacks, string item)
+    {
+        if (!kind.Takes(item))
+        {
+            return 0;
+        }
+
+        var mine = stacks.FirstOrDefault(s => s.Item == item)?.Quantity ?? 0;
+        var others = UsedSlots(kind, stacks.Where(s => s.Item != item));
+        return Math.Max(0, (kind.Slots - others) * kind.SlotSize - mine);
+    }
+
+    public static void Add(List<ItemStack> stacks, string item, int quantity)
+    {
+        if (stacks.FirstOrDefault(s => s.Item == item) is { } stack)
+        {
+            stack.Quantity += quantity;
+        }
+        else
+        {
+            stacks.Add(new ItemStack { Item = item, Quantity = quantity });
+        }
+    }
+
+    /// <summary>Takes up to <paramref name="quantity"/> pieces out; returns how many there were.</summary>
+    public static int Remove(List<ItemStack> stacks, string item, int quantity)
+    {
+        if (stacks.FirstOrDefault(s => s.Item == item) is not { } stack)
+        {
+            return 0;
+        }
+
+        var taken = Math.Min(quantity, stack.Quantity);
+        stack.Quantity -= taken;
+        if (stack.Quantity == 0)
+        {
+            stacks.Remove(stack);
+        }
+
+        return taken;
+    }
+}
+
+public sealed class ItemStack
+{
+    public string Item { get; set; } = "";
+
+    public int Quantity { get; set; }
+}

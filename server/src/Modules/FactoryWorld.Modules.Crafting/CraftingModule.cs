@@ -88,6 +88,7 @@ public sealed class CraftingModule : IGameModule
         services.AddScoped<CraftingService>();
         services.AddScoped<FurnaceService>();
         services.AddScoped<IMachineContents, FurnaceContents>();
+        services.AddScoped<IMachinePorts, FurnacePorts>();
         services.AddSingleton<IMessageHandler, GetCraftingHandler>();
         services.AddSingleton<IMessageHandler, CraftHandler>();
         services.AddSingleton<IMessageHandler, CancelCraftHandler>();

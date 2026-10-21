@@ -58,6 +58,17 @@ public static class Items
     public const string Potato = "potato";
     public const string Sunflower = "sunflower";
 
+    // Logistics on plots: belts carry items, inserters move them between belts, machines and storage.
+    public const string Belt = "logistics_belt";
+    public const string Inserter = "logistics_inserter";
+
+    // Storage put on plots: chests take anything, piles, heaps and silos one kind of bulk goods.
+    public const string WoodenChest = "storage_wooden_chest";
+    public const string IronChest = "storage_iron_chest";
+    public const string WoodPile = "storage_wood_pile";
+    public const string Heap = "storage_heap";
+    public const string GrainSilo = "storage_grain_silo";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -103,6 +114,13 @@ public static class Items
         [Corn] = "Kukurydza",
         [Potato] = "Ziemniaki",
         [Sunflower] = "Słonecznik",
+        [Belt] = "Taśmociąg",
+        [Inserter] = "Podajnik",
+        [WoodenChest] = "Skrzynia drewniana",
+        [IronChest] = "Skrzynia żelazna",
+        [WoodPile] = "Stos drewna",
+        [Heap] = "Hałda",
+        [GrainSilo] = "Silos zbożowy",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);

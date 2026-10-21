@@ -155,6 +155,10 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");
 
+                    b.Property<int>("Rotation")
+                        .HasColumnType("integer")
+                        .HasColumnName("rotation");
+
                     b.Property<int>("TileX")
                         .HasColumnType("integer")
                         .HasColumnName("tile_x");

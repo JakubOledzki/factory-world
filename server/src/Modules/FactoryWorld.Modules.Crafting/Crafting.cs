@@ -24,6 +24,13 @@ public static class Workshop
         new(Items.Workbench, 1, TimeSpan.FromSeconds(30), [(Items.Wood, 20), (Items.Nails, 5)], 10),
         new(Items.Furnace, 1, TimeSpan.FromSeconds(45), [(Items.Stone, 20)], 15),
         new(Items.Nails, 5, TimeSpan.FromSeconds(10), [(Items.IronIngot, 1)], 2),
+        new(Items.Belt, 4, TimeSpan.FromSeconds(10), [(Items.IronIngot, 2), (Items.Wood, 1)], 3),
+        new(Items.Inserter, 1, TimeSpan.FromSeconds(15), [(Items.IronIngot, 2), (Items.CopperIngot, 1), (Items.Nails, 5)], 5),
+        new(Items.WoodenChest, 1, TimeSpan.FromSeconds(10), [(Items.Wood, 10), (Items.Nails, 5)], 3),
+        new(Items.IronChest, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 8)], 6),
+        new(Items.WoodPile, 1, TimeSpan.FromSeconds(5), [(Items.Wood, 4)], 1),
+        new(Items.Heap, 1, TimeSpan.FromSeconds(10), [(Items.Stone, 10), (Items.Wood, 4)], 2),
+        new(Items.GrainSilo, 1, TimeSpan.FromSeconds(40), [(Items.IronIngot, 10), (Items.Stone, 20), (Items.Nails, 10)], 10),
     ];
 
     public static Recipe? Find(string id) => Recipes.FirstOrDefault(r => r.Id == id);
