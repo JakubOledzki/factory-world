@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [icons]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [icons]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station, the middle of its south edge).
@@ -266,6 +266,157 @@ def render_nature(layout: dict):
         layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), build)
 
 
+# --- Farming ---------------------------------------------------------------------------------------
+
+def soil_mat():
+    m = ra.Mat("soil")
+    wave = m.node("ShaderNodeTexWave", wave_type="BANDS", bands_direction="X")
+    wave.inputs["Scale"].default_value = 2.2
+    wave.inputs["Distortion"].default_value = 0.6
+    m.link(m.coord.outputs["Object"], wave.inputs["Vector"])
+    fine = m.noise(50.0, detail=6)
+    col = m.ramp(wave.outputs["Fac"], [(0.2, (0.03, 0.018, 0.01)), (0.8, (0.085, 0.055, 0.03))]).outputs["Color"]
+    col = m.mix(0.5, col, m.ramp(fine.outputs["Fac"], [(0.3, (0.7, 0.7, 0.7)), (0.7, (1.2, 1.2, 1.2))]).outputs["Color"], "MULTIPLY")
+    return m.done(col, 0.95, 0.0, wave.outputs["Fac"], 0.9)
+
+
+def field():
+    """A tilled patch 1.9 m square: furrows running across."""
+    soil = soil_mat()
+    ra.box("field", (1.9, 1.9, 0.04), (0, 0, 0.02), soil, bevel=0.02)
+    for i in range(5):
+        ridge = ra.box("ridge", (1.8, 0.18, 0.08), (0, -0.76 + i * 0.38, 0.06), soil, bevel=0.03)
+        ra.displace(ridge, 0.015, 0.2, 2)
+    return meshes()
+
+
+def rows(count=4, per_row=4, jitter=0.06):
+    """Planting spots in rows across a field, front to back."""
+    spots = []
+    for r in range(count):
+        for c in range(per_row):
+            spots.append((-0.66 + c * 1.32 / (per_row - 1) + random.uniform(-jitter, jitter),
+                          -0.6 + r * 1.2 / (count - 1) + random.uniform(-jitter, jitter)))
+    return spots
+
+
+def wheat(scale):
+    stalk = ra.plain("stalk", (0.55, 0.42, 0.15), 0.7)
+    ear = ra.plain("ear", (0.8, 0.6, 0.2), 0.6, variation=0.25)
+    for x, y in rows(5, 7, 0.08):
+        h = random.uniform(0.75, 0.95) * scale
+        lean = random.uniform(-0.12, 0.12)
+        ra.cylinder("stalk", 0.012, h, (x, y, h / 2), stalk, rotation=(lean, lean, 0), verts=6)
+        ra.sphere("ear", 0.045, (x + lean * h * 0.5, y - lean * h * 0.5, h), ear, scale=(1, 1, 2.6), segments=8)
+    return meshes()
+
+
+def corn(scale):
+    stalk = ra.plain("cornstalk", (0.06, 0.13, 0.03), 0.7)
+    leaf = foliage("cornleaf", (0.1, 0.24, 0.05), 0.3)
+    cob = ra.plain("cob", (0.6, 0.42, 0.06), 0.5)
+    for x, y in rows(3, 3, 0.05):
+        h = random.uniform(1.6, 1.9) * scale
+        ra.cylinder("stalk", 0.03, h, (x, y, h / 2), stalk, verts=8)
+        for k in range(3):
+            a = random.random() * math.tau
+            ra.box("leaf", (0.5 * scale, 0.07, 0.01), (x + math.cos(a) * 0.2 * scale, y + math.sin(a) * 0.2 * scale, h * (0.4 + k * 0.2)),
+                   leaf, rotation=(0, math.radians(-25), a))
+        if scale > 0.8:
+            ra.sphere("cob", 0.05, (x + 0.06, y - 0.04, h * 0.6), cob, scale=(1, 1, 2.8), segments=10)
+        ra.sphere("tassel", 0.06, (x, y, h + 0.04), ra.plain("tassel", (0.5, 0.38, 0.12), 0.6), scale=(1, 1, 1.8), segments=8)
+    return meshes()
+
+
+def cabbage(scale):
+    leaves = foliage("cabbage", (0.25, 0.45, 0.15), 0.25)
+    for x, y in rows(3, 3, 0.05):
+        r = random.uniform(0.17, 0.21) * scale
+        head = ra.sphere("head", r, (x, y, r * 0.8), leaves, scale=(1, 1, 0.85), segments=16)
+        ra.displace(head, r * 0.12, 0.12, 2)
+        for k in range(4):
+            a = k / 4 * math.tau + random.random()
+            ra.sphere("outer", r * 0.75, (x + math.cos(a) * r * 0.7, y + math.sin(a) * r * 0.7, r * 0.3), leaves,
+                      scale=(1.2, 1.2, 0.35), segments=10)
+    return meshes()
+
+
+def potato(scale):
+    leaves = foliage("potato", (0.1, 0.24, 0.05), 0.35)
+    flower = ra.plain("pflower", (0.6, 0.55, 0.65), 0.6)
+    for x, y in rows(3, 4, 0.06):
+        r = random.uniform(0.26, 0.32) * scale
+        for k in range(3):
+            o = Vector((random.uniform(-0.1, 0.1), random.uniform(-0.1, 0.1), 0)) * scale
+            s = ra.sphere("leaves", r * 0.7, Vector((x, y, r * 0.8)) + o, leaves, segments=10)
+            ra.displace(s, r * 0.25, 0.15, 1)
+        if scale > 0.8:
+            ra.sphere("flower", 0.03, (x, y, r * 1.5), flower, segments=6)
+    return meshes()
+
+
+def carrot(scale):
+    tops = foliage("carrottop", (0.13, 0.34, 0.07), 0.3)
+    root = ra.plain("root", (0.6, 0.18, 0.02), 0.6)
+    for x, y in rows(4, 5, 0.05):
+        for k in range(5):
+            a = k / 5 * math.tau + random.random()
+            ra.cylinder("frond", 0.015, 0.45 * scale, (x + math.cos(a) * 0.05, y + math.sin(a) * 0.05, 0.22 * scale), tops,
+                        rotation=(math.cos(a) * 0.5, math.sin(a) * 0.5, 0), verts=5)
+            ra.sphere("leaf", 0.075 * scale, (x + math.cos(a) * 0.14 * scale, y + math.sin(a) * 0.14 * scale, 0.42 * scale), tops,
+                      scale=(1.3, 1.3, 0.6), segments=6)
+        if scale > 0.8:
+            ra.cylinder("root", 0.03, 0.05, (x, y, 0.03), root, verts=8)
+    return meshes()
+
+
+def sunflower(scale):
+    stalk = ra.plain("sunstalk", (0.07, 0.12, 0.03), 0.7)
+    leaf = foliage("sunleaf", (0.06, 0.13, 0.03), 0.3)
+    petals = ra.plain("petals", (0.9, 0.6, 0.03), 0.5)
+    disc = ra.plain("disc", (0.08, 0.04, 0.015), 0.8)
+    for x, y in rows(3, 3, 0.05):
+        h = random.uniform(1.5, 1.8) * scale
+        ra.cylinder("stalk", 0.03, h, (x, y, h / 2), stalk, verts=8)
+        for k in range(2):
+            a = random.random() * math.tau
+            ra.sphere("leaf", 0.13 * scale, (x + math.cos(a) * 0.12, y + math.sin(a) * 0.12, h * (0.4 + k * 0.25)), leaf,
+                      scale=(1.4, 1, 0.25), segments=8)
+        if scale > 0.8:
+            # The heads face the camera, south.
+            ra.cylinder("petals", 0.2, 0.03, (x, y - 0.05, h), petals, rotation=(math.radians(70), 0, 0), verts=16)
+            ra.cylinder("disc", 0.12, 0.05, (x, y - 0.07, h), disc, rotation=(math.radians(70), 0, 0), verts=16)
+        else:
+            ra.sphere("bud", 0.06, (x, y, h), leaf, segments=8)
+    return meshes()
+
+
+def sprout(scale):
+    leaves = foliage("sprout", (0.16, 0.42, 0.08), 0.3)
+    for x, y in rows(4, 5, 0.06):
+        for a in (0.4, 0.4 + math.pi):
+            ra.sphere("leaf", 0.06, (x + math.cos(a) * 0.06, y + math.sin(a) * 0.06, 0.1), leaves, scale=(1.6, 0.8, 0.4), segments=8)
+        ra.cylinder("stem", 0.01, 0.1, (x, y, 0.05), leaves, verts=5)
+    return meshes()
+
+
+CROPS = {"wheat": (wheat, 1.1), "carrot": (carrot, 0.5), "cabbage": (cabbage, 0.5), "corn": (corn, 2.0),
+         "potato": (potato, 0.5), "sunflower": (sunflower, 1.9)}
+
+
+def render_farming(layout: dict):
+    """The tilled field (drawn flat under the crop) and every crop half-grown and ripe."""
+    layout["field"] = render_sprite("field", 112, 96, Vector((0, 0, 0)), field)
+    random.seed(3)
+    layout["sprout"] = render_sprite("sprout", 112, 96, Vector((0, 0, 0)), lambda: sprout(1.0))
+    for name, (build, height) in CROPS.items():
+        for stage, scale in (("young", 0.55), ("ripe", 1.0)):
+            random.seed(zlib.crc32(name.encode()))
+            h = int(96 + height * scale * 32 * 0.8)
+            layout[f"{name}_{stage}"] = render_sprite(f"{name}_{stage}", 128, h, Vector((0, 0, height * scale * 0.35)),
+                                                      lambda b=build, s=scale: b(s))
+
+
 # --- Railway --------------------------------------------------------------------------------------
 
 def track(length):
@@ -396,6 +547,58 @@ def icon_models():
                     ra.sphere("speck", 0.02, (math.cos(a) * 0.12, math.sin(a) * 0.1, 0.13), m, segments=6)
         return build
 
+    def hoe():
+        ra.cylinder("handle", 0.02, 0.55, (-0.04, 0, 0.04), ra.wood("handle", (0.25, 0.15, 0.07)),
+                    rotation=(0, math.radians(90), math.radians(-35)))
+        blade = ra.rusty_metal("blade", (0.3, 0.31, 0.33), rust=0.4)
+        ra.box("blade", (0.05, 0.16, 0.12), (0.22, -0.17, 0.06), blade, bevel=0.01, rotation=(0, 0, math.radians(-35)))
+
+    def wheat_sheaf():
+        stalk = ra.plain("stalk", (0.45, 0.34, 0.1), 0.7)
+        ear = ra.plain("ear", (0.6, 0.44, 0.13), 0.6, variation=0.25)
+        for i in range(9):
+            a = (i - 4) * 0.09
+            ra.cylinder("stalk", 0.013, 0.42, (a * 0.4, 0, 0.0), stalk, rotation=(0, math.radians(90) + a, 0), verts=6)
+            ra.sphere("ear", 0.034, (0.25, a * 0.3, 0.0), ear, scale=(2.6, 1, 1), segments=8)
+        ra.cylinder("band", 0.03, 0.03, (-0.02, 0, 0), ra.plain("band", (0.3, 0.12, 0.05), 0.6), rotation=(0, math.radians(90), 0))
+
+    def carrots():
+        root = ra.plain("root", (0.65, 0.2, 0.02), 0.5)
+        tops = foliage("tops", (0.08, 0.2, 0.05), 0.3)
+        for i in range(3):
+            y = (i - 1) * 0.08
+            ra.cylinder("root", 0.035, 0.3, (0.0, y, 0.03), root, radius2=0.005, rotation=(0, math.radians(90), 0.1 * (i - 1)))
+            ra.sphere("top", 0.05, (-0.18, y, 0.04), tops, scale=(1.6, 1, 0.6), segments=8)
+
+    def cabbage_head():
+        leaves = foliage("cabbage", (0.14, 0.28, 0.09), 0.25)
+        head = ra.sphere("head", 0.15, (0, 0, 0.12), leaves, scale=(1, 1, 0.9), segments=20)
+        ra.displace(head, 0.015, 0.06, 2)
+        for k in range(5):
+            a = k / 5 * math.tau
+            ra.sphere("outer", 0.1, (math.cos(a) * 0.12, math.sin(a) * 0.12, 0.06), leaves, scale=(1.3, 1.3, 0.45), segments=10)
+
+    def corn_cob():
+        ra.sphere("cob", 0.06, (0, 0, 0.06), ra.plain("kernels", (0.7, 0.5, 0.06), 0.4, variation=0.2, bump=0.6),
+                  scale=(3.2, 1, 1), segments=16)
+        husk = foliage("husk", (0.25, 0.3, 0.1), 0.2)
+        for side in (-1, 1):
+            ra.box("husk", (0.3, 0.06, 0.01), (-0.12, side * 0.06, 0.07), husk, rotation=(0, 0, side * 0.25))
+
+    def potatoes():
+        skin = ra.plain("skin", (0.35, 0.24, 0.12), 0.8, variation=0.25, bump=0.4)
+        for i, (x, y) in enumerate(((-0.08, 0), (0.08, 0.03), (0, -0.09), (0.02, 0.1))):
+            p = ra.sphere("potato", 0.07, (x, y, 0.05), skin, scale=(1.3, 1, 0.85), segments=12)
+            ra.displace(p, 0.01, 0.05, 1)
+
+    def sunflower_head():
+        ra.cylinder("petals", 0.2, 0.02, (0, 0, 0.03), ra.plain("petals", (0.9, 0.6, 0.03), 0.5), verts=20)
+        for k in range(16):
+            a = k / 16 * math.tau
+            ra.sphere("petal", 0.05, (math.cos(a) * 0.2, math.sin(a) * 0.2, 0.03), ra.plain("petal", (0.95, 0.65, 0.04), 0.5),
+                      scale=(2, 0.8, 0.2), segments=6).rotation_euler = (0, 0, a)
+        ra.cylinder("disc", 0.13, 0.04, (0, 0, 0.05), ra.plain("disc", (0.08, 0.04, 0.015), 0.8, bump=0.8), verts=20)
+
     def coal():
         m = ra.plain("coal", (0.012, 0.012, 0.014), 0.3, variation=0.5, bump=0.8)
         for i in range(6):
@@ -408,7 +611,9 @@ def icon_models():
         ra.displace(d, 0.02, 0.2, 2)
 
     return {
-        "item_tool_axe": axe, "item_tool_shovel": shovel, "item_tool_pickaxe": pickaxe,
+        "item_tool_axe": axe, "item_tool_shovel": shovel, "item_tool_pickaxe": pickaxe, "item_tool_hoe": hoe,
+        "item_wheat": wheat_sheaf, "item_carrot": carrots, "item_cabbage": cabbage_head, "item_corn": corn_cob,
+        "item_potato": potatoes, "item_sunflower": sunflower_head,
         "item_wood": wood, "item_stone": stones((0.2, 0.19, 0.18)), "item_sand": sand, "item_coal": coal,
         "item_iron_ore": stones((0.18, 0.09, 0.05), (0.4, 0.4, 0.42)),
         "item_copper_ore": stones((0.14, 0.13, 0.12), (0.75, 0.35, 0.12)),
@@ -427,7 +632,7 @@ def render_icons():
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -439,6 +644,8 @@ if __name__ == "__main__":
         render_nature(layout)
     if "rail" in args:
         render_rail(layout)
+    if "farming" in args:
+        render_farming(layout)
     if "station" in args:
         render_station(layout)
     if "icons" in args:

@@ -60,5 +60,61 @@
  "station": {
   "anchorX": 416,
   "anchorY": 448
+ },
+ "field": {
+  "anchorX": 56,
+  "anchorY": 48
+ },
+ "sprout": {
+  "anchorX": 56,
+  "anchorY": 48
+ },
+ "wheat_young": {
+  "anchorX": 64,
+  "anchorY": 60
+ },
+ "wheat_ripe": {
+  "anchorX": 64,
+  "anchorY": 71
+ },
+ "carrot_young": {
+  "anchorX": 64,
+  "anchorY": 54
+ },
+ "carrot_ripe": {
+  "anchorX": 64,
+  "anchorY": 58
+ },
+ "cabbage_young": {
+  "anchorX": 64,
+  "anchorY": 54
+ },
+ "cabbage_ripe": {
+  "anchorX": 64,
+  "anchorY": 58
+ },
+ "corn_young": {
+  "anchorX": 64,
+  "anchorY": 71
+ },
+ "corn_ripe": {
+  "anchorX": 64,
+  "anchorY": 89
+ },
+ "potato_young": {
+  "anchorX": 64,
+  "anchorY": 54
+ },
+ "potato_ripe": {
+  "anchorX": 64,
+  "anchorY": 58
+ },
+ "sunflower_young": {
+  "anchorX": 64,
+  "anchorY": 69
+ },
+ "sunflower_ripe": {
+  "anchorX": 64,
+  "anchorY": 87
  }
 }
