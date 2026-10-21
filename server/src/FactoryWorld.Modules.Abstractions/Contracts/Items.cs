@@ -20,6 +20,19 @@ public static class Items
     public const string Pallet = "furniture_pallet";
     public const string GasCylinder = "furniture_gas_cylinder";
 
+    // Tools: one can be held in the character's tool slot.
+    public const string Axe = "tool_axe";
+    public const string Shovel = "tool_shovel";
+    public const string Pickaxe = "tool_pickaxe";
+
+    // Raw materials gathered on plots.
+    public const string Wood = "wood";
+    public const string Stone = "stone";
+    public const string Sand = "sand";
+    public const string Coal = "coal";
+    public const string IronOre = "iron_ore";
+    public const string CopperOre = "copper_ore";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -37,7 +50,18 @@ public static class Items
         [Tyres] = "Opony",
         [Pallet] = "Paleta",
         [GasCylinder] = "Butla gazowa",
+        [Axe] = "Siekiera",
+        [Shovel] = "Łopata",
+        [Pickaxe] = "Kilof",
+        [Wood] = "Drewno",
+        [Stone] = "Kamień",
+        [Sand] = "Piasek",
+        [Coal] = "Węgiel",
+        [IronOre] = "Ruda żelaza",
+        [CopperOre] = "Ruda miedzi",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
+
+    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe;
 }

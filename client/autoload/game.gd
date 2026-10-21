@@ -6,6 +6,8 @@ const SESSION_FILE := "user://session.cfg"
 const LOGIN_SCENE := "res://scenes/login.tscn"
 const EDITOR_SCENE := "res://scenes/editor.tscn"
 const GARAGE_SCENE := "res://scenes/garage.tscn"
+const WORLD_MAP_SCENE := "res://scenes/world_map.tscn"
+const PLOT_SCENE := "res://scenes/plot.tscn"
 
 ## Server error codes shown to the player in Polish.
 const ERRORS := {
@@ -32,6 +34,16 @@ const ERRORS := {
 	"bad_position": "To się tu nie zmieści.",
 	"blocked": "To miejsce jest zajęte.",
 	"no_object": "Tego już tu nie ma.",
+	"bad_plot": "Nie ma takiej działki.",
+	"not_buyable": "Wody nie da się kupić.",
+	"plot_taken": "Ktoś już kupił tę działkę.",
+	"not_owner": "To nie jest twoja działka.",
+	"wrong_tool": "Potrzebujesz innego narzędzia.",
+	"nothing_here": "Tego już tu nie ma.",
+	"too_fast": "Powoli, jeszcze nie skończyłeś.",
+	"not_a_tool": "To nie jest narzędzie.",
+	"bad_destination": "Wybierz inną działkę jako cel.",
+	"no_station": "Na tej działce nie ma stacji (nikt jej nie kupił).",
 }
 
 var token := ""
@@ -39,6 +51,8 @@ var token := ""
 var appearance_options := {}
 ## The logged-in player's character, as sent by the server, or empty.
 var character := {}
+## The plot the player is on or last left, so the world map opens there; (-1, -1) if none.
+var plot := Vector2i(-1, -1)
 
 
 func _ready() -> void:
@@ -87,6 +101,35 @@ func enter_game() -> void:
 	else:
 		character = {}
 		get_tree().change_scene_to_file(EDITOR_SCENE)
+
+
+func open_garage() -> void:
+	get_tree().change_scene_to_file(GARAGE_SCENE)
+
+
+func open_world_map() -> void:
+	get_tree().change_scene_to_file(WORLD_MAP_SCENE)
+
+
+## Walks onto one of the player's plots.
+func enter_plot(at: Vector2i) -> void:
+	plot = at
+	get_tree().change_scene_to_file(PLOT_SCENE)
+
+
+## The tool in the player's hand: {id, name}, or empty.
+func tool() -> Dictionary:
+	var held: Variant = character.get("tool")
+	return held if held is Dictionary else {}
+
+
+## Applies an XP gain from the server ({ xp, level }); level thresholds follow 200 × (L − 1)².
+func gain_xp(gain: Dictionary) -> void:
+	var level: int = gain["level"]
+	character["xp"] = gain["xp"]
+	character["level"] = level
+	character["levelXp"] = 200 * (level - 1) * (level - 1)
+	character["nextLevelXp"] = 200 * level * level
 
 
 func logout() -> void:

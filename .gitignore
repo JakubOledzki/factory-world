@@ -9,3 +9,5 @@ TestResults/
 # OS
 .DS_Store
 Thumbs.db
+tools/.world-cache/
+.venv-art/

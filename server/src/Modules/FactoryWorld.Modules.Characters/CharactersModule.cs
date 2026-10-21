@@ -15,9 +15,14 @@ public sealed class CharactersModule : IGameModule
         services.AddModuleDbContext<CharactersDbContext>(CharactersDbContext.Schema);
         services.AddScoped<CharacterService>();
         services.AddScoped<ICharacterProgress, CharacterProgress>();
+        services.AddScoped<ICharacterNames, CharacterNames>();
+        services.AddScoped<Equipment>();
+        services.AddScoped<IEquipment>(provider => provider.GetRequiredService<Equipment>());
         services.AddSingleton<IMessageHandler, OptionsHandler>();
         services.AddSingleton<IMessageHandler, GetCharacterHandler>();
         services.AddSingleton<IMessageHandler, CreateCharacterHandler>();
+        services.AddSingleton<IMessageHandler, EquipHandler>();
+        services.AddSingleton<IMessageHandler, UnequipHandler>();
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>

@@ -26,6 +26,12 @@ public static class NpcPrices
         [Items.WasteGlass] = 200,
         [Items.WasteAluminium] = 600,
         [Items.WasteCopper] = 1500,
+        [Items.Sand] = 50,
+        [Items.Stone] = 100,
+        [Items.Wood] = 150,
+        [Items.Coal] = 400,
+        [Items.IronOre] = 600,
+        [Items.CopperOre] = 1200,
     };
 
     public const int MaxQuantity = 1000;
