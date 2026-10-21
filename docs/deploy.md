@@ -165,4 +165,7 @@ Zrzuty warto też kopiować poza serwer (np. do magazynu obiektowego dostawcy VP
 - **`docker compose pull` odmawia dostępu:** obrazy są prywatne, zobacz krok 2.
 - **Job `deploy` kończy się `Permission denied (publickey)`:** klucz publiczny nie trafił do `authorized_keys`
   użytkownika `DEPLOY_USER` albo `DEPLOY_SSH_KEY` nie zawiera całego klucza prywatnego (z liniami `BEGIN` i `END`).
+- **Job `deploy` kończy się `Host key verification failed`:** `DEPLOY_KNOWN_HOSTS` nie zawiera klucza, którym
+  serwer się przedstawia. Wklej cały wynik `ssh-keyscan adres-serwera` (przy innym porcie: `ssh-keyscan -p PORT adres-serwera`);
+  nazwa hosta w tych liniach nie ma znaczenia. Po przeinstalowaniu serwera klucz się zmienia i trzeba go podmienić.
 - **Job `deploy` kończy się `permission denied ... docker.sock`:** `DEPLOY_USER` nie należy do grupy `docker`.

@@ -92,10 +92,15 @@ jobs:
         run: |
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
-          if [ -n "$KNOWN_HOSTS" ]; then
-            printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
-          else
-            ssh-keyscan -p "$DEPLOY_PORT" "$DEPLOY_HOST" > ~/.ssh/known_hosts
+          if [ -z "$KNOWN_HOSTS" ]; then
+            KNOWN_HOSTS=$(ssh-keyscan -p "$DEPLOY_PORT" "$DEPLOY_HOST")
+          fi
+          # Pin the keys under one alias, so it doesn't matter whether ssh-keyscan was run
+          # against the IP or the domain, or without the custom port.
+          printf '%s\n' "$KNOWN_HOSTS" | tr -d '\r' | awk '!/^[[:space:]]*(#|$)/ { $1 = "deploy-server"; print }' > ~/.ssh/known_hosts
+          if ! ssh-keygen -lf ~/.ssh/known_hosts; then
+            echo "::error::DEPLOY_KNOWN_HOSTS must hold the output of ssh-keyscan (lines like 'host ssh-ed25519 AAAA...')"
+            exit 1
           fi
           cat > ~/.ssh/config <<CONFIG
           Host server
@@ -104,6 +109,7 @@ jobs:
             Port $DEPLOY_PORT
             IdentityFile ~/.ssh/id_deploy
             IdentitiesOnly yes
+            HostKeyAlias deploy-server
           CONFIG
 
       - name: Copy compose file and restart containers
