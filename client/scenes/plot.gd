@@ -99,6 +99,9 @@ var _station: Sprite2D
 var _player: GaragePlayer
 var _camera := Camera2D.new()
 var _zoom := 1.0
+## Fingers on the screen, by index, and their distance at the last step of a pinch.
+var _touches := {}
+var _pinch := 0.0
 
 var _path: PackedVector2Array = []
 var _on_arrival := Callable()
@@ -552,7 +555,7 @@ func _draw_ring(at: Vector2, color: Color) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not _ready_to_play:
+	if not _ready_to_play or _pinch_zoom(event):
 		return
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
@@ -599,6 +602,29 @@ func _unhandled_input(event: InputEvent) -> void:
 		Game.open_world_map()
 	elif event.is_action_pressed("garage"):
 		Game.open_garage()
+
+
+## Zooms with two fingers on a touch screen or a pinch on a touchpad; true if it did.
+func _pinch_zoom(event: InputEvent) -> bool:
+	if event is InputEventMagnifyGesture:
+		_set_zoom(_zoom * event.factor)
+	elif event is InputEventScreenTouch:
+		if event.pressed:
+			_touches[event.index] = event.position
+		else:
+			_touches.erase(event.index)
+		_pinch = 0.0
+		return false
+	elif event is InputEventScreenDrag and _touches.size() == 2:
+		_touches[event.index] = event.position
+		var distance: float = _touches.values()[0].distance_to(_touches.values()[1])
+		if _pinch > 0.0:
+			_set_zoom(_zoom * distance / _pinch)
+		_pinch = distance
+	else:
+		return false
+	get_viewport().set_input_as_handled()
+	return true
 
 
 func _set_zoom(value: float) -> void:
