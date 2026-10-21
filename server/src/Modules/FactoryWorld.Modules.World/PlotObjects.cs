@@ -7,12 +7,17 @@ namespace FactoryWorld.Modules.World;
 
 /// <summary>
 /// Things a player carries out of the inventory and puts on a free tile of their plot, e.g. a
-/// workbench to craft at far from the garage or a furnace. Each stands on one tile.
+/// workbench to craft at far from the garage, a furnace or a machine that processes crops
+/// (mill, oil press, pickling barrel, bakery, field kitchen). Each stands on one tile.
 /// </summary>
 public static class PlotObjects
 {
     /// <summary>Items that can be put on a plot.</summary>
-    public static readonly IReadOnlySet<string> Placeable = new HashSet<string> { Items.Workbench, Items.Furnace };
+    public static readonly IReadOnlySet<string> Placeable = new HashSet<string>
+    {
+        Items.Workbench, Items.Furnace,
+        Items.Mill, Items.OilPress, Items.PicklingBarrel, Items.Bakery, Items.Kitchen,
+    };
 }
 
 public sealed record PlacedOnPlot(Guid Id, string Kind, int TileX, int TileY);

@@ -102,6 +102,59 @@ namespace FactoryWorld.Modules.Crafting.Migrations
 
                     b.ToTable("furnaces", "crafting");
                 });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Crafting.MachineRow", b =>
+                {
+                    b.Property<Guid>("ObjectId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<int>("Fuel")
+                        .HasColumnType("integer")
+                        .HasColumnName("fuel");
+
+                    b.Property<string>("FuelItem")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("fuel_item");
+
+                    b.Property<int>("Heat")
+                        .HasColumnType("integer")
+                        .HasColumnName("heat");
+
+                    b.PrimitiveCollection<int[]>("Inputs")
+                        .IsRequired()
+                        .HasColumnType("integer[]")
+                        .HasColumnName("inputs");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<int>("Output")
+                        .HasColumnType("integer")
+                        .HasColumnName("output");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("Recipe")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("recipe");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.HasKey("ObjectId");
+
+                    b.ToTable("machines", "crafting");
+                });
 #pragma warning restore 612, 618
         }
     }
