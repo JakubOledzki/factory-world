@@ -61,6 +61,10 @@ const WORK := {
 	DUNE: {"name": "Wydma", "tool": "tool_shovel", "verb": "Kop", "need": "łopaty"},
 }
 const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa"}
+## Crops in the order of the art; the server sends their names and growing times.
+const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower"]
+## A crop shows as a sprout until this much of its growing time is left, then half grown.
+const SPROUT_UNTIL := 0.6
 ## Ground texture by biome id (see WorldData).
 const FLOORS := {
 	2: "forest", 3: "dry_grass", 4: "grass", 5: "sand", 6: "gravel", 7: "tundra",
@@ -70,6 +74,7 @@ const MINIMAP_COLORS := {
 	NONE: Color(0, 0, 0, 0), TREE: Color("#2f5a2a"), ROCK: Color("#8a8580"), DUNE: Color("#c9a25a"),
 	RAIL: Color("#4a3a2e"), STATION: Color("#b5663a"), BUSH: Color("#3f6a30"),
 }
+const FIELD_COLOR := Color("#6a4526")
 
 var _layout := {}
 var _plot := {}
@@ -83,6 +88,13 @@ var _my_plots: Array[Vector2i] = []
 var _balance := 0
 var _items: Array = []
 var _ready_to_play := false
+## Tilled tiles: Vector2i → { crop, readyAt } (crop and readyAt null on an empty field).
+var _fields := {}
+var _crops := {}
+var _fertile := false
+## Which crop sprite each drawn field shows, to swap it when the crop grows.
+var _stages := {}
+var _next_stage_check := 0.0
 
 var _astar := AStarGrid2D.new()
 var _sources := {}
@@ -91,6 +103,8 @@ var _chunks := {}
 var _player_chunk := Vector2i(-99, -99)
 
 var _ground: Node2D
+var _field_layer: TileMapLayer
+var _field_source := 0
 var _shadows: TileMapLayer
 var _marks: Node2D
 var _sorted: Node2D
@@ -109,6 +123,8 @@ var _hover_station := false
 ## The tile being worked, and seconds of work left.
 var _work := Vector2i(-1, -1)
 var _work_left := 0.0
+## "harvest" for trees, rocks and dunes, "till" for the hoe.
+var _work_mode := "harvest"
 
 var _hud: Control
 var _title: Label
@@ -119,6 +135,9 @@ var _money: Label
 var _tool_slot: ToolSlot
 var _hint: Label
 var _prompt: Label
+var _field_label: Label
+var _crop_menu: PopupMenu
+var _menu_cell := Vector2i(-1, -1)
 var _work_bar: ProgressBar
 var _toast: Label
 var _toast_tween: Tween
@@ -169,6 +188,13 @@ func _exit_tree() -> void:
 func _build_world() -> void:
 	_ground = Node2D.new()
 	add_child(_ground)
+	# Tilled fields lie flat on the ground, under every shadow.
+	_field_layer = TileMapLayer.new()
+	var field_set := TileSet.new()
+	field_set.tile_size = Vector2i(TILE)
+	_field_source = _add_source(field_set, "field", "field", false)
+	_field_layer.tile_set = field_set
+	add_child(_field_layer)
 	_shadows = TileMapLayer.new()
 	_shadows.tile_set = _tile_set(true)
 	add_child(_shadows)
@@ -204,31 +230,43 @@ func _build_world() -> void:
 func _tile_set(shadows: bool) -> TileSet:
 	var set := TileSet.new()
 	set.tile_size = Vector2i(TILE)
+	var sprites: Array[String] = []
 	for kind: int in SPRITES:
-		for sprite: String in SPRITES[kind]:
-			var file := sprite + ("_shadow" if shadows else "")
-			var texture: Texture2D = load("res://art/plot/%s.png" % file)
-			var source := TileSetAtlasSource.new()
-			source.texture = texture
-			source.texture_region_size = Vector2i(texture.get_size())
-			source.create_tile(Vector2i.ZERO)
-			var anchor := Vector2i(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"])
-			var origin := anchor - Vector2i(texture.get_size() / 2)
-			source.get_tile_data(Vector2i.ZERO, 0).texture_origin = origin
-			if not shadows:
-				var bright := source.create_alternative_tile(Vector2i.ZERO)
-				var data := source.get_tile_data(Vector2i.ZERO, bright)
-				data.texture_origin = origin
-				data.modulate = Color(1.45, 1.4, 1.25)
-				var faded := source.create_alternative_tile(Vector2i.ZERO)
-				data = source.get_tile_data(Vector2i.ZERO, faded)
-				data.texture_origin = origin
-				data.modulate = Color(1, 1, 1, 0.4)
-			var id := set.add_source(source)
-			if not shadows:
-				_sources[sprite] = id
-				_images[sprite] = texture.get_image()
+		sprites.append_array(SPRITES[kind])
+	for sprite in sprites:
+		_add_source(set, sprite, sprite + ("_shadow" if shadows else ""), not shadows)
+	if not shadows:
+		# Crops have no shadows of their own; their ids come after those of nature in both sets.
+		sprites = ["sprout"]
+		for crop: String in CROPS:
+			sprites.append_array([crop + "_young", crop + "_ripe"])
+		for sprite in sprites:
+			_add_source(set, sprite, sprite, true)
 	return set
+
+
+## Adds one sprite as a tile anchored on the cell's centre; with `looks`, also a brightened
+## (alternative 1) and a see-through (alternative 2) version. Returns the source id.
+func _add_source(set: TileSet, sprite: String, file: String, looks: bool) -> int:
+	var texture: Texture2D = load("res://art/plot/%s.png" % file)
+	var source := TileSetAtlasSource.new()
+	source.texture = texture
+	source.texture_region_size = Vector2i(texture.get_size())
+	source.create_tile(Vector2i.ZERO)
+	var anchor := Vector2i(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"])
+	var origin := anchor - Vector2i(texture.get_size() / 2)
+	source.get_tile_data(Vector2i.ZERO, 0).texture_origin = origin
+	if looks:
+		for modulate: Color in [Color(1.45, 1.4, 1.25), Color(1, 1, 1, 0.4)]:
+			var alternative := source.create_alternative_tile(Vector2i.ZERO)
+			var data := source.get_tile_data(Vector2i.ZERO, alternative)
+			data.texture_origin = origin
+			data.modulate = modulate
+	var id := set.add_source(source)
+	if looks:
+		_sources[sprite] = id
+		_images[sprite] = texture.get_image()
+	return id
 
 
 func _apply_plot(plot: Dictionary) -> void:
@@ -242,6 +280,12 @@ func _apply_plot(plot: Dictionary) -> void:
 	else:
 		Game.character["tool"] = null
 	_tool_slot.refresh()
+	_fertile = plot.get("fertile", false)
+	for crop: Dictionary in plot.get("crops", []):
+		_crops[crop["id"]] = crop
+	_clock_offset = float(plot["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
+	for field: Dictionary in plot.get("fields", []):
+		_fields[Vector2i(field["tileX"], field["tileY"])] = {"crop": field["crop"], "readyAt": field["readyAt"]}
 
 	# The ground: the biome's texture repeated over the plot, squashed to the 45° view.
 	var floor_name: String = FLOORS.get(int(plot["biome"]), "grass")
@@ -338,6 +382,8 @@ func _update_chunks(force := false) -> void:
 					var cell := chunk * CHUNK + Vector2i(x, y)
 					_objects.erase_cell(cell)
 					_shadows.erase_cell(cell)
+					_field_layer.erase_cell(cell)
+					_stages.erase(cell)
 	for cy in range(here.y - CHUNK_RADIUS, here.y + CHUNK_RADIUS + 1):
 		for cx in range(here.x - CHUNK_RADIUS, here.x + CHUNK_RADIUS + 1):
 			var chunk := Vector2i(cx, cy)
@@ -350,15 +396,64 @@ func _update_chunks(force := false) -> void:
 
 
 func _draw_cell(cell: Vector2i) -> void:
-	var kind := _tile(cell)
-	if not SPRITES.has(kind):
+	if _fields.has(cell):
+		_field_layer.set_cell(cell, _field_source, Vector2i.ZERO)
+	else:
+		_field_layer.erase_cell(cell)
+	var sprite := _sprite_at(cell)
+	if sprite == "":
 		_objects.erase_cell(cell)
 		_shadows.erase_cell(cell)
+		_stages.erase(cell)
 		return
-	var id: int = _sources[_variant(kind, cell)]
+	var id: int = _sources[sprite]
 	var look := 1 if cell == _hovered else (2 if _faded.has(cell) else 0)
 	_objects.set_cell(cell, id, Vector2i.ZERO, look)
-	_shadows.set_cell(cell, id, Vector2i.ZERO)
+	if _fields.has(cell):
+		_stages[cell] = sprite
+		_shadows.erase_cell(cell)
+	else:
+		_shadows.set_cell(cell, id, Vector2i.ZERO)
+
+
+## The sprite standing on a tile: nature, or the crop growing on a field; "" for nothing.
+func _sprite_at(cell: Vector2i) -> String:
+	if _fields.has(cell):
+		return _crop_sprite(cell)
+	var kind := _tile(cell)
+	return _variant(kind, cell) if SPRITES.has(kind) else ""
+
+
+func _crop_sprite(cell: Vector2i) -> String:
+	var field: Dictionary = _fields[cell]
+	if field["crop"] == null:
+		return ""
+	var left := _crop_left(cell)
+	if left <= 0.0:
+		return field["crop"] + "_ripe"
+	var grow: float = _crops.get(field["crop"], {}).get("growSeconds", 60.0)
+	return "sprout" if left > grow * SPROUT_UNTIL else field["crop"] + "_young"
+
+
+## Seconds until the crop on a field is ripe (0 when it is).
+func _crop_left(cell: Vector2i) -> float:
+	var ready_at: Variant = _fields[cell]["readyAt"]
+	return maxf((float(ready_at) - _server_now()) / 1000.0, 0.0) if ready_at != null else 0.0
+
+
+func _ripe(cell: Vector2i) -> bool:
+	return _fields.has(cell) and _fields[cell]["crop"] != null and _crop_left(cell) <= 0.0
+
+
+## Swaps the sprites of crops that grew into their next stage.
+func _update_stages() -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now < _next_stage_check:
+		return
+	_next_stage_check = now + 1.0
+	for cell: Vector2i in _stages.keys():
+		if _crop_sprite(cell) != _stages[cell]:
+			_draw_cell(cell)
 
 
 # --- Walking ---------------------------------------------------------------------------
@@ -476,10 +571,9 @@ func _objects_at(point: Vector2, first_only := false) -> Array[Vector2i]:
 	for dy in range(7, -2, -1):
 		for dx in [0, -1, 1, -2, 2]:
 			var cell := base + Vector2i(dx, dy)
-			var kind := _tile(cell)
-			if not SPRITES.has(kind):
+			var sprite := _sprite_at(cell)
+			if sprite == "":
 				continue
-			var sprite := _variant(kind, cell)
 			var image: Image = _images[sprite]
 			var pixel := Vector2i(point - _cell_centre(cell)) + Vector2i(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"])
 			if Rect2i(Vector2i.ZERO, image.get_size()).has_point(pixel) and image.get_pixelv(pixel).a > 0.4:
@@ -532,15 +626,50 @@ func _update_hover() -> void:
 		_station.modulate = Color(1.2, 1.17, 1.08)
 	elif _station != null:
 		_station.modulate = Color.WHITE
-	Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND if cell.x >= 0 or station else Input.CURSOR_ARROW)
+	var ground := _ground_cell()
+	var pointing := cell.x >= 0 or station or _fields.has(ground) or _can_till(ground)
+	Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND if pointing else Input.CURSOR_ARROW)
 	_marks.queue_redraw()
 	_update_prompt()
+	_update_field_label(cell if cell.x >= 0 and _fields.has(cell) else ground)
+
+
+## The tile under the mouse, or (-1, -1) when the mouse is over the interface.
+func _ground_cell() -> Vector2i:
+	if not _ready_to_play or get_viewport().gui_get_hovered_control() != null:
+		return Vector2i(-1, -1)
+	return Vector2i((get_global_mouse_position() / TILE).floor())
+
+
+## Whether the hoe can turn this tile into a field.
+func _can_till(cell: Vector2i) -> bool:
+	return _fertile and Game.tool().get("id", "") == "tool_hoe" and _tile(cell) == NONE and not _fields.has(cell)
+
+
+## The name of the crop under the mouse and how long until it is ripe.
+func _update_field_label(cell: Vector2i) -> void:
+	_field_label.visible = _fields.has(cell) and _menu_cell.x < 0
+	if not _field_label.visible:
+		return
+	var crop: Variant = _fields[cell]["crop"]
+	if crop == null:
+		_field_label.text = "Zaorane pole: kliknij, aby zasiać"
+	elif _ripe(cell):
+		_field_label.text = "%s: dojrzała, kliknij, aby zebrać" % _crops[crop]["name"]
+	else:
+		var left := ceili(_crop_left(cell))
+		_field_label.text = "%s: dojrzeje za %d:%02d" % [_crops[crop]["name"], left / 60, left % 60]
+	_field_label.reset_size()
+	_field_label.position = _screen(_cell_centre(cell)) - Vector2(_field_label.size.x / 2, 70 * _zoom + 24)
 
 
 func _draw_marks() -> void:
-	if _hovered.x >= 0 and WORK.has(_tile(_hovered)):
+	if _hovered.x >= 0 and WORK.has(_tile(_hovered)) and not _fields.has(_hovered):
 		var ok: bool = Game.tool().get("id", "") == WORK[_tile(_hovered)]["tool"]
 		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8) if ok else Color(1.0, 0.42, 0.35, 0.8))
+	var ground := _ground_cell()
+	if _hovered.x < 0 and (_fields.has(ground) or _can_till(ground)):
+		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8))
 	if _work.x >= 0:
 		_draw_ring(_cell_centre(_work), Color(1, 1, 1, 0.7))
 
@@ -561,13 +690,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			_set_zoom(_zoom / 1.1)
 		elif event.button_index == MOUSE_BUTTON_LEFT:
 			_update_hover()
+			var cell := Vector2i((get_global_mouse_position() / TILE).floor())
 			if _hovered.x >= 0:
-				_work_on(_hovered)
+				_act_on(_hovered)
 			elif _hover_station:
 				_go_to_station()
+			elif _fields.has(cell):
+				_act_on(cell)
+			elif _can_till(cell):
+				_till(cell)
 			else:
 				_stop_work()
-				var cell := Vector2i((get_global_mouse_position() / TILE).floor())
 				if _tile(cell) >= 0:
 					_walk_to(cell)
 		get_viewport().set_input_as_handled()
@@ -586,7 +719,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			var cell := _nearest_work()
 			if cell.x >= 0:
-				_work_on(cell)
+				_act_on(cell)
 	elif event.is_action_pressed("inventory"):
 		_inventory_window.toggle()
 		if _inventory_window.visible:
@@ -618,7 +751,7 @@ func _nearest_work() -> Vector2i:
 	for dy in range(-2, 3):
 		for dx in range(-2, 3):
 			var cell := here + Vector2i(dx, dy)
-			if WORK.has(_tile(cell)) and _near(cell) and (best.x < 0 or _player.floor_pos.distance_to(Vector2(cell)) < _player.floor_pos.distance_to(Vector2(best))):
+			if (WORK.has(_tile(cell)) or _ripe(cell)) and _near(cell) and (best.x < 0 or _player.floor_pos.distance_to(Vector2(cell)) < _player.floor_pos.distance_to(Vector2(best))):
 				best = cell
 	return best
 
@@ -644,8 +777,9 @@ func _work_on(cell: Vector2i) -> void:
 			_show_toast("Nie da się tam podejść.", UI.ERROR), true)
 
 
-func _start_work(cell: Vector2i) -> void:
+func _start_work(cell: Vector2i, mode := "harvest") -> void:
 	_work = cell
+	_work_mode = mode
 	_work_left = _harvest_seconds
 	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
 	_work_bar.max_value = _harvest_seconds
@@ -669,7 +803,10 @@ func _update_work(delta: float) -> void:
 	if _work_left <= 0.0:
 		var cell := _work
 		_stop_work()
-		_harvest(cell)
+		if _work_mode == "till":
+			_till_request(cell)
+		else:
+			_harvest(cell)
 
 
 func _harvest(cell: Vector2i) -> void:
@@ -708,7 +845,11 @@ func _clear_tile(cell: Vector2i, kind: int) -> void:
 		_hovered = Vector2i(-1, -1)
 	_draw_cell(cell)
 	_set_minimap(cell, NONE)
+	_vanish(sprite_name, cell, kind == TREE)
 
+
+## A copy of a sprite that falls over (a tree) or sinks into the ground, then disappears.
+func _vanish(sprite_name: String, cell: Vector2i, fall: bool) -> void:
 	var falling := Sprite2D.new()
 	falling.texture = load("res://art/plot/%s.png" % sprite_name)
 	falling.centered = false
@@ -716,7 +857,7 @@ func _clear_tile(cell: Vector2i, kind: int) -> void:
 	falling.position = _cell_centre(cell)
 	_sorted.add_child(falling)
 	var tween := create_tween()
-	if kind == TREE:
+	if fall:
 		var side := 1.0 if _player.floor_pos.x < cell.x + 0.5 else -1.0
 		tween.tween_property(falling, "rotation", side * PI / 2.2, 0.7).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		tween.tween_property(falling, "modulate:a", 0.0, 0.4)
@@ -724,6 +865,108 @@ func _clear_tile(cell: Vector2i, kind: int) -> void:
 		tween.tween_property(falling, "scale", Vector2(1.15, 0.2), 0.35).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 		tween.parallel().tween_property(falling, "modulate:a", 0.0, 0.35)
 	tween.tween_callback(falling.queue_free)
+
+
+# --- Farming ------------------------------------------------------------------------------------
+
+## What a click on a tile does: work nature, sow an empty field, reap a ripe crop.
+func _act_on(cell: Vector2i) -> void:
+	if not _fields.has(cell):
+		_work_on(cell)
+		return
+	var crop: Variant = _fields[cell]["crop"]
+	if crop == null:
+		_open_crop_menu(cell)
+	elif _ripe(cell):
+		_go_and(cell, _reap)
+	else:
+		var left := ceili(_crop_left(cell))
+		_show_toast("%s dojrzeje za %d:%02d." % [_crops[crop]["name"], left / 60, left % 60], UI.MUTED)
+
+
+## Walks onto or next to a tile, then calls `action` with it.
+func _go_and(cell: Vector2i, action: Callable) -> void:
+	_stop_work()
+	if _near(cell):
+		action.call(cell)
+		return
+	_walk_to(cell, func() -> void:
+		if _near(cell):
+			action.call(cell), _solid(cell))
+
+
+func _till(cell: Vector2i) -> void:
+	_go_and(cell, func(at: Vector2i) -> void:
+		if _can_till(at):
+			_start_work(at, "till"))
+
+
+func _till_request(cell: Vector2i) -> void:
+	var reply := await Net.request("plot.till", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y})
+	_apply_field(reply)
+
+
+func _open_crop_menu(cell: Vector2i) -> void:
+	_menu_cell = cell
+	_crop_menu.clear()
+	for i in CROPS.size():
+		var crop: Dictionary = _crops.get(CROPS[i], {})
+		if crop.is_empty():
+			continue
+		var minutes := roundi(float(crop["growSeconds"]) / 60.0)
+		_crop_menu.add_icon_item(UI.texture("icons/item_" + CROPS[i]),
+			"%s  ·  %d min  ·  %d szt." % [crop["name"], minutes, int(crop["yield"])], i)
+	_crop_menu.reset_size()
+	var at := get_viewport().get_mouse_position() + Vector2(12, 4)
+	_crop_menu.popup(Rect2i(Vector2i(at), Vector2i.ZERO))
+
+
+func _on_crop_chosen(index: int) -> void:
+	var cell := _menu_cell
+	_menu_cell = Vector2i(-1, -1)
+	var crop: String = CROPS[index]
+	_go_and(cell, func(at: Vector2i) -> void: _plant(at, crop))
+
+
+func _plant(cell: Vector2i, crop: String) -> void:
+	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
+	var reply := await Net.request("plot.plant", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y, "crop": crop})
+	_apply_field(reply)
+
+
+func _reap(cell: Vector2i) -> void:
+	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
+	var sprite := _sprite_at(cell)
+	var reply := await Net.request("plot.reap", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y})
+	if reply["type"] == "plot.field" and sprite != "":
+		_vanish(sprite, cell, false)
+	_apply_field(reply)
+
+
+## Shows the server's answer to tilling, sowing or reaping.
+func _apply_field(reply: Dictionary) -> void:
+	if reply["type"] != "plot.field":
+		_show_error(reply)
+		return
+	var result: Dictionary = reply["payload"]
+	_clock_offset = float(result["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
+	var field: Dictionary = result["field"]
+	var cell := Vector2i(field["tileX"], field["tileY"])
+	_fields[cell] = {"crop": field["crop"], "readyAt": field["readyAt"]}
+	_draw_cell(cell)
+	_set_minimap(cell, NONE)
+	var items: Array = result["items"]
+	for i in items.size():
+		var item: Dictionary = items[i]
+		_float_text("+%d %s" % [int(item["quantity"]), item["name"]], UI.TEXT, _cell_centre(cell), i * 0.25, item["id"])
+	if result.get("xp") != null:
+		var gained := int(result["xp"]["xp"]) - int(Game.character.get("xp", 0))
+		if gained > 0:
+			_float_text("+%d XP" % gained, UI.GOLD, _cell_centre(cell), items.size() * 0.25)
+		Game.gain_xp(result["xp"])
+		_refresh_character()
+	if not items.is_empty() and (_inventory_window.visible or _station_window.visible):
+		_reload_inventory()
 
 
 # --- Station -------------------------------------------------------------------------------------
@@ -769,6 +1012,7 @@ func _process(delta: float) -> void:
 	_update_hover()
 	_update_work(delta)
 	_update_minimap_dot()
+	_update_stages()
 	if _station_window.visible and not _near_station():
 		_station_window.hide_window()
 	_update_trips()
@@ -785,8 +1029,11 @@ func _update_prompt() -> void:
 	elif _work.x < 0:
 		var cell := _nearest_work()
 		if cell.x >= 0:
-			var work: Dictionary = WORK[_tile(cell)]
-			text = "[E] %s: %s" % [work["verb"], work["name"].to_lower()]
+			if _fields.has(cell):
+				text = "[E] Zbierz: %s" % _crops[_fields[cell]["crop"]]["name"].to_lower()
+			else:
+				var work: Dictionary = WORK[_tile(cell)]
+				text = "[E] %s: %s" % [work["verb"], work["name"].to_lower()]
 	_prompt.visible = text != ""
 	if _prompt.visible:
 		_prompt.text = text
@@ -905,6 +1152,20 @@ func _build_hud() -> void:
 	_prompt.visible = false
 	_hud.add_child(_prompt)
 
+	_field_label = _outlined(UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
+	_field_label.add_theme_font_size_override("font_size", 14)
+	_field_label.visible = false
+	_hud.add_child(_field_label)
+
+	_crop_menu = PopupMenu.new()
+	_crop_menu.add_theme_constant_override("icon_max_width", 26)
+	_crop_menu.id_pressed.connect(_on_crop_chosen)
+	_crop_menu.popup_hide.connect(func() -> void:
+		await get_tree().process_frame
+		if not _crop_menu.visible:
+			_menu_cell = Vector2i(-1, -1))
+	_hud.add_child(_crop_menu)
+
 	_work_bar = ProgressBar.new()
 	_work_bar.show_percentage = false
 	_work_bar.step = 0.0
@@ -958,9 +1219,12 @@ func _update_hint() -> void:
 		"tool_axe": "Kliknij drzewo, aby je ściąć siekierą.",
 		"tool_pickaxe": "Kliknij skałę, aby ją rozbić kilofem.",
 		"tool_shovel": "Kliknij wydmę, aby ją przekopać łopatą.",
+		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile else "Motyką orze się tylko żyzne gleby.",
 	}
 	var held: String = Game.tool().get("id", "")
-	_hint.text = lines.get(held, "Bez narzędzia nic tu nie zbierzesz. Narzędzia dostajesz za zakup działki w lesie, na pustyni lub w górach.")
+	if held == "" and _fertile:
+		lines[""] = "Kliknij pole, aby zasiać lub zebrać plony. Do orania weź motykę [Q]."
+	_hint.text = lines.get(held, "Bez narzędzia nic tu nie zbierzesz. Narzędzia dostajesz za zakup działki w lesie, na pustyni, w górach lub na żyznych glebach.")
 	_hint.text += "  ·  Stacja kolejowa [T] wysyła towary do innych fabryk."
 
 
@@ -980,13 +1244,16 @@ func _build_minimap() -> void:
 			var kind := _tiles[y * _size + x]
 			if kind != NONE and MINIMAP_COLORS.has(kind):
 				_minimap_image.set_pixel(x, y, MINIMAP_COLORS[kind])
+	for cell: Vector2i in _fields:
+		_minimap_image.set_pixelv(cell, FIELD_COLOR)
 	_minimap.texture = ImageTexture.create_from_image(_minimap_image)
 	# The plot is wider than tall on screen; keep the minimap's proportions the same.
 	_minimap.custom_minimum_size = Vector2(170, 170 * TILE.y / TILE.x)
 
 
 func _set_minimap(cell: Vector2i, kind: int) -> void:
-	_minimap_image.set_pixelv(cell, MINIMAP_COLORS[kind] if kind != NONE else Color(0.16, 0.16, 0.15))
+	var colour: Color = MINIMAP_COLORS[kind] if kind != NONE else Color(0.16, 0.16, 0.15)
+	_minimap_image.set_pixelv(cell, FIELD_COLOR if _fields.has(cell) else colour)
 	(_minimap.texture as ImageTexture).update(_minimap_image)
 
 

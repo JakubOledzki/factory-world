@@ -44,6 +44,11 @@ const ERRORS := {
 	"not_a_tool": "To nie jest narzędzie.",
 	"bad_destination": "Wybierz inną działkę jako cel.",
 	"no_station": "Na tej działce nie ma stacji (nikt jej nie kupił).",
+	"not_fertile": "Orać można tylko żyzne gleby.",
+	"unknown_crop": "Nieznana roślina.",
+	"no_field": "Najpierw zaorz tu ziemię motyką.",
+	"not_ripe": "To jeszcze nie dojrzało.",
+	"already_surveyed": "Ta działka jest już zbadana.",
 }
 
 var token := ""

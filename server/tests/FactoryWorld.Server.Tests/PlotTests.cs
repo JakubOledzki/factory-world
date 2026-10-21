@@ -220,4 +220,81 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         Assert.Equal("no_station",
             (await sender.SendAsync("station.send", new { x = from.X, y = from.Y, toX = ocean.X, toY = ocean.Y, item = Items.Wood, quantity = 1 })).ErrorCode());
     }
+    [Fact]
+    public async Task Fertile_soil_comes_with_a_hoe_to_till_fields_where_crops_grow_for_their_own_time()
+    {
+        using var client = await PlayerAsync();
+        var farm = await BuyAsync(client, Biome.Farmland);
+        Assert.Equal(Items.Hoe, Tool((await client.SendAsync("character.get")).Payload()));
+        var (plot, tiles) = await EnterAsync(client, farm);
+        Assert.True(plot.GetProperty("fertile").GetBoolean());
+        Assert.Equal(6, plot.GetProperty("crops").GetArrayLength());
+        var (tx, ty) = (plot.GetProperty("spawn").GetProperty("x").GetInt32(), plot.GetProperty("spawn").GetProperty("y").GetInt32());
+        Assert.Equal((byte)TileObject.None, tiles[ty * PlotLayout.Size + tx]);
+        object At(string? crop = null) => new { x = farm.X, y = farm.Y, tileX = tx, tileY = ty, crop };
+
+        Assert.Equal("no_field", (await client.SendAsync("plot.plant", At(Items.Wheat))).ErrorCode());
+        factory.Time.Advance(HarvestRules.Time);
+        var tilled = await client.SendAsync("plot.till", At());
+        Assert.Equal("plot.field", tilled.Type());
+        factory.Time.Advance(HarvestRules.Time);
+        Assert.Equal("blocked", (await client.SendAsync("plot.till", At())).ErrorCode());
+
+        Assert.Equal("unknown_crop", (await client.SendAsync("plot.plant", At("gold"))).ErrorCode());
+        var sown = await client.SendAsync("plot.plant", At(Items.Wheat));
+        Assert.Equal(Items.Wheat, sown.Payload().GetProperty("field").GetProperty("crop").GetString());
+        Assert.Equal("no_field", (await client.SendAsync("plot.plant", At(Items.Corn))).ErrorCode());
+        Assert.Equal("not_ripe", (await client.SendAsync("plot.reap", At())).ErrorCode());
+
+        var (after, _) = await EnterAsync(client, farm);
+        Assert.Equal(Items.Wheat, after.GetProperty("fields")[0].GetProperty("crop").GetString());
+
+        factory.Time.Advance(Farming.ById[Items.Wheat].Grow);
+        var reaped = await client.SendAsync("plot.reap", At());
+        Assert.Equal(4, reaped.Payload().GetProperty("items")[0].GetProperty("quantity").GetInt32());
+        Assert.Equal(4, (await client.InventoryAsync())[Items.Wheat]);
+        Assert.Equal("nothing_here", (await client.SendAsync("plot.reap", At())).ErrorCode());
+        // The field stays tilled, ready for the next crop.
+        Assert.Equal("plot.field", (await client.SendAsync("plot.plant", At(Items.Corn))).Type());
+
+        var forest = await BuyAsync(client, Biome.Forest);
+        factory.Time.Advance(HarvestRules.Time);
+        Assert.Equal("not_fertile", (await client.SendAsync("plot.till", new { x = forest.X, y = forest.Y, tileX = tx, tileY = ty })).ErrorCode());
+    }
+
+    [Fact]
+    public async Task Oil_and_gas_stay_hidden_until_the_owner_pays_for_a_survey()
+    {
+        using var owner = await PlayerAsync();
+        var tundra = await BuyAsync(owner, Biome.Tundra);
+        using var stranger = await PlayerAsync();
+
+        var before = (await owner.SendAsync("world.plot", new { x = tundra.X, y = tundra.Y })).Payload();
+        Assert.Equal(JsonValueKind.Null, before.GetProperty("survey").ValueKind);
+        Assert.Equal(Deposits.SurveyPriceCents, before.GetProperty("surveyPriceCents").GetInt64());
+        Assert.Equal("not_owner", (await stranger.SendAsync("world.survey", new { x = tundra.X, y = tundra.Y })).ErrorCode());
+
+        var balance = await owner.BalanceAsync();
+        var surveyed = await owner.SendAsync("world.survey", new { x = tundra.X, y = tundra.Y });
+        Assert.Equal("world.surveyed", surveyed.Type());
+        var expected = Deposits.Under(tundra.X, tundra.Y, Biome.Tundra);
+        Assert.Equal((int)expected.Oil, surveyed.Payload().GetProperty("survey").GetProperty("oil").GetInt32());
+        Assert.Equal((int)expected.Gas, surveyed.Payload().GetProperty("survey").GetProperty("gas").GetInt32());
+        Assert.Equal(balance - Deposits.SurveyPriceCents, await owner.BalanceAsync());
+        Assert.Equal("already_surveyed", (await owner.SendAsync("world.survey", new { x = tundra.X, y = tundra.Y })).ErrorCode());
+
+        var mine = (await owner.SendAsync("world.plot", new { x = tundra.X, y = tundra.Y })).Payload();
+        Assert.Equal((int)expected.Oil, mine.GetProperty("survey").GetProperty("oil").GetInt32());
+        var theirs = (await stranger.SendAsync("world.plot", new { x = tundra.X, y = tundra.Y })).Payload();
+        Assert.Equal(JsonValueKind.Null, theirs.GetProperty("survey").ValueKind);
+        Assert.Equal(JsonValueKind.Null, theirs.GetProperty("surveyPriceCents").ValueKind);
+    }
+
+    [Fact]
+    public void Deposits_are_rare_and_more_common_in_the_tundra_than_in_the_mountains()
+    {
+        int Count(Biome biome) => Enumerable.Range(0, 2000).Count(i => Deposits.Under(i, i * 7 % 2900, biome).Oil != DepositSize.None);
+        Assert.InRange(Count(Biome.Tundra), 450, 750);
+        Assert.InRange(Count(Biome.Mountains), 40, 130);
+    }
 }

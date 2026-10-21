@@ -25,6 +25,8 @@ const CLICK_SLOP := 6.0
 const MAX_LABELS := 160
 const MINE := Color("#f5b041")
 const OTHERS := Color("#d4553f")
+## Deposit sizes as the server numbers them.
+const DEPOSITS := ["brak", "małe złoże", "średnie złoże", "duże złoże"]
 
 ## Loaded once and kept, so the map opens instantly the second time.
 static var _data: WorldData
@@ -608,6 +610,7 @@ func _show_plot() -> void:
 				UI.GOLD if mine else UI.TEXT))
 			if mine:
 				_plot_box.add_child(UI.button("Wejdź na działkę", Game.enter_plot.bind(plot), true))
+				_show_survey()
 		elif _plot.get("priceCents") != null:
 			var price: int = _plot["priceCents"]
 			var price_row := HBoxContainer.new()
@@ -630,6 +633,40 @@ func _show_plot() -> void:
 	_panel.visible = true
 	_panel.reset_size()
 	_overlay.queue_redraw()
+
+
+## Oil and gas under the player's own plot: unknown until they pay for a geological survey.
+func _show_survey() -> void:
+	_plot_box.add_child(HSeparator.new())
+	var survey: Variant = _plot.get("survey")
+	if survey is Dictionary:
+		_plot_box.add_child(UI.label("Badanie geologiczne:", UI.MUTED))
+		for row: Array in [["Ropa naftowa", survey["oil"]], ["Gaz ziemny", survey["gas"]]]:
+			var size := int(row[1])
+			_plot_box.add_child(UI.label("%s: %s" % [row[0], DEPOSITS[size]], UI.GOOD if size > 0 else UI.TEXT))
+		return
+	_plot_box.add_child(UI.label("Ropa i gaz: nie wiadomo", UI.TEXT))
+	var price := int(_plot.get("surveyPriceCents", 0))
+	_plot_box.add_child(_small("Złoża zobaczysz dopiero po badaniu geologicznym.", UI.MUTED))
+	var order := UI.button("Zleć badanie (%s)" % UI.money(price), _on_survey)
+	order.disabled = _balance < price
+	_plot_box.add_child(order)
+
+
+func _on_survey() -> void:
+	var plot := Vector2i(_plot["x"], _plot["y"])
+	var reply := await Net.request("world.survey", {"x": plot.x, "y": plot.y})
+	if reply["type"] != "world.surveyed":
+		_show_error(reply)
+		return
+	var result: Dictionary = reply["payload"]
+	_set_balance(int(result["balanceCents"]))
+	var survey: Dictionary = result["survey"]
+	var found := int(survey["oil"]) > 0 or int(survey["gas"]) > 0
+	_show_toast("Badanie zakończone: %s." % ("są złoża!" if found else "brak ropy i gazu"), UI.GOLD if found else UI.TEXT)
+	if _selected == plot:
+		_plot["survey"] = survey
+		_show_plot()
 
 
 func _on_buy() -> void:

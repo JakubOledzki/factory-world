@@ -32,6 +32,12 @@ public static class NpcPrices
         [Items.Coal] = 400,
         [Items.IronOre] = 600,
         [Items.CopperOre] = 1200,
+        [Items.Wheat] = 60,
+        [Items.Carrot] = 90,
+        [Items.Potato] = 150,
+        [Items.Corn] = 220,
+        [Items.Cabbage] = 250,
+        [Items.Sunflower] = 300,
     };
 
     public const int MaxQuantity = 1000;

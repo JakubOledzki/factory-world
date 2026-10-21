@@ -35,6 +35,36 @@ public sealed class PlotHarvest
     public int TileY { get; set; }
 }
 
+/// <summary>A tilled tile of a fertile plot, with what grows on it.</summary>
+public sealed class PlotField
+{
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public int TileX { get; set; }
+
+    public int TileY { get; set; }
+
+    public string? Crop { get; set; }
+
+    public DateTimeOffset? PlantedAt { get; set; }
+}
+
+/// <summary>What a geological survey found under a plot.</summary>
+public sealed class SurveyRow
+{
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public short Oil { get; set; }
+
+    public short Gas { get; set; }
+
+    public DateTimeOffset SurveyedAt { get; set; }
+}
+
 /// <summary>Goods waiting in a plot's railway station.</summary>
 public sealed class StationItem
 {
@@ -98,6 +128,27 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(h => h.TileX).HasColumnName("tile_x");
             e.Property(h => h.TileY).HasColumnName("tile_y");
         });
+        model.Entity<PlotField>(e =>
+        {
+            e.ToTable("plot_fields");
+            e.HasKey(f => new { f.X, f.Y, f.TileX, f.TileY });
+            e.Property(f => f.X).HasColumnName("x");
+            e.Property(f => f.Y).HasColumnName("y");
+            e.Property(f => f.TileX).HasColumnName("tile_x");
+            e.Property(f => f.TileY).HasColumnName("tile_y");
+            e.Property(f => f.Crop).HasColumnName("crop").HasMaxLength(32);
+            e.Property(f => f.PlantedAt).HasColumnName("planted_at");
+        });
+        model.Entity<SurveyRow>(e =>
+        {
+            e.ToTable("surveys");
+            e.HasKey(s => new { s.X, s.Y });
+            e.Property(s => s.X).HasColumnName("x");
+            e.Property(s => s.Y).HasColumnName("y");
+            e.Property(s => s.Oil).HasColumnName("oil");
+            e.Property(s => s.Gas).HasColumnName("gas");
+            e.Property(s => s.SurveyedAt).HasColumnName("surveyed_at");
+        });
         model.Entity<StationItem>(e =>
         {
             e.ToTable("station_items");
@@ -128,13 +179,15 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
 public sealed record PlotOwner(Guid AccountId, string? Name);
 
 /// <param name="PriceCents">What the asking player would pay for it now; null when it cannot be bought.</param>
-public sealed record PlotState(int X, int Y, Biome Biome, PlotOwner? Owner, long? PriceCents);
+/// <param name="Survey">What lies under the plot, shown only to its owner once they paid for a survey.</param>
+public sealed record PlotState(int X, int Y, Biome Biome, PlotOwner? Owner, long? PriceCents, Survey? Survey = null);
 
 /// <param name="Tool">The tool that came with the plot, or null.</param>
 public sealed record Purchase(PlotState Plot, long BalanceCents, XpGain Xp, string? Tool);
 
 public sealed class WorldService(
-    GameDb db, WorldMap map, IWallet wallet, ICharacterProgress progress, ICharacterNames names, IEquipment equipment, TimeProvider time)
+    GameDb db, WorldMap map, IWallet wallet, ICharacterProgress progress, ICharacterNames names, IEquipment equipment, SurveyService surveys,
+    TimeProvider time)
 {
     /// <summary>Most owned plots one area request returns.</summary>
     public const int MaxAreaPlots = 5000;
@@ -194,7 +247,9 @@ public sealed class WorldService(
         if (await command.ExecuteScalarAsync(cancellationToken) is Guid owner)
         {
             var name = (await names.NamesAsync([owner], cancellationToken)).GetValueOrDefault(owner);
-            return new PlotState(x, y, biome, new PlotOwner(owner, name), null);
+            // Deposits stay secret from everyone but the owner who paid for the survey.
+            var survey = owner == viewer ? await surveys.FindAsync(x, y, cancellationToken) : null;
+            return new PlotState(x, y, biome, new PlotOwner(owner, name), null, survey);
         }
 
         long? price = Biomes.All[biome].Buyable ? PlotPrices.For(await CountOwnedAsync(viewer, cancellationToken), biome) : null;
@@ -280,6 +335,8 @@ public abstract class WorldHandler(IServiceScopeFactory scopes) : IMessageHandle
         biome = (int)plot.Biome,
         owner = plot.Owner is { } owner ? new { name = owner.Name, mine = owner.AccountId == player } : null,
         priceCents = plot.PriceCents,
+        survey = plot.Survey is { } survey ? SurveyHandler.SurveyJson(survey) : null,
+        surveyPriceCents = plot.Owner?.AccountId == player ? Deposits.SurveyPriceCents : (long?)null,
     };
 }
 
@@ -377,6 +434,8 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<WorldService>();
         services.AddScoped<PlotService>();
         services.AddScoped<StationService>();
+        services.AddScoped<FarmService>();
+        services.AddScoped<SurveyService>();
         services.AddSingleton<IMessageHandler, InfoHandler>();
         services.AddSingleton<IMessageHandler, AreaHandler>();
         services.AddSingleton<IMessageHandler, GetPlotHandler>();
@@ -387,6 +446,10 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, LoadStationHandler>();
         services.AddSingleton<IMessageHandler, UnloadStationHandler>();
         services.AddSingleton<IMessageHandler, SendHandler>();
+        services.AddSingleton<IMessageHandler, TillHandler>();
+        services.AddSingleton<IMessageHandler, PlantHandler>();
+        services.AddSingleton<IMessageHandler, ReapHandler>();
+        services.AddSingleton<IMessageHandler, SurveyHandler>();
     }
 
     public async Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken)
