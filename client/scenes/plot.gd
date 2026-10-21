@@ -150,7 +150,7 @@ var _minimap_dot: Control
 var _loading: Label
 
 var _inventory_window: GameWindow
-var _slots: GridContainer
+var _slots: InventoryGrid
 var _station_window: GameWindow
 var _station_box: VBoxContainer
 var _station_state := {}
@@ -1300,11 +1300,15 @@ func _on_minimap_input(event: InputEvent) -> void:
 func _build_windows() -> void:
 	_inventory_window = GameWindow.new("Ekwipunek", 0)
 	_inventory_window.position = Vector2(12, 150)
-	_slots = GridContainer.new()
-	_slots.columns = 5
-	_slots.add_theme_constant_override("h_separation", 4)
-	_slots.add_theme_constant_override("v_separation", 4)
+	_slots = InventoryGrid.new()
+	_slots.hint = func(item: String) -> String: return "Kliknij, aby wziąć do ręki" if item in ToolSlot.TOOLS else ""
+	_slots.clicked.connect(func(item: String) -> void:
+		if item in ToolSlot.TOOLS:
+			_tool_slot.equip(item))
+	_slots.changed.connect(func(items: Array) -> void: _items = items)
+	_slots.failed.connect(_show_error)
 	_inventory_window.content.add_child(_slots)
+	_inventory_window.content.add_child(UI.label("Przeciągnij przedmiot na inny kafelek, aby zmienić kolejność.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	_station_window = GameWindow.new("Stacja kolejowa", 430)
 	_station_window.position = Vector2(1280 - 430 - 12, 64)
 	var scroll := ScrollContainer.new()
@@ -1325,46 +1329,9 @@ func _reload_inventory() -> void:
 	if reply["type"] != "inventory":
 		return
 	_items = reply["payload"]["items"]
-	for child in _slots.get_children():
-		child.free()
-	for i in maxi(20, ceili(_items.size() / 5.0) * 5):
-		_slots.add_child(_slot(_items[i] if i < _items.size() else {}))
+	_slots.show_items(reply["payload"])
 	if _station_window.visible and not _station_state.is_empty():
 		_show_station()
-
-
-func _slot(stack: Dictionary) -> Control:
-	var slot := PanelContainer.new()
-	var frame := StyleBoxTexture.new()
-	frame.texture = UI.texture("ui/inset")
-	frame.set_texture_margin_all(8)
-	frame.set_content_margin_all(3)
-	slot.add_theme_stylebox_override("panel", frame)
-	slot.custom_minimum_size = Vector2(52, 52)
-	if stack.is_empty():
-		return slot
-	slot.tooltip_text = "%s: %d" % [stack["name"], int(stack["quantity"])]
-	var item: String = stack["id"]
-	if item in ToolSlot.TOOLS:
-		slot.tooltip_text += "\nKliknij, aby wziąć do ręki"
-		slot.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		slot.gui_input.connect(func(event: InputEvent) -> void:
-			if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-				_tool_slot.equip(item))
-	var icon := UI.item_icon(item, 44)
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	slot.add_child(icon)
-	var count := UI.label(str(int(stack["quantity"])), Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
-	count.size_flags_horizontal = Control.SIZE_SHRINK_END
-	count.size_flags_vertical = Control.SIZE_SHRINK_END
-	count.add_theme_font_override("font", UI.bold())
-	count.add_theme_font_size_override("font_size", 13)
-	count.add_theme_constant_override("outline_size", 4)
-	count.add_theme_color_override("font_outline_color", UI.BACKGROUND)
-	count.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	slot.add_child(count)
-	return slot
 
 
 func _refresh_station() -> void:

@@ -38,6 +38,10 @@ namespace FactoryWorld.Modules.Inventory.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("quantity");
 
+                    b.Property<int?>("Slot")
+                        .HasColumnType("integer")
+                        .HasColumnName("slot");
+
                     b.HasKey("OwnerId", "ItemId");
 
                     b.ToTable("stacks", "inventory", t =>

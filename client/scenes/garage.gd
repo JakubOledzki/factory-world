@@ -3,7 +3,6 @@ extends Control
 ## character, who walks with WSAD or by clicking. Sorting opens at the trash bin; the
 ## inventory and the market are windows opened from the toolbar.
 
-const SLOTS := 20
 ## The garage is lit by one bulb, so the character is drawn darker than in the editor.
 const ROOM_LIGHT := Color(0.74, 0.7, 0.66)
 ## How close to a piece of furniture (in metres, from the edge of its footprint) the player
@@ -94,7 +93,7 @@ var _sort_pending := false
 var _job_bar: ProgressBar
 var _job_text: Label
 var _recent: HFlowContainer
-var _slots: GridContainer
+var _slots: InventoryGrid
 var _market: VBoxContainer
 
 
@@ -707,12 +706,13 @@ func _build_sorting(page: VBoxContainer) -> void:
 
 
 func _build_storage(page: VBoxContainer) -> void:
-	_slots = GridContainer.new()
-	_slots.columns = 5
-	_slots.add_theme_constant_override("h_separation", 4)
-	_slots.add_theme_constant_override("v_separation", 4)
+	_slots = InventoryGrid.new()
+	_slots.hint = _slot_hint
+	_slots.clicked.connect(_on_slot_clicked)
+	_slots.changed.connect(func(items: Array) -> void: _items = items)
+	_slots.failed.connect(_show_error)
 	page.add_child(_slots)
-	page.add_child(UI.label("Kliknij mebel, aby go postawić.", UI.MUTED))
+	page.add_child(UI.label("Kliknij mebel, aby go postawić. Przeciągnij przedmiot na inny kafelek, aby zmienić kolejność.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 
 func _build_market(page: VBoxContainer) -> void:
@@ -770,10 +770,7 @@ func _apply_garage(garage: Dictionary) -> void:
 
 func _apply_inventory(inventory: Dictionary) -> void:
 	_items = inventory["items"]
-	for child in _slots.get_children():
-		child.free()
-	for i in maxi(SLOTS, ceili(_items.size() / 5.0) * 5):
-		_slots.add_child(_slot(_items[i] if i < _items.size() else {}))
+	_slots.show_items(inventory)
 	_rebuild_market()
 
 
@@ -943,45 +940,19 @@ func _stop_hand_sorting() -> void:
 
 # --- Inventory and market -----------------------------------------------------------------
 
-func _slot(stack: Dictionary) -> Control:
-	var slot := PanelContainer.new()
-	var frame := StyleBoxTexture.new()
-	frame.texture = UI.texture("ui/inset")
-	frame.set_texture_margin_all(8)
-	frame.set_content_margin_all(3)
-	slot.add_theme_stylebox_override("panel", frame)
-	slot.custom_minimum_size = Vector2(52, 52)
-	if stack.is_empty():
-		return slot
-	var item: String = stack["id"]
-	slot.tooltip_text = "%s: %d" % [stack["name"], int(stack["quantity"])]
+func _slot_hint(item: String) -> String:
 	if item in ToolSlot.TOOLS:
-		slot.tooltip_text += "\nKliknij, aby wziąć do ręki"
-		slot.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		slot.gui_input.connect(func(event: InputEvent) -> void:
-			if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-				_tool_slot.equip(item))
+		return "Kliknij, aby wziąć do ręki"
 	if _furniture_info.has(item):
-		# Furniture: click to place it in the garage.
-		slot.tooltip_text += "\nKliknij, aby postawić"
-		slot.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
-		slot.gui_input.connect(func(event: InputEvent) -> void:
-			if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-				_start_placing(item))
-	var icon := UI.item_icon(item, 44)
-	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	slot.add_child(icon)
-	var count := UI.label(str(int(stack["quantity"])), Color.WHITE, HORIZONTAL_ALIGNMENT_RIGHT)
-	count.size_flags_horizontal = Control.SIZE_SHRINK_END
-	count.size_flags_vertical = Control.SIZE_SHRINK_END
-	count.add_theme_font_override("font", UI.bold())
-	count.add_theme_font_size_override("font_size", 13)
-	count.add_theme_constant_override("outline_size", 4)
-	count.add_theme_color_override("font_outline_color", UI.BACKGROUND)
-	count.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	slot.add_child(count)
-	return slot
+		return "Kliknij, aby postawić"
+	return ""
+
+
+func _on_slot_clicked(item: String) -> void:
+	if item in ToolSlot.TOOLS:
+		_tool_slot.equip(item)
+	elif _furniture_info.has(item):
+		_start_placing(item)
 
 
 func _rebuild_market() -> void:
