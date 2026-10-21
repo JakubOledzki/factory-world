@@ -87,6 +87,10 @@ var _market_window: GameWindow
 var _trash: Label
 var _sort_buttons: Array[Button] = []
 var _queue_text: Label
+var _machine_hint: Label
+## Sorting by hand: the next bag is started while the player stays at the bin.
+var _hand_sorting := false
+var _sort_pending := false
 var _job_bar: ProgressBar
 var _job_text: Label
 var _recent: HFlowContainer
@@ -669,7 +673,7 @@ func _build_sorting(page: VBoxContainer) -> void:
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 6)
 	for count in [1, 10]:
-		var b := UI.button("Segreguj %d" % count, _sort.bind(count), count == 10)
+		var b := UI.button("Segreguj %d" % count, _on_sort_button.bind(count), count == 10)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		buttons.add_child(b)
 		_sort_buttons.append(b)
@@ -695,6 +699,10 @@ func _build_sorting(page: VBoxContainer) -> void:
 	_recent.add_theme_constant_override("v_separation", 2)
 	_recent.custom_minimum_size.y = 32
 	page.add_child(_recent)
+	_machine_hint = UI.label("Segregujesz ręcznie, więc musisz stać przy koszu. Automatyczna sortownia (Rynek, 1000 $) segreguje sama do 10 worków.", UI.MUTED)
+	_machine_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_machine_hint.custom_minimum_size.x = 280
+	page.add_child(_machine_hint)
 
 
 func _build_storage(page: VBoxContainer) -> void:
@@ -812,8 +820,11 @@ func _update_bin() -> void:
 		_prompt.visible = false
 		_bin_status.visible = false
 		return
-	if _sorting_window.visible and not _near(bin, LEAVE):
-		_sorting_window.hide_window()
+	if not _near(bin, LEAVE):
+		if _sorting_window.visible:
+			_sorting_window.hide_window()
+		if not _has_machine() and (_hand_sorting or not _garage.get("queue", []).is_empty()):
+			_stop_hand_sorting()
 	_prompt.visible = _near(bin) and not _sorting_window.visible and _placing == ""
 	var top := RoomProjection.to_screen(bin.floor_pos, 1.25)
 	_prompt.reset_size()
@@ -845,16 +856,37 @@ func _collect() -> void:
 		_apply_garage(reply["payload"])
 
 
+func _has_machine() -> bool:
+	for object: Dictionary in _garage.get("objects", []):
+		if object["kind"] == "furniture_sorting_machine":
+			return true
+	return false
+
+
 func _update_queue() -> void:
 	var queue: Array = _garage.get("queue", [])
 	var max_queue: int = _garage.get("maxQueue", 10)
 	var trash: int = _garage.get("trash", 0)
-	var free := max_queue - queue.size()
-	_queue_text.text = "Kolejka: %d / %d" % [queue.size(), max_queue]
-	_sort_buttons[0].disabled = free < 1 or trash < 1
-	_sort_buttons[1].disabled = free < 1 or trash < 1
-	var batch := mini(mini(free, trash), 10)
-	_sort_buttons[1].text = "Segreguj %d" % (batch if batch > 0 else 10)
+	var machine := _has_machine()
+	_machine_hint.visible = not machine
+	_sort_buttons[1].visible = machine
+	if machine:
+		_hand_sorting = false
+		var free := max_queue - queue.size()
+		_queue_text.text = "Sortownia: %d / %d worków w kolejce" % [queue.size(), max_queue]
+		_sort_buttons[0].text = "Segreguj 1"
+		_sort_buttons[0].disabled = free < 1 or trash < 1
+		_sort_buttons[1].disabled = free < 1 or trash < 1
+		var batch := mini(mini(free, trash), 10)
+		_sort_buttons[1].text = "Segreguj %d" % (batch if batch > 0 else 10)
+	else:
+		if trash < 1 and queue.is_empty():
+			_hand_sorting = false
+		_queue_text.text = "Segregacja ręczna: worek po worku" if _hand_sorting else "Segregacja ręczna"
+		_sort_buttons[0].text = "Przestań" if _hand_sorting else "Zacznij segregować"
+		_sort_buttons[0].disabled = not _hand_sorting and trash < 1
+		if _hand_sorting and queue.is_empty() and trash > 0 and not _sort_pending and not _refreshing:
+			_sort(1)
 
 	if queue.is_empty():
 		_job_bar.value = 0
@@ -867,6 +899,15 @@ func _update_queue() -> void:
 	_job_text.text = "%d s" % ceili(left / 1000.0)
 
 
+func _on_sort_button(count: int) -> void:
+	if _has_machine():
+		_sort(count)
+	elif _hand_sorting:
+		_stop_hand_sorting()
+	else:
+		_hand_sorting = true
+
+
 func _sort(count: int) -> void:
 	var queue: Array = _garage.get("queue", [])
 	count = mini(count, mini(_garage.get("maxQueue", 10) - queue.size(), _garage.get("trash", 0)))
@@ -874,11 +915,29 @@ func _sort(count: int) -> void:
 		_show_error({"payload": {"code": "queue_full" if _garage.get("trash", 0) > 0 else "not_enough_items"}})
 		return
 	_pulse()
+	_sort_pending = true
 	var reply := await Net.request("recycling.sort", {"count": count})
+	_sort_pending = false
 	if reply["type"] == "garage":
 		_apply_garage(reply["payload"])
 	else:
+		_hand_sorting = false
 		_show_error(reply)
+
+
+## Without the sorting machine walking away from the bin stops sorting; the bag in
+## progress goes back to the bin.
+func _stop_hand_sorting() -> void:
+	var was_sorting: bool = not _garage.get("queue", []).is_empty()
+	_hand_sorting = false
+	if not was_sorting or _sort_pending:
+		return
+	_sort_pending = true
+	var reply := await Net.request("recycling.stop")
+	_sort_pending = false
+	if reply["type"] == "garage":
+		_apply_garage(reply["payload"])
+		_show_toast("Segregacja przerwana: postać odeszła od kosza.", UI.MUTED)
 
 
 # --- Inventory and market -----------------------------------------------------------------
@@ -949,7 +1008,7 @@ func _rebuild_market() -> void:
 		price_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		bottom.add_child(price_label)
 		if buying:
-			for amount in [1, 10]:
+			for amount: int in ([1] if item.begins_with("furniture_") else [1, 10]):
 				var b := UI.button("Kup %d" % amount, _trade.bind("market.buy", item, amount))
 				b.disabled = _balance < cents * amount
 				bottom.add_child(b)

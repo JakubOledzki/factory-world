@@ -499,6 +499,8 @@ FURNITURE_AT = {
     "furniture_barrel_red": (7.75, 1.75),
     "furniture_tyres": (6.5, 1.0),
     "furniture_pallet": (1.5, 1.0),
+    # Not in the starter layout: rendered on free floor in the middle of the room.
+    "furniture_sorting_machine": (3.75, 2.0),
 }
 ROTATIONS = 4
 
@@ -730,7 +732,47 @@ def build_bin(coll, at: Vector):
         displace(sphere("bin_trash", r, at + Vector((dx, dy, h - 0.05)), bag_m, coll, scale=(1, 1, 0.8)), 0.06, 0.15)
 
 
+def build_sorting_machine(coll, at: Vector):
+    """A boxy automatic sorter: a hopper on top, a conveyor coming out on the right and a control
+    panel with lamps on the front."""
+    body_m = rusty_metal("machine", (0.45, 0.32, 0.03), 0.35)
+    steel = rusty_metal("machine_steel", (0.18, 0.18, 0.19), 0.3)
+    rubber = plain("belt", (0.02, 0.02, 0.022), 0.8, variation=0.3, scale=30, bump=0.4)
+    panel_m = plain("machine_panel", (0.12, 0.12, 0.13), 0.5, 0.4)
+    o = at + Vector((-0.2, 0.05, 0))
+    box("machine_body", (1.0, 0.8, 0.85), o + Vector((0, 0, 0.47)), body_m, coll, bevel=0.03)
+    box("machine_base", (1.06, 0.86, 0.06), o + Vector((0, 0, 0.03)), steel, coll, bevel=0.01)
+    # Hopper: a funnel open at the top, with trash bags in it.
+    v = [(-0.3, -0.24, 0), (0.3, -0.24, 0), (0.3, 0.24, 0), (-0.3, 0.24, 0),
+         (-0.46, -0.36, 0.38), (0.46, -0.36, 0.38), (0.46, 0.36, 0.38), (-0.46, 0.36, 0.38)]
+    f = [(0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)]
+    hopper = mesh_from("machine_hopper", [(x + o.x, y + o.y, z + 0.9) for x, y, z in v], f, steel, coll)
+    solid = hopper.modifiers.new("solid", "SOLIDIFY")
+    solid.thickness = 0.03
+    bag_m = plain("machine_bag", (0.012, 0.012, 0.014), 0.25, variation=0.5, scale=4, bump=0.6)
+    displace(sphere("machine_trash", 0.17, o + Vector((0.05, 0.02, 1.12)), bag_m, coll, scale=(1, 1, 0.7)), 0.05, 0.15)
+    # Conveyor carrying sorted waste out to the right.
+    belt_at = o + Vector((0.78, -0.1, 0.55))
+    box("machine_belt", (0.56, 0.36, 0.05), belt_at, rubber, coll, bevel=0.01)
+    for dx in (-0.26, 0.26):
+        cylinder("machine_roller", 0.04, 0.4, belt_at + Vector((dx, 0, 0)), steel, coll, rotation=(math.pi / 2, 0, 0))
+    for dx in (-0.2, 0.22):
+        for dy in (-0.15, 0.15):
+            box("machine_leg", (0.04, 0.04, 0.53), belt_at + Vector((dx, dy, -0.29)), steel, coll)
+    for i, colour in enumerate(((0.5, 0.48, 0.42), (0.6, 0.3, 0.1), (0.3, 0.5, 0.75))):
+        box("machine_piece", (0.08, 0.06, 0.04), belt_at + Vector((-0.12 + i * 0.14, -0.04 + 0.04 * i, 0.05)),
+            plain(f"machine_piece{i}", colour, 0.4, 0.5), coll, rotation=(0, 0, i))
+    # Control panel with lamps, and a vent pipe at the back.
+    box("machine_panel", (0.34, 0.04, 0.26), o + Vector((-0.22, -0.42, 0.62)), panel_m, coll, bevel=0.01)
+    for i, colour in enumerate(((0.1, 1.0, 0.2), (1.0, 0.6, 0.05), (1.0, 0.1, 0.05))):
+        sphere("machine_lamp", 0.022, o + Vector((-0.32 + i * 0.1, -0.445, 0.68)), emission(f"lamp{i}", colour, 6.0), coll)
+    box("machine_button", (0.07, 0.03, 0.05), o + Vector((-0.22, -0.445, 0.55)), plain("button", (0.5, 0.03, 0.02), 0.4), coll, bevel=0.01)
+    cylinder("machine_vent", 0.07, 0.5, o + Vector((0.32, 0.3, 1.1)), steel, coll)
+    box("machine_stripe", (1.01, 0.81, 0.08), o + Vector((0, 0, 0.12)), plain("stripe", (0.05, 0.05, 0.05), 0.6), coll)
+
+
 FURNITURE_BUILDERS = {
+    "furniture_sorting_machine": build_sorting_machine,
     "furniture_trash_bin": build_bin,
     "furniture_workbench": build_workbench,
     "furniture_gas_cylinder": build_gas,

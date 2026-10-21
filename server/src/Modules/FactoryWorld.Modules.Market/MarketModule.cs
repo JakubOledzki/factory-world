@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FactoryWorld.Modules.Market;
 
 /// <summary>
-/// The NPC trader: always sells trash and always buys waste, at fixed prices (cents).
+/// The NPC trader: always sells trash and the sorting machine and always buys waste, at fixed prices (cents).
 /// Trading between players comes later; these prices are its floor and ceiling.
 /// </summary>
 public static class NpcPrices
@@ -16,6 +16,7 @@ public static class NpcPrices
     public static readonly IReadOnlyDictionary<string, long> Sells = new Dictionary<string, long>
     {
         [Items.Trash] = 200,
+        [Items.SortingMachine] = 100_000,
     };
 
     /// <summary>What the NPC pays the player.</summary>

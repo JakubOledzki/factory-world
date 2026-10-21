@@ -15,8 +15,15 @@ public static class RecyclingRules
 
     public static readonly TimeSpan SortTime = TimeSpan.FromSeconds(10);
 
-    /// <summary>Sortings a player can queue; they keep running while the player is offline.</summary>
+    /// <summary>Sortings a player can queue with the sorting machine in the garage; they keep running
+    /// while the player is away or offline.</summary>
     public const int MaxQueue = 10;
+
+    /// <summary>By hand the player sorts one bag at a time, standing at the bin: the client asks for
+    /// the next bag while the player stays and stops the current one when they walk away.</summary>
+    public const int MaxQueueByHand = 1;
+
+    public static int QueueLimit(bool machine) => machine ? MaxQueue : MaxQueueByHand;
 
     public const int XpPerSort = 5;
 
@@ -71,6 +78,7 @@ public static class GarageLayout
             [Items.Tyres] = (2, 2),
             [Items.Pallet] = (2, 2),
             [Items.GasCylinder] = (1, 1),
+            [Items.SortingMachine] = (3, 2),
         };
 
     /// <summary>How a new garage is furnished.</summary>
@@ -217,15 +225,17 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
             // Lock the garage row so two requests cannot both fill the last queue slots.
             await LockGarageAsync(owner, cancellationToken);
 
-            if (!(await ObjectsAsync(owner, cancellationToken)).Any(o => o.Kind == Items.TrashBin))
+            var objects = await ObjectsAsync(owner, cancellationToken);
+            if (!objects.Any(o => o.Kind == Items.TrashBin))
             {
                 throw new GameException("no_bin", "Put the trash bin in the garage first.");
             }
 
+            var limit = RecyclingRules.QueueLimit(objects.Any(o => o.Kind == Items.SortingMachine));
             var queue = await QueueAsync(owner, cancellationToken);
-            if (queue.Count + count > RecyclingRules.MaxQueue)
+            if (queue.Count + count > limit)
             {
-                throw new GameException("queue_full", $"At most {RecyclingRules.MaxQueue} sortings can wait in the queue.");
+                throw new GameException("queue_full", $"At most {limit} sortings can wait in the queue.");
             }
 
             await inventory.RemoveAsync(owner, Items.Trash, count, cancellationToken);
@@ -239,6 +249,30 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
                 insert.Parameters.AddWithValue("owner", owner);
                 insert.Parameters.AddWithValue("at", start + RecyclingRules.SortTime * i);
                 await insert.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            return await ReadStateAsync(owner, results, xp, cancellationToken);
+        }, cancellationToken);
+
+    /// <summary>The player walked away from the bin: without the sorting machine, the bag being
+    /// sorted by hand is not finished and goes back into the inventory.</summary>
+    public Task<GarageState> StopAsync(Guid owner, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            await EnsureGarageAsync(owner, cancellationToken);
+            var (results, xp) = await CompleteDueAsync(owner, cancellationToken);
+            await LockGarageAsync(owner, cancellationToken);
+            if (!(await ObjectsAsync(owner, cancellationToken)).Any(o => o.Kind == Items.SortingMachine))
+            {
+                await using var command = await db.CommandAsync(
+                    "DELETE FROM recycling.sorting_jobs WHERE owner_id = @owner AND finishes_at > @now", cancellationToken);
+                command.Parameters.AddWithValue("owner", owner);
+                command.Parameters.AddWithValue("now", time.GetUtcNow());
+                var stopped = await command.ExecuteNonQueryAsync(cancellationToken);
+                if (stopped > 0)
+                {
+                    await inventory.AddAsync(owner, Items.Trash, stopped, cancellationToken);
+                }
             }
 
             return await ReadStateAsync(owner, results, xp, cancellationToken);
@@ -428,7 +462,7 @@ public abstract class GarageHandler(IServiceScopeFactory scopes) : IMessageHandl
             queue = state.Queue.Select(t => t.ToUnixTimeMilliseconds()),
             serverTime = state.ServerTime.ToUnixTimeMilliseconds(),
             sortSeconds = RecyclingRules.SortTime.TotalSeconds,
-            maxQueue = RecyclingRules.MaxQueue,
+            maxQueue = RecyclingRules.QueueLimit(state.Objects.Any(o => o.Kind == Items.SortingMachine)),
             results = state.Results.Select(id => new { id, name = Items.Names[id] }),
             xp = state.Xp is { } xp ? new { xp = xp.Xp, level = xp.Level, leveledUp = xp.LeveledUp } : null,
             room = new { width = GarageLayout.Width, depth = GarageLayout.Depth, cellSize = GarageLayout.CellSize },
@@ -456,6 +490,14 @@ public sealed class SortHandler(IServiceScopeFactory scopes) : GarageHandler(sco
 
     protected override Task<GarageState> RunAsync(RecyclingService recycling, Guid owner, JsonElement? payload, CancellationToken cancellationToken) =>
         recycling.SortAsync(owner, Payload.Read<SortRequest>(payload).Count, cancellationToken);
+}
+
+public sealed class StopHandler(IServiceScopeFactory scopes) : GarageHandler(scopes)
+{
+    public override string Type => "recycling.stop";
+
+    protected override Task<GarageState> RunAsync(RecyclingService recycling, Guid owner, JsonElement? payload, CancellationToken cancellationToken) =>
+        recycling.StopAsync(owner, cancellationToken);
 }
 
 public sealed class PlaceHandler(IServiceScopeFactory scopes) : GarageHandler(scopes)
@@ -488,6 +530,7 @@ public sealed class RecyclingModule : IGameModule
         services.AddScoped<RecyclingService>();
         services.AddSingleton<IMessageHandler, GetGarageHandler>();
         services.AddSingleton<IMessageHandler, SortHandler>();
+        services.AddSingleton<IMessageHandler, StopHandler>();
         services.AddSingleton<IMessageHandler, PlaceHandler>();
         services.AddSingleton<IMessageHandler, PickUpHandler>();
     }

@@ -54,7 +54,8 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `character.get` | | `character` albo `character.none` |
 | `character.create` | `{ name, appearance }` | `character` `{ name, appearance, level, xp, levelXp, nextLevelXp, tool: { id, name } \| null }` |
 | `garage.get` | | `garage` `{ trash, queue: [finishesAtMs], serverTime, sortSeconds, maxQueue, results: [{ id, name }], xp, room: { width, depth, cellSize }, objects: [{ id, kind, x, y, rotation }], furniture: { kind: { name, width, depth } } }`; przy okazji wydaje zakończone segregacje |
-| `recycling.sort` | `{ count }` | `garage`; wymaga kosza stojącego w garażu |
+| `recycling.sort` | `{ count }` | `garage`; wymaga kosza stojącego w garażu. Bez automatycznej sortowni (`furniture_sorting_machine`, 1000 $ u handlarza) w kolejce może być tylko 1 worek, a klient zleca kolejny, dopóki postać stoi przy koszu; z sortownią kolejka mieści 10 worków i działa bez gracza |
+| `recycling.stop` | | `garage`; bez sortowni przerywa segregację (niedokończony worek wraca do śmieci); z sortownią nic nie robi. Klient wysyła je, gdy postać odchodzi od kosza |
 | `garage.pickup` | `{ id }` | `garage`; mebel trafia do ekwipunku |
 | `garage.place` | `{ kind, x, y, rotation }` | `garage`; stawia mebel z ekwipunku na polu (x, y), obróconym o `rotation` × 90° (0–3) |
 | `inventory.get` | | `inventory` `{ items: [{ id, name, quantity }] }` |
