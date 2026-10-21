@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -439,6 +439,29 @@ def render_forestry(layout: dict):
         layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), build)
 
 
+# --- Crafting -------------------------------------------------------------------------------------
+
+def crafted(build):
+    def make():
+        build()
+        return meshes()
+    return make
+
+
+CRAFTING = {
+    # Objects a player puts on a plot, built like the garage's furniture; the furnace a bit larger
+    # so it reads at the plot's scale. name: (canvas width, height, camera target height, builder).
+    "workbench": (144, 128, 0.6, crafted(lambda: ra.build_workbench(None, Vector((0, 0, 0))))),
+    "furnace": (96, 112, 0.6, crafted(lambda: ra.build_furnace(None, Vector((0, 0, 0)), 1.4))),
+}
+
+
+def render_crafting(layout: dict):
+    for name, (w, h, tz, build) in CRAFTING.items():
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), build)
+
+
 # --- Railway --------------------------------------------------------------------------------------
 
 def track(length):
@@ -696,6 +719,31 @@ def icon_models():
             cone = ra.cylinder("tier", 0.13 * (1 - t * 0.6), 0.14, (0, 0, 0.17 + t * 0.12), needles, radius2=0.01, verts=12)
             ra.displace(cone, 0.015, 0.4, 1)
 
+    def ingots(color, roughness=0.3):
+        def build():
+            m = ra.plain("ingot", color, roughness, 1.0, variation=0.12, grime=0.35)
+            # A trapezoid bar, wider at the bottom, as cast in a mould.
+            v = [(-0.12, -0.055, 0), (0.12, -0.055, 0), (0.12, 0.055, 0), (-0.12, 0.055, 0),
+                 (-0.1, -0.038, 0.06), (0.1, -0.038, 0.06), (0.1, 0.038, 0.06), (-0.1, 0.038, 0.06)]
+            f = [(0, 1, 2, 3), (4, 7, 6, 5), (0, 4, 5, 1), (1, 5, 6, 2), (2, 6, 7, 3), (3, 7, 4, 0)]
+            for i, (x, y, z, turn) in enumerate(((0, -0.065, 0, 0), (0, 0.065, 0, 0), (0, 0, 0.06, math.pi / 2))):
+                bar = ra.mesh_from("ingot", [(vx, vy, vz) for vx, vy, vz in v], f, m)
+                bar.location = (x, y, z)
+                bar.rotation_euler = (0, 0, turn + random.uniform(-0.05, 0.05))
+                bevel = bar.modifiers.new("bevel", "BEVEL")
+                bevel.width = 0.006
+                bevel.segments = 2
+        return build
+
+    def nails():
+        steel = ra.rusty_metal("nail", (0.2, 0.2, 0.21), rust=0.15)
+        for i in range(9):
+            a = random.uniform(-0.6, 0.6) + (0.3 if i % 2 else -0.2)
+            d = Vector((math.cos(a), math.sin(a), 0))
+            at = Vector((random.uniform(-0.1, 0.1), random.uniform(-0.1, 0.1), 0.012 + 0.016 * (i // 3)))
+            ra.cylinder("shank", 0.014, 0.3, at, steel, rotation=(0, math.radians(90), a), verts=8, radius2=0.004)
+            ra.cylinder("head", 0.032, 0.012, at - d * 0.15, steel, rotation=(0, math.radians(90), a), verts=16)
+
     def sand():
         d = ra.sphere("pile", 0.22, (0, 0, -0.04), sand_mat(), scale=(1, 1, 0.75), segments=24)
         ra.displace(d, 0.02, 0.2, 2)
@@ -711,6 +759,12 @@ def icon_models():
         "item_tin_ore": stones((0.08, 0.06, 0.05), (0.62, 0.62, 0.58)),
         "item_silver_ore": stones((0.11, 0.11, 0.12), (0.85, 0.86, 0.9)),
         "item_gold_ore": stones((0.1, 0.09, 0.08), (1.0, 0.82, 0.18)),
+        "item_iron_ingot": ingots((0.12, 0.12, 0.13), 0.6),
+        "item_copper_ingot": ingots((0.45, 0.16, 0.06), 0.4),
+        "item_tin_ingot": ingots((0.28, 0.29, 0.27), 0.5),
+        "item_silver_ingot": ingots((0.5, 0.52, 0.56), 0.3),
+        "item_gold_ingot": ingots((0.6, 0.36, 0.06), 0.3),
+        "item_nails": nails,
     }
 
 
@@ -728,7 +782,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "forestry", "mine", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "forestry", "mine", "crafting", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -748,6 +802,8 @@ if __name__ == "__main__":
         render_station(layout)
     if "mine" in args:
         render_mine(layout)
+    if "crafting" in args:
+        render_crafting(layout)
     # "item_<id>" arguments render just those icons.
     if "icons" in args or any(a.startswith("item_") for a in args):
         render_icons([a for a in args if a.startswith("item_")])

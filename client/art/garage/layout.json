@@ -161,6 +161,24 @@
     "anchorX": 66,
     "anchorY": 135
    }
+  ],
+  "furniture_furnace": [
+   {
+    "anchorX": 62,
+    "anchorY": 102
+   },
+   {
+    "anchorX": 62,
+    "anchorY": 97
+   },
+   {
+    "anchorX": 62,
+    "anchorY": 85
+   },
+   {
+    "anchorX": 62,
+    "anchorY": 85
+   }
   ]
  },
  "projection": {

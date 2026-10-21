@@ -4,6 +4,7 @@ extends Node2D
 ## The character walks with WSAD or by clicking; clicking a tree, rock or dune walks up to it and
 ## works it with the tool in hand, and a mine is worked with a pickaxe for ore.
 ## The station window loads goods from the inventory and sends them by train to other plots.
+## A workbench or a furnace from the inventory can be put on a free tile and used there.
 
 ## Keyboard actions of this screen: name and keys.
 const ACTIONS := {
@@ -64,6 +65,8 @@ const WORK := {
 	DUNE: {"name": "Wydma", "tool": "tool_shovel", "verb": "Kop", "need": "łopaty"},
 }
 const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalnia"}
+## What a player can put on a plot from the inventory, and its sprite there.
+const PLACED_SPRITES := {"furniture_workbench": "workbench", "furniture_furnace": "furnace"}
 ## Crops in the order of the art; the server sends their names and growing times.
 const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower"]
 ## A crop shows as a sprout until this much of its growing time is left, then half grown.
@@ -120,6 +123,12 @@ var _mine_units := 50
 ## The mine under the mouse and the one being worked, or -1.
 var _hover_mine := -1
 var _work_mine := -1
+## Objects put on the plot: tile → { id, kind, name }.
+var _placed := {}
+## The kind being put on the plot from the inventory, or "".
+var _placing := ""
+## The placed object whose window is open, or (-1, -1).
+var _using := Vector2i(-1, -1)
 
 var _astar := AStarGrid2D.new()
 var _sources := {}
@@ -177,6 +186,8 @@ var _loading: Label
 var _inventory_window: GameWindow
 var _slots: InventoryGrid
 var _station_window: GameWindow
+var _crafting_window: CraftingWindow
+var _furnace_window: FurnaceWindow
 var _station_box: VBoxContainer
 var _station_state := {}
 var _clock_offset := 0.0
@@ -262,6 +273,7 @@ func _tile_set(shadows: bool) -> TileSet:
 	for kind: int in SPRITES:
 		sprites.append_array(SPRITES[kind])
 	sprites.append_array(["sapling", "tree_young"])
+	sprites.append_array(PLACED_SPRITES.values())
 	for sprite in sprites:
 		_add_source(set, sprite, sprite + ("_shadow" if shadows else ""), not shadows)
 	if not shadows:
@@ -322,6 +334,8 @@ func _apply_plot(plot: Dictionary) -> void:
 		_fields[Vector2i(field["tileX"], field["tileY"])] = {"crop": field["crop"], "readyAt": field["readyAt"]}
 	for tree: Dictionary in plot.get("trees", []):
 		_trees[Vector2i(tree["tileX"], tree["tileY"])] = tree["readyAt"]
+	for object: Dictionary in plot.get("objects", []):
+		_placed[Vector2i(object["tileX"], object["tileY"])] = object
 
 	# The ground: the biome's texture repeated over the plot, squashed to the 45° view.
 	var floor_name: String = FLOORS.get(int(plot["biome"]), "grass")
@@ -457,6 +471,8 @@ func _draw_cell(cell: Vector2i) -> void:
 
 ## The sprite standing on a tile: nature, the crop growing on a field or a planted tree; "" for nothing.
 func _sprite_at(cell: Vector2i) -> String:
+	if _placed.has(cell):
+		return PLACED_SPRITES.get(_placed[cell]["kind"], "")
 	if _fields.has(cell):
 		return _crop_sprite(cell)
 	if _trees.has(cell):
@@ -530,11 +546,13 @@ func _build_paths() -> void:
 		for x in _size:
 			if _tiles[y * _size + x] in SOLID:
 				_astar.set_point_solid(Vector2i(x, y), true)
+	for cell: Vector2i in _placed:
+		_astar.set_point_solid(cell, true)
 
 
 func _solid(cell: Vector2i) -> bool:
 	var kind := _tile(cell)
-	return kind < 0 or kind in SOLID
+	return kind < 0 or kind in SOLID or _placed.has(cell)
 
 
 ## Whether the player can stand at a position (in tiles).
@@ -699,14 +717,14 @@ func _update_hover() -> void:
 		if mine >= 0:
 			_mines[mine]["sprite"].modulate = Color(1.25, 1.2, 1.1)
 	var ground := _ground_cell()
-	var pointing := cell.x >= 0 or station or mine >= 0 or _fields.has(ground) or _can_till(ground) or _can_plant(ground)
+	var pointing := cell.x >= 0 or station or mine >= 0 or _fields.has(ground) or _can_till(ground) or _can_plant(ground) or _can_place(ground)
 	Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND if pointing else Input.CURSOR_ARROW)
 	_marks.queue_redraw()
 	_update_prompt()
 	if mine >= 0:
 		_update_mine_label(mine)
 	else:
-		_update_field_label(cell if cell.x >= 0 and (_fields.has(cell) or _trees.has(cell)) else ground)
+		_update_field_label(cell if cell.x >= 0 and (_fields.has(cell) or _trees.has(cell) or _placed.has(cell)) else ground)
 
 
 ## The tile under the mouse, or (-1, -1) when the mouse is over the interface.
@@ -718,21 +736,30 @@ func _ground_cell() -> Vector2i:
 
 ## Whether the hoe can turn this tile into a field.
 func _can_till(cell: Vector2i) -> bool:
-	return _fertile and Game.tool().get("id", "") == "tool_hoe" and _tile(cell) == NONE and not _fields.has(cell)
+	return _placing == "" and _fertile and Game.tool().get("id", "") == "tool_hoe" and _tile(cell) == NONE and not _fields.has(cell) and not _placed.has(cell)
 
 
 ## Whether a sapling can be planted on this tile now.
 func _can_plant(cell: Vector2i) -> bool:
-	return _planting and _tree_grow_seconds > 0.0 and _tile(cell) == NONE and not _fields.has(cell) and not _trees.has(cell)
+	return _planting and _tree_grow_seconds > 0.0 and _tile(cell) == NONE and not _fields.has(cell) and not _trees.has(cell) and not _placed.has(cell)
+
+
+## Whether the object being placed can go on this tile: free ground, not under the player.
+func _can_place(cell: Vector2i) -> bool:
+	var spawn: Dictionary = _plot.get("spawn", {})
+	return _placing != "" and _tile(cell) == NONE and not _fields.has(cell) and not _trees.has(cell) and not _placed.has(cell) \
+		and cell != Vector2i(spawn.get("x", -1), spawn.get("y", -1)) and Vector2i(_player.floor_pos.floor()) != cell
 
 
 ## The name of the crop or planted tree under the mouse and how long until it is ripe.
 func _update_field_label(cell: Vector2i) -> void:
-	_field_label.visible = (_fields.has(cell) or _trees.has(cell)) and _menu_cell.x < 0
+	_field_label.visible = (_fields.has(cell) or _trees.has(cell) or _placed.has(cell)) and _menu_cell.x < 0
 	if not _field_label.visible:
 		return
 	var crop: Variant = _fields[cell]["crop"] if _fields.has(cell) else null
-	if _trees.has(cell):
+	if _placed.has(cell):
+		_field_label.text = "%s: kliknij, aby użyć" % _placed[cell]["name"]
+	elif _trees.has(cell):
 		if _tree_grown(cell):
 			_field_label.text = "Drzewo: urosło, zetnij je siekierą"
 		else:
@@ -754,7 +781,11 @@ func _draw_marks() -> void:
 		var ok: bool = Game.tool().get("id", "") == WORK[_work_kind(_hovered)]["tool"]
 		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8) if ok else Color(1.0, 0.42, 0.35, 0.8))
 	var ground := _ground_cell()
-	if _hovered.x < 0 and (_fields.has(ground) or _can_till(ground) or _can_plant(ground)):
+	if _hovered.x >= 0 and _placed.has(_hovered):
+		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8))
+	if _placing != "" and ground.x >= 0:
+		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8))
+	elif _hovered.x < 0 and (_fields.has(ground) or _can_till(ground) or _can_plant(ground)):
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8))
 	if _work.x >= 0:
 		_draw_ring(_cell_centre(_work), Color(1, 1, 1, 0.7))
@@ -777,7 +808,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_LEFT:
 			_update_hover()
 			var cell := Vector2i((get_global_mouse_position() / TILE).floor())
-			if _hovered.x >= 0:
+			if _placing != "":
+				if _can_place(cell):
+					_go_and(cell, _place_object, true)
+				else:
+					_show_toast("Tu nie można tego postawić. Wybierz wolne pole.", UI.ERROR)
+			elif _hovered.x >= 0:
 				_act_on(_hovered)
 			elif _hover_station:
 				_go_to_station()
@@ -795,16 +831,25 @@ func _unhandled_input(event: InputEvent) -> void:
 					_walk_to(cell)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("cancel"):
-		if _station_window.visible or _inventory_window.visible:
-			_station_window.hide_window()
-			_inventory_window.hide_window()
+		if _placing != "":
+			_stop_placing()
+		elif _station_window.visible or _inventory_window.visible or _crafting_window.visible or _furnace_window.visible:
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window]:
+				window.hide_window()
 		elif _planting:
 			_set_planting(false)
 		else:
 			_stop_work()
 			_path = PackedVector2Array()
 	elif event.is_action_pressed("interact"):
-		if _near_station():
+		if _nearest_placed().x >= 0:
+			var at := _nearest_placed()
+			if _using == at and (_crafting_window.visible or _furnace_window.visible):
+				_crafting_window.hide_window()
+				_furnace_window.hide_window()
+			else:
+				_use_placed(at)
+		elif _near_station():
 			_station_window.toggle()
 			if _station_window.visible:
 				_refresh_station()
@@ -1013,6 +1058,9 @@ func _vanish(sprite_name: String, cell: Vector2i, fall: bool) -> void:
 
 ## What a click on a tile does: work nature, sow an empty field, reap a ripe crop.
 func _act_on(cell: Vector2i) -> void:
+	if _placed.has(cell):
+		_go_and(cell, _use_placed)
+		return
 	if not _fields.has(cell):
 		_work_on(cell)
 		return
@@ -1026,15 +1074,15 @@ func _act_on(cell: Vector2i) -> void:
 		_show_toast("%s dojrzeje za %d:%02d." % [_crops[crop]["name"], left / 60, left % 60], UI.MUTED)
 
 
-## Walks onto or next to a tile, then calls `action` with it.
-func _go_and(cell: Vector2i, action: Callable) -> void:
+## Walks onto or next to a tile (always next to it with `next_to`), then calls `action` with it.
+func _go_and(cell: Vector2i, action: Callable, next_to := false) -> void:
 	_stop_work()
-	if _near(cell):
+	if _near(cell) and not (next_to and Vector2i(_player.floor_pos.floor()) == cell):
 		action.call(cell)
 		return
 	_walk_to(cell, func() -> void:
 		if _near(cell):
-			action.call(cell), _solid(cell))
+			action.call(cell), _solid(cell) or next_to)
 
 
 func _till(cell: Vector2i) -> void:
@@ -1180,6 +1228,123 @@ func _plant_tree(cell: Vector2i) -> void:
 		_show_toast("To była ostatnia sadzonka.", UI.MUTED)
 	if _inventory_window.visible or _station_window.visible:
 		_reload_inventory()
+
+
+# --- Workbench and furnace -------------------------------------------------------------------------
+
+## Starts putting a workbench or furnace from the inventory on the plot: a click on free ground places it.
+func _start_placing(kind: String) -> void:
+	_set_planting(false)
+	_stop_work()
+	_inventory_window.hide_window()
+	_placing = kind
+	_show_toast("Kliknij wolne pole, aby postawić: %s. Esc anuluje." % _item_name(kind))
+	_update_hint()
+
+
+func _stop_placing() -> void:
+	_placing = ""
+	_update_hint()
+
+
+func _item_name(item: String) -> String:
+	for stack: Dictionary in _items:
+		if stack["id"] == item:
+			return stack["name"]
+	return item
+
+
+func _place_object(cell: Vector2i) -> void:
+	if not _can_place(cell):
+		_show_toast("Tu nie można tego postawić.", UI.ERROR)
+		return
+	var kind := _placing
+	_stop_placing()
+	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
+	var reply := await Net.request("plot.place", {"x": _at.x, "y": _at.y, "kind": kind, "tileX": cell.x, "tileY": cell.y})
+	if reply["type"] != "plot.placed":
+		_show_error(reply)
+		return
+	var object: Dictionary = reply["payload"]["object"]
+	var at := Vector2i(object["tileX"], object["tileY"])
+	_placed[at] = object
+	_astar.set_point_solid(at, true)
+	_draw_cell(at)
+	_show_toast("%s stoi na działce. Kliknij, aby użyć." % object["name"])
+	_reload_inventory()
+
+
+## The placed object next to the player, or (-1, -1).
+func _nearest_placed() -> Vector2i:
+	for cell: Vector2i in _placed:
+		if _near(cell):
+			return cell
+	return Vector2i(-1, -1)
+
+
+func _use_placed(cell: Vector2i) -> void:
+	if not _placed.has(cell):
+		return
+	var object: Dictionary = _placed[cell]
+	_using = cell
+	_station_window.hide_window()
+	if object["kind"] == "furniture_furnace":
+		_crafting_window.hide_window()
+		_furnace_window.open_at(object["id"])
+	else:
+		_furnace_window.hide_window()
+		_crafting_window.open_at(object["id"])
+
+
+func _pick_up_placed(id: String) -> void:
+	var reply := await Net.request("plot.pickup", {"x": _at.x, "y": _at.y, "id": id})
+	if reply["type"] != "plot.pickedUp":
+		_show_error(reply)
+		return
+	for cell: Vector2i in _placed.keys():
+		if _placed[cell]["id"] == id:
+			_show_toast("%s: schowano do ekwipunku." % _placed[cell]["name"])
+			_placed.erase(cell)
+			_astar.set_point_solid(cell, _tile(cell) in SOLID)
+			if _hovered == cell:
+				_hovered = Vector2i(-1, -1)
+			_draw_cell(cell)
+	_crafting_window.hide_window()
+	_furnace_window.hide_window()
+	_using = Vector2i(-1, -1)
+	_reload_inventory()
+
+
+## Orders from a workbench are done: they are in the inventory now.
+func _on_crafted(done: Array, xp: Variant) -> void:
+	var at := _cell_centre(_using) if _using.x >= 0 else _player.position
+	for i in done.size():
+		var item: Dictionary = done[i]
+		_float_text("+%d %s" % [int(item["quantity"]), item["name"]], UI.TEXT, at, i * 0.25, item["id"])
+	_gain(xp, at, done.size() * 0.25)
+	_show_toast("Gotowe: %s. Leży w ekwipunku." % ", ".join(done.map(func(item: Dictionary) -> String: return item["name"])))
+	_reload_inventory()
+
+
+func _on_furnace_changed(taken: Array, xp: Variant) -> void:
+	var at := _cell_centre(_using) if _using.x >= 0 else _player.position
+	for i in taken.size():
+		var item: Dictionary = taken[i]
+		_float_text("+%d %s" % [int(item["quantity"]), item["name"]], UI.TEXT, at, i * 0.25, item["id"])
+	_gain(xp, at, taken.size() * 0.25)
+	_reload_inventory()
+
+
+func _gain(xp: Variant, at: Vector2, delay: float) -> void:
+	if xp == null:
+		return
+	var gained := int(xp["xp"]) - int(Game.character.get("xp", 0))
+	if gained > 0:
+		_float_text("+%d XP" % gained, UI.GOLD, at, delay)
+	Game.gain_xp(xp)
+	_refresh_character()
+	if xp.get("leveledUp", false):
+		_show_toast("Awans! Poziom %d" % int(xp["level"]), UI.GOLD)
 
 
 # --- Mining --------------------------------------------------------------------------------------
@@ -1374,6 +1539,10 @@ func _process(delta: float) -> void:
 	_update_stages()
 	if _station_window.visible and not _near_station():
 		_station_window.hide_window()
+	if _using.x >= 0 and (not _placed.has(_using) or not _near(_using, REACH + 1.5)):
+		_crafting_window.hide_window()
+		_furnace_window.hide_window()
+		_using = Vector2i(-1, -1)
 	_update_trips()
 
 
@@ -1383,7 +1552,11 @@ func _screen(world: Vector2) -> Vector2:
 
 func _update_prompt() -> void:
 	var text := ""
-	if _work.x < 0 and _near_station() and not _station_window.visible:
+	var placed := _nearest_placed()
+	if _work.x < 0 and placed.x >= 0:
+		if not (_using == placed and (_crafting_window.visible or _furnace_window.visible)):
+			text = "[E] %s" % _placed[placed]["name"]
+	elif _work.x < 0 and _near_station() and not _station_window.visible:
 		text = "[E] Stacja kolejowa"
 	elif _work.x < 0:
 		var cell := _nearest_work()
@@ -1587,6 +1760,9 @@ func _update_hint() -> void:
 		"tool_shovel": "Kliknij wydmę, aby ją przekopać łopatą.",
 		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile else "Motyką orze się tylko żyzne gleby.",
 	}
+	if _placing != "":
+		_hint.text = "Stawianie: kliknij wolne pole, aby postawić %s. Esc anuluje." % _item_name(_placing).to_lower()
+		return
 	if _planting:
 		_hint.text = "Sadzenie: kliknij wolne pole, aby posadzić sadzonkę (masz %d). [P] lub Esc kończy." % _saplings
 		return
@@ -1654,13 +1830,17 @@ func _build_windows() -> void:
 	_slots.hint = func(item: String) -> String:
 		if item == "sapling":
 			return "Kliknij, aby sadzić na działce"
+		if PLACED_SPRITES.has(item):
+			return "Kliknij, aby postawić na działce"
 		return "Kliknij, aby wziąć do ręki" if item in ToolSlot.TOOLS else ""
 	_slots.clicked.connect(func(item: String) -> void:
 		if item in ToolSlot.TOOLS:
 			_tool_slot.equip(item)
 		elif item == "sapling":
 			_inventory_window.hide_window()
-			_set_planting(true))
+			_set_planting(true)
+		elif PLACED_SPRITES.has(item):
+			_start_placing(item))
 	_slots.changed.connect(func(items: Array) -> void:
 		_items = items
 		_count_saplings(items))
@@ -1677,9 +1857,24 @@ func _build_windows() -> void:
 	_station_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	scroll.add_child(_station_box)
 	_station_window.content.add_child(scroll)
+	_crafting_window = CraftingWindow.new()
+	_crafting_window.can_pick_up = true
+	_crafting_window.position = Vector2(1280 - 400 - 12, 64)
+	_crafting_window.finished.connect(_on_crafted)
+	_crafting_window.inventory_changed.connect(_reload_inventory)
+	_crafting_window.failed.connect(_show_error)
+	_crafting_window.pick_up_requested.connect(_pick_up_placed)
+	_furnace_window = FurnaceWindow.new()
+	_furnace_window.can_pick_up = true
+	_furnace_window.position = Vector2(1280 - 400 - 12, 64)
+	_furnace_window.inventory_changed.connect(_on_furnace_changed)
+	_furnace_window.failed.connect(_show_error)
+	_furnace_window.pick_up_requested.connect(_pick_up_placed)
 	var layer := _hud
 	layer.add_child(_inventory_window)
 	layer.add_child(_station_window)
+	layer.add_child(_crafting_window)
+	layer.add_child(_furnace_window)
 
 
 func _reload_inventory() -> void:
@@ -1689,6 +1884,8 @@ func _reload_inventory() -> void:
 	_items = reply["payload"]["items"]
 	_count_saplings(_items)
 	_slots.show_items(reply["payload"])
+	_crafting_window.set_items(_items)
+	_furnace_window.set_items(_items)
 	if _station_window.visible and not _station_state.is_empty():
 		_show_station()
 
@@ -1980,6 +2177,8 @@ func _load() -> void:
 	_update_hint()
 	_loading.queue_free()
 	_reload_inventory()
+	# Orders made while the player was away land in the inventory now.
+	_crafting_window.refresh()
 
 
 # --- Effects ---------------------------------------------------------------------------------------------

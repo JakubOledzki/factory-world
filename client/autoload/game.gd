@@ -30,7 +30,7 @@ const ERRORS := {
 	"not_traded": "Handlarz nie handluje tym przedmiotem.",
 	"unknown_item": "Nieznany przedmiot.",
 	"no_bin": "Najpierw postaw w garażu kosz na śmieci.",
-	"not_placeable": "Tego nie da się postawić w garażu.",
+	"not_placeable": "Tego nie da się tu postawić.",
 	"bad_position": "To się tu nie zmieści.",
 	"blocked": "To miejsce jest zajęte.",
 	"no_object": "Tego już tu nie ma.",
@@ -56,6 +56,12 @@ const ERRORS := {
 	"not_enough_offered": "W ofercie zostało mniej sztuk.",
 	"too_many_offers": "Możesz mieć najwyżej 20 otwartych ofert każdego rodzaju.",
 	"bad_price": "Cena musi wynosić od 0,01 $ do 1 000 000 $.",
+	"no_recipe": "Nie ma takiego przepisu.",
+	"crafting_queue_full": "Przy stole czeka już 5 zamówień.",
+	"no_order": "Tego zamówienia już nie ma.",
+	"furnace_busy": "W piecu przetapia się inna ruda. Wyjmij ją najpierw.",
+	"furnace_full": "Tyle się nie zmieści w piecu.",
+	"not_smeltable": "Tego nie da się włożyć do pieca.",
 }
 
 var token := ""

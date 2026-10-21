@@ -240,7 +240,7 @@ public sealed class PlotService(GameDb db, WorldMap map, IInventory inventory, I
         return tiles;
     }
 
-    /// <summary>Whether nothing stands on a tile of the plot: no nature, field or planted tree.</summary>
+    /// <summary>Whether nothing stands on a tile of the plot: no nature, field, planted tree or placed object.</summary>
     public async Task<bool> FreeAsync(Guid player, int x, int y, int tileX, int tileY, CancellationToken cancellationToken)
     {
         if (!PlotLayout.Inside(tileX, tileY) || (await TilesAsync(player, x, y, cancellationToken))[tileY * PlotLayout.Size + tileX] != (byte)TileObject.None)
@@ -252,6 +252,7 @@ public sealed class PlotService(GameDb db, WorldMap map, IInventory inventory, I
             """
             SELECT EXISTS (SELECT 1 FROM world.plot_fields WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty)
                 OR EXISTS (SELECT 1 FROM world.plot_trees WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty)
+                OR EXISTS (SELECT 1 FROM world.plot_objects WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty)
             """, cancellationToken);
         command.Parameters.AddWithValue("x", x);
         command.Parameters.AddWithValue("y", y);
@@ -394,6 +395,7 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
         var trees = await scope.ServiceProvider.GetRequiredService<ForestService>().TreesAsync(request.X, request.Y, cancellationToken);
         var biome = map.BiomeAt(request.X, request.Y);
         var mines = await scope.ServiceProvider.GetRequiredService<MineService>().MinesAsync(request.X, request.Y, biome, cancellationToken);
+        var objects = await scope.ServiceProvider.GetRequiredService<PlotObjectService>().ObjectsAsync(request.X, request.Y, cancellationToken);
 
         using var packed = new MemoryStream();
         using (var gzip = new GZipStream(packed, CompressionLevel.Optimal))
@@ -421,6 +423,8 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             chopSeconds = HarvestRules.ChopTime.TotalSeconds,
             treeGrowSeconds = Forestry.GrowTime(biome)?.TotalSeconds,
             trees = trees.Select(PlantTreeHandler.TreeJson),
+            objects = objects.Select(PlaceOnPlotHandler.ObjectJson),
+            placeable = PlotObjects.Placeable,
             fertile = Farming.Fertile(biome),
             fields = fields.Select(FieldHandler.FieldJson),
             crops = Farming.Crops.Select(c => new
