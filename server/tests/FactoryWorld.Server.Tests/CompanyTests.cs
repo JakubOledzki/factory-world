@@ -185,6 +185,49 @@ public sealed class CompanyTests(ServerFactory factory) : IClassFixture<ServerFa
     }
 
     [Fact]
+    public async Task Players_on_the_same_plot_see_each_other_walk()
+    {
+        var (owner, member, _) = await CompanyAsync();
+        using var o = owner;
+        using var m = member;
+        using var stranger = await PlayerAsync();
+        var plot = await BuyAsync(owner, Biome.Farmland);
+        Assert.Equal("company", (await owner.SendAsync("company.addPlot", new { x = plot.X, y = plot.Y })).Type());
+
+        object At(double x, double y, string facing = "down", bool walking = false) =>
+            new { x = plot.X, y = plot.Y, posX = x, posY = y, facing, walking };
+
+        // Alone on the plot, the owner sees nobody.
+        var alone = await owner.SendAsync("plot.presence", At(125.5, 11.5));
+        Assert.Equal("plot.presence", alone.Type());
+        Assert.Equal(0, alone.Payload().GetProperty("players").GetArrayLength());
+
+        // The member comes in and sees the owner standing at the spawn...
+        var seen = (await member.SendAsync("plot.presence", At(126.5, 12.5, "right", true))).Payload().GetProperty("players");
+        Assert.Equal(1, seen.GetArrayLength());
+        Assert.Equal(owner.Name, seen[0].GetProperty("name").GetString());
+        Assert.Equal(125.5, seen[0].GetProperty("x").GetDouble());
+        Assert.Equal(JsonValueKind.Object, seen[0].GetProperty("appearance").ValueKind);
+
+        // ...and the owner sees the member walking.
+        var back = (await owner.SendAsync("plot.presence", At(125.5, 11.5))).Payload().GetProperty("players");
+        Assert.Equal(1, back.GetArrayLength());
+        Assert.Equal(member.Name, back[0].GetProperty("name").GetString());
+        Assert.Equal("right", back[0].GetProperty("facing").GetString());
+        Assert.True(back[0].GetProperty("walking").GetBoolean());
+
+        // Nobody else may say they stand on the plot.
+        Assert.Equal("not_owner", (await stranger.SendAsync("plot.presence", At(10, 10))).ErrorCode());
+
+        // A player who walks off is gone at once; one whose client goes quiet is gone after a while.
+        Assert.Equal("plot.left", (await member.SendAsync("plot.leave")).Type());
+        Assert.Equal(0, (await owner.SendAsync("plot.presence", At(125.5, 11.5))).Payload().GetProperty("players").GetArrayLength());
+        await member.SendAsync("plot.presence", At(130, 20));
+        factory.Time.Advance(PlotPresence.Timeout + TimeSpan.FromSeconds(1));
+        Assert.Equal(0, (await owner.SendAsync("plot.presence", At(125.5, 11.5))).Payload().GetProperty("players").GetArrayLength());
+    }
+
+    [Fact]
     public async Task Members_work_on_a_plot_brought_into_the_company_as_far_as_their_role_allows()
     {
         var (owner, member, _) = await CompanyAsync();
