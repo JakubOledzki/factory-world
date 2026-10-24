@@ -1524,6 +1524,11 @@ func _on_crafted(done: Array, xp: Variant) -> void:
 	_reload_inventory()
 
 
+func _on_researched(finished: Array, xp: Variant) -> void:
+	_gain(xp, _player.position, 0.0)
+	_show_toast("Zbadano: %s. Nowe przepisy czekają przy stole." % ", ".join(finished.map(func(t: Dictionary) -> String: return t["name"])), UI.GOOD)
+
+
 func _on_furnace_changed(taken: Array, xp: Variant) -> void:
 	var at := _cell_centre(_using) if _using.x >= 0 else _player.position
 	for i in taken.size():
@@ -2070,6 +2075,7 @@ func _build_windows() -> void:
 	_crafting_window.finished.connect(_on_crafted)
 	_crafting_window.inventory_changed.connect(_reload_inventory)
 	_crafting_window.failed.connect(_show_error)
+	_crafting_window.researched.connect(_on_researched)
 	_crafting_window.pick_up_requested.connect(_pick_up_placed)
 	_furnace_window = FurnaceWindow.new()
 	_furnace_window.can_pick_up = true
