@@ -99,6 +99,9 @@ public static class Items
     public const string VegetableSoup = "vegetable_soup";
     public const string Bigos = "bigos";
 
+    // Office: a computer put on a plot opens the market there, far from the garage.
+    public const string Computer = "furniture_computer";
+
     // Power on plots: a generator burns wood or coal, poles carry its power to machines near them.
     public const string Generator = "power_generator";
     public const string Pole = "power_pole";
@@ -168,6 +171,7 @@ public static class Items
         [OilPress] = "Tłocznia oleju",
         [PicklingBarrel] = "Beczka do kiszenia",
         [Bakery] = "Piec piekarski",
+        [Computer] = "Komputer",
         [Kitchen] = "Kuchnia polowa",
         [Flour] = "Mąka pszenna",
         [CornFlour] = "Mąka kukurydziana",

@@ -393,6 +393,25 @@ public sealed class CraftingTests(ServerFactory factory) : IClassFixture<ServerF
     }
 
     [Fact]
+    public async Task A_computer_bought_from_the_trader_stands_on_a_plot_and_goes_back_into_the_inventory()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tileX, tileY) = await PlotWithFreeTileAsync(client);
+
+        Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.Computer, quantity = 1 })).Type());
+        var placed = await client.SendAsync("plot.place", new { x, y, kind = Items.Computer, tileX, tileY });
+        Assert.Equal("plot.placed", placed.Type());
+        var computer = placed.Payload().GetProperty("object");
+        Assert.Equal("Komputer", computer.GetProperty("name").GetString());
+        Assert.Equal(0, Count(await client.InventoryAsync(), Items.Computer));
+
+        var objects = (await client.SendAsync("plot.enter", new { x, y })).Payload().GetProperty("objects");
+        Assert.Equal(Items.Computer, objects[0].GetProperty("kind").GetString());
+        Assert.Equal("plot.pickedUp", (await client.SendAsync("plot.pickup", new { x, y, id = computer.GetProperty("id").GetString() })).Type());
+        Assert.Equal(1, Count(await client.InventoryAsync(), Items.Computer));
+    }
+
+    [Fact]
     public async Task A_furnace_on_a_plot_smelts_too_and_only_its_owner_can_use_it()
     {
         using var client = await PlayerAsync();

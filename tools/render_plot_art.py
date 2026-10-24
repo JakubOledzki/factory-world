@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [power] [logistics] [<sprite>...] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [office] [power] [logistics] [<sprite>...] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -642,6 +642,52 @@ def render_processing(layout: dict):
         random.seed(zlib.crc32(name.encode()))
         layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build))
         # The inventory shows the machine as its sprite, cropped to a square icon.
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
+
+
+# --- Office ---------------------------------------------------------------------------------------
+
+def build_computer():
+    """A computer on a small wooden desk: a monitor facing the camera with a market chart glowing on
+    it, a keyboard and mouse in front, the case standing beside the desk."""
+    top = ra.wood("desk_top", (0.24, 0.15, 0.08))
+    legs = ra.wood("desk_legs", (0.12, 0.07, 0.04))
+    plastic = ra.plain("computer_plastic", (0.62, 0.6, 0.55), 0.5, variation=0.1)
+    dark = ra.plain("computer_dark", (0.03, 0.03, 0.035), 0.4)
+    ra.box("desk", (1.3, 0.75, 0.06), (0, 0.05, 0.75), top, bevel=0.015)
+    for x in (-0.6, 0.6):
+        for y in (-0.27, 0.37):
+            ra.box("desk_leg", (0.06, 0.06, 0.72), (x, y, 0.36), legs)
+    # The monitor: a stand, a bezel and the screen with a rising line of prices on it.
+    ra.box("stand", (0.24, 0.16, 0.03), (0, 0.2, 0.795), dark, bevel=0.01)
+    ra.box("neck", (0.06, 0.05, 0.2), (0, 0.22, 0.9), dark)
+    ra.box("monitor", (0.78, 0.07, 0.5), (0, 0.2, 1.22), plastic, bevel=0.02)
+    ra.box("screen", (0.7, 0.01, 0.42), (0, 0.162, 1.22), ra.emission("screen", (0.05, 0.16, 0.24), 2.5))
+    line = ra.emission("chart", (0.25, 1.0, 0.45), 6.0)
+    points = [(-0.3, 1.08), (-0.18, 1.14), (-0.06, 1.11), (0.06, 1.22), (0.18, 1.2), (0.3, 1.34)]
+    for (x0, z0), (x1, z1) in zip(points, points[1:]):
+        length = math.hypot(x1 - x0, z1 - z0)
+        ra.box("chart", (length, 0.012, 0.022), ((x0 + x1) / 2, 0.155, (z0 + z1) / 2), line,
+               rotation=(0, -math.atan2(z1 - z0, x1 - x0), 0))
+    ra.box("keyboard", (0.5, 0.17, 0.025), (-0.05, -0.12, 0.79), plastic, bevel=0.008)
+    ra.box("keys", (0.46, 0.13, 0.008), (-0.05, -0.12, 0.806), dark)
+    ra.sphere("mouse", 0.04, (0.32, -0.12, 0.79), plastic, scale=(0.8, 1.3, 0.5), segments=10)
+    # The case on the ground by the right legs, with a lit power button.
+    ra.box("case", (0.22, 0.5, 0.48), (0.82, 0.05, 0.24), plastic, bevel=0.015)
+    ra.cylinder("power", 0.022, 0.01, (0.82, -0.205, 0.4), ra.emission("power", (0.3, 0.8, 1.0), 6.0),
+                rotation=(math.radians(90), 0, 0), verts=12)
+
+
+OFFICE = {
+    # name: (canvas width, height, camera target height, builder); stands on one tile.
+    "computer": (128, 112, 0.7, build_computer),
+}
+
+
+def render_office(layout: dict):
+    for name, (w, h, tz, build) in OFFICE.items():
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build))
         ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
 
 
@@ -1496,7 +1542,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "power", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "power", "office", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -1523,6 +1569,8 @@ if __name__ == "__main__":
         render_crafting(layout, [a for a in args if a in CRAFTING])
     if "processing" in args:
         render_processing(layout)
+    if "office" in args:
+        render_office(layout)
     if "power" in args:
         render_power(layout)
     if "logistics" in args or any(a in LOGISTICS for a in args):

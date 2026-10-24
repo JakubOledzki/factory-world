@@ -303,5 +303,9 @@
   "anchorX": 144,
   "anchorY": 145,
   "lengthPx": 224
+ },
+ "computer": {
+  "anchorX": 64,
+  "anchorY": 72
  }
 }

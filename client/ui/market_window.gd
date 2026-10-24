@@ -4,10 +4,13 @@ extends GameWindow
 ## price) and trading between players (listings, buy orders and the player's own offers).
 ## The trader's prices change: a little from day to day, and a lot during events like a drought.
 ## It covers most of the screen: categories on the left and a search field filter every tab.
+## The garage opens it anywhere; on a plot it opens at a computer standing there.
 
-## A trade went through; the garage reloads the inventory and shows the new balance.
+## A trade went through; the garage or the plot reloads the inventory and shows the new balance.
 signal traded(balance_cents: int, item: String)
 signal failed(reply: Dictionary)
+## The player asked to put the computer the window was opened at back into the inventory.
+signal pick_up_requested(id: String)
 
 const TABS := ["Handlarz", "Gracze", "Moje oferty"]
 const MAX_QUANTITY := 10000
@@ -21,6 +24,9 @@ var _category := -1
 var _categories := CategoryList.new()
 var _list := ScrollContainer.new()
 var _search := UI.line_edit("Szukaj przedmiotu…")
+var _pick_up_button: Button
+## The computer on a plot the window was opened at, or "" in the garage.
+var computer := ""
 ## Two columns of items when they fit; with the bigger letters on phones one.
 var _columns := 1 if UI.touch() else 2
 
@@ -59,6 +65,10 @@ func _init() -> void:
 	_search.clear_button_enabled = true
 	_search.text_changed.connect(_on_search)
 	top.add_child(_search)
+	_pick_up_button = UI.button("Schowaj komputer", func() -> void: pick_up_requested.emit(computer))
+	_pick_up_button.tooltip_text = "Schowaj komputer do ekwipunku"
+	_pick_up_button.visible = false
+	top.add_child(_pick_up_button)
 	content.add_child(top)
 
 	# Categories on the left, the open tab's items on the right; each list scrolls on its own.
@@ -87,7 +97,14 @@ func show_window() -> void:
 	_open_tab(_tab)
 
 
-## The garage calls this whenever the inventory or the balance changes.
+## Opens the market at a computer on a plot, with a button to put the computer away.
+func open_at(id: String) -> void:
+	computer = id
+	_pick_up_button.visible = true
+	show_window()
+
+
+## The garage or the plot calls this whenever the inventory or the balance changes.
 func set_player(items: Array, balance: int) -> void:
 	_items = items
 	_balance = balance
@@ -540,7 +557,7 @@ func _send(type: String, payload: Dictionary, item: String, expected := "market.
 		failed.emit(reply)
 		await _reload()
 		return
-	# The garage reloads the inventory, then calls refresh().
+	# The screen reloads the inventory, then calls refresh().
 	traded.emit(int(reply["payload"]["balanceCents"]), item)
 
 

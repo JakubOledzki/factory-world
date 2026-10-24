@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FactoryWorld.Modules.Market;
 
 /// <summary>
-/// The NPC trader: always sells trash, saplings, nails, tools, an anvil, a chainsaw, belts, inserters, wooden chests, machines, generators, poles, flour, oil and bread and always buys raw materials.
+/// The NPC trader: always sells trash, saplings, nails, tools, an anvil, a chainsaw, belts, inserters, wooden chests, machines, the computer, generators, poles, flour, oil and bread and always buys raw materials.
 /// These are its usual prices (cents); <see cref="TraderPrices"/> moves them with the day's drift and the market's events.
 /// What it pays is the floor of the market: a quick sale gets it at once, players' listings usually pay more.
 /// </summary>
@@ -36,6 +36,7 @@ public static class NpcPrices
         [Items.PicklingBarrel] = 10_000,
         [Items.Bakery] = 60_000,
         [Items.Kitchen] = 60_000,
+        [Items.Computer] = 80_000,
         [Items.Flour] = 400,
         [Items.SunflowerOil] = 1500,
         [Items.Bread] = 1500,
@@ -101,6 +102,7 @@ public static class NpcPrices
         [Items.PicklingBarrel] = 1000,
         [Items.Bakery] = 4000,
         [Items.Kitchen] = 5000,
+        [Items.Computer] = 20_000,
         [Items.Flour] = 200,
         [Items.CornFlour] = 600,
         [Items.SunflowerOil] = 900,

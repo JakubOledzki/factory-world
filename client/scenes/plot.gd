@@ -7,6 +7,7 @@ extends Node2D
 ## A workbench, a furnace or a machine that processes crops (mill, oil press, pickling barrel,
 ## bakery, field kitchen) from the inventory can be put on a free tile and used there, and so can
 ## belts and inserters (turned with R) that move items between machines and chests, piles and silos.
+## A computer put on the plot opens the market there, as in the garage.
 
 ## Keyboard actions of this screen: name and keys.
 const ACTIONS := {
@@ -25,6 +26,7 @@ const ACTIONS := {
 	"world_map": [KEY_N],
 	"garage": [KEY_G],
 	"rotate": [KEY_R],
+	"market": [KEY_M],
 	"stats": [KEY_L],
 	"achievements": [KEY_O],
 }
@@ -83,9 +85,11 @@ const PLACED_SPRITES := {
 	"furniture_mill": "mill", "furniture_oil_press": "oil_press", "furniture_pickling_barrel": "pickling_barrel",
 	"furniture_bakery": "bakery", "furniture_kitchen": "kitchen", "logistics_inserter": "inserter", "logistics_splitter": "splitter",
 	"storage_wooden_chest": "wooden_chest", "storage_iron_chest": "iron_chest", "storage_wood_pile": "wood_pile",
-	"storage_heap": "heap", "storage_grain_silo": "grain_silo",
+	"storage_heap": "heap", "storage_grain_silo": "grain_silo", "furniture_computer": "computer",
 	"power_generator": "generator", "power_pole": "pole",
 }
+## A placed computer opens the market on the plot.
+const COMPUTER := "furniture_computer"
 ## Placed objects that open the machine window.
 const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen"]
 const BELT := "logistics_belt"
@@ -254,6 +258,9 @@ var _splitter_window: SplitterWindow
 var _company_window: CompanyWindow
 var _stats_window: StatsWindow
 var _machine_window: MachineWindow
+var _market_window: MarketWindow
+## "Rynek [M]" in the bar: shown while a computer stands on the plot.
+var _market_button: Button
 var _generator_window: GeneratorWindow
 var _achievements_window: AchievementsWindow
 var _clock_offset := 0.0
@@ -886,6 +893,8 @@ func _placed_label(cell: Vector2i) -> String:
 		var fill := "%d/%d miejsc" % [int(summary["usedSlots"]), int(summary["slots"])] if int(summary["slots"]) > 1 \
 			else "%d/%d" % [int(summary["stored"]), int(summary["capacity"])]
 		return "%s (%s): kliknij, aby otworzyć" % [object["name"], fill]
+	if object["kind"] == COMPUTER:
+		return "%s: kliknij, aby otworzyć rynek" % object["name"]
 	if object["kind"] == POLE:
 		return "Słup energetyczny (%s): kliknij po więcej" % _power.describe(object["id"])
 	if object["kind"] == GENERATOR:
@@ -1012,7 +1021,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_stop_placing()
 		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _achievements_window.visible \
 				or _mine_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _generator_window, _storage_window, _splitter_window, _stats_window, _company_window, _achievements_window, _mine_window]:
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _generator_window, _storage_window, _splitter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -1058,6 +1067,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_tool_slot.open()
 	elif event.is_action_pressed("plant"):
 		_set_planting(not _planting)
+	elif event.is_action_pressed("market"):
+		_toggle_market()
 	elif event.is_action_pressed("upgrade_mine"):
 		_toggle_mine_window()
 	elif event.is_action_pressed("world_map"):
@@ -1486,9 +1497,12 @@ func _place_object(cell: Vector2i) -> void:
 	_astar.set_point_solid(at, not _is_belt(at))
 	_draw_cell(at)
 	_logistics.set_objects(_placed)
+	_update_market_button()
 	_power.set_objects(_placed)
 	if kind in MACHINERY:
 		_show_toast("%s stoi %s. %s" % [object["name"], DIRECTIONS[int(object["rotation"])], "Kliknij kolejne pole albo Esc." if more else ""])
+	elif kind == COMPUTER:
+		_show_toast("%s stoi na działce. Kliknij go albo naciśnij [M], aby otworzyć rynek." % object["name"])
 	else:
 		_show_toast("%s stoi na działce. Kliknij, aby użyć." % object["name"])
 	_reload_inventory()
@@ -1510,7 +1524,11 @@ func _use_placed(cell: Vector2i) -> void:
 	_using = cell
 	_station_window.hide_window()
 	_hide_placed_windows()
-	if object["kind"] in FURNACES:
+	if object["kind"] == COMPUTER:
+		# The market stays open while the player walks around the plot.
+		_using = Vector2i(-1, -1)
+		_market_window.open_at(object["id"])
+	elif object["kind"] in FURNACES:
 		_furnace_window.open_at(object["id"])
 	elif object["kind"] in MACHINES:
 		_machine_window.open_at(object["id"], object["name"])
@@ -1524,7 +1542,7 @@ func _use_placed(cell: Vector2i) -> void:
 
 func _using_window_open() -> bool:
 	return _crafting_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
-		or _splitter_window.visible or _generator_window.visible
+		or _splitter_window.visible or _generator_window.visible or _market_window.visible
 
 
 func _hide_placed_windows() -> void:
@@ -1534,6 +1552,38 @@ func _hide_placed_windows() -> void:
 	_generator_window.hide_window()
 	_storage_window.hide_window()
 	_splitter_window.hide_window()
+	_market_window.hide_window()
+
+
+## The first computer on the plot, or (-1, -1) when there is none.
+func _computer() -> Vector2i:
+	for cell: Vector2i in _placed:
+		if _placed[cell]["kind"] == COMPUTER:
+			return cell
+	return Vector2i(-1, -1)
+
+
+## [M] and the bar's button: with a computer anywhere on the plot the market opens wherever the player is.
+func _toggle_market() -> void:
+	if _market_window.visible:
+		_market_window.hide_window()
+		return
+	var cell := _computer()
+	if cell.x < 0:
+		_show_toast("Rynek na działce działa przy komputerze. Kupisz go u handlarza w garażu i postawisz tutaj.", UI.MUTED)
+		return
+	_use_placed(cell)
+
+
+func _update_market_button() -> void:
+	_market_button.visible = _computer().x >= 0
+
+
+## After any trade in the market window: new balance and inventory.
+func _on_traded(balance_cents: int, _item: String) -> void:
+	_set_balance(balance_cents)
+	await _reload_inventory()
+	_market_window.refresh()
 
 
 func _pick_up_placed(id: String) -> void:
@@ -1552,6 +1602,7 @@ func _pick_up_placed(id: String) -> void:
 	_logistics.set_objects(_placed)
 	_power.set_objects(_placed)
 	_hide_placed_windows()
+	_update_market_button()
 	_using = Vector2i(-1, -1)
 	_reload_inventory()
 	_poll_logistics()
@@ -2052,9 +2103,13 @@ func _build_hud() -> void:
 		if _inventory_window.visible:
 			_reload_inventory()))
 	bar.add_child(UI.button("Stacja  [T]", _go_to_station))
+	_market_button = UI.button("Rynek  [M]", _toggle_market)
+	_market_button.tooltip_text = "Rynek przez komputer stojący na działce"
+	_market_button.visible = false
+	bar.add_child(_market_button)
 	bar.add_child(UI.button("Spółka  [K]", func() -> void: _company_window.toggle()))
 	_plant_button = UI.button("", func() -> void: _set_planting(not _planting))
-	_plant_button.tooltip_text = "Sadzonki kupisz na rynku w garażu. Z każdego ściętego drzewa jest szansa na nową."
+	_plant_button.tooltip_text = "Sadzonki kupisz na rynku w garażu albo przy komputerze na działce. Z każdego ściętego drzewa jest szansa na nową."
 	bar.add_child(_plant_button)
 	_update_plant_button()
 	_mine_button = UI.button("Rozbuduj kopalnię  [U]", _toggle_mine_window)
@@ -2195,6 +2250,7 @@ func _update_hint() -> void:
 func _set_balance(cents: int) -> void:
 	_balance = cents
 	_money.text = UI.money(cents)
+	_market_window.set_player(_items, _balance)
 	_station_window.set_player(_items, cents)
 
 
@@ -2338,6 +2394,11 @@ func _build_windows() -> void:
 	layer.add_child(_crafting_window)
 	layer.add_child(_furnace_window)
 	layer.add_child(_machine_window)
+	_market_window = MarketWindow.new()
+	_market_window.traded.connect(_on_traded)
+	_market_window.failed.connect(_show_error)
+	_market_window.pick_up_requested.connect(_pick_up_placed)
+	layer.add_child(_market_window)
 	layer.add_child(_mine_window)
 	layer.add_child(_generator_window)
 	_achievements_window = AchievementsWindow.new()
@@ -2357,6 +2418,7 @@ func _reload_inventory() -> void:
 	_storage_window.set_items(_items)
 	_splitter_window.set_items(_items)
 	_machine_window.set_items(_items)
+	_market_window.set_player(_items, _balance)
 	_generator_window.set_items(_items)
 	_station_window.set_player(_items, _balance)
 	if _mine_window.visible:
@@ -2396,7 +2458,8 @@ func _load() -> void:
 	var info := await Net.request("world.info")
 	var wallet := await Net.request("wallet.get")
 	var plot := await Net.request("plot.enter", {"x": _at.x, "y": _at.y})
-	for reply: Dictionary in [info, wallet, plot]:
+	var prices := await Net.request("market.prices")
+	for reply: Dictionary in [info, wallet, plot, prices]:
 		if reply["type"] == "error":
 			_loading.text = Game.error_text(reply)
 			await get_tree().create_timer(2.0).timeout
@@ -2412,7 +2475,9 @@ func _load() -> void:
 	_station_window.my_plots = _my_plots
 	_trains.world_width = _world_width
 	_set_balance(int(wallet["payload"]["balanceCents"]))
+	_market_window.set_prices(prices["payload"]["items"])
 	_apply_plot(plot["payload"])
+	_update_market_button()
 	_title.text = "Działka %d × %d" % [_at.x, _at.y]
 	_subtitle.text = "%s  ·  5 × 5 km" % _biome_names.get(int(plot["payload"]["biome"]), "?")
 	_update_hint()
