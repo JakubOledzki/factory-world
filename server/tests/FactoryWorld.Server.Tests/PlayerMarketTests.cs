@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FactoryWorld.Modules.Abstractions.Contracts;
+using FactoryWorld.Modules.Research;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FactoryWorld.Server.Tests;
@@ -170,7 +171,8 @@ public sealed class PlayerMarketTests(ServerFactory factory) : IClassFixture<Ser
         var items = (await seller.SendAsync("market.overview")).Payload().GetProperty("items").EnumerateArray().ToList();
         var corn = items.Single(i => i.GetProperty("id").GetString() == Items.Corn);
 
-        Assert.Equal(Items.Names.Count, items.Count);
+        // A new player sees everything but what they still have to research.
+        Assert.Equal(Items.Names.Keys.Count(id => !TechTree.ByItem.ContainsKey(id)), items.Count);
         Assert.Equal(800, corn.GetProperty("lowestCents").GetInt64());
         Assert.Equal(7, corn.GetProperty("listed").GetInt64());
         Assert.Equal(400, corn.GetProperty("highestCents").GetInt64());

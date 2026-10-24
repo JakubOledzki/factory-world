@@ -78,7 +78,7 @@ func _init() -> void:
 	side.add_child(_cancel_button)
 	side.add_child(HSeparator.new())
 	side.add_child(UI.label("Naraz bada się jedną technologię. Badanie trwa dalej, gdy odejdziesz od stołu.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
-	side.add_child(UI.label("Czego jeszcze nie zbadasz, możesz kupić od innych graczy na rynku.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	side.add_child(UI.label("Czego jeszcze nie zbadasz, tego nie ma dla ciebie na rynku: ani u handlarza, ani u innych graczy.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 
 ## Whether the tree came from the server yet.
