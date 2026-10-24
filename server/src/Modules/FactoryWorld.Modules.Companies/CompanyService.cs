@@ -340,7 +340,7 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
             }
 
             await ChangeStockAsync(company, item!, -quantity, cancellationToken);
-            await inventory.AddAsync(player, item!, quantity, cancellationToken);
+            await inventory.ReceiveAsync(player, item!, quantity, cancellationToken);
             await LogAsync(company, player, "take", cancellationToken, item, quantity);
             return await ReadAsync(player, cancellationToken);
         }, cancellationToken);

@@ -283,7 +283,7 @@ public sealed class ForesterService(
             XpGain? xp = null;
             if (taken > 0)
             {
-                await inventory.AddAsync(player, Items.Wood, taken, cancellationToken);
+                await inventory.ReceiveAsync(player, Items.Wood, taken, cancellationToken);
                 xp = await progress.AddXpAsync(player, taken / Foresters.WoodPerXp, cancellationToken);
             }
 

@@ -75,8 +75,9 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         return (i % PlotLayout.Size, i / PlotLayout.Size);
     }
 
+    /// <summary>The tool in the first slot of the tool bar.</summary>
     private static string? Tool(JsonElement character) =>
-        character.GetProperty("tool").ValueKind == JsonValueKind.Null ? null : character.GetProperty("tool").GetProperty("id").GetString();
+        character.GetProperty("tools")[0] is { ValueKind: JsonValueKind.Object } tool ? tool.GetProperty("id").GetString() : null;
 
     [Fact]
     public async Task A_forest_comes_with_an_axe_in_hand_and_the_next_tool_goes_to_the_inventory()

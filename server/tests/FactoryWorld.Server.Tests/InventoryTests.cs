@@ -31,7 +31,7 @@ public sealed class InventoryTests(ServerFactory factory) : IClassFixture<Server
 
         var first = Slots(await client.SendAsync("inventory.get"));
         Assert.Equal([0, 1, 2], first.Values.Order());
-        Assert.Equal(100, (await client.SendAsync("inventory.get")).Payload().GetProperty("slots").GetInt32());
+        Assert.Equal(Items.InventorySlots, (await client.SendAsync("inventory.get")).Payload().GetProperty("slots").GetInt32());
         Assert.Equal(first, Slots(await client.SendAsync("inventory.get")));
     }
 

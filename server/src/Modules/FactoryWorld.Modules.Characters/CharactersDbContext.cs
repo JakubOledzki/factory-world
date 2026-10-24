@@ -19,8 +19,20 @@ public sealed class Character
 
     public long Xp { get; set; }
 
-    /// <summary>The item in the tool slot, or null.</summary>
+    /// <summary>The item in the first slot of the tool bar, or null.</summary>
     public string? Tool { get; set; }
+
+    /// <summary>The item in the second slot of the tool bar (there with a backpack), or null.</summary>
+    public string? Tool2 { get; set; }
+
+    /// <summary>The item in the third slot of the tool bar (there with the best backpack), or null.</summary>
+    public string? Tool3 { get; set; }
+
+    /// <summary>The backpack worn, or null.</summary>
+    public string? Backpack { get; set; }
+
+    /// <summary>What is in each slot of the tool bar the character has now.</summary>
+    public IReadOnlyList<string?> Tools => new[] { Tool, Tool2, Tool3 }[..Equipment.ToolSlots(Backpack)];
 
     public DateTimeOffset CreatedAt { get; set; }
 }
@@ -43,6 +55,10 @@ public sealed class CharactersDbContext(DbContextOptions<CharactersDbContext> op
             e.Property(c => c.Name).HasMaxLength(CharacterRules.MaxNameLength);
             e.Property(c => c.NormalizedName).HasMaxLength(CharacterRules.MaxNameLength);
             e.Property(c => c.Tool).HasMaxLength(32);
+            e.Property(c => c.Tool2).HasMaxLength(32);
+            e.Property(c => c.Tool3).HasMaxLength(32);
+            e.Property(c => c.Backpack).HasMaxLength(32);
+            e.Ignore(c => c.Tools);
             e.ComplexProperty(c => c.Appearance, a => a.ToJson());
         });
     }

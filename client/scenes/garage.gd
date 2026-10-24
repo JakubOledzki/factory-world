@@ -667,7 +667,7 @@ func _build_hud() -> void:
 	# The tool in hand, bottom left.
 	var tool_parts := UI.panel(2)
 	var tool_panel: PanelContainer = tool_parts[0]
-	var tool_label := UI.label("Narzędzie", UI.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	var tool_label := UI.label("Narzędzia i plecak", UI.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	tool_label.add_theme_font_size_override("font_size", 12)
 	tool_parts[1].add_child(tool_label)
 	_tool_slot = ToolSlot.new()
@@ -1099,13 +1099,15 @@ func _stop_hand_sorting() -> void:
 func _slot_hint(item: String) -> String:
 	if item in ToolSlot.TOOLS:
 		return "Kliknij, aby wziąć do ręki"
+	if item in ToolSlot.BACKPACKS:
+		return "Kliknij, aby założyć"
 	if _furniture_info.has(item):
 		return "Kliknij, aby postawić"
 	return ""
 
 
 func _on_slot_clicked(item: String) -> void:
-	if item in ToolSlot.TOOLS:
+	if item in ToolSlot.TOOLS or item in ToolSlot.BACKPACKS:
 		_tool_slot.equip(item)
 	elif _furniture_info.has(item):
 		_start_placing(item)

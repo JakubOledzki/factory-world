@@ -247,7 +247,7 @@ public sealed class StationService(
         {
             CheckQuantity(item, quantity);
             await StationStock.ChangeAsync(db, x, y, item, -quantity, cancellationToken);
-            await inventory.AddAsync(player, item, quantity, cancellationToken);
+            await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
         }, cancellationToken);
 
     /// <summary>Sends items from this station by train to the station of another owned plot.</summary>

@@ -7,7 +7,9 @@ namespace FactoryWorld.Modules.Characters;
 
 public sealed record CreateCharacterRequest(string Name, Appearance Appearance);
 
-public sealed record EquipRequest(string Item);
+public sealed record EquipRequest(string Item, int? Slot);
+
+public sealed record UnequipRequest(int? Slot, bool Backpack);
 
 internal static class CharacterView
 {
@@ -23,7 +25,15 @@ internal static class CharacterView
             xp = c.Xp,
             levelXp = Leveling.TotalXpForLevel(level),
             nextLevelXp = level < Leveling.MaxLevel ? Leveling.TotalXpForLevel(level + 1) : (long?)null,
-            tool = c.Tool is { } tool ? new { id = tool, name = Items.Names[tool] } : null,
+            tools = c.Tools.Select(t => t is null ? null : new { id = t, name = Items.Names[t] }),
+            backpack = c.Backpack is { } b ? new
+            {
+                id = b,
+                name = Items.Names[b],
+                extraSlots = Items.Backpacks[b].ExtraSlots,
+                toolSlots = Items.Backpacks[b].ToolSlots,
+            } : null,
+            inventorySlots = Items.InventorySlots + (c.Backpack is { } worn ? Items.Backpacks[worn].ExtraSlots : 0),
         };
     }
 }
@@ -78,7 +88,7 @@ public sealed class CreateCharacterHandler(IServiceScopeFactory scopes) : IMessa
     }
 }
 
-/// <summary>Puts a tool from the inventory into the tool slot; the tool held before goes back to the inventory.</summary>
+/// <summary>Puts a tool from the inventory into a slot of the tool bar, or a backpack on; what was there goes back to the inventory.</summary>
 public sealed class EquipHandler(IServiceScopeFactory scopes) : IMessageHandler
 {
     public string Type => "character.equip";
@@ -88,21 +98,31 @@ public sealed class EquipHandler(IServiceScopeFactory scopes) : IMessageHandler
         var request = Payload.Read<EquipRequest>(payload);
         await using var scope = scopes.CreateAsyncScope();
         var equipment = scope.ServiceProvider.GetRequiredService<Equipment>();
-        await equipment.EquipAsync(client.RequireAccount(), request.Item ?? "", cancellationToken);
+        await equipment.EquipAsync(client.RequireAccount(), request.Item ?? "", request.Slot, cancellationToken);
         var character = await scope.ServiceProvider.GetRequiredService<CharacterService>().FindAsync(client.RequireAccount(), cancellationToken);
         return new Reply("character", CharacterView.From(character!));
     }
 }
 
-/// <summary>Puts the tool from the slot back into the inventory.</summary>
+/// <summary>Puts the tool from a slot of the tool bar (the first one by default) back into the inventory, or takes the backpack off.</summary>
 public sealed class UnequipHandler(IServiceScopeFactory scopes) : IMessageHandler
 {
     public string Type => "character.unequip";
 
     public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
     {
+        var request = payload is { ValueKind: JsonValueKind.Object } ? Payload.Read<UnequipRequest>(payload) : new UnequipRequest(null, false);
         await using var scope = scopes.CreateAsyncScope();
-        await scope.ServiceProvider.GetRequiredService<Equipment>().EquipAsync(client.RequireAccount(), null, cancellationToken);
+        var equipment = scope.ServiceProvider.GetRequiredService<Equipment>();
+        if (request.Backpack)
+        {
+            await equipment.TakeOffBackpackAsync(client.RequireAccount(), cancellationToken);
+        }
+        else
+        {
+            await equipment.UnequipAsync(client.RequireAccount(), request.Slot ?? 0, cancellationToken);
+        }
+
         var character = await scope.ServiceProvider.GetRequiredService<CharacterService>().FindAsync(client.RequireAccount(), cancellationToken);
         return new Reply("character", CharacterView.From(character!));
     }

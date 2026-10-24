@@ -1,6 +1,7 @@
 class_name InventoryGrid
 extends GridContainer
-## The tiles of the player's inventory. Drag an item onto another tile to move it there (onto
+## The tiles of the player's inventory: 20, more with a backpack on; each holds one kind of item.
+## Kinds beyond the tiles (given back while the inventory was full) show after them, in red. Drag an item onto another tile to move it there (onto
 ## an item, they swap places); the server keeps the order. Works with the mouse and with a
 ## finger, which Godot turns into a mouse. A tap or click without dragging emits `clicked`.
 
@@ -22,6 +23,8 @@ const CLICK_SLOP := 8.0
 ## Returns the extra tooltip line of an item, e.g. "Kliknij, aby postawić", or "" when a click
 ## does nothing.
 var hint := func(_item: String) -> String: return ""
+## Tiles of the inventory, as the server counts them.
+var slots := MIN_TILES
 
 
 func _init() -> void:
@@ -39,9 +42,10 @@ func show_items(inventory: Dictionary) -> void:
 		var slot: int = int(stack["slot"]) if stack.get("slot") != null else i
 		by_slot[slot] = stack
 		last = maxi(last, slot)
+	slots = int(inventory.get("slots", MIN_TILES))
 	for child in get_children():
 		child.free()
-	var count := maxi(MIN_TILES, ceili((last + 1) / float(COLUMNS)) * COLUMNS)
+	var count := maxi(ceili(slots / float(COLUMNS)) * COLUMNS, ceili((last + 1) / float(COLUMNS)) * COLUMNS)
 	for slot in count:
 		add_child(Tile.new(self, slot, by_slot.get(slot, {})))
 
@@ -111,7 +115,9 @@ class Tile extends PanelContainer:
 		stack = items
 		_icon.visible = not items.is_empty()
 		_count.visible = not items.is_empty()
-		modulate = Color.WHITE
+		modulate = Color.WHITE if slot < _grid.slots else Color(1.0, 0.55, 0.5, 0.8 if items.is_empty() else 1.0)
+		if slot >= _grid.slots and items.is_empty():
+			modulate.a = 0.0
 		if items.is_empty():
 			remove_meta("item")
 			tooltip_text = ""
@@ -124,6 +130,8 @@ class Tile extends PanelContainer:
 		var hint: String = _grid.hint.call(items["id"])
 		if not hint.is_empty():
 			tooltip_text += "\n" + hint
+		if slot >= _grid.slots:
+			tooltip_text += "\nNie mieści się w ekwipunku: przenieś na wolny kafelek albo załóż większy plecak"
 		tooltip_text += "\nPrzeciągnij, aby przenieść"
 		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 
@@ -153,7 +161,7 @@ class Tile extends PanelContainer:
 
 	func _can_drop_data(_at: Vector2, data: Variant) -> bool:
 		var ok: bool = data is Dictionary and data.has("inventory_tile") and is_instance_valid(data["inventory_tile"]) \
-			and data["inventory_tile"]._grid == _grid
+			and data["inventory_tile"]._grid == _grid and slot < _grid.slots
 		_light(ok and data["inventory_tile"] != self)
 		return ok
 
@@ -165,7 +173,7 @@ class Tile extends PanelContainer:
 		if what == NOTIFICATION_DRAG_END:
 			_light(false)
 			if not stack.is_empty():
-				modulate = Color.WHITE
+				set_stack(stack)
 
 	## Marks the tile an item would land on.
 	func _light(on: bool) -> void:

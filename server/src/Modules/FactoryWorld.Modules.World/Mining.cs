@@ -129,7 +129,7 @@ public sealed class MineService(
             var items = Mining.Load();
             foreach (var (item, quantity) in items)
             {
-                await inventory.AddAsync(player, item, quantity, cancellationToken);
+                await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
             }
 
             await stats.RecordAsync(player, items.Select(i => ProductionEntry.Made(i.Item, i.Quantity, time.GetUtcNow())).ToList(), cancellationToken);

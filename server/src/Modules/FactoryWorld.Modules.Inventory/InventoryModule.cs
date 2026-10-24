@@ -41,10 +41,11 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
     }
 }
 
-public sealed class InventoryService(GameDb db) : IInventory
+/// <summary>The player's items. Each kind takes one tile of the grid, however many there are; the grid
+/// has <see cref="IInventorySize"/> tiles. More kinds than tiles can be there (things given back),
+/// but nothing new comes in through <see cref="ReceiveAsync"/> until a tile is free.</summary>
+public sealed class InventoryService(GameDb db, IInventorySize size) : IInventory
 {
-    /// <summary>Tiles of the inventory grid; items can be moved to any of them.</summary>
-    public const int Slots = 100;
 
     public async Task AddAsync(Guid owner, string item, long quantity, CancellationToken cancellationToken)
     {
@@ -59,6 +60,26 @@ public sealed class InventoryService(GameDb db) : IInventory
         command.Parameters.AddWithValue("quantity", quantity);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
+
+    public async Task ReceiveAsync(Guid owner, string item, long quantity, CancellationToken cancellationToken)
+    {
+        Check(item, quantity);
+        if (await CountAsync(owner, item, cancellationToken) == 0)
+        {
+            await using var command = await db.CommandAsync(
+                "SELECT count(*) FROM inventory.stacks WHERE owner_id = @owner AND quantity > 0", cancellationToken);
+            command.Parameters.AddWithValue("owner", owner);
+            if ((long)(await command.ExecuteScalarAsync(cancellationToken))! >= await size.SlotsAsync(owner, cancellationToken))
+            {
+                throw new GameException("inventory_full", "Your inventory is full: make room or put on a bigger backpack.");
+            }
+        }
+
+        await AddAsync(owner, item, quantity, cancellationToken);
+    }
+
+    /// <summary>Tiles of the player's inventory grid; items can be moved to any of them.</summary>
+    public Task<int> SlotsAsync(Guid owner, CancellationToken cancellationToken) => size.SlotsAsync(owner, cancellationToken);
 
     public async Task RemoveAsync(Guid owner, string item, long quantity, CancellationToken cancellationToken)
     {
@@ -110,13 +131,14 @@ public sealed class InventoryService(GameDb db) : IInventory
             }
         }
 
+        var slots = await size.SlotsAsync(owner, cancellationToken);
         var taken = new HashSet<int>();
         var placed = new List<Stack>();
-        var overflow = Slots;
+        var overflow = slots;
         foreach (var stack in stacks)
         {
             // A tile out of the grid or taken twice (two requests at once) counts as no tile.
-            if (stack.Slot is not { } slot || slot is < 0 or >= Slots || !taken.Add(slot))
+            if (stack.Slot is not { } slot || slot < 0 || slot >= slots || !taken.Add(slot))
             {
                 stack.Slot = null;
             }
@@ -124,7 +146,7 @@ public sealed class InventoryService(GameDb db) : IInventory
 
         foreach (var stack in stacks.Where(s => s.Slot is null))
         {
-            var free = Enumerable.Range(0, Slots).FirstOrDefault(i => !taken.Contains(i), -1);
+            var free = Enumerable.Range(0, slots).FirstOrDefault(i => !taken.Contains(i), -1);
             if (free < 0)
             {
                 // More items than tiles: the rest go after the grid, unsaved.
@@ -158,9 +180,10 @@ public sealed class InventoryService(GameDb db) : IInventory
             throw new GameException("unknown_item", $"Unknown item '{item}'.");
         }
 
-        if (slot is < 0 or >= Slots)
+        var slots = await size.SlotsAsync(owner, cancellationToken);
+        if (slot < 0 || slot >= slots)
         {
-            throw new GameException("bad_slot", $"The inventory has tiles 0 to {Slots - 1}.");
+            throw new GameException("bad_slot", $"The inventory has tiles 0 to {slots - 1}.");
         }
 
         // Tiles are given when the inventory is listed; this makes sure the moved item has one to swap.
@@ -228,7 +251,7 @@ internal static class InventoryReply
         var stacks = await inventory.ListAsync(account, cancellationToken);
         return new Reply("inventory", new
         {
-            slots = InventoryService.Slots,
+            slots = await inventory.SlotsAsync(account, cancellationToken),
             items = stacks.Select(s => new { id = s.ItemId, name = Items.Names[s.ItemId], quantity = s.Quantity, slot = s.Slot }),
         });
     }

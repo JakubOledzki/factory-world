@@ -407,7 +407,7 @@ public sealed class MachineService(
             return (state, null);
         }
 
-        await inventory.AddAsync(owner, recipe.Id, state.Output, cancellationToken);
+        await inventory.ReceiveAsync(owner, recipe.Id, state.Output, cancellationToken);
         taken.Add((recipe.Id, state.Output));
         var xp = await progress.AddXpAsync(owner, (long)state.Output * recipe.Xp, cancellationToken);
         return (state with { Output = 0 }, xp);

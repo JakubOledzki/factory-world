@@ -121,7 +121,7 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
                 throw new GameException("not_enough_items", "There is not that much in it.");
             }
 
-            await inventory.AddAsync(player, item, taken, cancellationToken);
+            await inventory.ReceiveAsync(player, item, taken, cancellationToken);
         }, cancellationToken);
 
     /// <summary>Most items a splitter can be set to sort out.</summary>
