@@ -2,25 +2,26 @@
 """Draws the icons of the bottom toolbar with Pillow alone: the backpack of the inventory, the
 garage, the market stall and the rest, into client/art/icons/toolbar_<name>.png.
 
-Flat light shapes with gold accents and a dark outline, so they read on the metal buttons. Drawn
-on a 64-unit grid at 4× and scaled down, so the edges come out soft.
+Plain light grey like the buttons' text, in two shades, with details cut out so the button shows
+through. Drawn on a 64-unit grid at 4× and scaled down, so the edges come out soft.
 
     python3 tools/draw_toolbar_icons.py
 """
 import math
 from pathlib import Path
 
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw
 
 ICONS = Path(__file__).resolve().parent.parent / "client" / "art" / "icons"
 S = 4  # supersampling
 ICON = 64
 
 INK = (230, 225, 214, 255)  # UI.TEXT
-GOLD = (245, 176, 65, 255)  # UI.GOLD
-DARK = (28, 27, 30, 255)
-GREEN = (143, 214, 90, 255)  # UI.GOOD
-OUTLINE = (10, 10, 11, 255)
+SHADE = (172, 168, 160, 255)  # the second, darker part of a shape
+GOLD = SHADE
+GREEN = INK
+CUT = (0, 0, 0, 0)  # drawing this makes a hole
+DARK = CUT
 
 
 class Pen:
@@ -55,13 +56,7 @@ class Pen:
         self.d.arc(((x - r) * S, (y - r) * S, (x + r) * S, (y + r) * S), start, end, fill=fill, width=round(w * S))
 
     def save(self, name: str) -> None:
-        # A dark outline around everything drawn, then down to the icon size.
-        alpha = self.img.getchannel("A")
-        grown = alpha.filter(ImageFilter.MaxFilter(2 * S * 2 + 1))
-        out = Image.new("RGBA", self.img.size, OUTLINE)
-        out.putalpha(grown)
-        out.alpha_composite(self.img)
-        out = out.resize((ICON, ICON), Image.LANCZOS)
+        out = self.img.resize((ICON, ICON), Image.LANCZOS)
         out.save(ICONS / f"toolbar_{name}.png")
 
 
@@ -110,12 +105,12 @@ def market():
 
 def contracts():
     p = Pen()
-    p.rect(13, 11, 51, 58, INK, 4)  # board
-    p.rect(17, 17, 47, 54, (250, 247, 240, 255), 2)  # paper
+    p.rect(13, 11, 51, 58, SHADE, 4)  # board
+    p.rect(17, 17, 47, 54, INK, 2)  # paper
     p.rect(23, 7, 41, 15, GOLD, 3)  # clip
     p.rect(28, 9.5, 36, 12.5, DARK, 1.5)
     for i, y in enumerate((25, 35, 45)):
-        p.line([(20.5, y), (23, y + 2.6), (27, y - 2.4)], GOLD if i < 2 else DARK, 2.2)
+        p.line([(20.5, y), (23, y + 2.6), (27, y - 2.4)], DARK, 2.2)
         p.line([(31, y), (43, y)], DARK, 2.2)
     p.save("contracts")
 
@@ -138,7 +133,8 @@ def stats():
     p.rect(27, 27, 35, 52, INK, 1.5)
     p.rect(39, 33, 47, 52, GOLD, 1.5)
     p.rect(51, 17, 57, 52, INK, 1.5)
-    p.line([(15, 30), (28, 19), (40, 25), (54, 10)], GREEN, 3)  # trend
+    p.line([(15, 30), (28, 19), (40, 25), (54, 10)], CUT, 7)  # trend, with a gap around it
+    p.line([(15, 30), (28, 19), (40, 25), (54, 10)], INK, 3)
     p.save("stats")
 
 
@@ -152,7 +148,7 @@ def achievements():
     p.rect(28.5, 38, 35.5, 47, GOLD)  # stem
     p.rect(19, 46, 45, 51, INK, 1.5)  # base
     p.rect(16, 51, 48, 58, INK, 2)
-    p.poly(star(32, 21, 7.5, 3.3), (250, 247, 240, 255))
+    p.poly(star(32, 21, 7.5, 3.3), INK)
     p.save("achievements")
 
 
@@ -163,15 +159,15 @@ def star(cx, cy, r_out, r_in):
 
 def world_map():
     p = Pen()
-    p.dot(32, 32, 25, (82, 140, 196, 255))  # sea
+    p.dot(32, 32, 25, SHADE)  # sea
     # Land: rough continents.
     p.poly([(16, 15), (27, 11), (31, 18), (26, 24), (28, 32), (22, 36), (17, 30), (12, 26)], GREEN)
     p.poly([(36, 12), (46, 14), (52, 22), (47, 27), (40, 24), (35, 19)], GREEN)
     p.poly([(36, 33), (46, 31), (53, 38), (47, 50), (40, 52), (37, 44)], GREEN)
     p.poly([(18, 42), (25, 40), (28, 47), (22, 52)], GREEN)
     p.arc(32, 32, 25, 0, 360, INK, 3)
-    p.d.ellipse((20 * S, 7 * S, 44 * S, 57 * S), outline=(230, 225, 214, 150), width=round(1.3 * S))
-    p.line([(7.5, 32), (56.5, 32)], (230, 225, 214, 150), 1.3)
+    p.d.ellipse((20 * S, 7 * S, 44 * S, 57 * S), outline=CUT, width=round(1.3 * S))
+    p.line([(7.5, 32), (56.5, 32)], CUT, 1.3)
     p.save("world_map")
 
 
@@ -190,7 +186,7 @@ def station():
     p = Pen()
     p.rect(14, 8, 50, 49, INK, 9)  # front of the engine
     p.rect(19, 14, 45, 29, DARK, 3)  # windscreen
-    p.rect(21, 16, 43, 27, (82, 140, 196, 255), 2)
+    p.rect(21, 16, 43, 27, SHADE, 2)
     p.rect(14, 33, 50, 37, GOLD)
     p.dot(22, 42, 3.5, GOLD)  # lamps
     p.dot(42, 42, 3.5, GOLD)

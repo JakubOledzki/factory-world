@@ -2541,7 +2541,7 @@ func _build_hud() -> void:
 	bar.add_child(UI.toolbar_button("company", "Spółka  [K]", func() -> void: _company_window.toggle()))
 	_plant_button = UI.toolbar_button("plant", "", func() -> void: _set_planting(not _planting))
 	# The number of saplings, in the button's corner.
-	_plant_count = UI.label("", UI.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
+	_plant_count = UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
 	_plant_count.add_theme_font_override("font", UI.bold())
 	_plant_count.add_theme_font_size_override("font_size", 11)
 	_plant_count.add_theme_constant_override("outline_size", 4)
