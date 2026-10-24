@@ -1960,11 +1960,12 @@ func _pick_up_placed(id: String) -> void:
 		_show_error(reply)
 		return
 	var shown := false
+	var forester := _foresters.has(id)
 	_foresters.erase(id)
 	for cell: Vector2i in _placed.keys():
 		if _placed[cell]["id"] == id:
 			if not shown:
-				_show_toast("%s: schowano do ekwipunku." % _placed[cell]["name"])
+				_show_toast("%s: schowano do ekwipunku%s." % [_placed[cell]["name"], ", a z nim jego las" if forester else ""])
 				shown = true
 			_placed.erase(cell)
 			_astar.set_point_solid(cell, _tile(cell) in SOLID)
@@ -1978,6 +1979,9 @@ func _pick_up_placed(id: String) -> void:
 	_using = Vector2i(-1, -1)
 	_reload_inventory()
 	_poll_logistics()
+	if forester:
+		# Its forest went with it: the trees it planted are gone from the plot.
+		_poll_forestry()
 
 
 func _open_object_menu(cell: Vector2i) -> void:

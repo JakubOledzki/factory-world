@@ -57,7 +57,7 @@ func _init() -> void:
 	_help = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
 	content.add_child(_help)
 	var pick_up := UI.button("Schowaj do ekwipunku", func() -> void: pick_up_requested.emit(forester))
-	pick_up.tooltip_text = "Drewno ze środka wróci do ekwipunku; posadzone drzewa zostaną na działce"
+	pick_up.tooltip_text = "Drewno ze środka wróci do ekwipunku, a las, który posadził, zniknie z działki"
 	content.add_child(pick_up)
 
 
