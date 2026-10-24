@@ -334,7 +334,8 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
     [Fact]
     public async Task A_sapling_from_the_trader_grows_into_a_tree_faster_in_a_forest_and_is_cut_with_an_axe()
     {
-        using var client = await PlayerAsync(10_000_000_00);
+        // Enough for a fourth plot, the mountains.
+        using var client = await PlayerAsync(2_000_000_00);
         var prices = (await client.SendAsync("market.prices")).Payload().GetProperty("items").EnumerateArray()
             .ToDictionary(i => i.GetProperty("id").GetString()!);
         Assert.Equal(200, prices[Items.Sapling].GetProperty("buyCents").GetInt64());
