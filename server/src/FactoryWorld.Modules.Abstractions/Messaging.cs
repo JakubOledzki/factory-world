@@ -19,6 +19,10 @@ public sealed class ClientContext
     /// <summary>Per-connection state that a module keeps for itself, keyed by a name it owns.</summary>
     public Dictionary<string, object> Items { get; } = new();
 
+    /// <summary>Messages for the player that answer no request (e.g. an unlocked achievement),
+    /// sent right after the reply being handled.</summary>
+    public Queue<Envelope> Outbox { get; } = new();
+
     public Guid RequireAccount() =>
         AccountId ?? throw new GameException("not_logged_in", "Log in first.");
 }
@@ -38,6 +42,17 @@ public interface IMessageHandler
     bool RequiresAccount => true;
 
     Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// Sees every request a handler answered without an error, after the reply is ready and before it is
+/// sent, e.g. to follow a player's progress through the game. Modules register observers as
+/// <c>services.AddSingleton&lt;IMessageObserver, MyObserver&gt;()</c>. A failing observer is logged and
+/// never spoils the reply.
+/// </summary>
+public interface IMessageObserver
+{
+    Task ObserveAsync(Envelope request, Envelope reply, ClientContext client, CancellationToken cancellationToken);
 }
 
 /// <summary>A failure the client may show to the player, e.g. "not enough money".</summary>

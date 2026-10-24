@@ -5,7 +5,8 @@ using FactoryWorld.Modules.Abstractions;
 
 namespace FactoryWorld.Server;
 
-/// <summary>One WebSocket per player. Requests are handled in order, one at a time.</summary>
+/// <summary>One WebSocket per player. Requests are handled in order, one at a time; each reply may be
+/// followed by messages from <see cref="ClientContext.Outbox"/>, which have no id.</summary>
 public static class GameSocketEndpoint
 {
     private const int MaxMessageBytes = 64 * 1024;
@@ -36,6 +37,11 @@ public static class GameSocketEndpoint
                 var reply = await dispatcher.DispatchAsync(frame, client, cancellationToken);
                 var bytes = JsonSerializer.SerializeToUtf8Bytes(reply, MessageDispatcher.Json);
                 await socket.SendAsync(bytes, WebSocketMessageType.Text, endOfMessage: true, cancellationToken);
+                while (client.Outbox.TryDequeue(out var notice))
+                {
+                    bytes = JsonSerializer.SerializeToUtf8Bytes(notice, MessageDispatcher.Json);
+                    await socket.SendAsync(bytes, WebSocketMessageType.Text, endOfMessage: true, cancellationToken);
+                }
             }
         }
         catch (Exception ex) when (ex is OperationCanceledException or WebSocketException)

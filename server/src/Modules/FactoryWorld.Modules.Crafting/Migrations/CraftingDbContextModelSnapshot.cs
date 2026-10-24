@@ -81,6 +81,14 @@ namespace FactoryWorld.Modules.Crafting.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("input_quantity");
 
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasDefaultValue("furniture_furnace")
+                        .HasColumnName("kind");
+
                     b.Property<string>("OutputItem")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)")

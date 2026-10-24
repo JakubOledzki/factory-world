@@ -80,6 +80,7 @@ public static class GarageLayout
             [Items.GasCylinder] = (1, 1),
             [Items.SortingMachine] = (3, 2),
             [Items.Furnace] = (2, 2),
+            [Items.Anvil] = (2, 1),
         };
 
     /// <summary>How a new garage is furnished.</summary>
@@ -200,7 +201,8 @@ public sealed record GarageState(
     XpGain? Xp,
     IReadOnlyList<PlacedObject> Objects);
 
-public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacterProgress progress, IEnumerable<IMachineContents> machines, TimeProvider time)
+public sealed class RecyclingService(
+    GameDb db, IInventory inventory, ICharacterProgress progress, IEnumerable<IMachineContents> machines, IProductionStats stats, TimeProvider time)
 {
     /// <summary>The garage as it is now, after finishing every sorting whose time has come.</summary>
     public Task<GarageState> StateAsync(Guid owner, CancellationToken cancellationToken) =>
@@ -394,17 +396,19 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
     {
         // DELETE ... RETURNING hands each finished job to exactly one request, so a result is never given twice.
         await using var command = await db.CommandAsync(
-            "DELETE FROM recycling.sorting_jobs WHERE owner_id = @owner AND finishes_at <= @now RETURNING id", cancellationToken);
+            "DELETE FROM recycling.sorting_jobs WHERE owner_id = @owner AND finishes_at <= @now RETURNING finishes_at", cancellationToken);
         command.Parameters.AddWithValue("owner", owner);
         command.Parameters.AddWithValue("now", time.GetUtcNow());
-        var finished = 0;
+        var finishedAt = new List<DateTimeOffset>();
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
             while (await reader.ReadAsync(cancellationToken))
             {
-                finished++;
+                finishedAt.Add(reader.GetFieldValue<DateTimeOffset>(0));
             }
         }
+
+        var finished = finishedAt.Count;
 
         if (finished == 0)
         {
@@ -418,6 +422,12 @@ public sealed class RecyclingService(GameDb db, IInventory inventory, ICharacter
         {
             await inventory.AddAsync(owner, group.Key, group.Count(), cancellationToken);
         }
+
+        await stats.RecordAsync(owner, finishedAt.SelectMany((at, i) => new[]
+        {
+            ProductionEntry.Used(Items.Trash, 1, at),
+            ProductionEntry.Made(results[i], 1, at),
+        }).ToList(), cancellationToken);
 
         var xp = await progress.AddXpAsync(owner, finished * RecyclingRules.XpPerSort, cancellationToken);
         return (results, xp);

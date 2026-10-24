@@ -41,7 +41,8 @@ public sealed record Field(int TileX, int TileY, string? Crop, DateTimeOffset? R
 /// <param name="Xp">Null when the action gives no experience.</param>
 public sealed record FieldChange(Field Field, IReadOnlyList<(string Item, int Quantity)> Items, XpGain? Xp);
 
-public sealed class FarmService(GameDb db, PlotService plots, IInventory inventory, IEquipment equipment, ICharacterProgress progress, TimeProvider time)
+public sealed class FarmService(
+    GameDb db, PlotService plots, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
 {
     public async Task<IReadOnlyList<Field>> FieldsAsync(int x, int y, CancellationToken cancellationToken)
     {
@@ -64,7 +65,7 @@ public sealed class FarmService(GameDb db, PlotService plots, IInventory invento
     public Task<FieldChange> TillAsync(Guid player, int x, int y, int tileX, int tileY, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             if (!Farming.Fertile(biome))
             {
                 throw new GameException("not_fertile", "Only fertile soil can be tilled.");
@@ -103,7 +104,7 @@ public sealed class FarmService(GameDb db, PlotService plots, IInventory invento
                 throw new GameException("unknown_crop", "There is no such crop.");
             }
 
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             var now = time.GetUtcNow();
             await using var update = await db.CommandAsync(
                 """
@@ -125,7 +126,7 @@ public sealed class FarmService(GameDb db, PlotService plots, IInventory invento
     public Task<FieldChange> ReapAsync(Guid player, int x, int y, int tileX, int tileY, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             string crop;
             DateTimeOffset planted;
             await using (var select = await db.CommandAsync(
@@ -160,6 +161,7 @@ public sealed class FarmService(GameDb db, PlotService plots, IInventory invento
             }
 
             await inventory.AddAsync(player, crop, info.Yield, cancellationToken);
+            await stats.RecordAsync(player, [ProductionEntry.Made(crop, info.Yield, time.GetUtcNow())], cancellationToken);
             var xp = await progress.AddXpAsync(player, info.Xp, cancellationToken);
             return new FieldChange(new Field(tileX, tileY, null, null), [(crop, info.Yield)], xp);
         }, cancellationToken);

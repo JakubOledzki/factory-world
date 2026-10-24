@@ -5,13 +5,15 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace FactoryWorld.Modules.Crafting;
 
-/// <summary>Something made at a workbench: what it takes, how long, and what comes out.</summary>
+/// <summary>Something made at a workbench or an anvil: what it takes, how long, and what comes out.</summary>
 /// <param name="Id">The recipe's id, the same as the item it makes.</param>
-public sealed record Recipe(string Id, int Quantity, TimeSpan Time, IReadOnlyList<(string Item, int Quantity)> Ingredients, int Xp);
+/// <param name="Station">Where it is made: <see cref="Items.Workbench"/> or <see cref="Items.Anvil"/>.</param>
+public sealed record Recipe(
+    string Id, int Quantity, TimeSpan Time, IReadOnlyList<(string Item, int Quantity)> Ingredients, int Xp, string Station = Items.Workbench);
 
 /// <summary>
-/// At a workbench (the one in the garage or one put on a plot) the player picks a recipe and
-/// orders it. The ingredients are taken at once; the item is made after the recipe's time, one
+/// At a workbench (the one in the garage or one put on a plot) or an anvil, which forges the tools,
+/// the player picks a recipe and orders it. Both share one queue. The ingredients are taken at once; the item is made after the recipe's time, one
 /// order after another, and lands in the inventory even when the player has walked away.
 /// </summary>
 public static class Workshop
@@ -23,9 +25,15 @@ public static class Workshop
     [
         new(Items.Workbench, 1, TimeSpan.FromSeconds(30), [(Items.Wood, 20), (Items.Nails, 5)], 10),
         new(Items.Furnace, 1, TimeSpan.FromSeconds(45), [(Items.Stone, 20)], 15),
+        new(Items.BrickFurnace, 1, TimeSpan.FromSeconds(60), [(Items.Furnace, 1), (Items.Stone, 40), (Items.Sand, 20), (Items.IronIngot, 10)], 25),
+        new(Items.BlastFurnace, 1, TimeSpan.FromSeconds(90), [(Items.BrickFurnace, 1), (Items.Stone, 60), (Items.IronIngot, 40), (Items.CopperIngot, 20)], 50),
         new(Items.Nails, 5, TimeSpan.FromSeconds(10), [(Items.IronIngot, 1)], 2),
         new(Items.Belt, 4, TimeSpan.FromSeconds(10), [(Items.IronIngot, 2), (Items.Wood, 1)], 3),
         new(Items.Inserter, 1, TimeSpan.FromSeconds(15), [(Items.IronIngot, 2), (Items.CopperIngot, 1), (Items.Nails, 5)], 5),
+        new(Items.FastBelt, 2, TimeSpan.FromSeconds(15), [(Items.Belt, 2), (Items.IronIngot, 3), (Items.CopperIngot, 1)], 5),
+        new(Items.ExpressBelt, 2, TimeSpan.FromSeconds(20), [(Items.FastBelt, 2), (Items.IronIngot, 4), (Items.TinIngot, 1)], 8),
+        new(Items.FastInserter, 1, TimeSpan.FromSeconds(20), [(Items.Inserter, 1), (Items.IronIngot, 2), (Items.CopperIngot, 2)], 8),
+        new(Items.ExpressInserter, 1, TimeSpan.FromSeconds(25), [(Items.FastInserter, 1), (Items.CopperIngot, 3), (Items.SilverIngot, 1)], 12),
         new(Items.Splitter, 1, TimeSpan.FromSeconds(20), [(Items.Belt, 2), (Items.IronIngot, 4), (Items.CopperIngot, 2)], 6),
         new(Items.WoodenChest, 1, TimeSpan.FromSeconds(10), [(Items.Wood, 10), (Items.Nails, 5)], 3),
         new(Items.IronChest, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 8)], 6),
@@ -37,27 +45,40 @@ public static class Workshop
         new(Items.PicklingBarrel, 1, TimeSpan.FromSeconds(30), [(Items.Wood, 12), (Items.Nails, 5)], 10),
         new(Items.Bakery, 1, TimeSpan.FromSeconds(90), [(Items.Stone, 40), (Items.IronIngot, 3), (Items.Sand, 10)], 30),
         new(Items.Kitchen, 1, TimeSpan.FromSeconds(90), [(Items.Stone, 20), (Items.IronIngot, 5), (Items.CopperIngot, 2)], 30),
+        new(Items.Generator, 1, TimeSpan.FromSeconds(60), [(Items.Stone, 10), (Items.IronIngot, 8), (Items.CopperIngot, 4)], 20),
+        new(Items.Pole, 2, TimeSpan.FromSeconds(5), [(Items.Wood, 2), (Items.CopperIngot, 1)], 1),
+        new(Items.Anvil, 1, TimeSpan.FromSeconds(60), [(Items.IronIngot, 15), (Items.Stone, 10)], 20),
+        new(Items.Axe, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 3), (Items.Wood, 2)], 5, Items.Anvil),
+        new(Items.Shovel, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 2), (Items.Wood, 2)], 5, Items.Anvil),
+        new(Items.Pickaxe, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 3), (Items.Wood, 2)], 5, Items.Anvil),
+        new(Items.Hoe, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 2), (Items.Wood, 2)], 5, Items.Anvil),
     ];
 
     public static Recipe? Find(string id) => Recipes.FirstOrDefault(r => r.Id == id);
 
     /// <summary>Fails unless the player has an object of <paramref name="kind"/> with this id, in the garage or on a plot.</summary>
-    public static async Task RequireAsync(IEnumerable<IPlacedObjects> places, Guid owner, Guid id, string kind, CancellationToken cancellationToken)
+    public static Task RequireAsync(IEnumerable<IPlacedObjects> places, Guid owner, Guid id, string kind, CancellationToken cancellationToken) =>
+        RequireAsync(places, owner, id, k => k == kind, kind, cancellationToken);
+
+    /// <summary>Fails unless the player has an object of a kind <paramref name="fits"/> with this id, in
+    /// the garage or on a plot; returns its kind. <paramref name="name"/> names what is missing.</summary>
+    public static async Task<string> RequireAsync(
+        IEnumerable<IPlacedObjects> places, Guid owner, Guid id, Func<string, bool> fits, string name, CancellationToken cancellationToken)
     {
         foreach (var place in places)
         {
             if (await place.KindAsync(owner, id, cancellationToken) is { } found)
             {
-                if (found == kind)
+                if (fits(found))
                 {
-                    return;
+                    return found;
                 }
 
                 break;
             }
         }
 
-        throw new GameException("no_object", $"There is no {Items.Names[kind]} of yours here.");
+        throw new GameException("no_object", $"There is no {Items.Names[name]} of yours here.");
     }
 }
 
@@ -69,7 +90,8 @@ public sealed record CraftingState(
     IReadOnlyList<(string Item, int Quantity)> Done,
     XpGain? Xp);
 
-public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, TimeProvider time)
+public sealed class CraftingService(
+    GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, IProductionStats stats, ITechnologies technologies, TimeProvider time)
 {
     /// <summary>The queue as it is now, after handing out every order that is done.</summary>
     public Task<CraftingState> StateAsync(Guid owner, CancellationToken cancellationToken) =>
@@ -79,12 +101,13 @@ public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> place
             return new CraftingState(await QueueAsync(owner, cancellationToken), time.GetUtcNow(), done, xp);
         }, cancellationToken);
 
-    /// <summary>Orders a recipe at one of the player's workbenches: ingredients out now, the item later.</summary>
+    /// <summary>Orders a recipe at one of the player's workbenches or anvils: ingredients out now, the item later.</summary>
     public Task<CraftingState> CraftAsync(Guid owner, Guid workbench, string recipeId, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
             var recipe = Workshop.Find(recipeId) ?? throw new GameException("no_recipe", "There is no such recipe.");
-            await Workshop.RequireAsync(places, owner, workbench, Items.Workbench, cancellationToken);
+            await Workshop.RequireAsync(places, owner, workbench, recipe.Station, cancellationToken);
+            await technologies.RequireUnlockedAsync(owner, recipe.Id, cancellationToken);
             var (done, xp) = await CompleteDueAsync(owner, cancellationToken);
 
             // One order at a time per player, so two at once cannot both take the last queue slot.
@@ -172,10 +195,11 @@ public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> place
     {
         // DELETE ... RETURNING hands each finished order to exactly one request, so an item is never given twice.
         await using var command = await db.CommandAsync(
-            "DELETE FROM crafting.jobs WHERE owner_id = @owner AND finishes_at <= @now RETURNING recipe", cancellationToken);
+            "DELETE FROM crafting.jobs WHERE owner_id = @owner AND finishes_at <= @now RETURNING recipe, finishes_at", cancellationToken);
         command.Parameters.AddWithValue("owner", owner);
         command.Parameters.AddWithValue("now", time.GetUtcNow());
         var recipes = new List<Recipe>();
+        var made = new List<ProductionEntry>();
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
             while (await reader.ReadAsync(cancellationToken))
@@ -183,6 +207,9 @@ public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> place
                 if (Workshop.Find(reader.GetString(0)) is { } recipe)
                 {
                     recipes.Add(recipe);
+                    var at = reader.GetFieldValue<DateTimeOffset>(1);
+                    made.Add(ProductionEntry.Made(recipe.Id, recipe.Quantity, at));
+                    made.AddRange(recipe.Ingredients.Select(i => ProductionEntry.Used(i.Item, i.Quantity, at)));
                 }
             }
         }
@@ -192,6 +219,7 @@ public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> place
             return ([], null);
         }
 
+        await stats.RecordAsync(owner, made, cancellationToken);
         var done = recipes.GroupBy(r => r.Id).Select(g => (g.Key, g.Sum(r => r.Quantity))).ToList();
         foreach (var (item, quantity) in done)
         {
@@ -229,7 +257,9 @@ public abstract class CraftingHandler(IServiceScopeFactory scopes) : IMessageHan
     public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
-        var state = await RunAsync(scope.ServiceProvider.GetRequiredService<CraftingService>(), client.RequireAccount(), payload, cancellationToken);
+        var owner = client.RequireAccount();
+        var state = await RunAsync(scope.ServiceProvider.GetRequiredService<CraftingService>(), owner, payload, cancellationToken);
+        var locked = await scope.ServiceProvider.GetRequiredService<ITechnologies>().LockedAsync(owner, cancellationToken);
         return new Reply("crafting", new
         {
             recipes = Workshop.Recipes.Select(r => new
@@ -240,6 +270,9 @@ public abstract class CraftingHandler(IServiceScopeFactory scopes) : IMessageHan
                 seconds = r.Time.TotalSeconds,
                 ingredients = r.Ingredients.Select(i => new { id = i.Item, name = Items.Names[i.Item], quantity = i.Quantity }),
                 xp = r.Xp,
+                // The technology still to research before the recipe can be ordered, or null.
+                locked = locked.GetValueOrDefault(r.Id),
+                station = r.Station,
             }),
             // Unix milliseconds: the client compares them with serverTime, not its own clock.
             queue = state.Queue.Select(j => new

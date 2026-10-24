@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [office] [logistics] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [office] [power] [logistics] [<sprite>...] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -450,12 +450,63 @@ def crafted(build):
     return make
 
 
+def build_brick_furnace():
+    """The furnace's second level: a square kiln of red brick on a stone plinth, an arched mouth
+    full of embers, iron bands round it and a tall brick chimney at the back."""
+    brick = ra.plain("brick", (0.32, 0.08, 0.04), 0.85, variation=0.35, scale=14, bump=0.5)
+    mortar = rock("brick_plinth", (0.18, 0.17, 0.15))
+    iron = ra.rusty_metal("brick_iron", (0.1, 0.1, 0.11), 0.5)
+    dark = ra.plain("brick_soot", (0.02, 0.018, 0.017), 0.95, variation=0.3)
+    ember = ra.emission("brick_ember", (1.0, 0.3, 0.04), 2.0)
+    ra.box("plinth", (1.3, 1.3, 0.14), Vector((0, 0, 0.07)), mortar, bevel=0.03)
+    for k in range(6):
+        z = 0.14 + 0.11 * (k + 0.5)
+        ra.box("brick_course", (1.16 - 0.02 * k, 1.16 - 0.02 * k, 0.1), Vector((0, 0, z)), brick, bevel=0.012)
+    ra.box("brick_top", (1.1, 1.1, 0.08), Vector((0, 0, 0.84)), brick, bevel=0.02)
+    for z in (0.3, 0.68):
+        ra.box("brick_band", (1.2, 1.2, 0.035), Vector((0, 0, z)), iron)
+    ra.box("brick_mouth", (0.44, 0.08, 0.34), Vector((0, -0.56, 0.36)), dark)
+    ra.box("brick_glow", (0.36, 0.04, 0.16), Vector((0, -0.6, 0.27)), ember)
+    ra.box("brick_lintel", (0.56, 0.12, 0.08), Vector((0, -0.58, 0.57)), iron, bevel=0.01)
+    ra.box("brick_chimney", (0.34, 0.34, 0.9), Vector((0.24, 0.3, 1.3)), brick, bevel=0.02)
+    ra.box("brick_chimney_cap", (0.42, 0.42, 0.06), Vector((0.24, 0.3, 1.78)), iron, bevel=0.01)
+
+
+def build_blast_furnace():
+    """The furnace's third level: a riveted steel shaft furnace on a brick base, banded and
+    lined with fire, with a glowing tap hole at the front, a charging hopper on top and a pipe
+    down its side."""
+    steel = ra.rusty_metal("blast_steel", (0.17, 0.17, 0.18), 0.35)
+    dark = ra.rusty_metal("blast_dark", (0.07, 0.07, 0.075), 0.5)
+    brick = ra.plain("blast_brick", (0.3, 0.08, 0.04), 0.85, variation=0.35, scale=14, bump=0.5)
+    ember = ra.emission("blast_ember", (1.0, 0.38, 0.05), 2.5)
+    ra.box("blast_base", (1.36, 1.36, 0.3), Vector((0, 0, 0.15)), brick, bevel=0.03)
+    ra.cylinder("blast_shaft", 0.5, 1.1, Vector((0, 0.05, 0.85)), steel, bevel=0.03, verts=24)
+    for z in (0.42, 0.75, 1.08, 1.36):
+        ra.cylinder("blast_band", 0.53, 0.05, Vector((0, 0.05, z)), dark, verts=24)
+    ra.cylinder("blast_neck", 0.32, 0.22, Vector((0, 0.05, 1.5)), steel, bevel=0.02, verts=20)
+    ra.cylinder("blast_hopper", 0.4, 0.12, Vector((0, 0.05, 1.66)), dark, bevel=0.02, verts=20)
+    ra.box("blast_tap", (0.3, 0.1, 0.22), Vector((0, -0.48, 0.45)), dark, bevel=0.02)
+    ra.box("blast_tap_glow", (0.2, 0.04, 0.12), Vector((0, -0.54, 0.44)), ember)
+    ra.box("blast_spout", (0.14, 0.3, 0.06), Vector((0, -0.66, 0.3)), dark, rotation=(math.radians(15), 0, 0))
+    ra.box("blast_pool", (0.22, 0.12, 0.02), Vector((0, -0.8, 0.31)), ember)
+    ra.cylinder("blast_pipe", 0.07, 1.4, Vector((0.55, 0.3, 0.95)), dark, verts=12)
+    ra.box("blast_pipe_top", (0.5, 0.12, 0.12), Vector((0.35, 0.3, 1.62)), dark, bevel=0.02)
+
+
 CRAFTING = {
     # Objects a player puts on a plot, built like the garage's furniture; the furnace a bit larger
     # so it reads at the plot's scale. name: (canvas width, height, camera target height, builder).
     "workbench": (144, 128, 0.6, crafted(lambda: ra.build_workbench(None, Vector((0, 0, 0))))),
     "furnace": (96, 112, 0.6, crafted(lambda: ra.build_furnace(None, Vector((0, 0, 0)), 1.4))),
+    "anvil": (96, 96, 0.5, crafted(lambda: ra.build_anvil(None, Vector((0, 0, 0)), 1.7))),
+    # The upgraded furnaces stand on plots only; the inventory shows them as their sprites.
+    "brick_furnace": (112, 144, 0.9, crafted(build_brick_furnace)),
+    "blast_furnace": (112, 160, 1.0, crafted(build_blast_furnace)),
 }
+
+# Crafting sprites whose icon is their sprite cropped to a square, like the processing machines.
+SPRITE_ICONS = ("brick_furnace", "blast_furnace")
 
 
 # --- Food processing ------------------------------------------------------------------------------
@@ -640,18 +691,26 @@ def render_office(layout: dict):
         ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
 
 
-def render_crafting(layout: dict):
+def render_crafting(layout: dict, only=()):
     for name, (w, h, tz, build) in CRAFTING.items():
+        if only and name not in only:
+            continue
         random.seed(zlib.crc32(name.encode()))
         layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), build)
+        if name in SPRITE_ICONS:
+            ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
 
 
 # --- Logistics --------------------------------------------------------------------------------------
 
-def belt_frame(s=1.0, along_x=True, length=2.0):
+# Paint of belts and inserters by level, as in the factory games people know: yellow, red, blue.
+TIER_PAINT = {"": (0.5, 0.33, 0.03), "fast": (0.45, 0.05, 0.03), "express": (0.04, 0.14, 0.45)}
+
+
+def belt_frame(s=1.0, along_x=True, length=2.0, tier=""):
     """A conveyor belt the length of a tile, so belts on neighbouring tiles join up: a dark rubber
-    band between two yellow side rails on short legs. The game draws the moving stripes and items."""
-    paint = ra.plain("belt_paint", (0.5, 0.33, 0.03), 0.5, 0.4, variation=0.2, grime=0.8)
+    band between two side rails on short legs, painted by level. The game draws the moving stripes and items."""
+    paint = ra.plain("belt_paint" + tier, TIER_PAINT[tier], 0.5, 0.4, variation=0.2, grime=0.8)
     rubber = ra.plain("belt_rubber", (0.025, 0.025, 0.027), 0.8, variation=0.3, scale=20, bump=0.3)
     steel = ra.rusty_metal("belt_steel", (0.16, 0.16, 0.17), 0.3)
 
@@ -698,10 +757,10 @@ def arc_box(name, r_in, r_out, z0, z1, a0, a1, centre, mat, n=12):
 SIDES = {"n": (0, 1), "e": (1, 0), "s": (0, -1), "w": (-1, 0)}
 
 
-def belt_curve(sides):
+def belt_curve(sides, tier=""):
     """A belt turning a corner between two sides of its tile: the band and rails bent round the
     tile's corner between those sides, like belt_frame laid in a quarter circle."""
-    paint = ra.plain("belt_paint", (0.5, 0.33, 0.03), 0.5, 0.4, variation=0.2, grime=0.8)
+    paint = ra.plain("belt_paint" + tier, TIER_PAINT[tier], 0.5, 0.4, variation=0.2, grime=0.8)
     rubber = ra.plain("belt_rubber", (0.025, 0.025, 0.027), 0.8, variation=0.3, scale=20, bump=0.3)
     steel = ra.rusty_metal("belt_steel", (0.16, 0.16, 0.17), 0.3)
     (ax, ay), (bx, by) = SIDES[sides[0]], SIDES[sides[1]]
@@ -732,10 +791,10 @@ def splitter(s=1.0):
     ra.cylinder("splitter_lamp", 0.06 * s, 0.06 * s, Vector((0, 0, 0.64 * s)), ra.emission("splitter_lamp", (0.3, 1.0, 0.25), 3.0), verts=12)
 
 
-def inserter(s=1.0, arm=False):
-    """The base of an inserter: a steel foot and a yellow turret; the game draws the arm swinging
-    from the tile behind it to the tile in front. With `arm` (for its icon) the arm is modelled too."""
-    paint = ra.plain("inserter_paint", (0.55, 0.36, 0.03), 0.45, 0.4, variation=0.2, grime=0.7)
+def inserter(s=1.0, arm=False, tier=""):
+    """The base of an inserter: a steel foot and a turret painted by level; the game draws the arm
+    swinging from the tile behind it to the tile in front. With `arm` (for its icon) the arm is modelled too."""
+    paint = ra.plain("inserter_paint" + tier, (0.55, 0.36, 0.03) if tier == "" else TIER_PAINT[tier], 0.45, 0.4, variation=0.2, grime=0.7)
     steel = ra.rusty_metal("inserter_steel", (0.15, 0.15, 0.16), 0.25)
     ra.box("inserter_foot", (0.9 * s, 0.9 * s, 0.1 * s), Vector((0, 0, 0.05 * s)), steel, bevel=0.03 * s)
     ra.cylinder("inserter_base", 0.36 * s, 0.14 * s, Vector((0, 0, 0.17 * s)), steel, bevel=0.02 * s)
@@ -855,6 +914,15 @@ LOGISTICS = {
     "grain_silo": (72, 136, 1.4, crafted(lambda: grain_silo())),
 }
 
+# Fast and express belts and inserters: the same sprites in their own paint, named <sprite>_<tier>.
+for _tier in ("fast", "express"):
+    LOGISTICS.update({
+        f"belt_ew_{_tier}": (72, 64, 0.1, crafted(lambda t=_tier: belt_frame(along_x=True, tier=t))),
+        f"belt_ns_{_tier}": (72, 72, 0.1, crafted(lambda t=_tier: belt_frame(along_x=False, tier=t))),
+        **{f"belt_{c}_{_tier}": (72, 72, 0.1, crafted(lambda t=_tier, c=c: belt_curve(c, tier=t))) for c in ("ne", "es", "sw", "nw")},
+        f"inserter_{_tier}": (64, 64, 0.3, crafted(lambda t=_tier: inserter(tier=t))),
+    })
+
 
 def render_logistics(layout: dict, only=()):
     for name, (w, h, tz, build) in LOGISTICS.items():
@@ -895,6 +963,112 @@ def render_rail(layout: dict):
     ax, ay = anchor(w, h, Vector((0, 0, 0)))
     layout["rail"] = {"anchorX": ax, "anchorY": ay, "lengthPx": w}
     print("sprite rail")
+
+
+# --- Trains ---------------------------------------------------------------------------------------
+
+def bogie(x, steel, wheel_mat):
+    """A two-axle bogie under a rail vehicle, centred at x on the track."""
+    ra.box("bogie", (2.4, 2.0, 0.4), (x, 0, 0.75), steel, bevel=0.03)
+    for dx in (-0.75, 0.75):
+        for y in (-0.72, 0.72):
+            ra.cylinder("wheel", 0.42, 0.14, (x + dx, y * 1.02, 0.45), wheel_mat, rotation=(math.radians(90), 0, 0), verts=20)
+        ra.cylinder("axle", 0.08, 1.7, (x + dx, 0, 0.45), steel, rotation=(math.radians(90), 0, 0), verts=10)
+
+
+def couplers(length, steel):
+    for side in (-1, 1):
+        ra.box("buffer_beam", (0.2, 2.6, 0.35), (side * (length / 2 + 0.05), 0, 1.0), steel)
+        for y in (-0.8, 0.8):
+            ra.cylinder("buffer", 0.16, 0.35, (side * (length / 2 + 0.3), y, 1.0), steel, rotation=(0, math.radians(90), 0), verts=12)
+
+
+def locomotive():
+    """A diesel shunting locomotive 9 m long on the track along x, its cab and lamps at the west
+    (left) end, where trains leave towards. Centred on the track at x = 0."""
+    paint = ra.plain("loco_paint", (0.55, 0.13, 0.04), 0.4, grime=0.55)
+    stripe = ra.plain("loco_stripe", (0.75, 0.6, 0.08), 0.5, grime=0.4)
+    steel = ra.rusty_metal("loco_steel", (0.1, 0.1, 0.11), rust=0.25)
+    wheel_mat = ra.rusty_metal("wheel", (0.2, 0.19, 0.18), rust=0.5)
+    glass = ra.emission("cab_glass", (1.0, 0.7, 0.35), 3.0)
+    lamp = ra.emission("headlamp", (1.0, 0.9, 0.7), 40.0)
+    roof = ra.plain("loco_roof", (0.09, 0.09, 0.1), 0.6)
+
+    ra.box("frame", (9, 2.7, 0.4), (0, 0, 1.15), steel, bevel=0.03)
+    ra.box("skirt", (9.1, 2.75, 0.18), (0, 0, 1.3), stripe)
+    for x in (-2.9, 2.9):
+        bogie(x, steel, wheel_mat)
+    couplers(9, steel)
+    # Cab at the west end, the long hood behind it.
+    ra.box("cab", (2.6, 2.7, 2.5), (-3.0, 0, 2.65), paint, bevel=0.06)
+    ra.box("cab_roof", (2.9, 2.9, 0.18), (-3.0, 0, 3.95), roof, bevel=0.04)
+    ra.box("hood", (5.6, 2.0, 2.0), (1.4, 0, 2.4), paint, bevel=0.08)
+    ra.box("hood_top", (5.2, 1.6, 0.12), (1.4, 0, 3.45), roof)
+    ra.box("hood_stripe", (5.62, 2.02, 0.16), (1.4, 0, 1.75), stripe)
+    for x in (0.2, 1.4, 2.6):
+        ra.cylinder("fan", 0.38, 0.08, (x, 0, 3.52), steel, verts=16)
+    ra.cylinder("exhaust", 0.12, 0.6, (-0.8, 0.3, 3.7), steel, verts=12)
+    for y in (-1.36, 1.36):
+        for x in (-3.6, -2.5):
+            ra.box("cab_window", (0.8, 0.04, 0.8), (x, y, 3.2), glass)
+    ra.box("front_window", (0.04, 2.1, 0.8), (-4.31, 0, 3.2), glass)
+    for y in (-0.8, 0.8):
+        ra.sphere("headlamp", 0.14, (-4.35, y, 1.75), lamp, segments=10)
+    ra.box("rail_guard", (0.1, 2.4, 0.08), (2.9, 0, 3.0), stripe)
+    ra.light("POINT", (-4.8, 0, 1.8), 60, (1.0, 0.85, 0.6), size=0.2)
+    return meshes()
+
+
+def wagon(cargo):
+    """A wagon 7 m long: a closed boxcar or an open one with crates. Centred on the track at x = 0."""
+    steel = ra.rusty_metal("wagon_steel", (0.1, 0.1, 0.11), rust=0.3)
+    wheel_mat = ra.rusty_metal("wheel", (0.2, 0.19, 0.18), rust=0.5)
+    ra.box("frame", (7, 2.6, 0.35), (0, 0, 1.1), steel, bevel=0.03)
+    for x in (-2.3, 2.3):
+        bogie(x, steel, wheel_mat)
+    couplers(7, steel)
+    if not cargo:
+        body = ra.corrugated("boxcar", (0.22, 0.07, 0.04), rust=0.45)
+        ra.box("body", (7, 2.8, 2.6), (0, 0, 2.6), body, bevel=0.04)
+        ra.box("roof", (7.1, 2.9, 0.2), (0, 0, 3.95), ra.plain("boxcar_roof", (0.12, 0.11, 0.1), 0.7), bevel=0.06)
+        ra.box("door", (2.2, 0.06, 2.3), (0, -1.42, 2.55), ra.corrugated("boxcar_door", (0.17, 0.055, 0.035), rust=0.5))
+        ra.box("door_rail", (4.6, 0.08, 0.08), (0, -1.45, 3.75), steel)
+        return meshes()
+    sides = ra.rusty_metal("gondola", (0.08, 0.16, 0.1), rust=0.4)
+    ra.box("floor", (7, 2.8, 0.2), (0, 0, 1.4), sides)
+    for y in (-1.35, 1.35):
+        ra.box("side", (7, 0.1, 1.2), (0, y, 2.0), sides, bevel=0.02)
+    for x in (-3.45, 3.45):
+        ra.box("end", (0.1, 2.8, 1.2), (x, 0, 2.0), sides, bevel=0.02)
+    for x in (-2.4, -1.2, 0, 1.2, 2.4):
+        ra.box("rib", (0.12, 2.9, 1.2), (x, 0, 2.0), steel)
+    crate = ra.wood("wagon_crate", (0.15, 0.1, 0.055))
+    sack = ra.plain("sack", (0.35, 0.3, 0.2), 0.9, grime=0.3)
+    for i, x in enumerate((-2.5, -1.3, -0.1, 1.1, 2.4)):
+        for j, y in enumerate((-0.6, 0.6)):
+            tall = 0.9 + random.random() * 0.4
+            if (i + j) % 3 == 2:
+                ra.sphere("sack", 0.5, (x, y, 1.9), sack, scale=(1.1, 0.9, 0.6), segments=12)
+            else:
+                ra.box("crate", (1.0, 1.0, tall), (x, y, 1.5 + tall / 2), crate, bevel=0.03,
+                       rotation=(0, 0, math.radians(random.uniform(-6, 6))))
+    return meshes()
+
+
+TRAINS = {
+    # name: (canvas width, height, builder)
+    "train_locomotive": (352, 224, locomotive),
+    "train_wagon": (288, 208, lambda: wagon(False)),
+    "train_wagon_open": (288, 208, lambda: wagon(True)),
+}
+
+
+def render_trains(layout: dict):
+    """Rail vehicles anchored on the middle of the track under their centre."""
+    for name, (w, h, build) in TRAINS.items():
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, 1.8)), build)
+        layout[name]["lengthPx"] = round((9.0 if name == "train_locomotive" else 7.0) * PPM)
 
 
 # --- Station --------------------------------------------------------------------------------------
@@ -1002,6 +1176,69 @@ def render_mine(layout: dict):
     layout["mine"] = render_sprite("mine", w, h, target, mine)
 
 
+# --- Power ----------------------------------------------------------------------------------------
+
+def build_generator():
+    """A small steam generator: a riveted boiler lying on a brick firebox with a glowing door, a
+    chimney, a flywheel turning the dynamo at its side and a copper terminal for the pole's wire."""
+    brick = ra.plain("gen_brick", (0.3, 0.11, 0.06), 0.9, variation=0.35, scale=10, bump=0.5)
+    iron = ra.rusty_metal("gen_iron", (0.1, 0.1, 0.11), rust=0.35)
+    boiler = ra.rusty_metal("gen_boiler", (0.13, 0.2, 0.15), rust=0.3)
+    brass = ra.plain("gen_brass", (0.6, 0.42, 0.12), 0.35, 0.9, variation=0.15)
+    copper = ra.plain("gen_copper", (0.65, 0.28, 0.12), 0.35, 0.9, variation=0.15)
+    ra.box("firebox", (1.3, 0.9, 0.45), (0, 0, 0.225), brick, bevel=0.03)
+    ra.box("door", (0.3, 0.04, 0.24), (-0.3, -0.46, 0.22), iron, bevel=0.01)
+    ra.box("glow", (0.22, 0.03, 0.06), (-0.3, -0.48, 0.2), ra.emission("gen_ember", (1.0, 0.35, 0.06), 4.5))
+    ra.cylinder("boiler", 0.34, 1.2, (0, 0.02, 0.8), boiler, rotation=(0, math.radians(90), 0), verts=28)
+    for x in (-0.5, 0.0, 0.5):
+        ra.cylinder("band", 0.355, 0.05, (x, 0.02, 0.8), iron, rotation=(0, math.radians(90), 0), verts=28)
+    ra.cylinder("chimney", 0.09, 0.8, (-0.4, 0.15, 1.45), iron, verts=12)
+    ra.cylinder("chimney_cap", 0.13, 0.05, (-0.4, 0.15, 1.86), iron, verts=12)
+    ra.cylinder("dome", 0.12, 0.14, (0.15, 0.02, 1.18), brass, verts=16)
+    ra.cylinder("gauge", 0.06, 0.03, (0.35, -0.33, 0.95), brass, rotation=(math.radians(90), 0, 0), verts=16)
+    # The dynamo at the east end, driven by a spoked flywheel.
+    ra.cylinder("dynamo", 0.2, 0.32, (0.78, 0.0, 0.42), ra.rusty_metal("gen_dynamo", (0.25, 0.08, 0.05), rust=0.2),
+                rotation=(0, math.radians(90), 0), verts=20)
+    ra.cylinder("flywheel", 0.36, 0.06, (0.62, -0.32, 0.45), iron, rotation=(math.radians(90), 0, 0), verts=28)
+    ra.cylinder("hub", 0.07, 0.1, (0.62, -0.32, 0.45), brass, rotation=(math.radians(90), 0, 0), verts=12)
+    for k in range(4):
+        ra.box("spoke", (0.62, 0.03, 0.04), (0.62, -0.34, 0.45), iron, rotation=(0, k * math.pi / 4, 0))
+    ra.cylinder("terminal", 0.04, 0.22, (0.85, 0.2, 0.75), copper, verts=10)
+    ra.sphere("insulator", 0.05, (0.85, 0.2, 0.88), ra.plain("gen_porcelain", (0.75, 0.72, 0.65), 0.3), segments=10)
+
+
+POLE_TOP = 2.4
+
+
+def build_pole():
+    """A wooden power pole with a cross-arm and two porcelain insulators the wires hang from."""
+    timber = ra.wood("pole_timber", (0.2, 0.12, 0.06))
+    porcelain = ra.plain("pole_porcelain", (0.78, 0.75, 0.68), 0.25, variation=0.1)
+    ra.cylinder("pole", 0.08, POLE_TOP, (0, 0, POLE_TOP / 2), timber, verts=10)
+    ra.box("arm", (0.9, 0.09, 0.09), (0, 0, POLE_TOP - 0.18), timber, bevel=0.01)
+    for x in (-0.36, 0.36):
+        ra.cylinder("insulator", 0.045, 0.12, (x, 0, POLE_TOP - 0.07), porcelain, verts=10)
+    for x, a in ((0.18, 40), (-0.18, -40)):
+        ra.box("strut", (0.04, 0.04, 0.5), (x, 0, POLE_TOP - 0.38), timber, rotation=(0, math.radians(a), 0))
+    ra.box("plate", (0.12, 0.02, 0.16), (0, -0.09, 1.2), ra.plain("pole_plate", (0.75, 0.6, 0.05), 0.5))
+
+
+POWER = {
+    # name: (canvas width, height, camera target height, builder, where the wires meet it); each stands on one tile.
+    "generator": (128, 128, 0.7, build_generator, Vector((0.85, 0.2, 0.9))),
+    "pole": (64, 128, POLE_TOP / 2, build_pole, Vector((0, 0, POLE_TOP - 0.05))),
+}
+
+
+def render_power(layout: dict):
+    for name, (w, h, tz, build, wire) in POWER.items():
+        random.seed(zlib.crc32(name.encode()))
+        target = Vector((0, 0, tz))
+        layout[name] = render_sprite(name, w, h, target, crafted(build))
+        layout[name]["wireX"], layout[name]["wireY"] = anchor(w, h, target, wire)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"item_power_{name}.png")
+
+
 # --- Icons ------------------------------------------------------------------------------------------
 
 def icon_models():
@@ -1012,6 +1249,21 @@ def icon_models():
         ra.box("head", (0.07, 0.03, 0.16), (0.2, 0.07, 0.08), head, bevel=0.01, rotation=(0, 0, math.radians(20)))
         ra.box("edge", (0.03, 0.032, 0.2), (0.24, 0.085, 0.08), ra.plain("edge", (0.7, 0.7, 0.72), 0.2, 1.0, grime=0.1),
                rotation=(0, 0, math.radians(20)))
+
+    def chainsaw():
+        # Lying on its side: an orange motor housing, a black handle loop over it, and the long
+        # guide bar with its chain pointing to the right.
+        orange = ra.plain("saw_body", (0.75, 0.22, 0.02), 0.45, variation=0.15, grime=0.4)
+        black = ra.plain("saw_black", (0.03, 0.03, 0.035), 0.55, grime=0.3)
+        bar = ra.plain("saw_bar", (0.55, 0.56, 0.58), 0.3, 1.0, grime=0.3)
+        turn = (0, 0, math.radians(15))
+        ra.box("saw_body", (0.2, 0.13, 0.12), (-0.12, 0, 0.07), orange, bevel=0.025, rotation=turn)
+        ra.box("saw_cover", (0.1, 0.135, 0.06), (-0.17, -0.013, 0.12), black, bevel=0.015, rotation=turn)
+        ra.torus("saw_handle", 0.07, 0.014, (-0.1, 0.03, 0.17), black, rotation=(math.radians(90), 0, math.radians(15)))
+        ra.box("saw_grip", (0.08, 0.035, 0.035), (-0.27, -0.04, 0.07), black, bevel=0.012, rotation=turn)
+        ra.box("saw_bar", (0.36, 0.022, 0.065), (0.15, 0.072, 0.07), bar, bevel=0.025, rotation=turn)
+        ra.box("saw_chain", (0.37, 0.026, 0.012), (0.15, 0.072, 0.105), black, bevel=0.004, rotation=turn)
+        ra.box("saw_chain_low", (0.37, 0.026, 0.012), (0.15, 0.072, 0.035), black, bevel=0.004, rotation=turn)
 
     def shovel():
         ra.cylinder("handle", 0.02, 0.45, (-0.08, 0, 0.04), ra.wood("handle", (0.25, 0.15, 0.07)),
@@ -1245,6 +1497,7 @@ def icon_models():
         "item_vegetable_soup": bowl((0.6, 0.35, 0.08), [((0.75, 0.25, 0.02), 6), ((0.8, 0.7, 0.4), 6), ((0.2, 0.4, 0.1), 4)]),
         "item_bigos": bowl((0.3, 0.18, 0.06), [((0.65, 0.6, 0.3), 12), ((0.35, 0.12, 0.08), 6)]),
         "item_tool_axe": axe, "item_tool_shovel": shovel, "item_tool_pickaxe": pickaxe, "item_tool_hoe": hoe,
+        "item_tool_chainsaw": chainsaw,
         "item_wheat": wheat_sheaf, "item_carrot": carrots, "item_cabbage": cabbage_head, "item_corn": corn_cob,
         "item_potato": potatoes, "item_sunflower": sunflower_head,
         "item_wood": wood, "item_stone": stones((0.2, 0.19, 0.18)), "item_sand": sand, "item_coal": coal,
@@ -1262,6 +1515,10 @@ def icon_models():
         "item_nails": nails,
         "item_logistics_belt": lambda: belt_frame(0.26, True, 1.6),
         "item_logistics_inserter": lambda: inserter(0.4, arm=True),
+        "item_logistics_fast_belt": lambda: belt_frame(0.26, True, 1.6, tier="fast"),
+        "item_logistics_express_belt": lambda: belt_frame(0.26, True, 1.6, tier="express"),
+        "item_logistics_fast_inserter": lambda: inserter(0.4, arm=True, tier="fast"),
+        "item_logistics_express_inserter": lambda: inserter(0.4, arm=True, tier="express"),
         "item_logistics_splitter": lambda: (belt_frame(0.4, True, 1.6), belt_frame(0.4, False, 1.6), splitter(0.6)),
         "item_storage_wooden_chest": lambda: wooden_chest(0.38),
         "item_storage_iron_chest": lambda: iron_chest(0.36),
@@ -1285,7 +1542,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "forestry", "mine", "crafting", "processing", "office", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "power", "office", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -1297,6 +1554,8 @@ if __name__ == "__main__":
         render_nature(layout)
     if "rail" in args:
         render_rail(layout)
+    if "trains" in args:
+        render_trains(layout)
     if "farming" in args:
         render_farming(layout)
     if "forestry" in args:
@@ -1305,12 +1564,15 @@ if __name__ == "__main__":
         render_station(layout)
     if "mine" in args:
         render_mine(layout)
-    if "crafting" in args:
-        render_crafting(layout)
+    if "crafting" in args or any(a in CRAFTING for a in args):
+        # Names of crafting sprites render just those.
+        render_crafting(layout, [a for a in args if a in CRAFTING])
     if "processing" in args:
         render_processing(layout)
     if "office" in args:
         render_office(layout)
+    if "power" in args:
+        render_power(layout)
     if "logistics" in args or any(a in LOGISTICS for a in args):
         # Names of logistics sprites render just those.
         render_logistics(layout, [a for a in args if a in LOGISTICS])

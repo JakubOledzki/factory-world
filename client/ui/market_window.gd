@@ -312,6 +312,11 @@ func _render_trader() -> void:
 func _trader_row(price: Dictionary) -> Control:
 	var item: String = price["id"]
 	var cents := int(price["buyCents"])
+	if price.get("locked") != null:
+		var locked := _item_row(item, price["name"], "cena %s  ·  najpierw zbadaj: %s" % [UI.money(cents), price["locked"]], UI.MUTED)
+		locked.modulate = Color(1, 1, 1, 0.6)
+		locked.tooltip_text = "Odblokujesz to w drzewku technologii przy stole warsztatowym (zakładka Badania). Od innych graczy możesz to kupić już teraz."
+		return locked
 	var row := _item_row(item, price["name"], "cena %s%s" % [UI.money(cents), _change(price.get("buyChange"))], UI.GOLD)
 	for amount: int in ([1] if item.begins_with("furniture_") else [1, 10]):
 		var b := UI.button("Kup %d" % amount, _send.bind("market.buy", {"item": item, "quantity": amount}, item, "market.traded"))

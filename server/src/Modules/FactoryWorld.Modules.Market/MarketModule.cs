@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FactoryWorld.Modules.Market;
 
 /// <summary>
-/// The NPC trader: always sells trash, saplings, nails, belts, inserters, wooden chests, machines, the computer, flour, oil and bread and always buys raw materials.
+/// The NPC trader: always sells trash, saplings, nails, tools, an anvil, a chainsaw, belts, inserters, wooden chests, machines, the computer, generators, poles, flour, oil and bread and always buys raw materials.
 /// These are its usual prices (cents); <see cref="TraderPrices"/> moves them with the day's drift and the market's events.
 /// What it pays is the floor of the market: a quick sale gets it at once, players' listings usually pay more.
 /// </summary>
@@ -21,6 +21,12 @@ public static class NpcPrices
         [Items.Sapling] = 200,
         [Items.Nails] = 100,
         [Items.Workbench] = 50_000,
+        [Items.Anvil] = 50_000,
+        [Items.Axe] = 10_000,
+        [Items.Shovel] = 10_000,
+        [Items.Pickaxe] = 10_000,
+        [Items.Hoe] = 10_000,
+        [Items.Chainsaw] = 50_000,
         [Items.Belt] = 500,
         [Items.Inserter] = 3000,
         [Items.Splitter] = 4000,
@@ -34,6 +40,8 @@ public static class NpcPrices
         [Items.Flour] = 400,
         [Items.SunflowerOil] = 1500,
         [Items.Bread] = 1500,
+        [Items.Generator] = 60_000,
+        [Items.Pole] = 300,
     };
 
     /// <summary>What the NPC pays the player.</summary>
@@ -69,13 +77,21 @@ public static class NpcPrices
         [Items.SortingMachine] = 50_000,
         [Items.Workbench] = 3000,
         [Items.Furnace] = 1500,
+        [Items.BrickFurnace] = 6000,
+        [Items.BlastFurnace] = 30_000,
         [Items.Axe] = 500,
         [Items.Shovel] = 500,
         [Items.Pickaxe] = 500,
         [Items.Hoe] = 500,
+        [Items.Chainsaw] = 10_000,
+        [Items.Anvil] = 5000,
         [Items.Belt] = 200,
         [Items.Inserter] = 1200,
         [Items.Splitter] = 1600,
+        [Items.FastBelt] = 900,
+        [Items.ExpressBelt] = 2500,
+        [Items.FastInserter] = 3500,
+        [Items.ExpressInserter] = 12_000,
         [Items.WoodenChest] = 800,
         [Items.IronChest] = 2500,
         [Items.WoodPile] = 300,
@@ -97,6 +113,8 @@ public static class NpcPrices
         [Items.Fries] = 900,
         [Items.VegetableSoup] = 1100,
         [Items.Bigos] = 750,
+        [Items.Generator] = 4000,
+        [Items.Pole] = 100,
     };
 
     public const int MaxQuantity = 1000;
@@ -104,7 +122,7 @@ public static class NpcPrices
 
 public sealed record TradeRequest(string Item, int Quantity);
 
-public sealed class MarketService(GameDb db, IInventory inventory, IWallet wallet, TraderMarket trader)
+public sealed class MarketService(GameDb db, IInventory inventory, IWallet wallet, TraderMarket trader, ITechnologies technologies)
 {
     /// <summary>The player buys from the NPC: money out, items in, both or neither.</summary>
     public Task<long> BuyAsync(Guid owner, string item, int quantity, CancellationToken cancellationToken)
@@ -112,6 +130,8 @@ public sealed class MarketService(GameDb db, IInventory inventory, IWallet walle
         var price = Price(trader.Prices().Sells, item, quantity, "The trader doesn't sell this item.");
         return db.InTransactionAsync(async () =>
         {
+            // Machines and logistics come from the trader only once researched; other players may still sell them.
+            await technologies.RequireUnlockedAsync(owner, item, cancellationToken);
             var balance = await wallet.DebitAsync(owner, price * quantity, $"buy {quantity} {item}", cancellationToken);
             await inventory.AddAsync(owner, item, quantity, cancellationToken);
             return balance;
@@ -141,14 +161,16 @@ public sealed class MarketService(GameDb db, IInventory inventory, IWallet walle
 }
 
 /// <summary>The trader's prices now, how far they are from the usual ones, and its current and next event.</summary>
-public sealed class PricesHandler(TraderMarket trader) : IMessageHandler
+public sealed class PricesHandler(TraderMarket trader, IServiceScopeFactory scopes) : IMessageHandler
 {
     public string Type => "market.prices";
 
-    public Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
     {
         var prices = trader.Prices();
-        return Task.FromResult(new Reply("market.prices", new
+        await using var scope = scopes.CreateAsyncScope();
+        var locked = await scope.ServiceProvider.GetRequiredService<ITechnologies>().LockedAsync(client.RequireAccount(), cancellationToken);
+        return new Reply("market.prices", new
         {
             items = Items.Names.Keys
                 .Where(id => prices.Sells.ContainsKey(id) || prices.Buys.ContainsKey(id))
@@ -160,11 +182,13 @@ public sealed class PricesHandler(TraderMarket trader) : IMessageHandler
                     buyChange = prices.Sells.ContainsKey(id) ? TraderPrices.Change(buy, NpcPrices.Sells[id]) : (int?)null,
                     sellCents = prices.Buys.TryGetValue(id, out var sell) ? sell : (long?)null,
                     sellChange = prices.Buys.ContainsKey(id) ? TraderPrices.Change(sell, NpcPrices.Buys[id]) : (int?)null,
+                    // The technology to research before the trader sells it to this player, or null.
+                    locked = prices.Sells.ContainsKey(id) ? locked.GetValueOrDefault(id) : null,
                 }),
             @event = Describe(prices.Event),
             next = Describe(trader.NextEvent()),
             serverTime = trader.Now.ToUnixTimeMilliseconds(),
-        }));
+        });
     }
 
     private static object? Describe(ScheduledEvent? scheduled) => scheduled is not { Event: var e } ? null : new

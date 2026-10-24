@@ -93,7 +93,7 @@ public sealed class SurveyService(GameDb db, PlotService plots, IWallet wallet, 
     public Task<SurveyResult> OrderAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Owner);
             var survey = Deposits.Under(x, y, biome);
             await using (var insert = await db.CommandAsync(
                 "INSERT INTO world.surveys (x, y, oil, gas, surveyed_at) VALUES (@x, @y, @oil, @gas, @at) ON CONFLICT DO NOTHING", cancellationToken))
