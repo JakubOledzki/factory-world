@@ -36,6 +36,9 @@ internal sealed class BotPlot(int x, int y, int biome)
     public List<(int X, int Y, string? Crop, DateTimeOffset? ReadyAt)> Fields { get; } = [];
 
     public int Planted { get; set; }
+
+    /// <summary>What stands on the plot (workbenches, furnaces, chests...), as plot.enter sent it.</summary>
+    public List<(Guid Id, string Kind)> Objects { get; } = [];
 }
 
 /// <summary>
@@ -188,6 +191,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             }
         }
 
+        var ore = BotRules.Ores.FirstOrDefault(o => Have(o) >= 5);
         foreach (var plot in _plots)
         {
             var mine = plot.Biome == Biomes.Mountains || plot.Biome == Biomes.Forest || plot.Biome == Biomes.Desert || plot.Biome == Biomes.Farmland;
@@ -213,13 +217,35 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                 Add(trade == BotTrade.Forester ? 5 : 2, "plant tree", ct => PlantTreeAsync(plot, world, ct));
             }
 
+            foreach (var kind in plot.Tiles is null ? [] : StillToBuild(plot))
+            {
+                if (Have(kind) > 0 && plot.Free.Count > 0)
+                {
+                    Add(6, "build", ct => BuildAsync(plot, kind, ct));
+                    break;
+                }
+
+                if (_workbench is not null && _craftQueue < 5 && !IsLocked(kind) && Has(Recipe(kind)) && CanGain(world, RecipeXp(kind)))
+                {
+                    Add(4, "craft to build", ct => CraftAsync(kind, ct));
+                    break;
+                }
+            }
+
+            foreach (var (id, kind) in plot.Objects)
+            {
+                if (kind == Items.Furnace)
+                {
+                    Add(ore is not null && Have(Items.Coal) >= 1 ? 6 : 2, "plot furnace", ct => FurnaceAsync(id, world, ct));
+                }
+            }
+
             if (plot.Biome == Biomes.Mountains && CanGain(world, 80) && plot.Mines.Any(m => m.Upgradable && Have(Items.IronIngot) >= m.UpgradeIron && Have(Items.Wood) >= m.UpgradeWood))
             {
                 Add(4, "upgrade mine", ct => UpgradeMineAsync(plot, ct));
             }
         }
 
-        var ore = BotRules.Ores.FirstOrDefault(o => Have(o) >= 5);
         if (_furnace is { } furnace)
         {
             Add(ore is not null && Have(Items.Coal) >= 1 ? 8 : 5, "furnace", ct => FurnaceAsync(furnace, world, ct));
@@ -638,7 +664,11 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         var state = await SendAsync("furnace.get", new { furnace }, cancellationToken);
         if (!state.Is("furnace"))
         {
-            _furnace = null;
+            if (furnace == _furnace)
+            {
+                _furnace = null;
+            }
+
             return false;
         }
 
@@ -783,9 +813,11 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             _ => [Tiles.Tree, Tiles.Rock],
         };
         var busy = new HashSet<(int, int)>();
+        plot.Objects.Clear();
         foreach (var o in p.Each("objects"))
         {
             busy.Add(((int)o.Long("tileX"), (int)o.Long("tileY")));
+            plot.Objects.Add((o.Id("id") ?? Guid.Empty, o.Text("kind")!));
         }
 
         plot.Fields.Clear();
@@ -1025,6 +1057,46 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         return false;
     }
 
+    /// <summary>What of the plot's plan in <see cref="BotRules.Builds"/> does not stand there yet, in the plan's order.</summary>
+    private IEnumerable<string> StillToBuild(BotPlot plot)
+    {
+        var standing = plot.Objects.GroupBy(o => o.Kind).ToDictionary(g => g.Key, g => g.Count());
+        foreach (var kind in BotRules.Builds(Profile.Trade, plot.Biome))
+        {
+            if (standing.GetValueOrDefault(kind) > 0)
+            {
+                standing[kind]--;
+            }
+            else
+            {
+                yield return kind;
+            }
+        }
+    }
+
+    /// <summary>Puts something from the inventory on a free tile near the spawn, off the path straight ahead of it.</summary>
+    private async Task<bool> BuildAsync(BotPlot plot, string kind, CancellationToken cancellationToken)
+    {
+        foreach (var (x, y) in plot.Free.Where(t => t.X != plot.Spawn.X).Take(20).ToList())
+        {
+            plot.Free.Remove((x, y));
+            var reply = await SendAsync("plot.place", new { x = plot.X, y = plot.Y, kind, tileX = x, tileY = y, rotation = 0 }, cancellationToken);
+            if (reply.Is("plot.placed"))
+            {
+                plot.Objects.Add((reply.Payload.Get("object")?.Id("id") ?? Guid.Empty, kind));
+                _inventory[kind] = Math.Max(0, Have(kind) - 1);
+                return true;
+            }
+
+            if (reply.Error != "blocked")
+            {
+                return false;
+            }
+        }
+
+        return false;
+    }
+
     private async Task<bool> UpgradeMineAsync(BotPlot plot, CancellationToken cancellationToken)
     {
         var mine = plot.Mines.First(m => m.Upgradable && Have(Items.IronIngot) >= m.UpgradeIron && Have(Items.Wood) >= m.UpgradeWood);
@@ -1088,9 +1160,13 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
     /// <summary>What the bot has more of than it keeps, worth the most first.</summary>
     private IEnumerable<(string Item, long Quantity)> Surplus() =>
         _inventory
-            .Where(i => BotRules.Goods.Contains(i.Key) && i.Value > BotRules.Keep(Profile.Trade, i.Key))
-            .Select(i => (Item: i.Key, Quantity: i.Value - BotRules.Keep(Profile.Trade, i.Key)))
+            .Where(i => BotRules.Goods.Contains(i.Key) && i.Value > Keep(i.Key))
+            .Select(i => (Item: i.Key, Quantity: i.Value - Keep(i.Key)))
             .OrderByDescending(s => s.Quantity * Math.Max(Floor(s.Item), 1));
+
+    /// <summary>What the bot holds back: what its trade keeps, and whatever it still means to build on its plots.</summary>
+    private long Keep(string item) =>
+        BotRules.Keep(Profile.Trade, item) + _plots.Where(p => p.Tiles is not null).Sum(p => StillToBuild(p).Count(k => k == item));
 
     private async Task<bool> ListAsync(BotWorld world, CancellationToken cancellationToken)
     {

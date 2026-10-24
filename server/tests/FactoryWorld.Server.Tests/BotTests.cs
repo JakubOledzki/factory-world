@@ -86,6 +86,14 @@ public sealed class BotTests(ServerFactory factory) : IClassFixture<ServerFactor
         var ranking = (await player.SendAsync("rankings.get", new { ranking = "level" })).Payload();
         Assert.True(ranking.GetProperty("top")[0].GetProperty("mine").GetBoolean());
 
+        // Bots stand in the rankings next to players, under the names players see.
+        var names = BotRoster.All.Select(b => b.Name).ToHashSet();
+        foreach (var id in new[] { "level", "money" })
+        {
+            var top = (await player.SendAsync("rankings.get", new { ranking = id })).Payload().GetProperty("top").EnumerateArray();
+            Assert.Contains(top, p => names.Contains(p.GetProperty("name").GetString()!));
+        }
+
         // When the player moves on, so may the bots, and no further.
         await using (var scope = factory.Services.CreateAsyncScope())
         {
@@ -152,6 +160,40 @@ public sealed class BotLimitTests(ServerFactory factory) : IClassFixture<ServerF
         {
             Assert.True(listing.GetProperty("quantity").GetInt64() <= BotRules.ListingSize);
         }
+    }
+
+    [Fact]
+    public async Task A_bot_builds_on_its_plot_and_smelts_in_the_furnaces_it_put_up()
+    {
+        await Engine.EnsureBotsAsync(CancellationToken.None);
+        using var player = await factory.ConnectAsync();
+        await player.RegisterWithCharacterAsync();
+        var bot = Engine.Bots.First(b => b.Profile.Trade == BotTrade.Miner);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<ICharacterProgress>().AddXpAsync(player.AccountId, 100_000, CancellationToken.None);
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(bot.Row.AccountId, 20_000_00, "test", CancellationToken.None);
+            var inventory = scope.ServiceProvider.GetRequiredService<IInventory>();
+            await inventory.AddAsync(bot.Row.AccountId, Items.Stone, 300, CancellationToken.None);
+            await inventory.AddAsync(bot.Row.AccountId, Items.IronOre, 200, CancellationToken.None);
+            await inventory.AddAsync(bot.Row.AccountId, Items.Coal, 100, CancellationToken.None);
+        }
+
+        var built = new List<string>();
+        for (var i = 0; i < 300 && built.Count(k => k == Items.Furnace) < 2; i++)
+        {
+            factory.Time.Advance(TimeSpan.FromMinutes(1));
+            await Engine.StepAsync(bot.Profile.Name, CancellationToken.None);
+            var info = await bot.Client.SendAsync("world.info", null, CancellationToken.None);
+            built.Clear();
+            foreach (var plot in info.Payload.GetProperty("plots").EnumerateArray())
+            {
+                var inside = await bot.Client.SendAsync("plot.enter", new { x = plot.GetProperty("x").GetInt32(), y = plot.GetProperty("y").GetInt32() }, CancellationToken.None);
+                built.AddRange(inside.Payload.GetProperty("objects").EnumerateArray().Select(o => o.GetProperty("kind").GetString()!));
+            }
+        }
+
+        Assert.True(built.Count(k => k == Items.Furnace) >= 2, string.Join(", ", built));
     }
 
     [Fact]
