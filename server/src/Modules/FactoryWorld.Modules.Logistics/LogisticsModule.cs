@@ -358,10 +358,12 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
             beltSlots = LogisticsRules.BeltSlots,
             beltLanes = LogisticsRules.BeltLanes,
             swingTicks = LogisticsRules.SwingTicks,
-            belts = state.Objects.Where(o => o.Kind is Items.Belt or Items.Splitter)
+            belts = state.Objects.Where(o => Items.IsBelt(o.Kind) || o.Kind == Items.Splitter)
                 .Select(o => new
                 {
                     id = o.Id,
+                    // Places an item moves along it a tick; a splitter goes as fast as the belt behind it, which the client works out.
+                    speed = LogisticsRules.BeltSpeed(o.Kind),
                     items = Of(o.Id).Belt ?? new string?[LogisticsRules.BeltSlots * LogisticsRules.BeltLanes],
                     // Splitters only: the items sorted out and the side they go to.
                     filter = o.Kind == Items.Splitter ? Of(o.Id).Filter ?? [] : null,
@@ -370,12 +372,13 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
                 }),
             // What every item is called, for choosing a splitter's filter.
             names = state.Objects.Any(o => o.Kind == Items.Splitter) ? Items.Names : null,
-            inserters = state.Objects.Where(o => o.Kind == Items.Inserter)
+            inserters = state.Objects.Where(o => Items.IsInserter(o.Kind))
                 .Select(o => new
                 {
                     id = o.Id,
                     hand = Of(o.Id).Hand,
                     swing = Of(o.Id).Swing,
+                    swingTicks = LogisticsRules.Swing(o.Kind),
                     // How fast it works on the power it has (0 stands still), and the power gathered for its next move.
                     speed = state.Power.Clock(o.Id).Speed(state.SimulatedAt),
                     charge = Of(o.Id).Charge,

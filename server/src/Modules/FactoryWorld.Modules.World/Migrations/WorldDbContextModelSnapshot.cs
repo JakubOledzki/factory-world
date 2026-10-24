@@ -129,6 +129,12 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("empty_at");
 
+                    b.Property<int>("Level")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(1)
+                        .HasColumnName("level");
+
                     b.Property<int>("Used")
                         .HasColumnType("integer")
                         .HasColumnName("used");

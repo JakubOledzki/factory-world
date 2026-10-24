@@ -6,11 +6,20 @@ extends Node2D
 ## brings to the belts on their left and right. Inserters stand on their tiles and swing an arm from
 ## the tile behind them to the tile in front, when they have power.
 ## The server works the machinery out in ticks; between its answers the same rules run here, so
-## items glide along the belts instead of jumping once a second.
+## items glide along the belts instead of jumping once a second. Fast and express belts move their
+## items 2 and 3 places a tick, in turns within the tick, and a splitter keeps up with the belt that
+## feeds it from behind; fast and express inserters swing in fewer ticks. They are painted red and blue.
 
 const BELT := "logistics_belt"
 const INSERTER := "logistics_inserter"
 const SPLITTER := "logistics_splitter"
+## Places a tick an item moves along a belt of each level, and ticks an inserter's arm takes to swing one way.
+const BELT_SPEEDS := {"logistics_belt": 1, "logistics_fast_belt": 2, "logistics_express_belt": 3}
+const INSERTER_SWINGS := {"logistics_inserter": 4, "logistics_fast_inserter": 2, "logistics_express_inserter": 1}
+## Sprites of upgraded belts and inserters end in the level's name.
+const TIER_SUFFIXES := {"logistics_fast_belt": "_fast", "logistics_express_belt": "_express",
+	"logistics_fast_inserter": "_fast", "logistics_express_inserter": "_express"}
+const ARM_COLORS := {"": Color("#d9a21c"), "_fast": Color("#c8321e"), "_express": Color("#2c62c8")}
 ## Belt sprites by rotation: south and north run up and down the screen, east and west across.
 const BELT_SPRITES := ["belt_ns", "belt_ew", "belt_ns", "belt_ew"]
 ## Sprites of belts turning a corner, by the two sides of the tile they join.
@@ -56,7 +65,13 @@ var _icons := {}
 
 func _ready() -> void:
 	for sprite: String in ["belt_ns", "belt_ew"] + CURVE_SPRITES.values():
-		_textures[sprite] = load("res://art/plot/%s.png" % sprite)
+		for suffix: String in ["", "_fast", "_express"]:
+			_textures[sprite + suffix] = load("res://art/plot/%s%s.png" % [sprite, suffix])
+
+
+## "_fast" or "_express" for upgraded belts and inserters, whose sprites end so; "" for the rest.
+static func tier_suffix(kind: String) -> String:
+	return TIER_SUFFIXES.get(kind, "")
 
 
 func has_machinery() -> bool:
@@ -64,7 +79,7 @@ func has_machinery() -> bool:
 
 
 func is_belt(object: Dictionary) -> bool:
-	return object.get("kind", "") == BELT
+	return BELT_SPEEDS.has(object.get("kind", ""))
 
 
 ## A splitter's filter: { items: [ids], side: 0 left / 1 right }.
@@ -93,19 +108,20 @@ func set_objects(placed: Dictionary) -> void:
 	for cell: Vector2i in placed:
 		var object: Dictionary = placed[cell]
 		var rotation := int(object.get("rotation", 0))
-		if object["kind"] in [BELT, SPLITTER]:
+		if BELT_SPEEDS.has(object["kind"]) or object["kind"] == SPLITTER:
 			var old: Dictionary = _find(_belts, object["id"])
 			var items: Array = old.get("items", [])
 			if items.size() != belt_slots * belt_lanes:
 				items = []
 				items.resize(belt_slots * belt_lanes)
-			belts[cell] = {"id": object["id"], "rotation": rotation, "items": items, "moved": [], "out": [], "bend": 0,
+			belts[cell] = {"id": object["id"], "rotation": rotation, "items": items, "moved": {}, "out": [], "bend": 0,
 				"splitter": object["kind"] == SPLITTER, "filter": old.get("filter", []), "filterSide": int(old.get("filterSide", 0)),
-				"turn": int(old.get("turn", 0))}
-		elif object["kind"] == INSERTER:
+				"turn": int(old.get("turn", 0)), "speed": int(BELT_SPEEDS.get(object["kind"], 1)), "suffix": tier_suffix(object["kind"])}
+		elif INSERTER_SWINGS.has(object["kind"]):
 			var old: Dictionary = _find(_inserters, object["id"])
 			inserters[cell] = {"id": object["id"], "rotation": rotation, "hand": old.get("hand"), "swing": int(old.get("swing", 0)),
-				"was": int(old.get("swing", 0)), "arm": old.get("arm"), "speed": float(old.get("speed", 1.0)), "charge": float(old.get("charge", 0.0))}
+				"was": int(old.get("swing", 0)), "arm": old.get("arm"), "swingTicks": int(INSERTER_SWINGS[object["kind"]]),
+				"suffix": tier_suffix(object["kind"]), "speed": float(old.get("speed", 1.0)), "charge": float(old.get("charge", 0.0))}
 	var kept := {}
 	for cell: Vector2i in inserters:
 		if inserters[cell]["arm"] != null:
@@ -145,7 +161,7 @@ func apply(state: Dictionary) -> void:
 			var known: Dictionary = belts_by_id[belt["id"]]
 			belt["items"] = (known["items"] as Array).duplicate()
 			belt["items"].resize(belt_slots * belt_lanes)
-			belt["moved"] = []
+			belt["moved"] = {}
 			belt["filter"] = known.get("filter") if known.get("filter") != null else []
 			belt["filterSide"] = int(known.get("filterSide", 0))
 			belt["turn"] = int(known.get("turn", 0))
@@ -157,6 +173,7 @@ func apply(state: Dictionary) -> void:
 		if inserters_by_id.has(inserter["id"]):
 			inserter["hand"] = inserters_by_id[inserter["id"]]["hand"]
 			inserter["swing"] = int(inserters_by_id[inserter["id"]]["swing"])
+			inserter["swingTicks"] = int(inserters_by_id[inserter["id"]].get("swingTicks", inserter["swingTicks"]))
 			inserter["was"] = inserter["swing"]
 			inserter["speed"] = float(inserters_by_id[inserter["id"]].get("speed", 1.0))
 			inserter["charge"] = float(inserters_by_id[inserter["id"]].get("charge", 0.0))
@@ -220,6 +237,11 @@ func _connect(cell: Vector2i, way: Vector2i) -> Dictionary:
 func _link_belts() -> void:
 	for cell: Vector2i in _belts:
 		_belts[cell]["bend"] = _bend(cell)
+		var belt: Dictionary = _belts[cell]
+		if belt["splitter"]:
+			# A splitter keeps up with the belt behind it.
+			var feeder: Dictionary = _belts.get(cell - facing(belt["rotation"]), {})
+			belt["speed"] = int(feeder["speed"]) if not feeder.is_empty() and not feeder["splitter"] and feeder["rotation"] == belt["rotation"] else 1
 	for cell: Vector2i in _belts:
 		var belt: Dictionary = _belts[cell]
 		if belt["splitter"]:
@@ -263,21 +285,30 @@ func _process(_delta: float) -> void:
 ## One tick: belts move their items forward, inserter arms swing (slower short of power, not at
 ## all without, as on the server); picking up and dropping is left to the server.
 func _step() -> void:
+	var phases := 0
 	for cell in _order:
-		_belts[cell]["moved"] = []
-	for cell in _order:
-		var belt: Dictionary = _belts[cell]
-		var items: Array = belt["items"]
-		for lane in belt_lanes:
-			var start := lane * belt_slots
-			var end := start + belt_slots - 1
-			if items[end] != null and _pass(belt, lane, items[end]):
-				items[end] = null
-			for i in range(end - 1, start - 1, -1):
-				if items[i] != null and items[i + 1] == null:
-					items[i + 1] = items[i]
-					items[i] = null
-					belt["moved"].append(i + 1)
+		_belts[cell]["moved"] = {}
+		phases = maxi(phases, int(_belts[cell]["speed"]))
+	# Each turn of a tick, the belts fast enough move their items one place on, downstream first.
+	for phase in phases:
+		for cell in _order:
+			var belt: Dictionary = _belts[cell]
+			if int(belt["speed"]) <= phase:
+				continue
+			var items: Array = belt["items"]
+			var moved: Dictionary = belt["moved"]
+			for lane in belt_lanes:
+				var start := lane * belt_slots
+				var end := start + belt_slots - 1
+				if items[end] != null and _pass(belt, lane, items[end], int(moved.get(end, 0)) + 1):
+					items[end] = null
+					moved.erase(end)
+				for i in range(end - 1, start - 1, -1):
+					if items[i] != null and items[i + 1] == null:
+						items[i + 1] = items[i]
+						items[i] = null
+						moved[i + 1] = int(moved.get(i, 0)) + 1
+						moved.erase(i)
 	for cell: Vector2i in _inserters:
 		var inserter: Dictionary = _inserters[cell]
 		inserter["was"] = inserter["swing"]
@@ -289,15 +320,16 @@ func _step() -> void:
 			if float(inserter["charge"]) < 1.0:
 				continue
 			inserter["charge"] = float(inserter["charge"]) - 1.0
-		if inserter["hand"] != null and int(inserter["swing"]) < swing_ticks:
+		if inserter["hand"] != null and int(inserter["swing"]) < int(inserter["swingTicks"]):
 			inserter["swing"] = int(inserter["swing"]) + 1
 		elif inserter["hand"] == null and int(inserter["swing"]) > 0:
 			inserter["swing"] = int(inserter["swing"]) - 1
 
 
 ## Puts the item at the end of a lane on the belt it goes on to, when there is room: a splitter
-## sends items left and right in turn, or filtered ones one way and the rest the other.
-func _pass(belt: Dictionary, lane: int, item: String) -> bool:
+## sends items left and right in turn, or filtered ones one way and the rest the other. `moved` is
+## how many places it has gone this tick, counting this one, for drawing it on its way.
+func _pass(belt: Dictionary, lane: int, item: String, moved: int) -> bool:
 	var ways: Array = [0]
 	if belt["splitter"]:
 		var side := int(belt["filterSide"])
@@ -313,7 +345,7 @@ func _pass(belt: Dictionary, lane: int, item: String) -> bool:
 		var at: int = int(link["into"][lane]) * belt_slots + int(link["entry"])
 		if next["items"][at] == null:
 			next["items"][at] = item
-			next["moved"].append(at)
+			next["moved"][at] = moved
 			if belt["splitter"]:
 				belt["turn"] = 1 - way
 			return true
@@ -378,16 +410,16 @@ func _draw() -> void:
 	var f := _fraction()
 	for cell: Vector2i in _belts:
 		var belt: Dictionary = _belts[cell]
-		var sprites: Array = [_belt_sprite(belt)]
+		var sprites: Array = [_belt_sprite(belt) + ("" if belt["splitter"] else String(belt["suffix"]))]
 		if belt["splitter"]:
 			# Crossed by a belt from side to side, where the items go out.
 			sprites.append(BELT_SPRITES[(int(belt["rotation"]) + 1) & 3])
 		for sprite: String in sprites:
 			var anchor := Vector2(layout[sprite]["anchorX"], layout[sprite]["anchorY"])
 			draw_texture(_textures[sprite], (Vector2(cell) + Vector2(0.5, 0.5)) * tile - anchor)
-	# Chevrons pointing the way the band runs, moving one slot a tick.
-	var phase := fmod(float(server_now.call()) / tick_ms, 1.0)
+	# Chevrons pointing the way the band runs, moving as many slots a tick as the belt is fast.
 	for cell: Vector2i in _belts:
+		var phase := fmod(float(server_now.call()) / tick_ms * int(_belts[cell]["speed"]), 1.0)
 		for k in belt_slots:
 			var s := (k + phase) / belt_slots
 			if s > 0.92 or s < 0.02:
@@ -405,8 +437,8 @@ func _draw() -> void:
 				continue
 			var lane := 0 if i < belt_slots else 1
 			var at := (i % belt_slots + 0.5) / belt_slots
-			if i in belt["moved"]:
-				at -= (1.0 - f) / belt_slots
+			if belt["moved"].has(i):
+				at -= (1.0 - f) * int(belt["moved"][i]) / belt_slots
 			var point: Array = _belt_point(cell, at, LANE_OFFSET if lane == 0 else -LANE_OFFSET)
 			var p := _screen(cell, point[0], BAND_HEIGHT)
 			draw_texture_rect(_icon(items[i]), Rect2(p - Vector2(ITEM_SIZE / 2, ITEM_SIZE * 0.8), Vector2(ITEM_SIZE, ITEM_SIZE)), false)
@@ -426,7 +458,7 @@ class InserterArm extends Node2D:
 		if inserter.is_empty():
 			return
 		var f := logistics._fraction()
-		var swing := lerpf(float(inserter["was"]), float(inserter["swing"]), f) / maxf(logistics.swing_ticks, 1)
+		var swing := lerpf(float(inserter["was"]), float(inserter["swing"]), f) / maxf(int(inserter["swingTicks"]), 1)
 		var dir := Vector2(PlotLogistics.facing(inserter["rotation"]))
 		var side := Vector2(-dir.y, dir.x)
 		# From the tile behind (swing 0) round the side to the tile in front (swing 1).
@@ -437,7 +469,8 @@ class InserterArm extends Node2D:
 		var shoulder := Vector2(0, -1 - PlotLogistics.SHOULDER_HEIGHT * lift)
 		var hand := Vector2(reach.x * t.x, reach.y * t.y - 1 - 0.36 * lift)
 		var elbow := (shoulder + hand) / 2 - Vector2(0, 7)
-		for pass_color: Color in [PlotLogistics.ARM_DARK, PlotLogistics.ARM_COLOR]:
+		var paint: Color = PlotLogistics.ARM_COLORS.get(inserter["suffix"], PlotLogistics.ARM_COLOR)
+		for pass_color: Color in [PlotLogistics.ARM_DARK, paint]:
 			var width := 7.0 if pass_color == PlotLogistics.ARM_DARK else 4.0
 			draw_polyline([shoulder, elbow, hand], pass_color, width, true)
 		draw_circle(shoulder, 3.5, PlotLogistics.ARM_DARK)

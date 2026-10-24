@@ -94,7 +94,7 @@ public static class Tally
                 break;
             case "plot.place":
                 Add(counts, Stats.Placed, 1);
-                if (reply.TryGetProperty("object", out var placed) && Text(placed, "kind") == Items.Belt)
+                if (reply.TryGetProperty("object", out var placed) && Text(placed, "kind") is { } placedKind && Items.IsBelt(placedKind))
                 {
                     Add(counts, Stats.Belts, 1);
                 }

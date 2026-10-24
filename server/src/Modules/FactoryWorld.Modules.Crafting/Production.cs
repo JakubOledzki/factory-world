@@ -7,7 +7,7 @@ namespace FactoryWorld.Modules.Crafting;
 /// A state worked further is always saved after this is counted, so the same batch is never counted twice.</summary>
 internal static class MachineProduction
 {
-    public static List<ProductionEntry> Smelted(FurnaceState before, FurnaceState after)
+    public static List<ProductionEntry> Smelted(FurnaceLevel level, FurnaceState before, FurnaceState after)
     {
         var entries = new List<ProductionEntry>();
         var n = before.InputQuantity - after.InputQuantity;
@@ -16,10 +16,11 @@ internal static class MachineProduction
             return entries;
         }
 
-        var first = started + recipe.Time;
-        entries.AddRange(ProductionEntry.Batches(recipe.Output, 1, true, first, recipe.Time, n));
-        entries.AddRange(ProductionEntry.Batches(recipe.Input, 1, false, first, recipe.Time, n));
-        entries.AddRange(Burnt(Items.Coal, before.Heat, Smelting.SmeltsPerCoal, first, recipe.Time, n));
+        var time = level.Time(recipe);
+        var first = started + time;
+        entries.AddRange(ProductionEntry.Batches(recipe.Output, 1, true, first, time, n));
+        entries.AddRange(ProductionEntry.Batches(recipe.Input, 1, false, first, time, n));
+        entries.AddRange(Burnt(Items.Coal, before.Heat, level.SmeltsPerCoal, first, time, n));
         return entries;
     }
 
@@ -80,7 +81,7 @@ public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, TimePro
         var statuses = new List<MachineStatus>();
         await using (var furnaces = await db.CommandAsync(
             """
-            SELECT object_id, input_item, input_quantity, fuel, heat, output_item, output_quantity, started_at
+            SELECT object_id, input_item, input_quantity, fuel, heat, output_item, output_quantity, started_at, kind
             FROM crafting.furnaces WHERE owner_id = @owner
             """, cancellationToken))
         {
@@ -88,11 +89,13 @@ public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, TimePro
             await using var reader = await furnaces.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
+                var kind = reader.GetString(8);
+                var level = Smelting.Level(kind) ?? Smelting.Stone;
                 var state = Smelting.Advance(new FurnaceState(
                     reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4),
                     reader.IsDBNull(5) ? null : reader.GetString(5), reader.GetInt32(6),
-                    reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7)), now);
-                statuses.Add(Furnace(reader.GetGuid(0), state));
+                    reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7)), level, now);
+                statuses.Add(Furnace(reader.GetGuid(0), state, level.Kind));
             }
         }
 
@@ -132,18 +135,18 @@ public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, TimePro
         return statuses;
     }
 
-    public static MachineStatus Furnace(Guid id, FurnaceState s)
+    public static MachineStatus Furnace(Guid id, FurnaceState s, string kind = Items.Furnace)
     {
         var product = Smelting.For(s.Input)?.Output ?? s.Output;
         if (s.StartedAt is not null)
         {
-            return new(id, Items.Furnace, product, MachineActivity.Working, []);
+            return new(id, kind, product, MachineActivity.Working, []);
         }
 
         // Without ore the furnace does not say which one it waits for.
         return s.InputQuantity == 0
-            ? new(id, Items.Furnace, product, MachineActivity.NoInput, s.Input is { } ore ? [ore] : [])
-            : new(id, Items.Furnace, product, MachineActivity.NoFuel, [Items.Coal]);
+            ? new(id, kind, product, MachineActivity.NoInput, s.Input is { } ore ? [ore] : [])
+            : new(id, kind, product, MachineActivity.NoFuel, [Items.Coal]);
     }
 
     public static MachineStatus Machine(Guid id, ProcessingMachine machine, MachineState s)

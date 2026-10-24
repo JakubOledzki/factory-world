@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [power] [logistics] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [power] [logistics] [<sprite>...] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -450,12 +450,62 @@ def crafted(build):
     return make
 
 
+def build_brick_furnace():
+    """The furnace's second level: a square kiln of red brick on a stone plinth, an arched mouth
+    full of embers, iron bands round it and a tall brick chimney at the back."""
+    brick = ra.plain("brick", (0.32, 0.08, 0.04), 0.85, variation=0.35, scale=14, bump=0.5)
+    mortar = rock("brick_plinth", (0.18, 0.17, 0.15))
+    iron = ra.rusty_metal("brick_iron", (0.1, 0.1, 0.11), 0.5)
+    dark = ra.plain("brick_soot", (0.02, 0.018, 0.017), 0.95, variation=0.3)
+    ember = ra.emission("brick_ember", (1.0, 0.3, 0.04), 2.0)
+    ra.box("plinth", (1.3, 1.3, 0.14), Vector((0, 0, 0.07)), mortar, bevel=0.03)
+    for k in range(6):
+        z = 0.14 + 0.11 * (k + 0.5)
+        ra.box("brick_course", (1.16 - 0.02 * k, 1.16 - 0.02 * k, 0.1), Vector((0, 0, z)), brick, bevel=0.012)
+    ra.box("brick_top", (1.1, 1.1, 0.08), Vector((0, 0, 0.84)), brick, bevel=0.02)
+    for z in (0.3, 0.68):
+        ra.box("brick_band", (1.2, 1.2, 0.035), Vector((0, 0, z)), iron)
+    ra.box("brick_mouth", (0.44, 0.08, 0.34), Vector((0, -0.56, 0.36)), dark)
+    ra.box("brick_glow", (0.36, 0.04, 0.16), Vector((0, -0.6, 0.27)), ember)
+    ra.box("brick_lintel", (0.56, 0.12, 0.08), Vector((0, -0.58, 0.57)), iron, bevel=0.01)
+    ra.box("brick_chimney", (0.34, 0.34, 0.9), Vector((0.24, 0.3, 1.3)), brick, bevel=0.02)
+    ra.box("brick_chimney_cap", (0.42, 0.42, 0.06), Vector((0.24, 0.3, 1.78)), iron, bevel=0.01)
+
+
+def build_blast_furnace():
+    """The furnace's third level: a riveted steel shaft furnace on a brick base, banded and
+    lined with fire, with a glowing tap hole at the front, a charging hopper on top and a pipe
+    down its side."""
+    steel = ra.rusty_metal("blast_steel", (0.17, 0.17, 0.18), 0.35)
+    dark = ra.rusty_metal("blast_dark", (0.07, 0.07, 0.075), 0.5)
+    brick = ra.plain("blast_brick", (0.3, 0.08, 0.04), 0.85, variation=0.35, scale=14, bump=0.5)
+    ember = ra.emission("blast_ember", (1.0, 0.38, 0.05), 2.5)
+    ra.box("blast_base", (1.36, 1.36, 0.3), Vector((0, 0, 0.15)), brick, bevel=0.03)
+    ra.cylinder("blast_shaft", 0.5, 1.1, Vector((0, 0.05, 0.85)), steel, bevel=0.03, verts=24)
+    for z in (0.42, 0.75, 1.08, 1.36):
+        ra.cylinder("blast_band", 0.53, 0.05, Vector((0, 0.05, z)), dark, verts=24)
+    ra.cylinder("blast_neck", 0.32, 0.22, Vector((0, 0.05, 1.5)), steel, bevel=0.02, verts=20)
+    ra.cylinder("blast_hopper", 0.4, 0.12, Vector((0, 0.05, 1.66)), dark, bevel=0.02, verts=20)
+    ra.box("blast_tap", (0.3, 0.1, 0.22), Vector((0, -0.48, 0.45)), dark, bevel=0.02)
+    ra.box("blast_tap_glow", (0.2, 0.04, 0.12), Vector((0, -0.54, 0.44)), ember)
+    ra.box("blast_spout", (0.14, 0.3, 0.06), Vector((0, -0.66, 0.3)), dark, rotation=(math.radians(15), 0, 0))
+    ra.box("blast_pool", (0.22, 0.12, 0.02), Vector((0, -0.8, 0.31)), ember)
+    ra.cylinder("blast_pipe", 0.07, 1.4, Vector((0.55, 0.3, 0.95)), dark, verts=12)
+    ra.box("blast_pipe_top", (0.5, 0.12, 0.12), Vector((0.35, 0.3, 1.62)), dark, bevel=0.02)
+
+
 CRAFTING = {
     # Objects a player puts on a plot, built like the garage's furniture; the furnace a bit larger
     # so it reads at the plot's scale. name: (canvas width, height, camera target height, builder).
     "workbench": (144, 128, 0.6, crafted(lambda: ra.build_workbench(None, Vector((0, 0, 0))))),
     "furnace": (96, 112, 0.6, crafted(lambda: ra.build_furnace(None, Vector((0, 0, 0)), 1.4))),
+    # The upgraded furnaces stand on plots only; the inventory shows them as their sprites.
+    "brick_furnace": (112, 144, 0.9, crafted(build_brick_furnace)),
+    "blast_furnace": (112, 160, 1.0, crafted(build_blast_furnace)),
 }
+
+# Crafting sprites whose icon is their sprite cropped to a square, like the processing machines.
+SPRITE_ICONS = ("brick_furnace", "blast_furnace")
 
 
 # --- Food processing ------------------------------------------------------------------------------
@@ -594,18 +644,26 @@ def render_processing(layout: dict):
         ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
 
 
-def render_crafting(layout: dict):
+def render_crafting(layout: dict, only=()):
     for name, (w, h, tz, build) in CRAFTING.items():
+        if only and name not in only:
+            continue
         random.seed(zlib.crc32(name.encode()))
         layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), build)
+        if name in SPRITE_ICONS:
+            ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
 
 
 # --- Logistics --------------------------------------------------------------------------------------
 
-def belt_frame(s=1.0, along_x=True, length=2.0):
+# Paint of belts and inserters by level, as in the factory games people know: yellow, red, blue.
+TIER_PAINT = {"": (0.5, 0.33, 0.03), "fast": (0.45, 0.05, 0.03), "express": (0.04, 0.14, 0.45)}
+
+
+def belt_frame(s=1.0, along_x=True, length=2.0, tier=""):
     """A conveyor belt the length of a tile, so belts on neighbouring tiles join up: a dark rubber
-    band between two yellow side rails on short legs. The game draws the moving stripes and items."""
-    paint = ra.plain("belt_paint", (0.5, 0.33, 0.03), 0.5, 0.4, variation=0.2, grime=0.8)
+    band between two side rails on short legs, painted by level. The game draws the moving stripes and items."""
+    paint = ra.plain("belt_paint" + tier, TIER_PAINT[tier], 0.5, 0.4, variation=0.2, grime=0.8)
     rubber = ra.plain("belt_rubber", (0.025, 0.025, 0.027), 0.8, variation=0.3, scale=20, bump=0.3)
     steel = ra.rusty_metal("belt_steel", (0.16, 0.16, 0.17), 0.3)
 
@@ -652,10 +710,10 @@ def arc_box(name, r_in, r_out, z0, z1, a0, a1, centre, mat, n=12):
 SIDES = {"n": (0, 1), "e": (1, 0), "s": (0, -1), "w": (-1, 0)}
 
 
-def belt_curve(sides):
+def belt_curve(sides, tier=""):
     """A belt turning a corner between two sides of its tile: the band and rails bent round the
     tile's corner between those sides, like belt_frame laid in a quarter circle."""
-    paint = ra.plain("belt_paint", (0.5, 0.33, 0.03), 0.5, 0.4, variation=0.2, grime=0.8)
+    paint = ra.plain("belt_paint" + tier, TIER_PAINT[tier], 0.5, 0.4, variation=0.2, grime=0.8)
     rubber = ra.plain("belt_rubber", (0.025, 0.025, 0.027), 0.8, variation=0.3, scale=20, bump=0.3)
     steel = ra.rusty_metal("belt_steel", (0.16, 0.16, 0.17), 0.3)
     (ax, ay), (bx, by) = SIDES[sides[0]], SIDES[sides[1]]
@@ -686,10 +744,10 @@ def splitter(s=1.0):
     ra.cylinder("splitter_lamp", 0.06 * s, 0.06 * s, Vector((0, 0, 0.64 * s)), ra.emission("splitter_lamp", (0.3, 1.0, 0.25), 3.0), verts=12)
 
 
-def inserter(s=1.0, arm=False):
-    """The base of an inserter: a steel foot and a yellow turret; the game draws the arm swinging
-    from the tile behind it to the tile in front. With `arm` (for its icon) the arm is modelled too."""
-    paint = ra.plain("inserter_paint", (0.55, 0.36, 0.03), 0.45, 0.4, variation=0.2, grime=0.7)
+def inserter(s=1.0, arm=False, tier=""):
+    """The base of an inserter: a steel foot and a turret painted by level; the game draws the arm
+    swinging from the tile behind it to the tile in front. With `arm` (for its icon) the arm is modelled too."""
+    paint = ra.plain("inserter_paint" + tier, (0.55, 0.36, 0.03) if tier == "" else TIER_PAINT[tier], 0.45, 0.4, variation=0.2, grime=0.7)
     steel = ra.rusty_metal("inserter_steel", (0.15, 0.15, 0.16), 0.25)
     ra.box("inserter_foot", (0.9 * s, 0.9 * s, 0.1 * s), Vector((0, 0, 0.05 * s)), steel, bevel=0.03 * s)
     ra.cylinder("inserter_base", 0.36 * s, 0.14 * s, Vector((0, 0, 0.17 * s)), steel, bevel=0.02 * s)
@@ -808,6 +866,15 @@ LOGISTICS = {
     "heap": (80, 72, 0.2, crafted(lambda: heap())),
     "grain_silo": (72, 136, 1.4, crafted(lambda: grain_silo())),
 }
+
+# Fast and express belts and inserters: the same sprites in their own paint, named <sprite>_<tier>.
+for _tier in ("fast", "express"):
+    LOGISTICS.update({
+        f"belt_ew_{_tier}": (72, 64, 0.1, crafted(lambda t=_tier: belt_frame(along_x=True, tier=t))),
+        f"belt_ns_{_tier}": (72, 72, 0.1, crafted(lambda t=_tier: belt_frame(along_x=False, tier=t))),
+        **{f"belt_{c}_{_tier}": (72, 72, 0.1, crafted(lambda t=_tier, c=c: belt_curve(c, tier=t))) for c in ("ne", "es", "sw", "nw")},
+        f"inserter_{_tier}": (64, 64, 0.3, crafted(lambda t=_tier: inserter(tier=t))),
+    })
 
 
 def render_logistics(layout: dict, only=()):
@@ -1385,6 +1452,10 @@ def icon_models():
         "item_nails": nails,
         "item_logistics_belt": lambda: belt_frame(0.26, True, 1.6),
         "item_logistics_inserter": lambda: inserter(0.4, arm=True),
+        "item_logistics_fast_belt": lambda: belt_frame(0.26, True, 1.6, tier="fast"),
+        "item_logistics_express_belt": lambda: belt_frame(0.26, True, 1.6, tier="express"),
+        "item_logistics_fast_inserter": lambda: inserter(0.4, arm=True, tier="fast"),
+        "item_logistics_express_inserter": lambda: inserter(0.4, arm=True, tier="express"),
         "item_logistics_splitter": lambda: (belt_frame(0.4, True, 1.6), belt_frame(0.4, False, 1.6), splitter(0.6)),
         "item_storage_wooden_chest": lambda: wooden_chest(0.38),
         "item_storage_iron_chest": lambda: iron_chest(0.36),
@@ -1430,8 +1501,8 @@ if __name__ == "__main__":
         render_station(layout)
     if "mine" in args:
         render_mine(layout)
-    if "crafting" in args:
-        render_crafting(layout)
+    if "crafting" in args or any(a in CRAFTING for a in args):
+        render_crafting(layout, [a for a in args if a in CRAFTING])
     if "processing" in args:
         render_processing(layout)
     if "power" in args:

@@ -77,6 +77,9 @@ public sealed class PlotMine
     public int Used { get; set; }
 
     public DateTimeOffset? EmptyAt { get; set; }
+
+    /// <summary>How far the owner has built the mine up: 1 to <see cref="Mining.Levels"/>.</summary>
+    public int Level { get; set; } = 1;
 }
 
 /// <summary>Something a player put on a tile of their plot, e.g. a workbench or a furnace.</summary>
@@ -236,6 +239,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(m => m.Mine).HasColumnName("mine");
             e.Property(m => m.Used).HasColumnName("used");
             e.Property(m => m.EmptyAt).HasColumnName("empty_at");
+            e.Property(m => m.Level).HasColumnName("level").HasDefaultValue(1);
         });
         model.Entity<PlotObjectRow>(e =>
         {
@@ -632,6 +636,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, ReapHandler>();
         services.AddSingleton<IMessageHandler, PlantTreeHandler>();
         services.AddSingleton<IMessageHandler, MineHandler>();
+        services.AddSingleton<IMessageHandler, UpgradeMineHandler>();
         services.AddSingleton<IMessageHandler, SurveyHandler>();
         services.AddSingleton<IMessageHandler, PlaceOnPlotHandler>();
         services.AddSingleton<IMessageHandler, PickUpFromPlotHandler>();

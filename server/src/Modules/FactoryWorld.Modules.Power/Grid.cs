@@ -36,6 +36,8 @@ public static class PowerRules
     public static readonly IReadOnlyDictionary<string, double> Demand = new Dictionary<string, double>
     {
         [Items.Inserter] = 5,
+        [Items.FastInserter] = 8,
+        [Items.ExpressInserter] = 12,
         [Items.Mill] = 30,
         [Items.OilPress] = 30,
     };

@@ -27,6 +27,9 @@ public sealed class FurnaceRow
 
     public Guid OwnerId { get; set; }
 
+    /// <summary>Which furnace it is: stone, brick or blast.</summary>
+    public string Kind { get; set; } = "furniture_furnace";
+
     public string? InputItem { get; set; }
 
     public int InputQuantity { get; set; }
@@ -91,6 +94,7 @@ public sealed class CraftingDbContext(DbContextOptions<CraftingDbContext> option
             e.HasKey(f => f.ObjectId);
             e.Property(f => f.ObjectId).HasColumnName("object_id");
             e.Property(f => f.OwnerId).HasColumnName("owner_id");
+            e.Property(f => f.Kind).HasColumnName("kind").HasMaxLength(64).HasDefaultValue("furniture_furnace");
             e.Property(f => f.InputItem).HasColumnName("input_item").HasMaxLength(32);
             e.Property(f => f.InputQuantity).HasColumnName("input_quantity");
             e.Property(f => f.Fuel).HasColumnName("fuel");

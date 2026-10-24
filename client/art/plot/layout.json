@@ -209,6 +209,70 @@
   "anchorX": 32,
   "anchorY": 39
  },
+ "brick_furnace": {
+  "anchorX": 56,
+  "anchorY": 92
+ },
+ "blast_furnace": {
+  "anchorX": 56,
+  "anchorY": 103
+ },
+ "belt_ew_fast": {
+  "anchorX": 36,
+  "anchorY": 34
+ },
+ "inserter_fast": {
+  "anchorX": 32,
+  "anchorY": 39
+ },
+ "belt_ew_express": {
+  "anchorX": 36,
+  "anchorY": 34
+ },
+ "belt_ns_express": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "inserter_express": {
+  "anchorX": 32,
+  "anchorY": 39
+ },
+ "belt_ns_fast": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_ne_fast": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_es_fast": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_sw_fast": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_nw_fast": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_ne_express": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_es_express": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_sw_express": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_nw_express": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
  "generator": {
   "anchorX": 64,
   "anchorY": 80,
