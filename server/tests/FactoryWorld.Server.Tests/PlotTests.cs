@@ -308,11 +308,11 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
     }
 
     [Fact]
-    public void A_cut_tree_gives_one_wood_and_four_times_in_five_a_sapling()
+    public void A_cut_tree_gives_one_wood_and_three_times_in_ten_a_sapling()
     {
         Assert.Equal([(Items.Wood, 1), (Items.Sapling, 1)], PlotLayout.Yield(TileObject.Tree, 0));
-        Assert.Equal([(Items.Wood, 1), (Items.Sapling, 1)], PlotLayout.Yield(TileObject.Tree, 79));
-        Assert.Equal([(Items.Wood, 1)], PlotLayout.Yield(TileObject.Tree, 80));
+        Assert.Equal([(Items.Wood, 1), (Items.Sapling, 1)], PlotLayout.Yield(TileObject.Tree, 29));
+        Assert.Equal([(Items.Wood, 1)], PlotLayout.Yield(TileObject.Tree, 30));
         Assert.Equal(TimeSpan.FromSeconds(5), HarvestRules.TimeFor(TileObject.Tree));
     }
 
