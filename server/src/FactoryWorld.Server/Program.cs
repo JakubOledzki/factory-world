@@ -6,6 +6,7 @@ using FactoryWorld.Modules.Crafting;
 using FactoryWorld.Modules.Inventory;
 using FactoryWorld.Modules.Logistics;
 using FactoryWorld.Modules.Market;
+using FactoryWorld.Modules.Power;
 using FactoryWorld.Modules.Recycling;
 using FactoryWorld.Modules.Session;
 using FactoryWorld.Modules.Wallet;
@@ -27,6 +28,7 @@ IGameModule[] modules =
     new WorldModule(),
     new CraftingModule(),
     new LogisticsModule(),
+    new PowerModule(),
 ];
 
 foreach (var module in modules)

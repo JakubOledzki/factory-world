@@ -76,6 +76,9 @@ public interface IPlotObjects
 
     /// <summary>Fails with <c>not_owner</c> unless the player owns the plot.</summary>
     Task RequireOwnerAsync(Guid player, int x, int y, CancellationToken cancellationToken);
+
+    /// <summary>The plot an object stands on, or null when it stands on none.</summary>
+    Task<(int X, int Y)?> PlotOfAsync(Guid id, CancellationToken cancellationToken);
 }
 
 /// <summary>Machinery that runs on a plot by itself (belts, inserters). It is brought up to now
@@ -117,4 +120,48 @@ public interface IMachinePorts
 {
     /// <summary>The machine, locked until the transaction ends; null when this module keeps no machine of this kind.</summary>
     Task<IMachinePort?> OpenAsync(Guid owner, Guid id, string kind, CancellationToken cancellationToken);
+}
+
+/// <summary>
+/// The time of a machine that runs on power: it goes with the clock while the machine has all the
+/// power it needs, slower on too little and not at all without. A machine works out what it made
+/// in its own time, so it needs to know nothing else about the grid.
+/// </summary>
+public interface IPowerClock
+{
+    /// <summary>The machine's time at <paramref name="now"/>; never ahead of it.</summary>
+    DateTimeOffset At(DateTimeOffset now);
+
+    /// <summary>When, from <paramref name="now"/> on, the machine's time reaches <paramref name="machineTime"/>; null if never on the power it has.</summary>
+    DateTimeOffset? When(DateTimeOffset machineTime, DateTimeOffset now);
+
+    /// <summary>How fast the machine works at <paramref name="now"/>: 1 with all its power, 0 without.</summary>
+    double Speed(DateTimeOffset now);
+}
+
+/// <summary>One plot's power: generators, poles and the machines they reach.</summary>
+public interface IPowerGrid
+{
+    /// <summary>The clock of a machine on the plot.</summary>
+    IPowerClock Clock(Guid id);
+
+    /// <summary>A generator as inserters see it (fuel goes in), or null when <paramref name="id"/> is none.</summary>
+    IMachinePort? Port(Guid id);
+
+    /// <summary>The grid as the client draws it (poles, wires, networks and how well each is powered), ready for JSON.</summary>
+    object Summary(DateTimeOffset now);
+
+    /// <summary>Writes the grid back, if fuel went into it.</summary>
+    Task SaveAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>Power on plots, for modules whose machines run on it. Within one request the same grid
+/// is handed out until it is saved, so inserters feeding a generator power the machines at once.</summary>
+public interface IPlotPower
+{
+    /// <summary>The plot's grid, locked until the transaction ends.</summary>
+    Task<IPowerGrid> OpenAsync(int x, int y, CancellationToken cancellationToken);
+
+    /// <summary>The clock of a machine on whatever plot it stands; one that has no power ever if it stands on none.</summary>
+    Task<IPowerClock> ClockAsync(Guid id, CancellationToken cancellationToken);
 }
