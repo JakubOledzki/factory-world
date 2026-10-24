@@ -173,6 +173,14 @@ static func label(text: String, color := TEXT, align := HORIZONTAL_ALIGNMENT_LEF
 	return l
 
 
+## Takes every child out of `node` and frees it once the frame is over: safe even when the
+## button being pressed is one of them (freeing it at once fails while it emits).
+static func clear(node: Node) -> void:
+	for child in node.get_children():
+		node.remove_child(child)
+		child.queue_free()
+
+
 ## The icon of an inventory item: furniture icons are named after the item, others "item_<id>".
 static func item_icon(item: String, size := 32) -> TextureRect:
 	var rect := icon(item if item.begins_with("furniture_") else "item_" + item, size)

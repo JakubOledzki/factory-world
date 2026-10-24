@@ -20,8 +20,7 @@ func _init() -> void:
 ## Draws the buttons for `counts` (one per category) with `selected` lit. Empty categories are
 ## dimmed, or left out with `hide_empty`; "Inne" only shows when something falls into it.
 func show_counts(counts: Array, selected: int, hide_empty := false) -> void:
-	for child in _box.get_children():
-		child.free()
+	UI.clear(_box)
 	var total := 0
 	for count: int in counts:
 		total += count

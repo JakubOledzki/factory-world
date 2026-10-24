@@ -185,8 +185,7 @@ func _can_make(recipe: Dictionary) -> bool:
 func _render() -> void:
 	if _state.is_empty():
 		return
-	for child in _recipes.get_children():
-		child.free()
+	UI.clear(_recipes)
 	var query := _search.text.strip_edges().to_lower()
 	var found: Array = _state["recipes"].filter(func(recipe: Dictionary) -> bool:
 		return query == "" or recipe["name"].to_lower().contains(query))
@@ -230,8 +229,7 @@ func _render() -> void:
 	if found.is_empty():
 		_recipes.add_child(UI.label("Żaden przepis nie pasuje do wyszukiwania.", UI.MUTED))
 
-	for child in _details.get_children():
-		child.free()
+	UI.clear(_details)
 	var selected := _recipe(_selected)
 	if not selected.is_empty():
 		var title := UI.label(selected["name"], UI.GOLD)
@@ -266,8 +264,7 @@ func _render() -> void:
 	_craft_button.disabled = selected.is_empty() or not _can_make(selected) or full or _busy
 	_craft_button.text = "Kolejka pełna" if full else "Wytwórz"
 
-	for child in _queue.get_children():
-		child.free()
+	UI.clear(_queue)
 	if queue.is_empty():
 		_queue.add_child(UI.label("Nic się nie wytwarza.", UI.MUTED))
 	for i in queue.size():
