@@ -125,7 +125,7 @@ public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, TimePro
         // Machines on power work in their own time; one at work with no power at all stalls for it.
         foreach (var (id, machine, state) in stored)
         {
-            var clock = machine.Powered ? await power.ClockAsync(id, cancellationToken) : PlainTime.Instance;
+            var clock = await Processing.ClockAsync(machine, power, id, cancellationToken);
             var status = Machine(id, machine, Processing.Advance(machine, state, clock.At(now)));
             statuses.Add(status.Activity == MachineActivity.Working && machine.Powered && clock.Speed(now) <= 0
                 ? status with { Activity = MachineActivity.NoPower }

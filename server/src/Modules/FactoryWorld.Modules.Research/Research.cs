@@ -46,6 +46,12 @@ public static class TechTree
     public const string DeepMining = "deep_mining";
     public const string HydroPlant = "hydro_plant";
     public const string CableTransport = "cable_transport";
+    public const string Fishing = "fishing";
+    public const string FishProcessing = "fish_processing";
+    public const string Seafaring = "seafaring";
+    public const string Aquaculture = "aquaculture";
+    public const string SaltWorks = "salt_works";
+    public const string TidalPower = "tidal_power";
 
     public static readonly IReadOnlyList<Technology> Technologies =
     [
@@ -118,6 +124,24 @@ public static class TechTree
         new(CableTransport, "Kolejka linowa", "Stacje kolejki linowej wożą przedmioty po linie nad wszystkim, co stoi po drodze, do 24 pól.",
             [Logistics, Metallurgy], [(Items.SteelIngot, 10), (Items.CopperIngot, 20), (Items.Belt, 10)], TimeSpan.FromMinutes(3), 60,
             [Items.CableStation]),
+        new(Fishing, "Rybołówstwo", "Stocznia buduje kutry i łodzie, które same łowią ryby z brzegu, a wędzarnia wędzi dorsza.",
+            [], [(Items.Herring, 20), (Items.Wood, 40), (Items.IronIngot, 10)], TimeSpan.FromSeconds(90), 30,
+            [Items.Shipyard, Items.FishingBoat, Items.RowingBoat, Items.Smokehouse, Items.SmokedFish]),
+        new(FishProcessing, "Przetwórstwo ryb", "Konserwiarnia puszkuje śledzie i mieli resztki na mączkę i olej; śledzie się soli, karpia smaży, a z szczupaka gotuje zupę.",
+            [Fishing, OilPressing], [(Items.Herring, 40), (Items.TinIngot, 5), (Items.SunflowerOil, 5)], TimeSpan.FromMinutes(2), 50,
+            [Items.Cannery, Items.CannedFish, Items.FishMeal, Items.FishOil, Items.SaltedHerring, Items.FriedCarp, Items.FishSoup]),
+        new(Seafaring, "Żegluga", "Przystań wysyła towary statkiem do przystani innej działki, a falochron pozwala łowić w sztorm; latarnia skraca rejsy.",
+            [Fishing, Logistics], [(Items.Planks, 40), (Items.Beams, 20), (Items.Stone, 60)], TimeSpan.FromMinutes(3), 60,
+            [Items.Port, Items.Breakwater, Items.Lighthouse]),
+        new(Aquaculture, "Akwakultura", "Farma ryb hoduje łososie na mączce rybnej i małże na linach; wędzarnia wędzi też łososia.",
+            [FishProcessing], [(Items.FishMeal, 20), (Items.Beams, 10), (Items.IronIngot, 20)], TimeSpan.FromMinutes(3), 60,
+            [Items.FishFarm, Items.SmokedSalmon]),
+        new(SaltWorks, "Warzelnictwo", "Warzelnia na brzegu morza odparowuje sól z wody morskiej.",
+            [], [(Items.Stone, 40), (Items.Sand, 20)], TimeSpan.FromSeconds(60), 20,
+            [Items.SaltPan]),
+        new(TidalPower, "Energia pływów", "Elektrownia pływowa na brzegu morza daje prąd bez paliwa, dzień i noc.",
+            [Hydropower, Seafaring], [(Items.SteelIngot, 20), (Items.CopperIngot, 30), (Items.Bricks, 40)], TimeSpan.FromMinutes(5), 100,
+            [Items.TidalPlant]),
     ];
 
     public static readonly IReadOnlyDictionary<string, Technology> ById = Technologies.ToDictionary(t => t.Id);

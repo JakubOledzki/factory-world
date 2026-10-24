@@ -61,6 +61,7 @@ public static class NpcPrices
         [Items.ForesterHut] = 60_000,
         [Items.Sawmill] = 40_000,
         [Items.Planks] = 300,
+        [Items.FishingRod] = 10_000,
     };
 
     /// <summary>What the NPC pays the player.</summary>
@@ -182,6 +183,34 @@ public static class NpcPrices
         [Items.WaterWheel] = 41_000,
         [Items.HydroPlant] = 245_000,
         [Items.CableStation] = 38_000,
+        [Items.FishingRod] = 3500,
+        [Items.Herring] = 120,
+        [Items.Cod] = 300,
+        [Items.Carp] = 250,
+        [Items.Pike] = 350,
+        [Items.Salmon] = 900,
+        [Items.Mussels] = 400,
+        [Items.Seaweed] = 60,
+        [Items.Amber] = 5000,
+        [Items.SmokedFish] = 900,
+        [Items.SmokedSalmon] = 2200,
+        [Items.SaltedHerring] = 450,
+        [Items.CannedFish] = 2600,
+        [Items.FishMeal] = 220,
+        [Items.FishOil] = 650,
+        [Items.FriedCarp] = 1300,
+        [Items.FishSoup] = 450,
+        [Items.FishingBoat] = 30_000,
+        [Items.RowingBoat] = 12_000,
+        [Items.Smokehouse] = 12_000,
+        [Items.Cannery] = 60_000,
+        [Items.SaltPan] = 14_000,
+        [Items.FishFarm] = 25_000,
+        [Items.Shipyard] = 35_000,
+        [Items.Port] = 40_000,
+        [Items.Breakwater] = 12_000,
+        [Items.Lighthouse] = 60_000,
+        [Items.TidalPlant] = 220_000,
     };
 
     static NpcPrices()

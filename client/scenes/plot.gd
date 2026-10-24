@@ -64,25 +64,30 @@ const RAIL := 4
 const STATION := 5
 const BUSH := 6
 const MINE := 7
+const WATER := 8
+const FLOTSAM := 9
 
 const SPRITES := {
 	TREE: ["tree_0", "tree_1", "tree_2", "tree_3", "tree_4"],
 	ROCK: ["rock_0", "rock_1", "rock_2"],
 	DUNE: ["dune_0", "dune_1"],
 	BUSH: ["bush_0", "bush_1"],
+	FLOTSAM: ["flotsam_0", "flotsam_1", "flotsam_2"],
 }
-const SOLID := [TREE, ROCK, DUNE, STATION, MINE]
+const SOLID := [TREE, ROCK, DUNE, STATION, MINE, WATER]
 ## Objects that can be worked: their name, the tool ("" for bare hands) and how the tool is named in "you need a ...".
 const WORK := {
 	BUSH: {"name": "Krzak", "tool": "", "verb": "Wyrwij", "need": ""},
 	TREE: {"name": "Drzewo", "tool": "tool_axe", "verb": "Zetnij", "need": "siekiery lub piły spalinowej"},
 	ROCK: {"name": "Skała", "tool": "tool_pickaxe", "verb": "Rozbij", "need": "kilofa"},
 	DUNE: {"name": "Wydma", "tool": "tool_shovel", "verb": "Kop", "need": "łopaty"},
+	WATER: {"name": "Woda", "tool": "tool_fishing_rod", "verb": "Łów", "need": "wędki"},
+	FLOTSAM: {"name": "Coś wyrzuconego przez morze", "tool": "", "verb": "Zbierz", "need": ""},
 }
 ## Tools that do another's work: a chainsaw cuts trees like an axe, only faster.
 ## Bronze and steel pickaxes break rock and work mines like the iron one, only faster.
 const STANDS_IN := {"tool_chainsaw": "tool_axe", "tool_bronze_pickaxe": "tool_pickaxe", "tool_steel_pickaxe": "tool_pickaxe"}
-const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalnia"}
+const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalnia", WATER: "Woda", FLOTSAM: "Znalezisko"}
 ## What a player can put on a plot from the inventory, and its sprite there; belts are drawn by
 ## PlotLogistics, flat on the ground.
 const PLACED_SPRITES := {
@@ -100,6 +105,10 @@ const PLACED_SPRITES := {
 	"furniture_drill": "drill", "furniture_heavy_drill": "heavy_drill", "furniture_quarry": "quarry",
 	"furniture_crusher": "crusher", "furniture_stonemason": "stonemason", "furniture_foundry": "foundry",
 	"power_water_wheel": "water_wheel", "power_hydro_plant": "hydro_plant", "logistics_cable_station": "cable_station",
+	"furniture_fishing_boat": "fishing_boat", "furniture_rowing_boat": "rowing_boat", "furniture_smokehouse": "smokehouse",
+	"furniture_cannery": "cannery", "furniture_salt_pan": "salt_pan", "furniture_fish_farm": "fish_farm",
+	"furniture_shipyard": "shipyard", "furniture_port": "port", "furniture_breakwater": "breakwater",
+	"furniture_lighthouse": "lighthouse", "power_tidal_plant": "tidal_plant",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
@@ -108,11 +117,24 @@ const ANIMAL_SPRITES := {"animal_chicken": "chicken", "animal_sheep": "sheep", "
 ## Placed objects that open the machine window.
 const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen",
 	"furniture_sawmill", "furniture_electric_sawmill", "furniture_industrial_sawmill",
-	"furniture_quarry", "furniture_crusher", "furniture_stonemason", "furniture_foundry"]
+	"furniture_quarry", "furniture_crusher", "furniture_stonemason", "furniture_foundry",
+	"furniture_fishing_boat", "furniture_rowing_boat", "furniture_smokehouse", "furniture_cannery", "furniture_salt_pan",
+	"furniture_fish_farm"]
 ## Drills, which stand right next to a mine (one to a mine) and work it on power.
 const DRILLS := ["furniture_drill", "furniture_heavy_drill"]
 ## Water power, which burns nothing and stands only in the mountains, by a lake or on the coast.
-const HYDRO := ["power_water_wheel", "power_hydro_plant"]
+const HYDRO := ["power_water_wheel", "power_hydro_plant", "power_tidal_plant"]
+const TIDAL := "power_tidal_plant"
+## What stands on the shore, right next to the water, and on which biome's (-1 for the sea or a lake).
+const SHORE := {"furniture_fishing_boat": 10, "furniture_rowing_boat": 11, "furniture_salt_pan": 10, "power_tidal_plant": 10,
+	"furniture_fish_farm": -1, "furniture_shipyard": -1, "furniture_port": -1, "furniture_breakwater": -1}
+const LIGHTHOUSE := "furniture_lighthouse"
+const SHIPYARD := "furniture_shipyard"
+const PORT := "furniture_port"
+const BREAKWATER := "furniture_breakwater"
+const BOATS := ["furniture_fishing_boat", "furniture_rowing_boat"]
+const COAST := 10
+const LAKESHORE := 11
 const QUARRY := "furniture_quarry"
 const CABLE_STATION := "logistics_cable_station"
 ## Biomes with water to turn a wheel: mountains, coast and lakeshore.
@@ -162,6 +184,7 @@ const FLOORS := {
 const MINIMAP_COLORS := {
 	NONE: Color(0, 0, 0, 0), TREE: Color("#2f5a2a"), ROCK: Color("#8a8580"), DUNE: Color("#c9a25a"),
 	RAIL: Color("#4a3a2e"), STATION: Color("#b5663a"), BUSH: Color("#3f6a30"), MINE: Color("#e0b040"),
+	WATER: Color("#2f6f9a"), FLOTSAM: Color("#e8d8a8"),
 }
 const FIELD_COLOR := Color("#6a4526")
 
@@ -246,6 +269,9 @@ var _player_chunk := Vector2i(-99, -99)
 var _ground: Node2D
 var _field_layer: TileMapLayer
 var _field_source := 0
+## The sea or the lake, flat on the ground under everything.
+var _water_layer: TileMapLayer
+var _water_source := 0
 var _shadows: TileMapLayer
 var _marks: Node2D
 var _sorted: Node2D
@@ -273,6 +299,9 @@ var _work_mode := "harvest"
 var _hud: Control
 var _title: Label
 var _subtitle: Label
+## The sea forecast on the coast and the lakeshore: the storm blowing now or the next one.
+var _weather: Label
+var _next_weather := 0.0
 var _level: Label
 var _xp_bar: ProgressBar
 var _money: Label
@@ -344,6 +373,12 @@ func _exit_tree() -> void:
 func _build_world() -> void:
 	_ground = Node2D.new()
 	add_child(_ground)
+	_water_layer = TileMapLayer.new()
+	var water_set := TileSet.new()
+	water_set.tile_size = Vector2i(TILE)
+	_water_source = _add_source(water_set, "water", "water", false)
+	_water_layer.tile_set = water_set
+	add_child(_water_layer)
 	# Tilled fields lie flat on the ground, under every shadow.
 	_field_layer = TileMapLayer.new()
 	var field_set := TileSet.new()
@@ -578,6 +613,7 @@ func _update_chunks(force := false) -> void:
 					_objects.erase_cell(cell)
 					_shadows.erase_cell(cell)
 					_field_layer.erase_cell(cell)
+					_water_layer.erase_cell(cell)
 					_stages.erase(cell)
 	for cy in range(here.y - CHUNK_RADIUS, here.y + CHUNK_RADIUS + 1):
 		for cx in range(here.x - CHUNK_RADIUS, here.x + CHUNK_RADIUS + 1):
@@ -591,6 +627,8 @@ func _update_chunks(force := false) -> void:
 
 
 func _draw_cell(cell: Vector2i) -> void:
+	if _tile(cell) == WATER:
+		_water_layer.set_cell(cell, _water_source, Vector2i.ZERO)
 	if _fields.has(cell):
 		_field_layer.set_cell(cell, _field_source, Vector2i.ZERO)
 	else:
@@ -876,7 +914,7 @@ func _update_hover() -> void:
 			_mines[mine]["sprite"].modulate = Color(1.25, 1.2, 1.1)
 	var ground := _ground_cell()
 	var pointing := cell.x >= 0 or station or mine >= 0 or _fields.has(ground) or _can_till(ground) or _can_plant(ground) or _can_place(ground) \
-		or _can_release(ground)
+		or _can_release(ground) or (_tile(ground) == WATER and _placing == "" and _releasing == "" and _holds(WORK[WATER]["tool"]))
 	Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND if pointing else Input.CURSOR_ARROW)
 	_marks.queue_redraw()
 	_update_prompt()
@@ -927,9 +965,24 @@ func _can_place(cell: Vector2i) -> bool:
 		return mine >= 0 and _drill_at(mine).x < 0
 	if _placing == QUARRY:
 		return int(_plot.get("biome", -1)) == MOUNTAINS
+	var biome := int(_plot.get("biome", -1))
+	if _placing == LIGHTHOUSE:
+		return biome == COAST
+	if SHORE.has(_placing):
+		var only: int = SHORE[_placing]
+		return (biome == only if only >= 0 else biome in [COAST, LAKESHORE]) and _by_water(cell)
 	if _placing in HYDRO:
-		return int(_plot.get("biome", -1)) in WATER_BIOMES
+		return biome in WATER_BIOMES
 	return true
+
+
+## Whether a tile touches the water, corners included.
+func _by_water(cell: Vector2i) -> bool:
+	for dy in range(-1, 2):
+		for dx in range(-1, 2):
+			if (dx != 0 or dy != 0) and _tile(cell + Vector2i(dx, dy)) == WATER:
+				return true
+	return false
 
 
 ## The mine a drill on `cell` would work: one it touches, corners included; or -1.
@@ -1223,7 +1276,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				_go_to_station()
 			elif _hover_mine >= 0:
 				_go_to_mine(_hover_mine)
-			elif _fields.has(cell) or _animals.has(cell):
+			elif _fields.has(cell) or _animals.has(cell) or _tile(cell) == WATER:
 				_act_on(cell)
 			elif _can_plant(cell):
 				_go_and(cell, _plant_tree)
@@ -1337,7 +1390,11 @@ func _nearest_work() -> Vector2i:
 	for dy in range(-2, 3):
 		for dx in range(-2, 3):
 			var cell := here + Vector2i(dx, dy)
-			if (WORK.has(_work_kind(cell)) or _ripe(cell)) and _near(cell) and (best.x < 0 or _player.floor_pos.distance_to(Vector2(cell)) < _player.floor_pos.distance_to(Vector2(best))):
+			# The water is fished only with a rod in hand; E by the shore without one does the other work.
+			var kind := _work_kind(cell)
+			if kind == WATER and not _holds(WORK[WATER]["tool"]):
+				continue
+			if (WORK.has(kind) or _ripe(cell)) and _near(cell) and (best.x < 0 or _player.floor_pos.distance_to(Vector2(cell)) < _player.floor_pos.distance_to(Vector2(best))):
 				best = cell
 	return best
 
@@ -1390,6 +1447,8 @@ func _start_work(cell: Vector2i, mode := "harvest") -> void:
 		_work_seconds = _saw_seconds if Game.holds("tool_chainsaw") else _chop_seconds
 	if mode == "harvest" and _work_kind(cell) == ROCK:
 		_work_seconds = float(_plot.get("rockSeconds", _harvest_seconds)) / _pickaxe_speed()
+	if mode == "harvest" and _work_kind(cell) == WATER:
+		_work_seconds = float(_plot.get("fishSeconds", _harvest_seconds))
 	if mode == "mine":
 		_work_seconds = _mine_seconds / _pickaxe_speed()
 	_work_left = _work_seconds
@@ -1507,7 +1566,7 @@ func _vanish(sprite_name: String, cell: Vector2i, fall: bool) -> void:
 
 ## What a click on a tile does: work nature, sow an empty field, reap a ripe crop, tend an animal.
 func _act_on(cell: Vector2i) -> void:
-	if _turnable(cell) or (_placed.has(cell) and _placed[cell]["kind"] == POLE):
+	if _turnable(cell) or (_placed.has(cell) and _placed[cell]["kind"] in [POLE, PORT, LIGHTHOUSE, BREAKWATER]):
 		_open_object_menu(cell)
 		return
 	if _placed.has(cell):
@@ -1942,7 +2001,7 @@ func _place_object(cell: Vector2i) -> void:
 ## The placed object next to the player, or (-1, -1).
 func _nearest_placed() -> Vector2i:
 	for cell: Vector2i in _placed:
-		if _near(cell) and not _turnable(cell) and _placed[cell]["kind"] != POLE:
+		if _near(cell) and not _turnable(cell) and not _placed[cell]["kind"] in [POLE, PORT, LIGHTHOUSE, BREAKWATER]:
 			return cell
 	return Vector2i(-1, -1)
 
@@ -1964,7 +2023,7 @@ func _use_placed(cell: Vector2i) -> void:
 		_machine_window.open_at(object["id"], object["name"])
 	elif object["kind"] in STORAGES:
 		_storage_window.open_at(_at, object["id"])
-	elif object["kind"] in ["furniture_workbench", "furniture_anvil"]:
+	elif object["kind"] in ["furniture_workbench", "furniture_anvil", SHIPYARD]:
 		_crafting_window.open_at(object["id"], object["kind"])
 	elif object["kind"] == GENERATOR or object["kind"] in HYDRO:
 		_generator_window.open_at(_at, object["id"])
@@ -2515,6 +2574,7 @@ func _process(delta: float) -> void:
 	_update_work(delta)
 	_update_minimap_dot()
 	_update_stages()
+	_update_weather()
 	if _station_window.visible and not _near_station():
 		_station_window.hide_window()
 	var at_mine := _nearest_mine()
@@ -2529,6 +2589,37 @@ func _process(delta: float) -> void:
 	if _has_foresters() and Time.get_ticks_msec() >= _next_forestry_poll:
 		_poll_forestry()
 	_poll_station()
+
+
+## Once a second: whether a storm keeps the boats ashore now, or when the next one comes.
+func _update_weather() -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	if now < _next_weather or not int(_plot.get("biome", -1)) in [COAST, LAKESHORE]:
+		return
+	_next_weather = now + 1.0
+	var server := _server_now()
+	for storm: Dictionary in _plot.get("storms", []):
+		var start := float(storm["start"])
+		var end := float(storm["end"])
+		if end <= server:
+			continue
+		_weather.visible = true
+		if start <= server:
+			_weather.text = "Sztorm! Łodzie stoją, wędką tylko z falochronu (jeszcze %s)" % _clock_text(end - server)
+			_weather.add_theme_color_override("font_color", UI.ERROR)
+		else:
+			_weather.text = "Spokojne morze · sztorm za %s" % _clock_text(start - server)
+			_weather.add_theme_color_override("font_color", UI.MUTED)
+		return
+	_weather.visible = false
+
+
+## Milliseconds as m:ss, or h:mm:ss from an hour up.
+func _clock_text(ms: float) -> String:
+	var seconds := ceili(ms / 1000.0)
+	if seconds >= 3600:
+		return "%d:%02d:%02d" % [seconds / 3600, seconds / 60 % 60, seconds % 60]
+	return "%d:%02d" % [seconds / 60, seconds % 60]
 
 
 func _screen(world: Vector2) -> Vector2:
@@ -2584,6 +2675,9 @@ func _build_hud() -> void:
 	box.add_child(_title)
 	_subtitle = UI.label("", UI.MUTED)
 	box.add_child(_subtitle)
+	_weather = UI.label("", UI.MUTED)
+	_weather.visible = false
+	box.add_child(_weather)
 	var level_row := HBoxContainer.new()
 	level_row.add_theme_constant_override("separation", 8)
 	var name_label := UI.label(Game.character.get("name", ""))
@@ -3005,6 +3099,7 @@ func _reload_inventory() -> void:
 
 
 func _refresh_station() -> void:
+	_station_window.port = _placed.values().any(func(object: Dictionary) -> bool: return object["kind"] == PORT)
 	await _station_window.refresh()
 	_show_trains()
 

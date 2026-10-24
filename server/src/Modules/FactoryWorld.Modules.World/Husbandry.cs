@@ -31,8 +31,8 @@ public static class Husbandry
 
     public static readonly IReadOnlyDictionary<string, Animal> ById = Animals.ToDictionary(a => a.Item);
 
-    /// <summary>Crops any animal eats, <see cref="FeedPerMeal"/> of one kind per feeding.</summary>
-    public static readonly IReadOnlyList<string> Feed = [Items.Wheat, Items.Corn, Items.Carrot, Items.Cabbage];
+    /// <summary>What any animal eats, <see cref="FeedPerMeal"/> of one kind per feeding: crops, and fish meal from the cannery.</summary>
+    public static readonly IReadOnlyList<string> Feed = [Items.Wheat, Items.Corn, Items.Carrot, Items.Cabbage, Items.FishMeal];
 
     public const int FeedPerMeal = 2;
 

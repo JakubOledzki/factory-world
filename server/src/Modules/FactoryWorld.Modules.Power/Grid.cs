@@ -10,7 +10,7 @@ namespace FactoryWorld.Modules.Power;
 /// and is wired to every pole up to <see cref="WireReach"/> tiles away. Poles wired together make one
 /// network: its generators share the load of all the machines on it. Machines draw their power
 /// whenever they stand on a network, busy or not; with too little power they all work slower, and
-/// without any they stop. A water wheel and a hydro plant give their power all the time without fuel, on
+/// without any they stop. A water wheel, a hydro plant and a tidal plant on the coast give their power all the time without fuel, on
 /// plots by a river, a lake or the sea; the generators of their network burn only for what they lack.
 /// </summary>
 public static class PowerRules
@@ -22,6 +22,8 @@ public static class PowerRules
     {
         [Items.WaterWheel] = 30,
         [Items.HydroPlant] = 150,
+        // The tide comes and goes twice a day, so a tidal plant gives what it gives all the time.
+        [Items.TidalPlant] = 100,
     };
 
 
@@ -55,6 +57,7 @@ public static class PowerRules
         [Items.Crusher] = 40,
         [Items.Drill] = 40,
         [Items.HeavyDrill] = 100,
+        [Items.Cannery] = 30,
     };
 
     public static bool Covers(PlotObject pole, int tileX, int tileY) =>

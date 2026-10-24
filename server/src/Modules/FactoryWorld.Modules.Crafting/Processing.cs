@@ -14,7 +14,8 @@ public sealed record ProcessingRecipe(string Id, int Quantity, TimeSpan Time, IR
 /// <param name="Kind">The machine's item id.</param>
 /// <param name="Fired">Whether it burns fuel: one batch takes heat from the fire.</param>
 /// <param name="Powered">Whether it runs on power: it works in its own time (<see cref="IPowerClock"/>), slower on too little power.</param>
-public sealed record ProcessingMachine(string Kind, bool Fired, IReadOnlyList<ProcessingRecipe> Recipes, bool Powered = false)
+/// <param name="Sea">Whether it works out on the water: a boat stays in port while a storm blows (<see cref="SeaClock"/>).</param>
+public sealed record ProcessingMachine(string Kind, bool Fired, IReadOnlyList<ProcessingRecipe> Recipes, bool Powered = false, bool Sea = false)
 {
     public ProcessingRecipe? Recipe(string? id) => Recipes.FirstOrDefault(r => r.Id == id);
 }
@@ -24,7 +25,8 @@ public sealed record ProcessingMachine(string Kind, bool Fired, IReadOnlyList<Pr
 /// flour, an oil press squeezes sunflowers, a barrel pickles cabbage, and the fired bakery and
 /// field kitchen bake and cook from those; a sawmill saws wood into planks, beams and pellets. In the
 /// mountains a quarry cuts stone, a crusher grinds stone and ore, a stonemason dresses stone and marble and a
-/// fired foundry casts bronze and steel and fires bricks. The mill, the crusher,
+/// fired foundry casts bronze and steel and fires bricks. On the shore boats fish, a smokehouse smokes fish, a
+/// cannery cans it, a salt pan boils salt and a fish farm raises salmon and mussels. The mill, the crusher, the cannery,
 /// oil press and the electric and industrial sawmills run on power from a
 /// generator, through poles; they keep their times (<see cref="MachineState.StartedAt"/>) in their
 /// own time, which stands still while they have no power. The player sets a recipe, then loads its ingredients
@@ -63,6 +65,7 @@ public static class Processing
         new(Items.PicklingBarrel, false,
         [
             new(Items.Sauerkraut, 2, TimeSpan.FromSeconds(60), [(Items.Cabbage, 2)], 1),
+            new(Items.SaltedHerring, 3, TimeSpan.FromSeconds(60), [(Items.Herring, 3), (Items.Salt, 1)], 2),
         ]),
         new(Items.Bakery, true,
         [
@@ -76,6 +79,8 @@ public static class Processing
             new(Items.VegetableSoup, 1, TimeSpan.FromSeconds(20), [(Items.Carrot, 2), (Items.Potato, 2), (Items.Cabbage, 1)], 4),
             new(Items.Bigos, 2, TimeSpan.FromSeconds(25), [(Items.Sauerkraut, 2), (Items.Potato, 2)], 3),
             new(Items.ScrambledEggs, 2, TimeSpan.FromSeconds(15), [(Items.Egg, 3), (Items.SunflowerOil, 1)], 3),
+            new(Items.FriedCarp, 1, TimeSpan.FromSeconds(15), [(Items.Carp, 1), (Items.SunflowerOil, 1)], 3),
+            new(Items.FishSoup, 2, TimeSpan.FromSeconds(20), [(Items.Pike, 1), (Items.Potato, 2), (Items.Carrot, 1)], 4),
         ]),
         // Sawmills of three levels: the plain one saws by hand, the electric and the industrial one run on
         // power, work faster and glue plywood from planks; the industrial one gets three planks from a log.
@@ -124,9 +129,47 @@ public static class Processing
             new(Items.SteelIngot, 1, TimeSpan.FromSeconds(15), [(Items.IronIngot, 2), (Items.Coal, 1)], 3),
             new(Items.Bricks, 4, TimeSpan.FromSeconds(10), [(Items.Sand, 2), (Items.Stone, 2)], 2),
         ]),
+        // Boats on the shore fish by themselves, 30% faster than a rod does on the same water; they stay in port in a storm.
+        new(Items.FishingBoat, false,
+        [
+            new(Items.Herring, 3, TimeSpan.FromSeconds(12), [], 1),
+            new(Items.Cod, 2, TimeSpan.FromSeconds(16), [], 2),
+        ], Sea: true),
+        new(Items.RowingBoat, false,
+        [
+            new(Items.Carp, 2, TimeSpan.FromSeconds(12), [], 1),
+            new(Items.Pike, 1, TimeSpan.FromSeconds(12), [], 2),
+        ], Sea: true),
+        // A smokehouse smokes over a wood fire; a cannery on power cans herring in oil and grinds what is left into meal.
+        new(Items.Smokehouse, true,
+        [
+            new(Items.SmokedFish, 1, TimeSpan.FromSeconds(20), [(Items.Cod, 2)], 3),
+            new(Items.SmokedSalmon, 1, TimeSpan.FromSeconds(25), [(Items.Salmon, 1)], 4),
+        ]),
+        new(Items.Cannery, false,
+        [
+            new(Items.CannedFish, 2, TimeSpan.FromSeconds(15), [(Items.Herring, 2), (Items.SunflowerOil, 1), (Items.TinIngot, 1)], 4),
+            new(Items.FishMeal, 2, TimeSpan.FromSeconds(8), [(Items.Herring, 3)], 1),
+            new(Items.FishOil, 1, TimeSpan.FromSeconds(10), [(Items.Herring, 4)], 2),
+        ], Powered: true),
+        // A salt pan boils salt out of the sea in the sun; it stands on the coast, by the water.
+        new(Items.SaltPan, false,
+        [
+            new(Items.Salt, 1, TimeSpan.FromSeconds(20), [], 1),
+        ]),
+        // A fish farm keeps salmon in cages fed on fish meal; mussels grow on its ropes by themselves.
+        new(Items.FishFarm, false,
+        [
+            new(Items.Salmon, 2, TimeSpan.FromSeconds(40), [(Items.FishMeal, 1)], 3),
+            new(Items.Mussels, 2, TimeSpan.FromSeconds(60), [], 2),
+        ]),
     ];
 
     public static readonly IReadOnlyDictionary<string, ProcessingMachine> ByKind = Machines.ToDictionary(m => m.Kind);
+
+    /// <summary>The clock a machine works by: its own time on the power grid, the boats' time that stands still in a storm, or plain time.</summary>
+    public static async Task<IPowerClock> ClockAsync(ProcessingMachine machine, IPlotPower power, Guid id, CancellationToken cancellationToken) =>
+        machine.Powered ? await power.ClockAsync(id, cancellationToken) : machine.Sea ? SeaClock.Instance : PlainTime.Instance;
 
     /// <summary>Batches the machine can still make from what it holds, ignoring time.</summary>
     public static int Batches(ProcessingMachine machine, MachineState s)
@@ -291,7 +334,7 @@ internal static class MachineRows
             return;
         }
 
-        var clock = machine.Powered ? await power.ClockAsync(id, cancellationToken) : PlainTime.Instance;
+        var clock = await Processing.ClockAsync(machine, power, id, cancellationToken);
         var state = Processing.Advance(machine, row.State, clock.At(now));
         await stats.RecordAsync(owner, MachineProduction.Processed(machine, row.State, state, clock, now), cancellationToken);
         foreach (var (item, quantity) in Contents(machine, state))
@@ -486,7 +529,7 @@ public sealed class MachineService(
         }
 
         // The grid is locked before the machine, as when inserters work it.
-        var clock = machine.Powered ? await power.ClockAsync(id, cancellationToken) : PlainTime.Instance;
+        var clock = await Processing.ClockAsync(machine, power, id, cancellationToken);
         var stored = (await MachineRows.ReadAsync(db, id, cancellationToken))?.State ?? MachineState.Empty;
         var now = time.GetUtcNow();
         var state = Processing.Advance(machine, stored, clock.At(now));
@@ -511,7 +554,7 @@ public sealed class ProcessingPorts(GameDb db, IProductionStats stats, IPlotPowe
             return null;
         }
 
-        var clock = machine.Powered ? await power.ClockAsync(id, cancellationToken) : PlainTime.Instance;
+        var clock = await Processing.ClockAsync(machine, power, id, cancellationToken);
         var state = (await MachineRows.ReadAsync(db, id, cancellationToken))?.State ?? MachineState.Empty;
         return new Port(db, stats, owner, id, machine, state, clock);
     }

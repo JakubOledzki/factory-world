@@ -75,6 +75,19 @@ public static class Workshop
         new(Items.CableStation, 1, TimeSpan.FromSeconds(20), [(Items.SteelIngot, 4), (Items.CopperIngot, 4), (Items.IronIngot, 6)], 8),
         new(Items.Dynamite, 3, TimeSpan.FromSeconds(15), [(Items.Sulfur, 2), (Items.Coal, 1), (Items.Sand, 1)], 4),
         new(Items.MineSupport, 1, TimeSpan.FromSeconds(20), [(Items.SteelIngot, 2), (Items.Beams, 2)], 6),
+        // The coast: the rod is forged, boats and fish farms are built at the shipyard on the shore.
+        new(Items.FishingRod, 1, TimeSpan.FromSeconds(20), [(Items.Wood, 3), (Items.IronIngot, 1)], 5, Items.Anvil),
+        new(Items.Shipyard, 1, TimeSpan.FromSeconds(60), [(Items.Wood, 40), (Items.Planks, 20), (Items.IronIngot, 15), (Items.Nails, 20)], 25),
+        new(Items.FishingBoat, 1, TimeSpan.FromSeconds(90), [(Items.Planks, 30), (Items.Beams, 10), (Items.Nails, 20), (Items.IronIngot, 10)], 30, Items.Shipyard),
+        new(Items.RowingBoat, 1, TimeSpan.FromSeconds(45), [(Items.Planks, 15), (Items.Beams, 4), (Items.Nails, 10)], 15, Items.Shipyard),
+        new(Items.FishFarm, 1, TimeSpan.FromSeconds(60), [(Items.Beams, 10), (Items.Planks, 20), (Items.IronIngot, 10), (Items.Wool, 5)], 25, Items.Shipyard),
+        new(Items.Smokehouse, 1, TimeSpan.FromSeconds(45), [(Items.Stone, 30), (Items.Wood, 10), (Items.IronIngot, 4)], 15),
+        new(Items.Cannery, 1, TimeSpan.FromSeconds(90), [(Items.IronIngot, 30), (Items.TinIngot, 5), (Items.CopperIngot, 10), (Items.Stone, 20)], 35),
+        new(Items.SaltPan, 1, TimeSpan.FromSeconds(45), [(Items.Stone, 30), (Items.Sand, 20), (Items.Wood, 10)], 15),
+        new(Items.Port, 1, TimeSpan.FromSeconds(90), [(Items.Beams, 20), (Items.Planks, 40), (Items.Stone, 40), (Items.IronIngot, 10)], 40),
+        new(Items.Breakwater, 1, TimeSpan.FromSeconds(45), [(Items.Stone, 100)], 15),
+        new(Items.Lighthouse, 1, TimeSpan.FromSeconds(90), [(Items.Stone, 60), (Items.Sand, 20), (Items.IronIngot, 20), (Items.CopperIngot, 10)], 40),
+        new(Items.TidalPlant, 1, TimeSpan.FromSeconds(180), [(Items.SteelIngot, 30), (Items.CopperIngot, 40), (Items.Bricks, 40), (Items.StoneBlocks, 20)], 100),
     ];
 
     public static Recipe? Find(string id) => Recipes.FirstOrDefault(r => r.Id == id);

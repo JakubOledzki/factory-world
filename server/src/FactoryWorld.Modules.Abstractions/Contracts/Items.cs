@@ -173,6 +173,40 @@ public static class Items
     // A cable car: stations facing the same way carry what a belt brings them over anything in between.
     public const string CableStation = "logistics_cable_station";
 
+    // Coastal plots: the sea along the coast and a lake on the lakeshore, fished with a rod or from boats;
+    // fish smoked, salted and canned, salt boiled from the sea, salmon and mussels farmed, and the beach
+    // combed for what the sea throws up.
+    public const string FishingRod = "tool_fishing_rod";
+    public const string Herring = "herring";
+    public const string Cod = "cod";
+    public const string Carp = "carp";
+    public const string Pike = "pike";
+    public const string Salmon = "salmon";
+    public const string Mussels = "mussels";
+    public const string Seaweed = "seaweed";
+    public const string Amber = "amber";
+    public const string SmokedFish = "smoked_fish";
+    public const string SmokedSalmon = "smoked_salmon";
+    public const string SaltedHerring = "salted_herring";
+    public const string CannedFish = "canned_fish";
+    public const string FishMeal = "fish_meal";
+    public const string FishOil = "fish_oil";
+    public const string FriedCarp = "fried_carp";
+    public const string FishSoup = "fish_soup";
+
+    // Coastal buildings: they stand on the shore, right next to the water.
+    public const string FishingBoat = "furniture_fishing_boat";
+    public const string RowingBoat = "furniture_rowing_boat";
+    public const string Smokehouse = "furniture_smokehouse";
+    public const string Cannery = "furniture_cannery";
+    public const string SaltPan = "furniture_salt_pan";
+    public const string FishFarm = "furniture_fish_farm";
+    public const string Shipyard = "furniture_shipyard";
+    public const string Port = "furniture_port";
+    public const string Breakwater = "furniture_breakwater";
+    public const string Lighthouse = "furniture_lighthouse";
+    public const string TidalPlant = "power_tidal_plant";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -278,7 +312,7 @@ public static class Items
         [BronzePickaxe] = "Kilof z brązu",
         [SteelPickaxe] = "Kilof stalowy",
         [Sulfur] = "Siarka",
-        [Salt] = "Sól kamienna",
+        [Salt] = "Sól",
         [Marble] = "Marmur",
         [Quartz] = "Kwarc",
         [CrushedIronOre] = "Kruszona ruda żelaza",
@@ -300,11 +334,39 @@ public static class Items
         [WaterWheel] = "Koło wodne",
         [HydroPlant] = "Mała elektrownia wodna",
         [CableStation] = "Stacja kolejki linowej",
+        [FishingRod] = "Wędka",
+        [Herring] = "Śledź",
+        [Cod] = "Dorsz",
+        [Carp] = "Karp",
+        [Pike] = "Szczupak",
+        [Salmon] = "Łosoś",
+        [Mussels] = "Małże",
+        [Seaweed] = "Algi",
+        [Amber] = "Bursztyn",
+        [SmokedFish] = "Ryba wędzona",
+        [SmokedSalmon] = "Łosoś wędzony",
+        [SaltedHerring] = "Śledzie w soli",
+        [CannedFish] = "Konserwa rybna",
+        [FishMeal] = "Mączka rybna",
+        [FishOil] = "Olej rybny",
+        [FriedCarp] = "Karp smażony",
+        [FishSoup] = "Zupa rybna",
+        [FishingBoat] = "Kuter rybacki",
+        [RowingBoat] = "Łódź rybacka",
+        [Smokehouse] = "Wędzarnia",
+        [Cannery] = "Konserwiarnia",
+        [SaltPan] = "Warzelnia soli",
+        [FishFarm] = "Farma ryb",
+        [Shipyard] = "Stocznia",
+        [Port] = "Przystań",
+        [Breakwater] = "Falochron",
+        [Lighthouse] = "Latarnia morska",
+        [TidalPlant] = "Elektrownia pływowa",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
 
-    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw or Shears or BronzePickaxe or SteelPickaxe;
+    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw or Shears or BronzePickaxe or SteelPickaxe or FishingRod;
 
     /// <summary>Pickaxes of every kind and how many times faster than the iron one each mines and breaks rocks.</summary>
     public static readonly IReadOnlyDictionary<string, double> Pickaxes = new Dictionary<string, double>
@@ -347,8 +409,11 @@ public static class Items
     /// <summary>Drills of every level, which stand at a mine and dig it by themselves.</summary>
     public static bool IsDrill(string id) => id is Drill or HeavyDrill;
 
-    /// <summary>What gives power without fuel: the water wheel and the hydro plant.</summary>
-    public static bool IsHydro(string id) => id is WaterWheel or HydroPlant;
+    /// <summary>What gives power without fuel: the water wheel, the hydro plant and the tidal plant.</summary>
+    public static bool IsHydro(string id) => id is WaterWheel or HydroPlant or TidalPlant;
+
+    /// <summary>Boats, which fish the water their plot's shore stands on by themselves.</summary>
+    public static bool IsBoat(string id) => id is FishingBoat or RowingBoat;
 
     /// <summary>Belts of every level (not splitters).</summary>
     public static bool IsBelt(string id) => id is Belt or FastBelt or ExpressBelt;

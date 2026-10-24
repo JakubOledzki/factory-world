@@ -24,6 +24,9 @@ var world_width := 6933
 var my_plots: Array[Vector2i] = []
 var items: Array = []
 var balance := 0
+## A port stands on this plot: goods can go by ship to another plot with a port, slower but for a quarter of the fee.
+var port := false
+var _by_sea := false
 
 var _state := {}
 var _clock_offset := 0.0
@@ -376,8 +379,18 @@ func _render_send() -> void:
 	grid.add_child(_send_quantity)
 
 	_send_info = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
-	_send_button = UI.button("Wyślij pociąg", _send, true)
+	_send_button = UI.button("Wyślij statkiem" if _by_sea and port else "Wyślij pociąg", _send, true)
 	_destination_picker()
+	if port:
+		grid.add_child(UI.label("Czym", UI.MUTED))
+		var sea := CheckBox.new()
+		sea.text = "Statkiem z portu (dwa razy wolniej, za ćwierć ceny)"
+		sea.button_pressed = _by_sea
+		sea.toggled.connect(func(on: bool) -> void:
+			_by_sea = on
+			_send_button.text = "Wyślij statkiem" if on else "Wyślij pociąg"
+			_update_send())
+		grid.add_child(sea)
 	_body.add_child(grid)
 	_body.add_child(_send_info)
 	_body.add_child(_send_button)
@@ -391,6 +404,10 @@ func _send_stack() -> Dictionary:
 func _update_send() -> void:
 	var quantity := int(_send_quantity.value)
 	var trip := _trip(quantity)
+	if _by_sea and port:
+		# As SeaRules counts it; a lighthouse by either port makes the trip shorter, which shows on arrival.
+		trip["fee"] = (int(trip["fee"]) + 3) / 4
+		trip["seconds"] = float(trip["seconds"]) * 2.0
 	_send_info.text = "%s  ·  %s km  ·  w drodze %s  ·  opłata %s" % [
 		_where(), _grouped(roundi(trip["km"])), _clock(trip["seconds"]), UI.money(trip["fee"])]
 	_send_button.disabled = _destination == plot or trip["fee"] > balance
@@ -407,12 +424,14 @@ func _send() -> void:
 	_send_button.disabled = true
 	var reply := await Net.request("station.send", {
 		"x": plot.x, "y": plot.y, "toX": target.x, "toY": target.y, "item": stack["id"], "quantity": quantity,
+		"sea": _by_sea and port,
 	})
 	if reply["type"] != "station":
 		failed.emit(reply)
 		_send_button.disabled = false
 		return
-	toast.emit("Pociąg z %d × %s odjechał: %s." % [quantity, stack["name"], _where()])
+	toast.emit("%s z %d × %s %s: %s." % ["Statek" if _by_sea and port else "Pociąg", quantity, stack["name"],
+		"wypłynął" if _by_sea and port else "odjechał", _where()])
 	apply(reply)
 	_render()
 	balance_changed.emit()

@@ -11,7 +11,8 @@ namespace FactoryWorld.Modules.World;
 /// press, pickling barrel, bakery, field kitchen), belts, inserters, chests, a generator and the
 /// poles that carry its power, a computer to trade on the market from the plot, a forester's building
 /// that grows and cuts a forest around itself, a sawmill, or the mountain industry: a drill at a mine,
-/// a quarry, a crusher, a stonemason, a foundry, water power and cable car stations. Each stands on one tile (a forester's
+/// a quarry, a crusher, a stonemason, a foundry, water power and cable car stations, or on the shore boats,
+/// a smokehouse, a cannery, a salt pan, a fish farm, a shipyard, a port, a breakwater, a lighthouse and a tidal plant. Each stands on one tile (a forester's
 /// building on 3 × 3, see <see cref="Footprints"/>), turned by quarter turns like furniture in the garage.
 /// </summary>
 public static class PlotObjects
@@ -29,6 +30,8 @@ public static class PlotObjects
         Items.Sawmill, Items.ElectricSawmill, Items.IndustrialSawmill,
         Items.Drill, Items.HeavyDrill, Items.Quarry, Items.Crusher, Items.Stonemason, Items.Foundry,
         Items.WaterWheel, Items.HydroPlant, Items.CableStation,
+        Items.FishingBoat, Items.RowingBoat, Items.Smokehouse, Items.Cannery, Items.SaltPan, Items.FishFarm,
+        Items.Shipyard, Items.Port, Items.Breakwater, Items.Lighthouse, Items.TidalPlant,
     };
 
     /// <summary>Fails unless an object of <paramref name="kind"/> may stand on (tileX, tileY) of a plot of
@@ -51,10 +54,12 @@ public static class PlotObjects
             throw new GameException("no_quarry", "A quarry is cut into the mountains only.");
         }
 
-        if (Items.IsHydro(kind) && !WaterPower.Allowed((int)biome))
+        if (Items.IsHydro(kind) && kind != Items.TidalPlant && !WaterPower.Allowed((int)biome))
         {
             throw new GameException("no_water", "Water power needs a mountain stream, a lake or the sea.");
         }
+
+        Coast.RequireSite(kind, x, y, biome, tileX, tileY);
     }
 }
 
@@ -68,7 +73,7 @@ public interface IPlacedHook
 
 public sealed class PlotObjectService(
     GameDb db, PlotService plots, IInventory inventory, IEnumerable<IMachineContents> machines, IEnumerable<IPlotAutomation> automation,
-    IEnumerable<IPlacedHook> placing)
+    IEnumerable<IPlacedHook> placing, BeachService beach)
     : IPlacedObjects
 {
     public async Task<IReadOnlyList<PlacedOnPlot>> ObjectsAsync(int x, int y, CancellationToken cancellationToken)
@@ -117,6 +122,11 @@ public sealed class PlotObjectService(
 
             await CatchUpAsync(x, y, cancellationToken);
             PlotObjects.RequireSite(kind, x, y, biome, tileX, tileY, await ObjectsAsync(x, y, cancellationToken));
+            if (Items.IsBoat(kind))
+            {
+                await beach.RequireRoomForBoatAsync(x, y, biome, cancellationToken);
+            }
+
             await inventory.RemoveAsync(player, kind, 1, cancellationToken);
             var placed = new PlacedOnPlot(Guid.NewGuid(), kind, tileX, tileY, rotation);
             await using var insert = await db.CommandAsync(

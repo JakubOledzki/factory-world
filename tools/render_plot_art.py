@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [logistics] [<sprite>...] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [logistics] [<sprite>...] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -1740,6 +1740,382 @@ def render_mountain(layout: dict, only=()):
         ra.icon_from(Image.open(OUT / "cable_station.png").convert("RGBA"), ICONS / "item_logistics_cable_station.png")
 
 
+# --- Coast -----------------------------------------------------------------------------------------
+
+def fish(name, length, color, belly, at=(0, 0, 0), heading=0.0, mat=None):
+    """A fish lying on its side: a long squashed body, a tail fin and a dark eye; `heading` turns it on the ground."""
+    skin = mat or ra.plain(name, color, 0.25, 0.3, variation=0.2, scale=14, grime=0.1)
+    under = ra.plain(name + "_belly", belly, 0.3, 0.2, variation=0.1, grime=0.05)
+    c, s = math.cos(heading), math.sin(heading)
+    x, y, z = at
+    r = length * 0.5
+    ra.sphere(name, r, (x, y, z + length * 0.09), skin, scale=(1, 0.22, 0.32), segments=20).rotation_euler = (0, 0, heading)
+    ra.sphere(name + "_belly", r * 0.85, (x, y, z + length * 0.06), under, scale=(1, 0.2, 0.22), segments=16).rotation_euler = (0, 0, heading)
+    ra.box(name + "_tail", (length * 0.2, length * 0.03, length * 0.24), (x - c * r * 1.05, y - s * r * 1.05, z + length * 0.09), skin,
+           rotation=(0, 0, heading))
+    ra.sphere(name + "_eye", length * 0.035, (x + c * r * 0.72 - s * length * 0.1, y + s * r * 0.72 + c * length * 0.1, z + length * 0.12),
+              ra.plain("eye", (0.01, 0.01, 0.01), 0.1), segments=8)
+
+
+def hull(name, length, beam, depth, at, paint, timber, heading=0.0):
+    """A wooden boat's hull: a squashed half sphere with a painted band, open on top, and a few thwarts."""
+    x, y, z = at
+    h = ra.sphere(name, length / 2, (x, y, z + depth), timber, scale=(1, beam / length, depth / (length / 2) * 1.6), segments=24,
+                  keep=lambda co: co.z <= 0.0)
+    h.rotation_euler = (0, 0, heading)
+    band = ra.sphere(name + "_band", length / 2 * 1.01, (x, y, z + depth), paint, scale=(1, beam / length, 0.12), segments=24,
+                     keep=lambda co: co.z <= 0.0)
+    band.rotation_euler = (0, 0, heading)
+    c, s = math.cos(heading), math.sin(heading)
+    for t in (-0.2, 0.15):
+        ra.box(name + "_thwart", (0.05, beam * 0.85, 0.03), (x + c * t * length, y + s * t * length, z + depth * 0.85), timber,
+               rotation=(0, 0, heading))
+    return h
+
+
+def slipway(timber, dark, width=1.5):
+    """Planks laid down the shore into the water, on which a boat is pulled up."""
+    water = water_mat("slip_water")
+    ra.box("slip_water", (1.9, 0.9, 0.02), (0, 0.55, 0.01), water)
+    for k in range(5):
+        ra.box("slip_plank", (width, 0.16, 0.04), (0, -0.55 + k * 0.22, 0.03), timber if k % 2 else dark, bevel=0.01)
+
+
+def build_fishing_boat():
+    """A fishing cutter moored at a short jetty: a blue hull with a white wheelhouse, a mast with a net boom
+    and floats, a crate of fish on the planks."""
+    timber = ra.wood("boat_timber", (0.2, 0.12, 0.06))
+    dark = ra.wood("boat_dark", (0.1, 0.06, 0.035))
+    blue = ra.plain("boat_blue", (0.04, 0.12, 0.3), 0.4, variation=0.15)
+    white = ra.plain("boat_white", (0.7, 0.7, 0.66), 0.5, variation=0.1)
+    red = ra.plain("boat_red", (0.55, 0.06, 0.03), 0.5)
+    slipway(timber, dark)
+    hull("boat_hull", 1.7, 0.6, 0.32, (0, 0.35, 0.02), white, blue)
+    ra.box("boat_house", (0.4, 0.38, 0.35), (-0.25, 0.35, 0.5), white, bevel=0.02)
+    ra.box("boat_house_roof", (0.46, 0.44, 0.04), (-0.25, 0.35, 0.69), blue)
+    ra.box("boat_window", (0.02, 0.26, 0.12), (-0.04, 0.35, 0.56), ra.emission("boat_window", (1.0, 0.8, 0.5), 1.5))
+    ra.cylinder("boat_mast", 0.025, 1.2, (0.25, 0.35, 0.85), dark, verts=8)
+    ra.cylinder("boat_boom", 0.018, 0.8, (0.55, 0.35, 0.75), dark, rotation=(0, math.radians(70), 0), verts=8)
+    net = ra.plain("boat_net", (0.15, 0.2, 0.12), 0.9, variation=0.3, bump=0.8)
+    ra.sphere("boat_net", 0.16, (0.55, 0.35, 0.35), net, scale=(1.2, 0.8, 0.6), segments=10)
+    for k in range(4):
+        ra.sphere("boat_float", 0.04, (0.35 + k * 0.1, 0.12, 0.3), red, segments=8)
+    ra.box("boat_crate", (0.3, 0.22, 0.12), (0.4, -0.55, 0.11), timber, bevel=0.01)
+    for k in range(3):
+        fish(f"boat_fish{k}", 0.2, (0.35, 0.4, 0.45), (0.75, 0.75, 0.72), (0.32 + k * 0.08, -0.55, 0.15), 0.3 * k)
+
+
+def build_rowing_boat():
+    """A rowing boat pulled up on planks by the lake: varnished hull, two oars across it and a rod leaning on the bow."""
+    timber = ra.wood("row_timber", (0.24, 0.14, 0.07))
+    dark = ra.wood("row_dark", (0.1, 0.06, 0.035))
+    green = ra.plain("row_green", (0.06, 0.2, 0.1), 0.5)
+    slipway(timber, dark, 1.3)
+    hull("row_hull", 1.4, 0.55, 0.22, (0, 0.2, 0.02), green, timber, heading=math.radians(15))
+    for e in (-1, 1):
+        ra.cylinder("row_oar", 0.02, 1.1, (0.05, 0.2 + e * 0.12, 0.3), dark, rotation=(0, math.radians(90), math.radians(15 + e * 8)), verts=8)
+        ra.box("row_blade", (0.22, 0.08, 0.015), (0.62, 0.32 + e * 0.12, 0.3), dark, rotation=(0, 0, math.radians(15)))
+    ra.cylinder("row_rod", 0.01, 1.0, (-0.45, -0.1, 0.45), dark, rotation=(math.radians(30), math.radians(-20), 0), verts=6)
+
+
+def build_smokehouse():
+    """A smokehouse: a dark tarred plank shed with a stone fire pit at its foot, smoke curling from a vent on
+    the roof and fish hung on a rack in front."""
+    tar = ra.wood("smoke_tar", (0.05, 0.035, 0.025))
+    stone = rock("smoke_stone", (0.16, 0.15, 0.14))
+    timber = ra.wood("smoke_timber", (0.18, 0.11, 0.05))
+    smoke = ra.plain("smoke", (0.35, 0.35, 0.37), 0.9, variation=0.3, grime=0.0)
+    fire = ra.emission("smoke_fire", (1.0, 0.45, 0.1), 6.0)
+    ra.box("smoke_shed", (0.9, 0.8, 0.95), (0, 0.25, 0.48), tar, bevel=0.01)
+    gable_roof("smoke_roof", 1.0, 0.9, 0.95, 1.3, timber, at=(0, 0.25))
+    gable_ends("smoke_gable", 0.9, 0.8, 0.95, 1.3, tar, at=(0, 0.25))
+    ra.box("smoke_vent", (0.2, 0.2, 0.18), (0, 0.25, 1.38), timber)
+    for k in range(4):
+        ra.sphere("smoke_puff", 0.1 + k * 0.035, (0.06 * k, 0.25 + 0.05 * k, 1.55 + k * 0.17), smoke, segments=10)
+    ra.box("smoke_door", (0.35, 0.02, 0.6), (0, -0.16, 0.3), timber)
+    pit = ra.cylinder("smoke_pit", 0.2, 0.12, (0.55, -0.45, 0.06), stone, verts=12)
+    ra.displace(pit, 0.02, 0.2, 1)
+    ra.sphere("smoke_glow", 0.1, (0.55, -0.45, 0.12), fire, scale=(1, 1, 0.5), segments=10)
+    ra.box("smoke_rack", (0.7, 0.03, 0.03), (-0.3, -0.5, 0.65), timber)
+    for x in (-0.62, 0.02):
+        ra.box("smoke_post", (0.04, 0.04, 0.65), (x, -0.5, 0.33), timber)
+    gold = ra.plain("smoke_fish", (0.45, 0.25, 0.06), 0.35, 0.2)
+    for k in range(4):
+        ra.sphere("smoke_hung", 0.13, (-0.52 + k * 0.15, -0.5, 0.48), gold, scale=(0.25, 0.12, 1), segments=10)
+
+
+def build_cannery():
+    """A fish cannery: a pale brick hall with a sawtooth roof, a steam stack, a conveyor of cans coming out of
+    its side and a stack of crates."""
+    brick = ra.plain("can_brick", (0.42, 0.32, 0.26), 0.85, variation=0.2, bump=0.4)
+    steel = ra.rusty_metal("can_steel", (0.3, 0.32, 0.34), rust=0.2)
+    tin = ra.plain("can_tin", (0.7, 0.72, 0.74), 0.25, 1.0, variation=0.1)
+    label = ra.plain("can_label", (0.1, 0.25, 0.55), 0.5)
+    timber = ra.wood("can_timber", (0.2, 0.12, 0.06))
+    steam = ra.plain("can_steam", (0.7, 0.72, 0.75), 0.9, variation=0.2, grime=0.0)
+    ra.box("can_hall", (1.4, 1.0, 0.8), (0, 0.2, 0.4), brick, bevel=0.01)
+    for k in range(3):
+        ra.box("can_tooth", (0.47, 1.05, 0.05), (-0.47 + k * 0.47, 0.2, 0.9), steel, rotation=(0, math.radians(-25), 0))
+        ra.box("can_glass", (0.02, 1.0, 0.18), (-0.27 + k * 0.47, 0.2, 0.9), ra.emission("can_glass", (1.0, 0.85, 0.6), 1.2))
+    ra.cylinder("can_stack", 0.08, 0.9, (0.5, 0.55, 1.2), steel, verts=14)
+    for k in range(3):
+        ra.sphere("can_puff", 0.1 + 0.04 * k, (0.5 + 0.05 * k, 0.6, 1.75 + 0.15 * k), steam, segments=10)
+    ra.box("can_belt", (0.7, 0.2, 0.05), (0.85, -0.45, 0.3), ra.plain("can_rubber", (0.03, 0.03, 0.03), 0.7))
+    for k in range(5):
+        ra.cylinder("can", 0.04, 0.07, (0.6 + k * 0.12, -0.45, 0.36), tin, verts=12)
+        ra.cylinder("can_label", 0.041, 0.035, (0.6 + k * 0.12, -0.45, 0.36), label, verts=12)
+    for k in range(2):
+        ra.box("can_crate", (0.28, 0.24, 0.18), (-0.55, -0.5, 0.09 + k * 0.19), timber, bevel=0.01)
+
+
+def build_salt_pan():
+    """Salt pans on the sea shore: shallow square basins of brine edged with planks, white salt drying in the
+    nearest, a heap of it and a wooden rake."""
+    timber = ra.wood("salt_timber", (0.2, 0.13, 0.07))
+    brine = ra.plain("salt_brine", (0.18, 0.32, 0.38), 0.05, variation=0.2, grime=0.0)
+    salt = ra.plain("salt_white", (0.85, 0.85, 0.82), 0.7, variation=0.1, bump=0.6)
+    for i, (x, y) in enumerate(((-0.45, 0.4), (0.45, 0.4), (-0.45, -0.4), (0.45, -0.4))):
+        ra.box("salt_basin", (0.8, 0.7, 0.03), (x, y, 0.015), salt if i == 2 else brine)
+        for e in (-1, 1):
+            ra.box("salt_edge", (0.84, 0.04, 0.07), (x, y + e * 0.37, 0.035), timber)
+            ra.box("salt_edge", (0.04, 0.74, 0.07), (x + e * 0.42, y, 0.035), timber)
+    pile = ra.sphere("salt_heap", 0.22, (0.45, -0.4, 0.04), salt, scale=(1, 1, 0.9), segments=16)
+    ra.displace(pile, 0.03, 0.2, 1)
+    ra.cylinder("salt_rake", 0.015, 0.9, (0.0, -0.05, 0.12), timber, rotation=(0, math.radians(80), math.radians(30)), verts=6)
+
+
+def build_fish_farm():
+    """A fish farm by the shore: two round net pens floating on the water, joined by a plank walkway, with a
+    feed bin on the bank."""
+    water = water_mat("farm_water")
+    float_m = ra.plain("farm_float", (0.05, 0.05, 0.06), 0.4)
+    net = ra.plain("farm_net", (0.12, 0.16, 0.14), 0.9, variation=0.3)
+    timber = ra.wood("farm_timber", (0.2, 0.13, 0.07))
+    yellow = ra.plain("farm_bin", (0.7, 0.5, 0.05), 0.5)
+    ra.box("farm_water", (1.9, 1.3, 0.02), (0, 0.3, 0.01), water)
+    for x in (-0.45, 0.45):
+        ra.torus("farm_ring", 0.38, 0.04, (x, 0.35, 0.05), float_m)
+        ra.torus("farm_rail", 0.38, 0.015, (x, 0.35, 0.22), float_m)
+        for k in range(8):
+            a = k / 8 * math.tau
+            ra.box("farm_stanchion", (0.02, 0.02, 0.17), (x + math.cos(a) * 0.38, 0.35 + math.sin(a) * 0.38, 0.14), float_m)
+        ra.cylinder("farm_net", 0.36, 0.02, (x, 0.35, 0.03), net, verts=24)
+        for k in range(3):
+            fish(f"farm_fish{x}{k}", 0.14, (0.5, 0.3, 0.3), (0.8, 0.6, 0.55),
+                 (x + random.uniform(-0.2, 0.2), 0.35 + random.uniform(-0.2, 0.2), 0.03), random.random() * math.tau)
+    ra.box("farm_walk", (0.5, 0.18, 0.04), (0, 0.35, 0.07), timber)
+    ra.box("farm_pier", (0.18, 0.7, 0.04), (0, -0.1, 0.07), timber)
+    ra.cylinder("farm_bin", 0.14, 0.35, (0.45, -0.55, 0.18), yellow, verts=16)
+    ra.cylinder("farm_lid", 0.15, 0.03, (0.45, -0.55, 0.37), float_m, verts=16)
+
+
+def build_shipyard():
+    """A small shipyard: a hull in its ribs on a cradle of timbers sliding down to the water, a gantry with a
+    block and tackle over it, and planks stacked by."""
+    timber = ra.wood("yard_timber", (0.22, 0.13, 0.06))
+    dark = ra.wood("yard_dark", (0.09, 0.055, 0.03))
+    iron = ra.rusty_metal("yard_iron", (0.12, 0.12, 0.13), rust=0.4)
+    slipway(timber, dark, 1.7)
+    ra.box("yard_keel", (1.5, 0.08, 0.08), (0, 0.15, 0.12), dark)
+    for k in range(7):
+        x = -0.6 + k * 0.2
+        r = 0.32 * math.sin(math.pi * (k + 1) / 8) + 0.06
+        ra.torus("yard_rib", r, 0.02, (x, 0.15, 0.12 + r * 0.6), timber, rotation=(0, math.radians(90), 0)).scale = (1, 1, 0.5)
+    for x in (-0.8, 0.8):
+        for y in (-0.25, 0.55):
+            ra.box("yard_post", (0.07, 0.07, 1.25), (x, y, 0.62), dark)
+    for y in (-0.25, 0.55):
+        ra.box("yard_beam", (1.7, 0.07, 0.07), (0, y, 1.25), dark)
+    ra.box("yard_cross", (0.08, 0.86, 0.08), (0.2, 0.15, 1.3), iron)
+    ra.box("yard_rope", (0.015, 0.015, 0.5), (0.2, 0.15, 1.0), ra.plain("yard_rope", (0.5, 0.42, 0.28), 0.9))
+    ra.box("yard_block", (0.08, 0.06, 0.1), (0.2, 0.15, 0.72), iron)
+    for k in range(3):
+        ra.box("yard_plank", (0.9, 0.16, 0.035), (-0.3, -0.7, 0.02 + k * 0.04), timber, rotation=(0, 0, 0.04 * k))
+
+
+def build_port():
+    """A port: a stone quay with bollards along its edge, a crane leaning over the water, a stack of crates and a
+    lamp post."""
+    stone = ra.plain("port_stone", (0.24, 0.23, 0.22), 0.9, variation=0.2, bump=0.4)
+    water = water_mat("port_water")
+    iron = ra.rusty_metal("port_iron", (0.08, 0.08, 0.09), rust=0.3)
+    yellow = ra.rusty_metal("port_yellow", (0.65, 0.42, 0.04), rust=0.25)
+    timber = ra.wood("port_timber", (0.2, 0.12, 0.06))
+    ra.box("port_water", (1.9, 0.7, 0.02), (0, 0.65, 0.01), water)
+    ra.box("port_quay", (1.9, 1.3, 0.28), (0, -0.3, 0.14), stone, bevel=0.02)
+    for x in (-0.7, 0.0, 0.7):
+        ra.cylinder("port_bollard", 0.06, 0.14, (x, 0.28, 0.35), iron, verts=12)
+        ra.cylinder("port_cap", 0.08, 0.03, (x, 0.28, 0.43), iron, verts=12)
+    ra.box("port_crane_base", (0.35, 0.35, 0.3), (0.55, -0.3, 0.43), yellow)
+    ra.cylinder("port_crane_mast", 0.06, 1.1, (0.55, -0.3, 1.1), yellow, verts=10)
+    ra.cylinder("port_jib", 0.04, 1.0, (0.55, 0.1, 1.5), yellow, rotation=(math.radians(-60), 0, 0), verts=8)
+    ra.box("port_hook_rope", (0.01, 0.01, 0.6), (0.55, 0.52, 1.45), iron)
+    ra.box("port_hook_crate", (0.22, 0.22, 0.18), (0.55, 0.52, 1.08), timber, bevel=0.01)
+    for k, (x, y, z) in enumerate(((-0.55, -0.45, 0.39), (-0.3, -0.45, 0.39), (-0.42, -0.45, 0.6))):
+        ra.box("port_crate", (0.22, 0.22, 0.2), (x, y, z), timber if k != 2 else ra.rusty_metal("port_blue", (0.05, 0.15, 0.35), rust=0.2), bevel=0.01)
+    ra.cylinder("port_lamp_post", 0.02, 0.9, (-0.8, -0.8, 0.73), iron, verts=8)
+    ra.sphere("port_lamp", 0.05, (-0.8, -0.8, 1.2), ra.emission("port_lamp", (1.0, 0.8, 0.5), 5.0), segments=10)
+
+
+def build_breakwater():
+    """A breakwater: a long mound of grey boulders and concrete blocks running out into the water, foam on its
+    seaward side."""
+    water = water_mat("break_water")
+    foam = ra.plain("break_foam", (0.75, 0.8, 0.85), 0.4, variation=0.2)
+    concrete = ra.plain("break_concrete", (0.4, 0.39, 0.37), 0.9, variation=0.15)
+    ra.box("break_water", (1.9, 1.3, 0.02), (0, 0.35, 0.01), water)
+    for k in range(9):
+        y = -0.65 + k * 0.17
+        for x in (-0.15, 0.15):
+            b = ra.sphere("break_rock", random.uniform(0.14, 0.2), (x + random.uniform(-0.05, 0.05), y, 0.08), rock("break_rock", (0.15, 0.145, 0.14)),
+                          scale=(1, 1, 0.75), segments=10)
+            ra.displace(b, 0.04, 0.3, 1)
+    for k in range(3):
+        ra.box("break_block", (0.22, 0.22, 0.2), (0, 0.1 + k * 0.25, 0.25), concrete, bevel=0.02, rotation=(0.2 * k, 0.3, 0.5 * k))
+    for k in range(7):
+        ra.sphere("break_foam", random.uniform(0.05, 0.09), (0.32 + random.uniform(-0.04, 0.04), 0.0 + k * 0.12, 0.04), foam,
+                  scale=(1.3, 1, 0.4), segments=8)
+
+
+def build_lighthouse():
+    """A lighthouse: a tall white tower with red bands on a stone base, a glowing lantern room under a dark cap
+    and a gallery rail."""
+    white = ra.plain("light_white", (0.75, 0.74, 0.7), 0.6, variation=0.08)
+    red = ra.plain("light_red", (0.55, 0.05, 0.03), 0.5, variation=0.1)
+    stone = rock("light_stone", (0.16, 0.15, 0.14))
+    dark = ra.rusty_metal("light_dark", (0.05, 0.06, 0.06), rust=0.2)
+    glow = ra.emission("light_glow", (1.0, 0.9, 0.6), 12.0)
+    base = ra.cylinder("light_base", 0.55, 0.3, (0, 0, 0.15), stone, verts=16)
+    ra.displace(base, 0.02, 0.2, 1)
+    ra.cylinder("light_tower", 0.4, 2.6, (0, 0, 1.6), white, radius2=0.26, verts=24)
+    for z in (0.9, 1.8, 2.6):
+        r = 0.4 - (z - 0.3) / 2.6 * 0.14
+        ra.cylinder("light_band", r + 0.01, 0.3, (0, 0, z), red, radius2=r - 0.006, verts=24)
+    ra.cylinder("light_gallery", 0.36, 0.05, (0, 0, 2.93), dark, verts=24)
+    ra.torus("light_rail", 0.35, 0.012, (0, 0, 3.08), dark)
+    ra.cylinder("light_lantern", 0.2, 0.32, (0, 0, 3.12), glow, verts=16)
+    ra.cylinder("light_cap", 0.24, 0.2, (0, 0, 3.38), dark, radius2=0.04, verts=16)
+    ra.box("light_door", (0.2, 0.02, 0.4), (0, -0.4, 0.5), dark)
+
+
+def build_tidal_plant():
+    """A tidal power plant: a concrete barrage running into the sea with two turbine housings under it, water
+    churning white where it pours through, a control house and a transformer on top."""
+    concrete = ra.plain("tidal_concrete", (0.36, 0.35, 0.33), 0.9, variation=0.15)
+    steel = ra.rusty_metal("tidal_steel", (0.2, 0.22, 0.24), rust=0.25)
+    green = ra.rusty_metal("tidal_green", (0.06, 0.17, 0.1), rust=0.2)
+    water = water_mat("tidal_water")
+    foam = ra.plain("tidal_foam", (0.75, 0.8, 0.85), 0.4, variation=0.2)
+    porcelain = ra.plain("tidal_porcelain", (0.75, 0.72, 0.65), 0.3)
+    ra.box("tidal_water", (1.9, 1.2, 0.02), (0, 0.4, 0.01), water)
+    ra.box("tidal_dam", (0.6, 1.8, 0.45), (0, 0, 0.22), concrete, bevel=0.02)
+    for y in (0.2, 0.6):
+        ra.cylinder("tidal_turbine", 0.15, 0.7, (0, y, 0.15), steel, rotation=(0, math.radians(90), 0), verts=16)
+        for side in (-1, 1):
+            for k in range(4):
+                ra.sphere("tidal_foam", random.uniform(0.05, 0.09), (side * (0.38 + k * 0.08), y + random.uniform(-0.08, 0.08), 0.04), foam,
+                          scale=(1.3, 1, 0.4), segments=8)
+    ra.box("tidal_house", (0.5, 0.55, 0.45), (0, -0.55, 0.67), concrete, bevel=0.02)
+    ra.box("tidal_roof", (0.56, 0.6, 0.05), (0, -0.55, 0.92), steel)
+    ra.box("tidal_window", (0.02, 0.3, 0.15), (0.26, -0.55, 0.72), ra.emission("tidal_window", (1.0, 0.8, 0.5), 2.0))
+    ra.box("tidal_transformer", (0.3, 0.3, 0.3), (0, 0.0, 0.6), green, bevel=0.02)
+    for x in (-0.08, 0.08):
+        ra.cylinder("tidal_insulator", 0.035, 0.2, (x, 0.0, 0.85), porcelain, verts=10)
+
+
+def flotsam(kind):
+    """What the sea threw up on the beach: a bleached log with weed, a heap of kelp, or a crate and a bottle."""
+    def build():
+        weed = ra.plain("flot_weed", (0.06, 0.12, 0.04), 0.4, variation=0.3, bump=0.6)
+        if kind == 0:
+            log = ra.cylinder("flot_log", 0.12, 1.0, (0, 0, 0.1), ra.wood("flot_bleached", (0.35, 0.3, 0.24)),
+                              rotation=(0, math.radians(90), math.radians(25)), verts=12)
+            ra.displace(log, 0.02, 0.3, 1)
+        if kind in (0, 1):
+            for k in range(5 if kind else 3):
+                s = ra.sphere("flot_weed", random.uniform(0.1, 0.18), (random.uniform(-0.35, 0.35), random.uniform(-0.25, 0.25), 0.03), weed,
+                              scale=(1.4, 1, 0.3), segments=10)
+                ra.displace(s, 0.03, 0.2, 1)
+        if kind == 2:
+            ra.box("flot_crate", (0.4, 0.32, 0.26), (-0.1, 0, 0.11), ra.wood("flot_crate", (0.25, 0.17, 0.09)), bevel=0.02,
+                   rotation=(0.15, 0.1, 0.5))
+            glass = ra.plain("flot_glass", (0.1, 0.3, 0.12), 0.05, variation=0.05, grime=0.1)
+            ra.cylinder("flot_bottle", 0.05, 0.22, (0.32, -0.12, 0.05), glass, rotation=(0, math.radians(90), 0.6), verts=12)
+            ra.sphere("flot_amber", 0.05, (0.15, -0.25, 0.03), ra.plain("flot_amber", (0.85, 0.4, 0.03), 0.1, variation=0.2), segments=10)
+        return meshes()
+    return build
+
+
+def render_water_tile():
+    """One tile of sea seen from above, squashed to the 45° view: dark blue with glints, seamless so the tiles meet."""
+    scene = outdoor_scene(256, 256, Vector((0, 0, 0)), samples=48, pitch=math.radians(90))
+    scene.render.film_transparent = False
+    m = ra.Mat("sea")
+    wave = m.node("ShaderNodeTexWave", wave_type="BANDS", bands_direction="X")
+    wave.inputs["Scale"].default_value = 1.2
+    wave.inputs["Distortion"].default_value = 4.0
+    wave.inputs["Detail"].default_value = 3.0
+    m.link(m.coord.outputs["Object"], wave.inputs["Vector"])
+    col = m.ramp(wave.outputs["Fac"], [(0.0, (0.02, 0.07, 0.12)), (0.7, (0.035, 0.12, 0.19)), (1.0, (0.12, 0.25, 0.32))]).outputs["Color"]
+    ra.box("sea", (24, 24, 0.02), (0, 0, -0.01), m.done(col, 0.15, 0.0, wave.outputs["Fac"], 0.4))
+    ra.render(TMP / "water_big.png")
+    tile = (round(TILE_M * PPM), round(TILE_M * PPM * math.sin(PITCH)))
+    seamless(Image.open(TMP / "water_big.png").convert("RGBA")).resize(tile, Image.LANCZOS).save(OUT / "water.png", optimize=True)
+    print("sprite water")
+    return {"anchorX": tile[0] // 2, "anchorY": tile[1] // 2}
+
+
+def seaward(build):
+    """The water of these lies to the south of the shore, in front: the model, built with the water behind it,
+    is mirrored north to south."""
+    def make():
+        build()
+        for o in meshes():
+            o.location.y = -o.location.y
+            o.rotation_euler.x, o.rotation_euler.z = -o.rotation_euler.x, -o.rotation_euler.z
+            o.scale.y = -o.scale.y
+        return meshes()
+    return make
+
+
+COAST = {
+    # name: (canvas width, height, camera target height, builder); each stands on one tile by the water.
+    "fishing_boat": (128, 160, 0.6, build_fishing_boat),
+    "rowing_boat": (112, 112, 0.25, build_rowing_boat),
+    "smokehouse": (112, 160, 0.8, build_smokehouse),
+    "cannery": (128, 160, 0.7, build_cannery),
+    "salt_pan": (128, 104, 0.1, build_salt_pan),
+    "fish_farm": (128, 112, 0.15, build_fish_farm),
+    "shipyard": (128, 152, 0.6, build_shipyard),
+    "port": (128, 160, 0.7, build_port),
+    "breakwater": (128, 112, 0.15, build_breakwater),
+    "lighthouse": (96, 224, 1.7, build_lighthouse),
+    "tidal_plant": (128, 128, 0.4, build_tidal_plant),
+}
+
+
+SEAWARD = ("fishing_boat", "rowing_boat", "fish_farm", "shipyard", "port", "breakwater", "tidal_plant")
+
+
+def render_coast(layout: dict, only=()):
+    for name, (w, h, tz, build) in COAST.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        make = seaward(build) if name in SEAWARD else crafted(build)
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), make, true_scale=True)
+        icon = f"item_power_{name}" if name == "tidal_plant" else f"furniture_{name}"
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"{icon}.png")
+    for k in range(3):
+        name = f"flotsam_{k}"
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, 112, 80, Vector((0, 0, 0.05)), flotsam(k))
+    if not only or "water" in only:
+        layout["water"] = render_water_tile()
+
+
 # --- Power ----------------------------------------------------------------------------------------
 
 def build_generator():
@@ -2152,7 +2528,116 @@ def icon_models():
                            rotation=(0, 0, random.random() * 3))
         return build
 
+    def one_fish(color, belly, length=0.46):
+        def build():
+            fish("fish", length, color, belly, (0, 0, 0), math.radians(20))
+        return build
+
+    def pair(color, belly, mat=None):
+        def build():
+            skin = mat() if mat else None
+            for k, (x, y) in enumerate(((-0.02, 0.06), (0.03, -0.07))):
+                fish(f"fish{k}", 0.4, color, belly, (x, y, k * 0.05), math.radians(15 + k * 10), skin)
+        return build
+
+    def fishing_rod():
+        dark = ra.plain("rod", (0.05, 0.05, 0.06), 0.3)
+        ra.cylinder("rod", 0.012, 0.6, (0, 0, 0.05), dark, radius2=0.004, rotation=(0, math.radians(90), math.radians(30)))
+        ra.cylinder("grip", 0.02, 0.14, (-0.2, -0.12, 0.05), ra.wood("cork", (0.45, 0.32, 0.18)), rotation=(0, math.radians(90), math.radians(30)))
+        ra.cylinder("reel", 0.045, 0.03, (-0.12, -0.1, 0.03), ra.plain("reel", (0.6, 0.6, 0.62), 0.3, 1.0), rotation=(math.radians(90), 0, math.radians(30)))
+        ra.sphere("float", 0.03, (0.18, -0.12, 0.03), ra.plain("float", (0.85, 0.1, 0.05), 0.4), segments=10)
+        ra.box("line", (0.003, 0.003, 0.3), (0.2, 0.0, 0.08), ra.plain("line", (0.8, 0.8, 0.8), 0.3), rotation=(math.radians(80), 0, math.radians(30)))
+
+    def mussels():
+        shell = ra.plain("mussel", (0.03, 0.04, 0.08), 0.25, variation=0.3)
+        inside = ra.plain("mussel_meat", (0.85, 0.5, 0.2), 0.5)
+        for i in range(5):
+            a = i / 5 * math.tau
+            x, y = math.cos(a) * 0.12, math.sin(a) * 0.1
+            s = ra.sphere("mussel", 0.09, (x, y, 0.04), shell, scale=(1, 0.5, 0.35), segments=14)
+            s.rotation_euler = (0, 0, a)
+            if i % 2:
+                ra.sphere("meat", 0.05, (x, y, 0.07), inside, scale=(1, 0.5, 0.3), segments=10)
+
+    def seaweed():
+        weed = ra.plain("weed", (0.08, 0.16, 0.05), 0.35, variation=0.3, bump=0.6)
+        for i in range(7):
+            a = random.random() * math.tau
+            s = ra.sphere("weed", random.uniform(0.08, 0.13), (math.cos(a) * 0.1, math.sin(a) * 0.1, 0.04 + i * 0.012), weed,
+                          scale=(1.6, 0.7, 0.25), segments=10)
+            s.rotation_euler = (0, 0, a)
+            ra.displace(s, 0.02, 0.15, 1)
+
+    def amber():
+        m = ra.plain("amber", (0.85, 0.4, 0.03), 0.05, variation=0.25, grime=0.0)
+        for i, (x, y, r) in enumerate(((0, 0, 0.12), (0.13, -0.06, 0.07), (-0.12, -0.08, 0.06))):
+            s = ra.sphere("amber", r, (x, y, r * 0.6), m, scale=(1.2, 1, 0.8), segments=12)
+            ra.displace(s, r * 0.15, 0.3, 1)
+
+    def slab_of(color):
+        def build():
+            board = ra.wood("board", (0.3, 0.2, 0.1))
+            ra.box("board", (0.46, 0.3, 0.04), (0, 0, 0.02), board, bevel=0.01)
+            flesh = ra.plain("slab", color, 0.35, variation=0.2, scale=20, bump=0.4)
+            for k in range(3):
+                ra.box("slice", (0.12, 0.22, 0.03), (-0.13 + k * 0.13, 0, 0.055 + k * 0.004), flesh, bevel=0.012, rotation=(0, -0.25, 0))
+        return build
+
+    def jar_of(color):
+        def build():
+            glass = ra.plain("jar", (0.55, 0.6, 0.5), 0.05, variation=0.05, grime=0.05)
+            ra.cylinder("brine", 0.13, 0.28, (0, 0, 0.15), ra.plain("brine", (0.7, 0.68, 0.5), 0.2, variation=0.1), verts=24)
+            for k in range(3):
+                ra.sphere("roll", 0.05, (math.cos(k * 2.1) * 0.08, -0.1, 0.08 + k * 0.08), ra.plain("herring", color, 0.3, 0.3),
+                          scale=(1.4, 0.6, 0.8), segments=10)
+            for z in (0.015, 0.29):
+                ra.cylinder("rim", 0.135, 0.03, (0, 0, z), glass, verts=24)
+            ra.cylinder("lid", 0.12, 0.05, (0, 0, 0.32), ra.rusty_metal("lid", (0.1, 0.2, 0.4), rust=0.1), verts=24)
+        return build
+
+    def oil_bottle_of(color):
+        def build():
+            glass = ra.plain("bottle", color, 0.08, variation=0.05, grime=0.1)
+            ra.cylinder("bottle", 0.09, 0.3, (0, 0, 0.15), glass, verts=24)
+            ra.cylinder("shoulder", 0.09, 0.08, (0, 0, 0.34), glass, radius2=0.03, verts=24)
+            ra.cylinder("neck", 0.03, 0.08, (0, 0, 0.42), glass, verts=16)
+            ra.cylinder("cork", 0.032, 0.05, (0, 0, 0.48), ra.wood("cork", (0.45, 0.32, 0.18)), verts=16)
+            ra.cylinder("label", 0.092, 0.1, (0, 0, 0.14), ra.plain("label", (0.2, 0.35, 0.55), 0.8), verts=24)
+        return build
+
+    def canned_fish():
+        tin = ra.plain("tin", (0.7, 0.72, 0.74), 0.25, 1.0, variation=0.1)
+        label = ra.plain("label", (0.1, 0.25, 0.55), 0.5)
+        ra.box("can", (0.36, 0.22, 0.08), (0, 0, 0.04), tin, bevel=0.03)
+        ra.box("label", (0.37, 0.2, 0.05), (0, 0, 0.035), label, bevel=0.02)
+        ra.torus("pull", 0.04, 0.008, (0.1, 0, 0.085), tin)
+        fish("can_fish", 0.16, (0.55, 0.6, 0.65), (0.8, 0.8, 0.78), (-0.05, 0, 0.08), 0.0)
+
+    def fried_carp():
+        plate = ra.plain("plate", (0.8, 0.78, 0.72), 0.3, variation=0.05)
+        ra.cylinder("plate", 0.25, 0.025, (0, 0, 0.012), plate, verts=32)
+        fish("carp", 0.36, (0.45, 0.25, 0.06), (0.6, 0.38, 0.1), (0, 0, 0.025), math.radians(15),
+             ra.plain("crust", (0.45, 0.25, 0.06), 0.6, variation=0.25, bump=0.6))
+        ra.sphere("lemon", 0.04, (0.15, -0.12, 0.04), ra.plain("lemon", (0.85, 0.75, 0.05), 0.4), scale=(1, 1, 0.5), segments=10)
+
     return {
+        "item_tool_fishing_rod": fishing_rod,
+        "item_herring": pair((0.35, 0.42, 0.5), (0.8, 0.82, 0.82)),
+        "item_cod": one_fish((0.35, 0.3, 0.18), (0.8, 0.78, 0.7)),
+        "item_carp": one_fish((0.4, 0.3, 0.08), (0.75, 0.6, 0.25)),
+        "item_pike": one_fish((0.15, 0.25, 0.08), (0.7, 0.7, 0.5), 0.52),
+        "item_salmon": one_fish((0.3, 0.33, 0.38), (0.85, 0.5, 0.4)),
+        "item_mussels": mussels,
+        "item_seaweed": seaweed,
+        "item_amber": amber,
+        "item_smoked_fish": pair((0.45, 0.25, 0.06), (0.6, 0.38, 0.1), lambda: ra.plain("smoked", (0.45, 0.25, 0.06), 0.35, 0.2)),
+        "item_smoked_salmon": slab_of((0.85, 0.35, 0.18)),
+        "item_salted_herring": jar_of((0.55, 0.6, 0.62)),
+        "item_canned_fish": canned_fish,
+        "item_fish_meal": sack((0.55, 0.45, 0.3)),
+        "item_fish_oil": oil_bottle_of((0.6, 0.45, 0.08)),
+        "item_fried_carp": fried_carp,
+        "item_fish_soup": bowl((0.75, 0.6, 0.35), [((0.9, 0.88, 0.8), 8), ((0.75, 0.25, 0.02), 4), ((0.8, 0.7, 0.4), 4)]),
         "item_flour": sack((0.85, 0.83, 0.78)),
         "item_corn_flour": sack((0.85, 0.65, 0.2)),
         "item_sunflower_oil": oil_bottle,
@@ -2226,7 +2711,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "office", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "office", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -2264,6 +2749,9 @@ if __name__ == "__main__":
     if "mountain" in args or any(a in MOUNTAIN or a == "cable_station" for a in args):
         # Names of mountain industry sprites render just those.
         render_mountain(layout, [a for a in args if a in MOUNTAIN or a == "cable_station"])
+    if "coast" in args or any(a in COAST or a.startswith("flotsam_") or a == "water" for a in args):
+        # Names of coast sprites render just those.
+        render_coast(layout, [a for a in args if a in COAST or a.startswith("flotsam_") or a == "water"])
     if "logistics" in args or any(a in LOGISTICS for a in args):
         # Names of logistics sprites render just those.
         render_logistics(layout, [a for a in args if a in LOGISTICS])

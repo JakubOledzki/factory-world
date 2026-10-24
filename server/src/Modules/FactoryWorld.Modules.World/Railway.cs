@@ -119,6 +119,19 @@ public static class RailRules
     }
 }
 
+/// <summary>Ships between ports: a ship needs no track, takes twice as long as a train and costs a quarter of the
+/// fee; a lighthouse next to either end (on the plot or one around it) cuts a quarter off the trip.</summary>
+public static class SeaRules
+{
+    public const double SlowerThanRail = 2;
+
+    public const double LighthouseTrip = 0.75;
+
+    public static long FeeCents(long railFeeCents) => (railFeeCents + 3) / 4;
+
+    public static TimeSpan TripTime(TimeSpan railTrip, bool lighthouse) => railTrip * SlowerThanRail * (lighthouse ? LighthouseTrip : 1);
+}
+
 /// <param name="Sender">Who sent the train, when it was someone else.</param>
 /// <param name="Receiver">Who owns the destination, when it is someone else.</param>
 public sealed record Shipment(
@@ -226,7 +239,7 @@ internal static class StationStock
 
 public sealed class StationService(
     GameDb db, WorldMap map, PlotService plots, IInventory inventory, IWallet wallet, ICharacterNames names,
-    IEnumerable<IPlotAutomation> automation, TimeProvider time)
+    IEnumerable<IPlotAutomation> automation, BeachService beach, TimeProvider time)
 {
     /// <summary>The station of one of the player's plots, after unloading every train that has arrived.</summary>
     public Task<StationState> StateAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
@@ -250,16 +263,30 @@ public sealed class StationService(
             await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
         }, cancellationToken);
 
-    /// <summary>Sends items from this station by train to the station of another owned plot.</summary>
-    public Task<StationState> SendAsync(Guid player, int x, int y, int toX, int toY, string item, long quantity, CancellationToken cancellationToken) =>
+    /// <summary>Sends items from this station by train to the station of another owned plot; <paramref name="bySea"/>, by
+    /// ship from this plot's port to the other's: slower, but for a quarter of the fee (<see cref="SeaRules"/>).</summary>
+    public Task<StationState> SendAsync(
+        Guid player, int x, int y, int toX, int toY, string item, long quantity, CancellationToken cancellationToken, bool bySea = false) =>
         ChangeAsync(player, x, y, PlotRight.Take, async () =>
         {
             CheckQuantity(item, quantity);
             await CheckDestinationAsync(x, y, toX, toY, cancellationToken);
-            await StationStock.ChangeAsync(db, x, y, item, -quantity, cancellationToken);
             var km = RailRules.DistanceKm(map, x, y, toX, toY);
-            await wallet.DebitAsync(player, RailRules.FeeCents(km, quantity), $"rail {quantity} {item} {x}:{y}->{toX}:{toY}", cancellationToken);
-            await StationStock.DispatchAsync(db, x, y, toX, toY, item, quantity, player, time.GetUtcNow() + RailRules.TripTime(km), cancellationToken);
+            var (fee, trip) = (RailRules.FeeCents(km, quantity), RailRules.TripTime(km));
+            if (bySea)
+            {
+                if (!await beach.HasAsync(x, y, Items.Port, 0, cancellationToken) || !await beach.HasAsync(toX, toY, Items.Port, 0, cancellationToken))
+                {
+                    throw new GameException("no_port", "A ship sails from a port to a port: both plots need one.");
+                }
+
+                var lighthouse = await beach.HasAsync(x, y, Items.Lighthouse, 1, cancellationToken) || await beach.HasAsync(toX, toY, Items.Lighthouse, 1, cancellationToken);
+                (fee, trip) = (SeaRules.FeeCents(fee), SeaRules.TripTime(trip, lighthouse));
+            }
+
+            await StationStock.ChangeAsync(db, x, y, item, -quantity, cancellationToken);
+            await wallet.DebitAsync(player, fee, $"{(bySea ? "ship" : "rail")} {quantity} {item} {x}:{y}->{toX}:{toY}", cancellationToken);
+            await StationStock.DispatchAsync(db, x, y, toX, toY, item, quantity, player, time.GetUtcNow() + trip, cancellationToken);
         }, cancellationToken);
 
     /// <summary>Sets up a train that leaves this station by itself every <paramref name="everyMinutes"/>,
@@ -805,7 +832,7 @@ public sealed record StationRequest(int X, int Y);
 
 public sealed record StockRequest(int X, int Y, string Item, long Quantity);
 
-public sealed record SendRequest(int X, int Y, int ToX, int ToY, string Item, long Quantity);
+public sealed record SendRequest(int X, int Y, int ToX, int ToY, string Item, long Quantity, bool Sea = false);
 
 public sealed record RouteRequest(int X, int Y, int ToX, int ToY, List<string>? Items, int EveryMinutes);
 
@@ -912,7 +939,7 @@ public sealed class SendHandler(IServiceScopeFactory scopes) : StationHandler(sc
     protected override Task<StationState> RunAsync(StationService station, Guid player, JsonElement? payload, CancellationToken cancellationToken)
     {
         var r = Payload.Read<SendRequest>(payload);
-        return station.SendAsync(player, r.X, r.Y, r.ToX, r.ToY, r.Item, r.Quantity, cancellationToken);
+        return station.SendAsync(player, r.X, r.Y, r.ToX, r.ToY, r.Item, r.Quantity, cancellationToken, r.Sea);
     }
 }
 

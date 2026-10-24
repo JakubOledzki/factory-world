@@ -357,6 +357,17 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.HasIndex(d => d.OwnerId);
         });
 
+        model.Entity<BeachFind>(e =>
+        {
+            e.ToTable("beach_finds");
+            e.HasKey(f => new { f.X, f.Y, f.Day, f.TileX, f.TileY });
+            e.Property(f => f.X).HasColumnName("x");
+            e.Property(f => f.Y).HasColumnName("y");
+            e.Property(f => f.Day).HasColumnName("day");
+            e.Property(f => f.TileX).HasColumnName("tile_x");
+            e.Property(f => f.TileY).HasColumnName("tile_y");
+        });
+
         model.Entity<SurveyRow>(e =>
         {
             e.ToTable("surveys");
@@ -708,6 +719,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton(_ => WorldMap.Load());
         services.AddScoped<WorldService>();
         services.AddScoped<PlotService>();
+        services.AddScoped<BeachService>();
         services.AddScoped<StationService>();
         services.AddScoped<FarmService>();
         services.AddScoped<ForestService>();

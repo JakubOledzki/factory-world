@@ -383,5 +383,65 @@
  "cable_station": {
   "anchorX": 40,
   "anchorY": 106
+ },
+ "fishing_boat": {
+  "anchorX": 64,
+  "anchorY": 94
+ },
+ "rowing_boat": {
+  "anchorX": 56,
+  "anchorY": 62
+ },
+ "smokehouse": {
+  "anchorX": 56,
+  "anchorY": 98
+ },
+ "cannery": {
+  "anchorX": 64,
+  "anchorY": 96
+ },
+ "salt_pan": {
+  "anchorX": 64,
+  "anchorY": 54
+ },
+ "fish_farm": {
+  "anchorX": 64,
+  "anchorY": 59
+ },
+ "shipyard": {
+  "anchorX": 64,
+  "anchorY": 90
+ },
+ "port": {
+  "anchorX": 64,
+  "anchorY": 96
+ },
+ "breakwater": {
+  "anchorX": 64,
+  "anchorY": 59
+ },
+ "lighthouse": {
+  "anchorX": 48,
+  "anchorY": 150
+ },
+ "tidal_plant": {
+  "anchorX": 64,
+  "anchorY": 73
+ },
+ "flotsam_0": {
+  "anchorX": 56,
+  "anchorY": 41
+ },
+ "flotsam_1": {
+  "anchorX": 56,
+  "anchorY": 41
+ },
+ "flotsam_2": {
+  "anchorX": 56,
+  "anchorY": 41
+ },
+ "water": {
+  "anchorX": 32,
+  "anchorY": 22
  }
 }

@@ -17,6 +17,8 @@ public enum TileObject : byte
     Station = 5,
     Bush = 6,
     Mine = 7,
+    Water = 8,
+    Flotsam = 9,
 }
 
 /// <summary>
@@ -86,6 +88,7 @@ public static class PlotLayout
             }
         }
 
+        Coast.AddWater(tiles, seed, biome);
         for (var x = 0; x < Size; x++)
         {
             tiles[RailRow * Size + x] = (byte)TileObject.Rail;
@@ -144,8 +147,8 @@ public static class PlotLayout
         return mines;
     }
 
-    /// <summary>Whether an object can be gathered: a bush is pulled out by hand, the rest needs <see cref="ToolFor"/>.</summary>
-    public static bool Gatherable(TileObject obj) => obj == TileObject.Bush || ToolFor(obj) is not null;
+    /// <summary>Whether an object can be gathered: a bush and what the sea threw up are picked up by hand, the rest needs <see cref="ToolFor"/>.</summary>
+    public static bool Gatherable(TileObject obj) => obj is TileObject.Bush or TileObject.Flotsam || ToolFor(obj) is not null;
 
     /// <summary>Which tool a player needs to gather an object, or null when none does (or it cannot be gathered).</summary>
     public static string? ToolFor(TileObject obj) => obj switch
@@ -153,6 +156,7 @@ public static class PlotLayout
         TileObject.Tree => Items.Axe,
         TileObject.Rock => Items.Pickaxe,
         TileObject.Dune => Items.Shovel,
+        TileObject.Water => Items.FishingRod,
         _ => null,
     };
 
@@ -164,6 +168,7 @@ public static class PlotLayout
         Biome.Mountains => Items.Pickaxe,
         Biome.Farmland => Items.Hoe,
         Biome.Grassland => Items.Shears,
+        Biome.Coast or Biome.Lakeshore => Items.FishingRod,
         _ => null,
     };
 
@@ -182,7 +187,7 @@ public static class PlotLayout
         _ => [],
     };
 
-    private static uint Hash(uint seed, int x, int y)
+    internal static uint Hash(uint seed, int x, int y)
     {
         var h = seed ^ (uint)x * 0x27d4eb2du ^ (uint)y * 0x165667b1u;
         h ^= h >> 15;
@@ -193,7 +198,7 @@ public static class PlotLayout
     }
 
     /// <summary>Smooth value noise in 0..1.</summary>
-    private static double Noise(uint seed, double x, double y)
+    internal static double Noise(uint seed, double x, double y)
     {
         int x0 = (int)Math.Floor(x), y0 = (int)Math.Floor(y);
         double fx = x - x0, fy = y - y0;
@@ -221,6 +226,7 @@ public static class HarvestRules
     public static TimeSpan TimeFor(TileObject obj, string? tool = null, Biome biome = Biome.Ocean) => obj switch
     {
         TileObject.Tree => tool == Items.Chainsaw ? SawTime : ChopTime,
+        TileObject.Water => Coast.FishTime(biome),
         TileObject.Rock => Time / (Mining.Speed(biome) * Items.Pickaxes.GetValueOrDefault(tool ?? "", 1)),
         _ => Time,
     };
@@ -232,7 +238,7 @@ public sealed record Harvest(TileObject Object, IReadOnlyList<(string Item, int 
 
 public sealed class PlotService(
     GameDb db, WorldMap map, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats,
-    IEnumerable<ICompanyPlots> companies, TimeProvider time)
+    IEnumerable<ICompanyPlots> companies, BeachService beach, TimeProvider time)
 {
     /// <summary>The tiles of a plot as they are now; only its owner and members of its company may enter.</summary>
     public async Task<byte[]> TilesAsync(Guid player, int x, int y, CancellationToken cancellationToken)
@@ -245,19 +251,28 @@ public sealed class PlotService(
     public async Task<byte[]> TilesAsync(int x, int y, Biome biome, CancellationToken cancellationToken)
     {
         var tiles = PlotLayout.Generate(x, y, biome);
-        await using var command = await db.CommandAsync(
-            "SELECT tile_x, tile_y FROM world.plot_harvests WHERE x = @x AND y = @y", cancellationToken);
-        command.Parameters.AddWithValue("x", x);
-        command.Parameters.AddWithValue("y", y);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        while (await reader.ReadAsync(cancellationToken))
+        await using (var command = await db.CommandAsync(
+            "SELECT tile_x, tile_y FROM world.plot_harvests WHERE x = @x AND y = @y", cancellationToken))
         {
-            // A rock broken before the mines came may have stood where a mine is now.
-            var at = reader.GetInt32(1) * PlotLayout.Size + reader.GetInt32(0);
-            if (tiles[at] != (byte)TileObject.Mine)
+            command.Parameters.AddWithValue("x", x);
+            command.Parameters.AddWithValue("y", y);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
             {
-                tiles[at] = (byte)TileObject.None;
+                // A rock broken before the mines came may have stood where a mine is now, and the
+                // lake or sea came over what had been gathered on the shore.
+                var at = reader.GetInt32(1) * PlotLayout.Size + reader.GetInt32(0);
+                if (tiles[at] is not ((byte)TileObject.Mine or (byte)TileObject.Water))
+                {
+                    tiles[at] = (byte)TileObject.None;
+                }
             }
+        }
+
+        // What the sea threw up today on the beach, where nothing stands.
+        foreach (var (tx, ty) in await beach.FindsAsync(x, y, biome, tiles, time.GetUtcNow(), cancellationToken))
+        {
+            tiles[ty * PlotLayout.Size + tx] = (byte)TileObject.Flotsam;
         }
 
         return tiles;
@@ -310,12 +325,24 @@ public sealed class PlotService(
             }
 
             var obj = (TileObject)PlotLayout.Generate(x, y, biome)[tileY * PlotLayout.Size + tileX];
+            if ((await TilesAsync(x, y, biome, cancellationToken))[tileY * PlotLayout.Size + tileX] == (byte)TileObject.Flotsam)
+            {
+                pace(HarvestRules.Time);
+                return await beach.GatherAsync(player, x, y, tileX, tileY, async items => await GiveAsync(player, TileObject.Flotsam, items, cancellationToken), cancellationToken);
+            }
+
             if (!PlotLayout.Gatherable(obj))
             {
                 throw new GameException("nothing_here", "There is nothing to gather here.");
             }
 
             pace(HarvestRules.TimeFor(obj, PlotLayout.ToolFor(obj) is { } tool ? await RequireToolAsync(player, tool, cancellationToken) : null, biome));
+            if (obj == TileObject.Water)
+            {
+                // The water is never fished out; a storm keeps everyone ashore but those on a breakwater.
+                await beach.RequireCalmAsync(x, y, cancellationToken);
+                return await GiveAsync(player, obj, Coast.Catch(biome, Random.Shared.Next(100)), cancellationToken);
+            }
 
             await using (var insert = await db.CommandAsync(
                 "INSERT INTO world.plot_harvests (x, y, tile_x, tile_y) VALUES (@x, @y, @tx, @ty) ON CONFLICT DO NOTHING", cancellationToken))
@@ -385,9 +412,11 @@ public sealed class PlotService(
         return held.Contains(tool) ? tool : throw new GameException("wrong_tool", $"You need {Items.Names[tool]} in your hand.");
     }
 
-    private async Task<Harvest> GiveAsync(Guid player, TileObject obj, CancellationToken cancellationToken)
+    private Task<Harvest> GiveAsync(Guid player, TileObject obj, CancellationToken cancellationToken) =>
+        GiveAsync(player, obj, PlotLayout.Yield(obj, Random.Shared.Next(100)), cancellationToken);
+
+    private async Task<Harvest> GiveAsync(Guid player, TileObject obj, IReadOnlyList<(string Item, int Quantity)> items, CancellationToken cancellationToken)
     {
-        var items = PlotLayout.Yield(obj, Random.Shared.Next(100));
         foreach (var (item, quantity) in items)
         {
             await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
@@ -522,8 +551,34 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
                 yield = c.Yield,
                 xp = c.Xp,
             }),
+            // One cast of the rod here, faster on the coast and the lakeshore, and the storm blowing now or the next one.
+            fishSeconds = Coast.FishTime(biome).TotalSeconds,
+            fishingBonus = Coast.BonusPercent(biome),
+            storm = StormJson(time.GetUtcNow()),
+            storms = StormsJson(time.GetUtcNow(), 24),
             serverTime = time.GetUtcNow().ToUnixTimeMilliseconds(),
         });
+    }
+
+    public static object StormJson(DateTimeOffset now)
+    {
+        var (start, end) = SeaWeather.Next(now);
+        return new { start = start.ToUnixTimeMilliseconds(), end = end.ToUnixTimeMilliseconds() };
+    }
+
+    /// <summary>The storm blowing now (if any) and the next ones, <paramref name="count"/> in all, for the client's forecast.</summary>
+    public static IReadOnlyList<object> StormsJson(DateTimeOffset now, int count)
+    {
+        var storms = new List<object>();
+        var at = now;
+        for (var i = 0; i < count; i++)
+        {
+            var (start, end) = SeaWeather.Next(at);
+            storms.Add(new { start = start.ToUnixTimeMilliseconds(), end = end.ToUnixTimeMilliseconds() });
+            at = end;
+        }
+
+        return storms;
     }
 }
 
