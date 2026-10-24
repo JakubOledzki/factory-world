@@ -207,6 +207,36 @@ public static class Items
     public const string Lighthouse = "furniture_lighthouse";
     public const string TidalPlant = "power_tidal_plant";
 
+    // Oil and gas: wells pump what the survey found under a plot, pipes carry the fluids, a distillery and a refinery
+    // split crude oil into fuels and asphalt, a cracker makes more petrol of the heavier ones and a chemical plant
+    // makes plastic, rubber and fertiliser of gas.
+    public const string CrudeOil = "crude_oil";
+    public const string NaturalGas = "natural_gas";
+    public const string Gasoline = "gasoline";
+    public const string Diesel = "diesel";
+    public const string Kerosene = "kerosene";
+    public const string Asphalt = "asphalt";
+    public const string Plastic = "plastic";
+    public const string SyntheticRubber = "synthetic_rubber";
+    public const string Fertilizer = "fertilizer";
+    public const string Gasket = "gasket";
+
+    public const string Pumpjack = "furniture_pumpjack";
+    public const string GasWell = "furniture_gas_well";
+    public const string OffshorePlatform = "furniture_offshore_platform";
+    public const string WaterInjector = "furniture_water_injector";
+    public const string OilSeparator = "furniture_oil_separator";
+    public const string Distillery = "furniture_distillery";
+    public const string Refinery = "furniture_refinery";
+    public const string Cracker = "furniture_cracker";
+    public const string ChemicalPlant = "furniture_chemical_plant";
+    public const string GasPlant = "power_gas_plant";
+    public const string DieselGenerator = "power_diesel_generator";
+    public const string Pipe = "logistics_pipe";
+    public const string Pump = "logistics_pump";
+    public const string Tank = "storage_tank";
+    public const string Road = "logistics_road";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -362,6 +392,31 @@ public static class Items
         [Breakwater] = "Falochron",
         [Lighthouse] = "Latarnia morska",
         [TidalPlant] = "Elektrownia pływowa",
+        [CrudeOil] = "Ropa naftowa",
+        [NaturalGas] = "Gaz ziemny",
+        [Gasoline] = "Benzyna",
+        [Diesel] = "Olej napędowy",
+        [Kerosene] = "Nafta",
+        [Asphalt] = "Asfalt",
+        [Plastic] = "Tworzywo sztuczne",
+        [SyntheticRubber] = "Kauczuk syntetyczny",
+        [Fertilizer] = "Nawóz",
+        [Gasket] = "Uszczelka",
+        [Pumpjack] = "Żuraw pompowy",
+        [GasWell] = "Głowica gazowa",
+        [OffshorePlatform] = "Platforma wiertnicza",
+        [WaterInjector] = "Tłocznia wody",
+        [OilSeparator] = "Separator ropy",
+        [Distillery] = "Destylarnia",
+        [Refinery] = "Rafineria",
+        [Cracker] = "Instalacja krakingu",
+        [ChemicalPlant] = "Zakład chemiczny",
+        [GasPlant] = "Elektrownia gazowa",
+        [DieselGenerator] = "Agregat spalinowy",
+        [Pipe] = "Rura",
+        [Pump] = "Pompa",
+        [Tank] = "Zbiornik",
+        [Road] = "Droga asfaltowa",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
@@ -416,10 +471,22 @@ public static class Items
     public static bool IsBoat(string id) => id is FishingBoat or RowingBoat;
 
     /// <summary>Belts of every level (not splitters).</summary>
-    public static bool IsBelt(string id) => id is Belt or FastBelt or ExpressBelt;
+    public static bool IsBelt(string id) => id is Belt or FastBelt or ExpressBelt or Pipe;
 
     /// <summary>Inserters of every level.</summary>
-    public static bool IsInserter(string id) => id is Inserter or FastInserter or ExpressInserter;
+    public static bool IsInserter(string id) => id is Inserter or FastInserter or ExpressInserter or Pump;
+
+    /// <summary>Fluids: they go only through pipes and pumps, never on belts or by inserters.</summary>
+    public static bool IsFluid(string id) => id is CrudeOil or NaturalGas or Gasoline or Diesel or Kerosene;
+
+    /// <summary>What carries fluids: a pipe instead of a belt, a pump instead of an inserter.</summary>
+    public static bool CarriesFluids(string kind) => kind is Pipe or Pump;
+
+    /// <summary>Wells, which pump the oil or gas under their plot by themselves.</summary>
+    public static bool IsWell(string id) => id is Pumpjack or GasWell or OffshorePlatform;
+
+    /// <summary>Generators that burn fuel: the steam generator, the gas power plant and the diesel generator.</summary>
+    public static bool IsGenerator(string id) => id is Generator or GasPlant or DieselGenerator;
 }
 
 /// <param name="ExtraSlots">Inventory tiles the backpack adds.</param>

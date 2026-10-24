@@ -32,6 +32,9 @@ public static class Farming
     public static bool Fertile(Biome biome) => biome == Biome.Farmland;
 
     public const int XpPerTill = 1;
+
+    /// <summary>A crop sown with fertiliser grows this much faster: in half the time.</summary>
+    public const double FertilizerSpeed = 2;
 }
 
 /// <param name="Crop">Null on a tilled field nothing grows on yet.</param>
@@ -42,7 +45,8 @@ public sealed record Field(int TileX, int TileY, string? Crop, DateTimeOffset? R
 public sealed record FieldChange(Field Field, IReadOnlyList<(string Item, int Quantity)> Items, XpGain? Xp);
 
 public sealed class FarmService(
-    GameDb db, PlotService plots, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
+    GameDb db, PlotService plots, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats, TimeProvider time,
+    OilService oil)
 {
     public async Task<IReadOnlyList<Field>> FieldsAsync(int x, int y, CancellationToken cancellationToken)
     {
@@ -81,6 +85,7 @@ public sealed class FarmService(
                 throw new GameException("blocked", "Something stands here.");
             }
 
+            await oil.RequireCleanAsync(x, y, tileX, tileY, cancellationToken);
             await using (var insert = await db.CommandAsync(
                 "INSERT INTO world.plot_fields (x, y, tile_x, tile_y) VALUES (@x, @y, @tx, @ty) ON CONFLICT DO NOTHING", cancellationToken))
             {
@@ -95,8 +100,9 @@ public sealed class FarmService(
             return new FieldChange(new Field(tileX, tileY, null, null), [], xp);
         }, cancellationToken);
 
-    /// <summary>Sows a crop on an empty field.</summary>
-    public Task<FieldChange> PlantAsync(Guid player, int x, int y, int tileX, int tileY, string crop, CancellationToken cancellationToken) =>
+    /// <summary>Sows a crop on an empty field; <paramref name="fertilize"/> spends a fertiliser from the inventory, and the crop grows in half the time.</summary>
+    public Task<FieldChange> PlantAsync(
+        Guid player, int x, int y, int tileX, int tileY, string crop, CancellationToken cancellationToken, bool fertilize = false) =>
         db.InTransactionAsync(async () =>
         {
             if (!Farming.ById.ContainsKey(crop))
@@ -105,7 +111,16 @@ public sealed class FarmService(
             }
 
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
+            await oil.RequireCleanAsync(x, y, tileX, tileY, cancellationToken);
             var now = time.GetUtcNow();
+            if (fertilize)
+            {
+                await inventory.RemoveAsync(player, Items.Fertilizer, 1, cancellationToken);
+                await stats.RecordAsync(player, [ProductionEntry.Used(Items.Fertilizer, 1, now)], cancellationToken);
+            }
+
+            // A fertilised crop counts as sown so long ago that it is ripe in half its time.
+            var sown = fertilize ? now - Farming.ById[crop].Grow * (1 - 1 / Farming.FertilizerSpeed) : now;
             await using var update = await db.CommandAsync(
                 """
                 UPDATE world.plot_fields SET crop = @crop, planted_at = @now
@@ -113,13 +128,13 @@ public sealed class FarmService(
                 """, cancellationToken);
             Bind(update, x, y, tileX, tileY);
             update.Parameters.AddWithValue("crop", crop);
-            update.Parameters.AddWithValue("now", now);
+            update.Parameters.AddWithValue("now", sown);
             if (await update.ExecuteNonQueryAsync(cancellationToken) == 0)
             {
                 throw new GameException("no_field", "Till the ground first, or reap what grows here.");
             }
 
-            return new FieldChange(Read(tileX, tileY, crop, now), [], null);
+            return new FieldChange(Read(tileX, tileY, crop, sown), [], null);
         }, cancellationToken);
 
     /// <summary>Gathers a ripe crop by hand; the field stays tilled.</summary>
@@ -178,7 +193,7 @@ public sealed class FarmService(
     }
 }
 
-public sealed record FieldRequest(int X, int Y, int TileX, int TileY, string? Crop);
+public sealed record FieldRequest(int X, int Y, int TileX, int TileY, string? Crop, bool Fertilize = false);
 
 /// <summary>plot.till, plot.plant and plot.reap all answer with the changed field.</summary>
 public abstract class FieldHandler(IServiceScopeFactory scopes, TimeProvider time) : IMessageHandler
@@ -231,7 +246,7 @@ public sealed class PlantHandler(IServiceScopeFactory scopes, TimeProvider time)
     public override string Type => "plot.plant";
 
     protected override Task<FieldChange> RunAsync(FarmService farm, ClientContext client, FieldRequest r, CancellationToken cancellationToken) =>
-        farm.PlantAsync(client.RequireAccount(), r.X, r.Y, r.TileX, r.TileY, r.Crop ?? "", cancellationToken);
+        farm.PlantAsync(client.RequireAccount(), r.X, r.Y, r.TileX, r.TileY, r.Crop ?? "", cancellationToken, r.Fertilize);
 }
 
 public sealed class ReapHandler(IServiceScopeFactory scopes, TimeProvider time) : FieldHandler(scopes, time)

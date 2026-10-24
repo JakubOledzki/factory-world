@@ -119,6 +119,18 @@ public static class RailRules
     }
 }
 
+/// <summary>A diesel locomotive: a train leaving a station that holds diesel burns some of it and gets there sooner.</summary>
+public static class DieselRules
+{
+    /// <summary>A diesel train takes this part of a steam train's time.</summary>
+    public const double TripFactor = 0.6;
+
+    /// <summary>Diesel one train burns: a unit for every 250 km begun.</summary>
+    public static long Fuel(double km) => Math.Max(1, (long)Math.Ceiling(km / 250));
+
+    public static TimeSpan TripTime(TimeSpan steamTrip) => steamTrip * TripFactor;
+}
+
 /// <summary>Ships between ports: a ship needs no track, takes twice as long as a train and costs a quarter of the
 /// fee; a lighthouse next to either end (on the plot or one around it) cuts a quarter off the trip.</summary>
 public static class SeaRules
@@ -228,6 +240,19 @@ internal static class StationStock
     }
 
     /// <summary>The owner of a plot, or null when nobody bought it.</summary>
+    /// <summary>Takes the diesel a train of <paramref name="km"/> burns from the station, when it holds that much; true when it did.</summary>
+    public static async Task<bool> FuelAsync(GameDb db, int x, int y, double km, CancellationToken cancellationToken)
+    {
+        var need = DieselRules.Fuel(km);
+        if ((await ReadAsync(db, x, y, cancellationToken)).GetValueOrDefault(Items.Diesel) < need)
+        {
+            return false;
+        }
+
+        await ChangeAsync(db, x, y, Items.Diesel, -need, cancellationToken);
+        return true;
+    }
+
     public static async Task<Guid?> OwnerAsync(GameDb db, int x, int y, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync("SELECT owner_id FROM world.plots WHERE x = @x AND y = @y", cancellationToken);
@@ -285,6 +310,11 @@ public sealed class StationService(
             }
 
             await StationStock.ChangeAsync(db, x, y, item, -quantity, cancellationToken);
+            if (!bySea && await StationStock.FuelAsync(db, x, y, km, cancellationToken))
+            {
+                trip = DieselRules.TripTime(trip);
+            }
+
             await wallet.DebitAsync(player, fee, $"{(bySea ? "ship" : "rail")} {quantity} {item} {x}:{y}->{toX}:{toY}", cancellationToken);
             await StationStock.DispatchAsync(db, x, y, toX, toY, item, quantity, player, time.GetUtcNow() + trip, cancellationToken);
         }, cancellationToken);
@@ -519,7 +549,12 @@ public sealed class StationService(
                     foreach (var (item, count) in cargo)
                     {
                         await StationStock.ChangeAsync(db, x, y, item, -count, cancellationToken);
-                        await StationStock.DispatchAsync(db, x, y, toX, toY, item, count, owner, departure + RailRules.TripTime(km), cancellationToken);
+                    }
+
+                    var trip = await StationStock.FuelAsync(db, x, y, km, cancellationToken) ? DieselRules.TripTime(RailRules.TripTime(km)) : RailRules.TripTime(km);
+                    foreach (var (item, count) in cargo)
+                    {
+                        await StationStock.DispatchAsync(db, x, y, toX, toY, item, count, owner, departure + trip, cancellationToken);
                     }
 
                     sent = quantity;
@@ -892,6 +927,9 @@ public abstract class StationHandler(IServiceScopeFactory scopes) : IMessageHand
                 routeMinutes = RailRules.RouteMinutes,
                 maxRoutes = RailRules.MaxRoutes,
                 maxRouteItems = RailRules.MaxRouteItems,
+                // With diesel in the station a train goes as a diesel locomotive: it burns a unit per 250 km begun and gets there sooner.
+                dieselTripFactor = DieselRules.TripFactor,
+                dieselKmPerUnit = 250,
             },
         });
     }

@@ -88,6 +88,24 @@ public static class Workshop
         new(Items.Breakwater, 1, TimeSpan.FromSeconds(45), [(Items.Stone, 100)], 15),
         new(Items.Lighthouse, 1, TimeSpan.FromSeconds(90), [(Items.Stone, 60), (Items.Sand, 20), (Items.IronIngot, 20), (Items.CopperIngot, 10)], 40),
         new(Items.TidalPlant, 1, TimeSpan.FromSeconds(180), [(Items.SteelIngot, 30), (Items.CopperIngot, 40), (Items.Bricks, 40), (Items.StoneBlocks, 20)], 100),
+        // Oil and gas: wells, pipes and tanks, the refineries and chemistry, the engines that burn their fuels and asphalt roads.
+        new(Items.Gasket, 2, TimeSpan.FromSeconds(10), [(Items.CopperIngot, 1), (Items.IronIngot, 1)], 2, Items.Anvil),
+        new(Items.Pumpjack, 1, TimeSpan.FromSeconds(90), [(Items.SteelIngot, 10), (Items.IronIngot, 20), (Items.CopperIngot, 5)], 40),
+        new(Items.GasWell, 1, TimeSpan.FromSeconds(60), [(Items.SteelIngot, 8), (Items.IronIngot, 10), (Items.CopperIngot, 4)], 30),
+        new(Items.OffshorePlatform, 1, TimeSpan.FromSeconds(300),
+            [(Items.SteelIngot, 80), (Items.Beams, 40), (Items.CopperIngot, 30), (Items.StoneBlocks, 40)], 200),
+        new(Items.WaterInjector, 1, TimeSpan.FromSeconds(90), [(Items.SteelIngot, 10), (Items.IronIngot, 10), (Items.CopperIngot, 6)], 35),
+        new(Items.OilSeparator, 1, TimeSpan.FromSeconds(60), [(Items.IronIngot, 15), (Items.SteelIngot, 5), (Items.Sand, 20)], 25),
+        new(Items.Pipe, 4, TimeSpan.FromSeconds(10), [(Items.IronIngot, 3)], 3),
+        new(Items.Pump, 1, TimeSpan.FromSeconds(15), [(Items.IronIngot, 4), (Items.CopperIngot, 2)], 5),
+        new(Items.Tank, 1, TimeSpan.FromSeconds(40), [(Items.SteelIngot, 6), (Items.IronIngot, 10)], 12),
+        new(Items.Distillery, 1, TimeSpan.FromSeconds(90), [(Items.Bricks, 30), (Items.IronIngot, 15), (Items.CopperIngot, 10)], 40),
+        new(Items.Refinery, 1, TimeSpan.FromSeconds(180), [(Items.Distillery, 1), (Items.SteelIngot, 30), (Items.Bricks, 40), (Items.CopperIngot, 20)], 100),
+        new(Items.Cracker, 1, TimeSpan.FromSeconds(180), [(Items.SteelIngot, 40), (Items.CopperIngot, 30), (Items.BronzeIngot, 10)], 100),
+        new(Items.ChemicalPlant, 1, TimeSpan.FromSeconds(150), [(Items.SteelIngot, 30), (Items.CopperIngot, 20), (Items.TinIngot, 10)], 80),
+        new(Items.GasPlant, 1, TimeSpan.FromSeconds(150), [(Items.SteelIngot, 25), (Items.CopperIngot, 20), (Items.Bricks, 20)], 70),
+        new(Items.DieselGenerator, 1, TimeSpan.FromSeconds(90), [(Items.SteelIngot, 15), (Items.IronIngot, 10), (Items.CopperIngot, 10)], 40),
+        new(Items.Road, 4, TimeSpan.FromSeconds(10), [(Items.Asphalt, 2), (Items.Stone, 2)], 2),
     ];
 
     public static Recipe? Find(string id) => Recipes.FirstOrDefault(r => r.Id == id);

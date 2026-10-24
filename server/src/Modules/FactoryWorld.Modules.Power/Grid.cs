@@ -17,6 +17,21 @@ public static class PowerRules
 {
     public const double GeneratorKw = 100;
 
+    /// <summary>Generators of every kind: what each gives at most (kW) and what it burns. The steam generator burns
+    /// wood and coal, the gas power plant natural gas, the diesel generator diesel or petrol.</summary>
+    public static readonly IReadOnlyDictionary<string, (double Kw, IReadOnlySet<string> Burns)> Generators =
+        new Dictionary<string, (double, IReadOnlySet<string>)>
+        {
+            [Items.Generator] = (GeneratorKw, new HashSet<string> { Items.Coal, Items.Wood, Items.WoodPellets }),
+            [Items.GasPlant] = (300, new HashSet<string> { Items.NaturalGas }),
+            [Items.DieselGenerator] = (150, new HashSet<string> { Items.Diesel, Items.Gasoline }),
+        };
+
+    /// <summary>What a generator of <paramref name="kind"/> gives at most (kW).</summary>
+    public static double KwOf(string kind) => Generators.TryGetValue(kind, out var g) ? g.Kw : 0;
+
+    public static bool Burns(string kind, string fuel) => Generators.TryGetValue(kind, out var g) && g.Burns.Contains(fuel);
+
     /// <summary>What each water power plant gives (kW), before the biome's bonus.</summary>
     public static readonly IReadOnlyDictionary<string, double> Hydro = new Dictionary<string, double>
     {
@@ -36,12 +51,16 @@ public static class PowerRules
     /// <summary>Poles at most this many tiles apart are wired together.</summary>
     public const double WireReach = 7;
 
-    /// <summary>What a generator burns, and the energy (kJ) in one piece: coal lasts 200 s at full power, wood 50 s, a pellet 40 s.</summary>
+    /// <summary>What generators burn, and the energy (kJ) in one piece: coal lasts 200 s at full power in a steam generator,
+    /// wood 50 s, a pellet 40 s; a unit of gas 200 s in a gas power plant, of diesel 400 s and of petrol 300 s in a diesel generator.</summary>
     public static readonly IReadOnlyDictionary<string, double> Fuels = new Dictionary<string, double>
     {
         [Items.Coal] = 20_000,
         [Items.Wood] = 5_000,
         [Items.WoodPellets] = 4_000,
+        [Items.NaturalGas] = 60_000,
+        [Items.Diesel] = 60_000,
+        [Items.Gasoline] = 45_000,
     };
 
     /// <summary>Machines that run on power, and what they draw (kW).</summary>
@@ -58,6 +77,13 @@ public static class PowerRules
         [Items.Drill] = 40,
         [Items.HeavyDrill] = 100,
         [Items.Cannery] = 30,
+        [Items.Pumpjack] = 40,
+        [Items.OffshorePlatform] = 150,
+        [Items.WaterInjector] = 30,
+        [Items.Refinery] = 80,
+        [Items.Cracker] = 120,
+        [Items.ChemicalPlant] = 60,
+        [Items.Pump] = 5,
     };
 
     public static bool Covers(PlotObject pole, int tileX, int tileY) =>
@@ -108,7 +134,7 @@ public static class PowerRules
         var demand = new double[count];
         foreach (var o in all)
         {
-            var isGenerator = o.Kind == Items.Generator;
+            var isGenerator = Items.IsGenerator(o.Kind);
             if (!isGenerator && !Items.IsHydro(o.Kind) && !Demand.ContainsKey(o.Kind))
             {
                 continue;
@@ -202,9 +228,9 @@ public sealed class GridData
 public sealed class PowerGrid : IPowerGrid
 {
     /// <summary>A stretch of time in which a network runs the same way.</summary>
-    /// <param name="KwEach">What each running generator gives.</param>
+    /// <param name="Share">The part of its power each running generator gives, 0 to 1: they share the load by their size.</param>
     /// <param name="States">The network's generators as they were at <paramref name="Start"/>.</param>
-    private sealed record Segment(DateTimeOffset Start, DateTimeOffset? End, double Speed, double KwEach, IReadOnlyDictionary<Guid, GeneratorState> States);
+    private sealed record Segment(DateTimeOffset Start, DateTimeOffset? End, double Speed, double Share, IReadOnlyDictionary<Guid, GeneratorState> States);
 
     private readonly IReadOnlyList<PlotObject> _objects;
     private readonly Dictionary<Guid, Network> _networkOf = [];
@@ -248,7 +274,10 @@ public sealed class PowerGrid : IPowerGrid
 
     /// <summary>What a network's power plants can give at <paramref name="at"/>: running generators and water power (kW).</summary>
     public double SupplyKw(Network network, DateTimeOffset at) =>
-        network.Generators.Count(g => Generator(g, at).Running) * PowerRules.GeneratorKw + HydroKw(network);
+        network.Generators.Where(g => Generator(g, at).Running).Sum(KwOf) + HydroKw(network);
+
+    /// <summary>What a generator on the plot gives at most (kW).</summary>
+    public double KwOf(Guid id) => PowerRules.KwOf(KindOf(id));
 
     public IReadOnlyList<Network> Networks { get; }
 
@@ -272,7 +301,7 @@ public sealed class PowerGrid : IPowerGrid
         if (_networkOf.TryGetValue(id, out var network) && SegmentAt(network, at) is { } segment)
         {
             var state = segment.States.GetValueOrDefault(id) ?? GeneratorState.Empty;
-            return state.Running && segment.KwEach > 0 ? state.Burn(segment.KwEach * Seconds(segment.Start, Max(at, Settled))) : state;
+            return state.Running && segment.Share > 0 ? state.Burn(segment.Share * KwOf(id) * Seconds(segment.Start, Max(at, Settled))) : state;
         }
 
         return Data.Generators.GetValueOrDefault(id) ?? GeneratorState.Empty;
@@ -292,7 +321,7 @@ public sealed class PowerGrid : IPowerGrid
             return water <= 0 ? 0 : HydroKw(id) * Math.Min(1, network.DemandKw / water);
         }
 
-        return SegmentAt(network, at) is { } segment && segment.States.GetValueOrDefault(id)?.Running == true ? segment.KwEach : 0;
+        return SegmentAt(network, at) is { } segment && segment.States.GetValueOrDefault(id)?.Running == true ? segment.Share * KwOf(id) : 0;
     }
 
     /// <summary>When a generator burns its last fuel, or null if it never does on what it powers now.</summary>
@@ -358,7 +387,7 @@ public sealed class PowerGrid : IPowerGrid
 
     public object Summary(DateTimeOffset now) => PowerJson.Grid(this, now);
 
-    public IMachinePort? Port(Guid id) => _objects.Any(o => o.Id == id && o.Kind == Items.Generator) ? new GeneratorPort(this, id) : null;
+    public IMachinePort? Port(Guid id) => _objects.Any(o => o.Id == id && Items.IsGenerator(o.Kind)) ? new GeneratorPort(this, id) : null;
 
     public async Task SaveAsync(CancellationToken cancellationToken)
     {
@@ -376,7 +405,7 @@ public sealed class PowerGrid : IPowerGrid
         var data = new GridData();
         foreach (var o in _objects)
         {
-            if (o.Kind == Items.Generator && Generator(o.Id, at) is { Running: true } generator)
+            if (Items.IsGenerator(o.Kind) && Generator(o.Id, at) is { Running: true } generator)
             {
                 data.Generators[o.Id] = generator;
             }
@@ -395,9 +424,9 @@ public sealed class PowerGrid : IPowerGrid
     /// <summary>Puts fuel by a generator's fire, at <paramref name="at"/>; fails when it does not fit.</summary>
     public void Fuel(Guid id, string item, int quantity, DateTimeOffset at)
     {
-        if (!PowerRules.Fuels.ContainsKey(item))
+        if (!PowerRules.Burns(KindOf(id), item))
         {
-            throw new GameException("not_fuel", "A generator burns only wood and coal.");
+            throw new GameException("not_fuel", "This generator does not burn that.");
         }
 
         var state = Generator(id, at);
@@ -462,14 +491,14 @@ public sealed class PowerGrid : IPowerGrid
                     break;
                 }
 
-                var supply = running.Count * PowerRules.GeneratorKw;
-                var each = Math.Min(lacking, supply) / running.Count;
-                var first = running.MinBy(g => states[g].Total)!;
-                var seconds = states[first].Total / each;
+                var supply = running.Sum(KwOf);
+                var share = Math.Min(lacking, supply) / supply;
+                var first = running.MinBy(g => states[g].Total / KwOf(g))!;
+                var seconds = states[first].Total / (share * KwOf(first));
                 var end = t + TimeSpan.FromTicks(Math.Max(1, (long)Math.Ceiling(seconds * TimeSpan.TicksPerSecond)));
-                timeline.Add(new Segment(t, end, Math.Min(1, (supply + water) / network.DemandKw), each, states));
+                timeline.Add(new Segment(t, end, Math.Min(1, (supply + water) / network.DemandKw), share, states));
                 states = states.ToDictionary(s => s.Key, s =>
-                    s.Key == first ? GeneratorState.Empty : s.Value.Running ? s.Value.Burn(each * seconds) : s.Value);
+                    s.Key == first ? GeneratorState.Empty : s.Value.Running ? s.Value.Burn(share * KwOf(s.Key) * seconds) : s.Value);
                 t = end;
             }
 
@@ -491,7 +520,7 @@ public sealed class PowerGrid : IPowerGrid
         return timeline.LastOrDefault();
     }
 
-    private string KindOf(Guid id) => _objects.FirstOrDefault(o => o.Id == id)?.Kind ?? "";
+    public string KindOf(Guid id) => _objects.FirstOrDefault(o => o.Id == id)?.Kind ?? "";
 
     private static long Unpowered(double speed, long ticks) => speed >= 1 ? 0 : speed <= 0 ? ticks : (long)Math.Round((1 - speed) * ticks);
 
@@ -552,7 +581,7 @@ public sealed class PowerGrid : IPowerGrid
 
         public bool Accepts(string item, DateTimeOffset now)
         {
-            if (!PowerRules.Fuels.ContainsKey(item))
+            if (!PowerRules.Burns(grid.KindOf(id), item))
             {
                 return false;
             }

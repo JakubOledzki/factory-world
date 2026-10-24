@@ -39,7 +39,7 @@ public static class Forestry
 public sealed record PlantedTree(int TileX, int TileY, DateTimeOffset ReadyAt);
 
 public sealed class ForestService(
-    GameDb db, PlotService plots, IInventory inventory, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
+    GameDb db, PlotService plots, IInventory inventory, ICharacterProgress progress, IProductionStats stats, TimeProvider time, OilService oil)
 {
     public async Task<IReadOnlyList<PlantedTree>> TreesAsync(int x, int y, CancellationToken cancellationToken)
     {
@@ -68,6 +68,7 @@ public sealed class ForestService(
                 throw new GameException("blocked", "Something stands here.");
             }
 
+            await oil.RequireCleanAsync(x, y, tileX, tileY, cancellationToken);
             await inventory.RemoveAsync(player, Items.Sapling, 1, cancellationToken);
             await stats.RecordAsync(player, [ProductionEntry.Used(Items.Sapling, 1, time.GetUtcNow())], cancellationToken);
             var tree = new PlantedTree(tileX, tileY, time.GetUtcNow() + grow);

@@ -33,6 +33,18 @@ public static class MarketEvents
     /// <summary>The most the trader's buying prices drift, in percent, either way.</summary>
     public const int Drift = 10;
 
+    /// <summary>Oil, gas and their fuels drift further: up to this many percent either way.</summary>
+    public const int OilDrift = 25;
+
+    /// <summary>Goods of the oil market, whose prices swing more than the rest.</summary>
+    public static readonly IReadOnlySet<string> OilGoods = new HashSet<string>
+    {
+        Items.CrudeOil, Items.NaturalGas, Items.Gasoline, Items.Diesel, Items.Kerosene, Items.Asphalt,
+    };
+
+    /// <summary>The most what the trader pays for <paramref name="item"/> drifts, in percent, either way.</summary>
+    public static int DriftOf(string item) => OilGoods.Contains(item) ? OilDrift : Drift;
+
     /// <summary>The trader always pays less than it charges for the same item, at most this many percent of it.</summary>
     public const int MaxPayOfCharge = 90;
 
@@ -92,6 +104,18 @@ public static class MarketEvents
         new("fair", "Jarmark",
             "Na rynku jarmark i tłumy głodnych gości. Gotowe jedzenie sprzedaje się drożej.",
             All([Items.Sauerkraut, Items.CornBread, Items.CarrotCake, Items.Fries, Items.VegetableSoup, Items.Bigos], 40), Nothing),
+        new("oil_crisis", "Kryzys naftowy",
+            "Tankowce stoją w porcie, a stacje benzynowe mają kolejki. Ropa i paliwa są o wiele droższe.",
+            new Dictionary<string, int>
+            {
+                [Items.CrudeOil] = 80, [Items.Gasoline] = 60, [Items.Diesel] = 60, [Items.Kerosene] = 50, [Items.NaturalGas] = 40,
+            }, new Dictionary<string, int> { [Items.Gasoline] = 30, [Items.Diesel] = 30 }),
+        new("oil_glut", "Nadpodaż ropy",
+            "Magazyny ropy pękają w szwach. Handlarz płaci za ropę, gaz i paliwa dużo mniej.",
+            new Dictionary<string, int>
+            {
+                [Items.CrudeOil] = -40, [Items.NaturalGas] = -40, [Items.Gasoline] = -25, [Items.Diesel] = -25, [Items.Kerosene] = -25,
+            }, Nothing),
         new("machine_sale", "Wyprzedaż maszyn",
             "Handlarz czyści magazyn. Maszyny, taśmy i skrzynie są o ćwierć tańsze.",
             Nothing, All(Machines, -25)),
@@ -151,11 +175,12 @@ public static class MarketEvents
         }
 
         var seed = Fnv(item);
-        return double.Lerp(Target(seed, day), Target(seed, day + 1), hour / 24.0);
+        var drift = DriftOf(item);
+        return double.Lerp(Target(seed, day, drift), Target(seed, day + 1, drift), hour / 24.0);
     }
 
-    private static double Target(ulong seed, long day) =>
-        (Hash(seed ^ (ulong)day) % (2 * Drift * 100 + 1) / 100.0) - Drift;
+    private static double Target(ulong seed, long day, int drift) =>
+        (Hash(seed ^ (ulong)day) % (ulong)(2 * drift * 100 + 1) / 100.0) - drift;
 
     /// <summary>SplitMix64: a well-mixed number for any input, the same on every machine.</summary>
     private static ulong Hash(ulong x)

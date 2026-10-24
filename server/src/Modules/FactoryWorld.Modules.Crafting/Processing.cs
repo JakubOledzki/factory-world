@@ -163,6 +163,33 @@ public static class Processing
             new(Items.Salmon, 2, TimeSpan.FromSeconds(40), [(Items.FishMeal, 1)], 3),
             new(Items.Mussels, 2, TimeSpan.FromSeconds(60), [], 2),
         ]),
+        // Oil: a fired distillery boils crude oil into kerosene or leaves asphalt; a refinery on power splits it into
+        // any fuel, faster and more of it; a cracker breaks heavy fuels into petrol; a chemical plant makes plastic,
+        // rubber, fertiliser and tyres.
+        new(Items.Distillery, true,
+        [
+            new(Items.Kerosene, 1, TimeSpan.FromSeconds(12), [(Items.CrudeOil, 2)], 2),
+            new(Items.Asphalt, 1, TimeSpan.FromSeconds(10), [(Items.CrudeOil, 2)], 1),
+        ]),
+        new(Items.Refinery, false,
+        [
+            new(Items.Gasoline, 2, TimeSpan.FromSeconds(8), [(Items.CrudeOil, 3)], 3),
+            new(Items.Diesel, 2, TimeSpan.FromSeconds(8), [(Items.CrudeOil, 3)], 3),
+            new(Items.Kerosene, 2, TimeSpan.FromSeconds(6), [(Items.CrudeOil, 2)], 2),
+            new(Items.Asphalt, 2, TimeSpan.FromSeconds(6), [(Items.CrudeOil, 2)], 1),
+        ], Powered: true),
+        new(Items.Cracker, false,
+        [
+            new(Items.Gasoline, 4, TimeSpan.FromSeconds(10), [(Items.Diesel, 2), (Items.Kerosene, 2)], 4),
+            new(Items.Diesel, 3, TimeSpan.FromSeconds(10), [(Items.Asphalt, 2), (Items.NaturalGas, 1)], 3),
+        ], Powered: true),
+        new(Items.ChemicalPlant, false,
+        [
+            new(Items.Plastic, 2, TimeSpan.FromSeconds(8), [(Items.NaturalGas, 2)], 3),
+            new(Items.SyntheticRubber, 1, TimeSpan.FromSeconds(10), [(Items.Kerosene, 1), (Items.Sulfur, 1)], 3),
+            new(Items.Fertilizer, 3, TimeSpan.FromSeconds(10), [(Items.NaturalGas, 2)], 2),
+            new(Items.Tyres, 1, TimeSpan.FromSeconds(20), [(Items.SyntheticRubber, 4), (Items.SteelIngot, 1)], 8),
+        ], Powered: true),
     ];
 
     public static readonly IReadOnlyDictionary<string, ProcessingMachine> ByKind = Machines.ToDictionary(m => m.Kind);

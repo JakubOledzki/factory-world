@@ -52,6 +52,14 @@ public static class TechTree
     public const string Aquaculture = "aquaculture";
     public const string SaltWorks = "salt_works";
     public const string TidalPower = "tidal_power";
+    public const string OilExtraction = "oil_extraction";
+    public const string Refining = "refining";
+    public const string Cracking = "cracking";
+    public const string Petrochemistry = "petrochemistry";
+    public const string Combustion = "combustion";
+    public const string Roads = "roads";
+    public const string OffshoreDrilling = "offshore_drilling";
+    public const string EnhancedRecovery = "enhanced_recovery";
 
     public static readonly IReadOnlyList<Technology> Technologies =
     [
@@ -142,6 +150,30 @@ public static class TechTree
         new(TidalPower, "Energia pływów", "Elektrownia pływowa na brzegu morza daje prąd bez paliwa, dzień i noc.",
             [Hydropower, Seafaring], [(Items.SteelIngot, 20), (Items.CopperIngot, 30), (Items.Bricks, 40)], TimeSpan.FromMinutes(5), 100,
             [Items.TidalPlant]),
+        new(OilExtraction, "Wydobycie ropy", "Żuraw pompowy i głowica gazowa pompują to, co badanie znalazło pod działką; rury, pompy i zbiorniki przenoszą płyny.",
+            [Metallurgy, Automation], [(Items.SteelIngot, 10), (Items.IronIngot, 30), (Items.CopperIngot, 20)], TimeSpan.FromMinutes(3), 80,
+            [Items.Pumpjack, Items.GasWell, Items.Pipe, Items.Pump, Items.Tank, Items.Gasket]),
+        new(Refining, "Rafinacja", "Destylarnia i rafineria rozdzielają ropę na benzynę, olej napędowy, naftę i asfalt.",
+            [OilExtraction], [(Items.CrudeOil, 50), (Items.SteelIngot, 20), (Items.Bricks, 20)], TimeSpan.FromMinutes(4), 100,
+            [Items.Distillery, Items.Refinery, Items.Gasoline, Items.Diesel, Items.Kerosene, Items.Asphalt]),
+        new(Cracking, "Kraking", "Instalacja krakingu rozbija ciężkie paliwa na benzynę.",
+            [Refining], [(Items.Diesel, 30), (Items.Kerosene, 30), (Items.SteelIngot, 20)], TimeSpan.FromMinutes(5), 120,
+            [Items.Cracker]),
+        new(Petrochemistry, "Petrochemia", "Zakład chemiczny robi z gazu tworzywo sztuczne i nawóz, a z nafty i siarki kauczuk na opony.",
+            [Refining], [(Items.NaturalGas, 40), (Items.Kerosene, 20), (Items.SteelIngot, 20)], TimeSpan.FromMinutes(5), 120,
+            [Items.ChemicalPlant, Items.Plastic, Items.SyntheticRubber, Items.Fertilizer]),
+        new(Combustion, "Silniki spalinowe", "Elektrownia gazowa i agregat spalinowy dają dużo prądu z gazu, oleju napędowego albo benzyny.",
+            [Refining], [(Items.Diesel, 20), (Items.SteelIngot, 20), (Items.CopperIngot, 20)], TimeSpan.FromMinutes(4), 100,
+            [Items.GasPlant, Items.DieselGenerator]),
+        new(Roads, "Drogi", "Z asfaltu i kamienia układa się drogę: po asfalcie chodzi się szybciej.",
+            [Refining], [(Items.Asphalt, 20), (Items.Stone, 40)], TimeSpan.FromMinutes(2), 40,
+            [Items.Road]),
+        new(OffshoreDrilling, "Wiercenia morskie", "Platforma wiertnicza na brzegu morza pompuje ropę spod dna, z dużego złoża.",
+            [OilExtraction, Seafaring], [(Items.SteelIngot, 40), (Items.CrudeOil, 100), (Items.Beams, 20)], TimeSpan.FromMinutes(6), 150,
+            [Items.OffshorePlatform]),
+        new(EnhancedRecovery, "Wspomagane wydobycie", "Tłocznia wody wyciska ze złoża o połowę więcej ropy, a separator zbiera wycieki.",
+            [OilExtraction], [(Items.CrudeOil, 80), (Items.SteelIngot, 20), (Items.Gasket, 10)], TimeSpan.FromMinutes(4), 100,
+            [Items.WaterInjector, Items.OilSeparator]),
     ];
 
     public static readonly IReadOnlyDictionary<string, Technology> ById = Technologies.ToDictionary(t => t.Id);

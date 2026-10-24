@@ -50,6 +50,29 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("beach_finds", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.OilFieldRow", b =>
+                {
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.Property<short>("Field")
+                        .HasColumnType("smallint")
+                        .HasColumnName("field");
+
+                    b.Property<long>("Pumped")
+                        .HasColumnType("bigint")
+                        .HasColumnName("pumped");
+
+                    b.HasKey("X", "Y", "Field");
+
+                    b.ToTable("oil_fields", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.Plot", b =>
                 {
                     b.Property<int>("X")
@@ -361,6 +384,59 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.HasIndex("ForesterId");
 
                     b.ToTable("plot_trees", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotWellRow", b =>
+                {
+                    b.Property<Guid>("ObjectId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<int>("Gaskets")
+                        .HasColumnType("integer")
+                        .HasColumnName("gaskets");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("kind");
+
+                    b.Property<bool>("Leaking")
+                        .HasColumnType("boolean")
+                        .HasColumnName("leaking");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<int>("Stored")
+                        .HasColumnType("integer")
+                        .HasColumnName("stored");
+
+                    b.Property<int>("Wear")
+                        .HasColumnType("integer")
+                        .HasColumnName("wear");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("ObjectId");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("X", "Y");
+
+                    b.ToTable("plot_wells", "world");
                 });
 
             modelBuilder.Entity("FactoryWorld.Modules.World.ShipmentRow", b =>

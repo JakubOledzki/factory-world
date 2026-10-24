@@ -32,6 +32,9 @@ public static class PlotObjects
         Items.WaterWheel, Items.HydroPlant, Items.CableStation,
         Items.FishingBoat, Items.RowingBoat, Items.Smokehouse, Items.Cannery, Items.SaltPan, Items.FishFarm,
         Items.Shipyard, Items.Port, Items.Breakwater, Items.Lighthouse, Items.TidalPlant,
+        Items.Pumpjack, Items.GasWell, Items.OffshorePlatform, Items.WaterInjector, Items.OilSeparator,
+        Items.Distillery, Items.Refinery, Items.Cracker, Items.ChemicalPlant, Items.GasPlant, Items.DieselGenerator,
+        Items.Pipe, Items.Pump, Items.Tank, Items.Road,
     };
 
     /// <summary>Fails unless an object of <paramref name="kind"/> may stand on (tileX, tileY) of a plot of
@@ -73,7 +76,7 @@ public interface IPlacedHook
 
 public sealed class PlotObjectService(
     GameDb db, PlotService plots, IInventory inventory, IEnumerable<IMachineContents> machines, IEnumerable<IPlotAutomation> automation,
-    IEnumerable<IPlacedHook> placing, BeachService beach)
+    IEnumerable<IPlacedHook> placing, BeachService beach, OilService oil)
     : IPlacedObjects
 {
     public async Task<IReadOnlyList<PlacedOnPlot>> ObjectsAsync(int x, int y, CancellationToken cancellationToken)
@@ -126,6 +129,8 @@ public sealed class PlotObjectService(
             {
                 await beach.RequireRoomForBoatAsync(x, y, biome, cancellationToken);
             }
+
+            await oil.RequireSiteAsync(kind, x, y, await ObjectsAsync(x, y, cancellationToken), cancellationToken);
 
             await inventory.RemoveAsync(player, kind, 1, cancellationToken);
             var placed = new PlacedOnPlot(Guid.NewGuid(), kind, tileX, tileY, rotation);

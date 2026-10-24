@@ -165,7 +165,7 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IPlotRegistry re
     public async Task ReleaseAsync(Guid owner, Guid id, CancellationToken cancellationToken)
     {
         // Objects are taken off only after the plot was caught up, which opened its grid.
-        if (_grids.Values.FirstOrDefault(g => g.Data.Generators.ContainsKey(id) || g.Objects.Any(o => o.Id == id && o.Kind == Items.Generator)) is not { } grid)
+        if (_grids.Values.FirstOrDefault(g => g.Data.Generators.ContainsKey(id) || g.Objects.Any(o => o.Id == id && Items.IsGenerator(o.Kind))) is not { } grid)
         {
             return;
         }
@@ -194,7 +194,7 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IPlotRegistry re
         }
 
         var grid = await OpenAsync(x, y, cancellationToken);
-        if (!grid.Objects.Any(o => o.Id == id && (o.Kind == Items.Generator || Items.IsHydro(o.Kind))))
+        if (!grid.Objects.Any(o => o.Id == id && (Items.IsGenerator(o.Kind) || Items.IsHydro(o.Kind))))
         {
             throw new GameException("no_object", "There is no such generator on this plot.");
         }
@@ -298,12 +298,13 @@ public static class PowerJson
             energy = state.Energy,
             total = state.Total,
             outputKw = grid.Output(reply.Id, now),
-            capacityKw = hydro ? grid.HydroKw(reply.Id) : PowerRules.GeneratorKw,
+            capacityKw = hydro ? grid.HydroKw(reply.Id) : PowerRules.KwOf(kind),
             hydroBonus = hydro ? WaterPower.Biomes.GetValueOrDefault(grid.Biome) : 0,
             runsOutAt = grid.RunsOutAt(reply.Id)?.ToUnixTimeMilliseconds(),
             serverTime = now.ToUnixTimeMilliseconds(),
             maxFuel = PowerRules.MaxFuel,
-            fuels = PowerRules.Fuels.Select(f => new { id = f.Key, name = Items.Names[f.Key], kj = f.Value }),
+            // What this generator burns.
+            fuels = PowerRules.Fuels.Where(f => PowerRules.Burns(kind, f.Key)).Select(f => new { id = f.Key, name = Items.Names[f.Key], kj = f.Value }),
             // The network it feeds, or null when no pole reaches it.
             network = network is null ? null : new
             {

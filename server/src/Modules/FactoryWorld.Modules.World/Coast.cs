@@ -41,6 +41,7 @@ public static class Coast
         [Items.RowingBoat] = Biome.Lakeshore,
         [Items.SaltPan] = Biome.Coast,
         [Items.TidalPlant] = Biome.Coast,
+        [Items.OffshorePlatform] = Biome.Coast,
         [Items.FishFarm] = null,
         [Items.Shipyard] = null,
         [Items.Port] = null,

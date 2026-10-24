@@ -138,6 +138,42 @@ public sealed class PlotForesterRow
     public DateTimeOffset BusyUntil { get; set; }
 }
 
+/// <summary>A well pumping oil or gas: what it holds, how far it is with its unit and the state of its seals.</summary>
+public sealed class PlotWellRow
+{
+    public Guid ObjectId { get; set; }
+
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public Guid OwnerId { get; set; }
+
+    public string Kind { get; set; } = "";
+
+    public int Stored { get; set; }
+
+    public DateTimeOffset? StartedAt { get; set; }
+
+    public int Wear { get; set; }
+
+    public int Gaskets { get; set; }
+
+    public bool Leaking { get; set; }
+}
+
+/// <summary>How much the wells of a plot have pumped from one of its deposits.</summary>
+public sealed class OilFieldRow
+{
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public short Field { get; set; }
+
+    public long Pumped { get; set; }
+}
+
 /// <summary>A drill standing at a mine: the mine it works, the ore it holds and how far it is with its load.</summary>
 public sealed class PlotDrillRow
 {
@@ -355,6 +391,34 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(d => d.Waiting).HasColumnName("waiting");
             e.HasIndex(d => new { d.X, d.Y });
             e.HasIndex(d => d.OwnerId);
+        });
+
+        model.Entity<PlotWellRow>(e =>
+        {
+            e.ToTable("plot_wells");
+            e.HasKey(w => w.ObjectId);
+            e.Property(w => w.ObjectId).HasColumnName("object_id");
+            e.Property(w => w.X).HasColumnName("x");
+            e.Property(w => w.Y).HasColumnName("y");
+            e.Property(w => w.OwnerId).HasColumnName("owner_id");
+            e.Property(w => w.Kind).HasColumnName("kind");
+            e.Property(w => w.Stored).HasColumnName("stored");
+            e.Property(w => w.StartedAt).HasColumnName("started_at");
+            e.Property(w => w.Wear).HasColumnName("wear");
+            e.Property(w => w.Gaskets).HasColumnName("gaskets");
+            e.Property(w => w.Leaking).HasColumnName("leaking");
+            e.HasIndex(w => new { w.X, w.Y });
+            e.HasIndex(w => w.OwnerId);
+        });
+
+        model.Entity<OilFieldRow>(e =>
+        {
+            e.ToTable("oil_fields");
+            e.HasKey(f => new { f.X, f.Y, f.Field });
+            e.Property(f => f.X).HasColumnName("x");
+            e.Property(f => f.Y).HasColumnName("y");
+            e.Property(f => f.Field).HasColumnName("field");
+            e.Property(f => f.Pumped).HasColumnName("pumped");
         });
 
         model.Entity<BeachFind>(e =>
@@ -750,6 +814,15 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<ForesterService>());
         services.AddScoped<IMachinePorts>(provider => provider.GetRequiredService<ForesterService>());
         services.AddScoped<IMachineStatuses>(provider => provider.GetRequiredService<ForesterService>());
+        services.AddScoped<OilService>();
+        services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<OilService>());
+        services.AddScoped<IPlotAutomation>(provider => provider.GetRequiredService<OilService>());
+        services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<OilService>());
+        services.AddScoped<IMachinePorts>(provider => provider.GetRequiredService<OilService>());
+        services.AddScoped<IMachineStatuses>(provider => provider.GetRequiredService<OilService>());
+        services.AddSingleton<IMessageHandler, GetWellHandler>();
+        services.AddSingleton<IMessageHandler, TakeFromWellHandler>();
+        services.AddSingleton<IMessageHandler, SealWellHandler>();
         services.AddScoped<DrillService>();
         services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<DrillService>());
         services.AddScoped<IPlotAutomation>(provider => provider.GetRequiredService<DrillService>());
