@@ -328,9 +328,16 @@ public sealed class ForesterService(
         await SaveAsync(x, y, forests, cancellationToken);
     }
 
-    /// <summary>The forester is being picked up (worked up to now just before): its wood goes to the player.</summary>
+    /// <summary>The forester is being picked up (worked up to now just before): its wood goes to the player,
+    /// and the forest it planted goes with it.</summary>
     public async Task ReleaseAsync(Guid owner, Guid id, CancellationToken cancellationToken)
     {
+        await using (var trees = await db.CommandAsync("DELETE FROM world.plot_trees WHERE forester_id = @id", cancellationToken))
+        {
+            trees.Parameters.AddWithValue("id", id);
+            await trees.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         await using var delete = await db.CommandAsync("DELETE FROM world.plot_foresters WHERE object_id = @id RETURNING wood", cancellationToken);
         delete.Parameters.AddWithValue("id", id);
         if (await delete.ExecuteScalarAsync(cancellationToken) is int wood && wood > 0)
@@ -504,10 +511,11 @@ public sealed class ForesterService(
                 var planted = patch.Planted.ToList();
                 await using var trees = await db.CommandAsync(
                     """
-                    INSERT INTO world.plot_trees (x, y, tile_x, tile_y, ready_at)
-                    SELECT @x, @y, t.tx, t.ty, t.ready FROM unnest(@txs, @tys, @readies) AS t(tx, ty, ready)
-                    ON CONFLICT (x, y, tile_x, tile_y) DO UPDATE SET ready_at = EXCLUDED.ready_at
+                    INSERT INTO world.plot_trees (x, y, tile_x, tile_y, ready_at, forester_id)
+                    SELECT @x, @y, t.tx, t.ty, t.ready, @forester FROM unnest(@txs, @tys, @readies) AS t(tx, ty, ready)
+                    ON CONFLICT (x, y, tile_x, tile_y) DO UPDATE SET ready_at = EXCLUDED.ready_at, forester_id = EXCLUDED.forester_id
                     """, cancellationToken);
+                trees.Parameters.AddWithValue("forester", o.Id);
                 trees.Parameters.AddWithValue("x", x);
                 trees.Parameters.AddWithValue("y", y);
                 trees.Parameters.AddWithValue("txs", planted.Select(t => t.X).ToArray());

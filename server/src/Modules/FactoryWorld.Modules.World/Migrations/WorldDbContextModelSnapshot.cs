@@ -276,11 +276,17 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("tile_y");
 
+                    b.Property<Guid?>("ForesterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("forester_id");
+
                     b.Property<DateTimeOffset>("ReadyAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("ready_at");
 
                     b.HasKey("X", "Y", "TileX", "TileY");
+
+                    b.HasIndex("ForesterId");
 
                     b.ToTable("plot_trees", "world");
                 });

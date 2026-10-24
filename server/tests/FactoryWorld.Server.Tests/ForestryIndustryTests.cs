@@ -232,7 +232,13 @@ public sealed class ForestryIndustryTests(ServerFactory factory) : IClassFixture
     public async Task A_forester_on_a_plot_plants_its_forest_cuts_it_and_keeps_the_wood_until_taken_out()
     {
         using var client = await PlayerAsync();
-        var (x, y, tx, ty, _) = await PlotAsync(client);
+        var (x, y, tx, ty, tiles) = await PlotAsync(client);
+
+        // A tree the player planted away from the forest is theirs, not the forester's.
+        var own = OutsideForest(tiles, tx, ty);
+        await GiveAsync(client, Items.Sapling, 1);
+        Assert.Equal("plot.tree", (await client.SendAsync("plot.plantTree", new { x, y, tileX = own.X, tileY = own.Y })).Type());
+
         await GiveAsync(client, Items.ForesterHut, 1);
         var hut = await PlaceAsync(client, x, y, Items.ForesterHut, tx, ty);
 
@@ -266,13 +272,32 @@ public sealed class ForestryIndustryTests(ServerFactory factory) : IClassFixture
         Assert.Contains(stats.GetProperty("stalls").EnumerateArray(), s => s.GetProperty("reason").GetString() == "output_full"
             && s.GetProperty("kind").GetString() == Items.ForesterHut);
 
-        // Picked up, it gives its wood back; the trees it planted stay.
+        // Picked up, it gives its wood back and its forest goes with it; the player's own tree stays.
         Assert.Equal("plot.pickedUp", (await client.SendAsync("plot.pickup", new { x, y, id = hut })).Type());
         var inventory = await client.InventoryAsync();
         Assert.Equal(110, inventory.GetValueOrDefault(Items.Wood));
         Assert.Equal(1, inventory.GetValueOrDefault(Items.ForesterHut));
-        var plot = (await client.SendAsync("plot.enter", new { x, y })).Payload();
-        Assert.True(plot.GetProperty("trees").GetArrayLength() >= trees);
+        var left = (await client.SendAsync("plot.enter", new { x, y })).Payload().GetProperty("trees").EnumerateArray()
+            .Select(t => (t.GetProperty("tileX").GetInt32(), t.GetProperty("tileY").GetInt32())).ToList();
+        Assert.Equal([own], left);
+    }
+
+    /// <summary>A free tile just beyond the forest of a hut on (tx, ty).</summary>
+    private static (int X, int Y) OutsideForest(byte[] tiles, int tx, int ty)
+    {
+        for (var d = 7; d < 40; d++)
+        {
+            for (var dx = -d; dx <= d; dx++)
+            {
+                var (x, y) = (tx + dx, ty - d);
+                if (PlotLayout.Inside(x, y) && tiles[y * PlotLayout.Size + x] == (byte)TileObject.None && (x, y) != PlotLayout.Spawn)
+                {
+                    return (x, y);
+                }
+            }
+        }
+
+        throw new InvalidOperationException("No free tile.");
     }
 
     [Fact]

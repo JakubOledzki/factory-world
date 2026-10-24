@@ -63,6 +63,9 @@ public sealed class PlotTree
     public int TileY { get; set; }
 
     public DateTimeOffset ReadyAt { get; set; }
+
+    /// <summary>The forester's building that planted it, or null for a tree a player planted.</summary>
+    public Guid? ForesterId { get; set; }
 }
 
 /// <summary>An animal a player let out on a plot; fed, it gives its product at <see cref="ReadyAt"/>.</summary>
@@ -261,6 +264,8 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(t => t.TileX).HasColumnName("tile_x");
             e.Property(t => t.TileY).HasColumnName("tile_y");
             e.Property(t => t.ReadyAt).HasColumnName("ready_at");
+            e.Property(t => t.ForesterId).HasColumnName("forester_id");
+            e.HasIndex(t => t.ForesterId);
         });
         model.Entity<PlotAnimalRow>(e =>
         {
