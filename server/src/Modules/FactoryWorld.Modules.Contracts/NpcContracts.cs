@@ -27,7 +27,7 @@ public static class NpcContracts
         new(Items.CopperOre, 10, 30, 5, 2400, 8, Steelworks),
         new(Items.IronIngot, 10, 50, 5, 1800, 12, Steelworks),
         new(Items.CopperIngot, 10, 30, 5, 3200, 12, Steelworks),
-        new(Items.Nails, 20, 100, 10, 60, 8, Builders),
+        new(Items.Nails, 20, 100, 10, 600, 8, Builders),
         new(Items.Wheat, 20, 100, 10, 120, 6, Bakers),
         new(Items.Carrot, 10, 60, 10, 180, 6, Shops),
         new(Items.Potato, 10, 50, 10, 300, 8, Shops),
@@ -37,10 +37,10 @@ public static class NpcContracts
         new(Items.Sauerkraut, 5, 20, 5, 700, 24, Shops),
         new(Items.Fries, 5, 15, 5, 1800, 12, Bakers),
         new(Items.VegetableSoup, 3, 10, 1, 2200, 12, Bakers),
-        new(Items.Belt, 8, 32, 4, 400, 12, Factories),
-        new(Items.WoodenChest, 1, 4, 1, 1600, 24, Factories),
+        new(Items.Belt, 8, 32, 4, 1400, 12, Factories),
+        new(Items.WoodenChest, 1, 4, 1, 10_000, 24, Factories),
         new(Items.Planks, 20, 100, 10, 250, 8, Builders),
-        new(Items.Beams, 5, 30, 5, 800, 12, Builders),
+        new(Items.Beams, 5, 30, 5, 1200, 12, Builders),
         new(Items.Plywood, 5, 20, 5, 1000, 24, Factories),
     ];
 

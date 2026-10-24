@@ -98,7 +98,7 @@ public sealed class CraftingTests(ServerFactory factory) : IClassFixture<ServerF
         using var client = await PlayerAsync();
         await using (var scope = factory.Services.CreateAsyncScope())
         {
-            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 1000, "test", CancellationToken.None);
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 3000, "test", CancellationToken.None);
         }
 
         Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.Nails, quantity = 5 })).Type());
@@ -122,7 +122,7 @@ public sealed class CraftingTests(ServerFactory factory) : IClassFixture<ServerF
         Assert.Equal("market.traded", (await client.SendAsync("market.sell", new { item = Items.Workbench, quantity = 1 })).Type());
         Assert.Equal("market.traded", (await client.SendAsync("market.sell", new { item = Items.Furnace, quantity = 1 })).Type());
 
-        Assert.Equal(4500, await client.BalanceAsync());
+        Assert.Equal(11_000, await client.BalanceAsync());
         var inventory = await client.InventoryAsync();
         Assert.Equal(0, Count(inventory, Items.Workbench));
         Assert.Equal(0, Count(inventory, Items.Furnace));
