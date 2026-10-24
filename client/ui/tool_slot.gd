@@ -40,7 +40,9 @@ func refresh() -> void:
 		add_child(tile)
 		_tool_tiles.append(tile)
 	while _tool_tiles.size() > slots.size():
-		_tool_tiles.pop_back().queue_free()
+		var gone: PanelContainer = _tool_tiles.pop_back()
+		remove_child(gone)
+		gone.queue_free()
 	for i in slots.size():
 		var held: Variant = slots[i]
 		var icon: TextureRect = _tool_tiles[i].get_meta("icon")
@@ -63,6 +65,15 @@ func refresh() -> void:
 	else:
 		_backpack_tile.tooltip_text = "Plecak: %s\n+%d miejsc w ekwipunku, %d sloty na narzędzia\nKliknij, aby zmienić" % [
 			worn["name"], int(worn["extraSlots"]), int(worn["toolSlots"])]
+	_shrink.call_deferred()
+
+
+## Fits the panel around the bar again: it keeps its size when slots go, leaving a gap.
+func _shrink() -> void:
+	var box: Control = self
+	while box.get_parent() is Container:
+		box = box.get_parent()
+	box.reset_size()
 
 
 ## The list of tools (or backpacks) in the inventory, next to a slot: the first empty tool slot
