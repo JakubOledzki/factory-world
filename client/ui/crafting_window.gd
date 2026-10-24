@@ -178,10 +178,10 @@ func open_at(id: String, kind := WORKBENCH) -> void:
 	_research.refresh()
 
 
-## The recipes made where the window is open.
+## The recipes made where the window is open; those still to be researched are left out.
 func _station_recipes() -> Array:
 	return _state.get("recipes", []).filter(func(recipe: Dictionary) -> bool:
-		return recipe.get("station", WORKBENCH) == station)
+		return recipe.get("station", WORKBENCH) == station and recipe.get("locked") == null)
 
 
 ## The screen calls this whenever the inventory changes.
@@ -238,8 +238,6 @@ func _recipe(id: String) -> Dictionary:
 
 
 func _can_make(recipe: Dictionary) -> bool:
-	if recipe.get("locked") != null:
-		return false
 	for ingredient: Dictionary in recipe["ingredients"]:
 		if _count(ingredient["id"]) < int(ingredient["quantity"]):
 			return false
@@ -273,9 +271,6 @@ func _render() -> void:
 		b.add_theme_constant_override("icon_max_width", 30)
 		var amount := int(recipe["quantity"])
 		b.text = "%s%s  ·  %s" % [recipe["name"], "  ×%d" % amount if amount > 1 else "", _seconds(float(recipe["seconds"]))]
-		if recipe.get("locked") != null:
-			b.text = "%s  ·  do zbadania" % recipe["name"]
-			b.tooltip_text = "Wymaga badania: %s" % recipe["locked"]
 		if recipe["id"] == _selected:
 			b.theme_type_variation = "AccentButton"
 		elif not _can_make(recipe):
@@ -295,6 +290,8 @@ func _render() -> void:
 		_recipes.add_child(grids[category])
 	if found.is_empty():
 		_recipes.add_child(UI.label("Żaden przepis nie pasuje do wyszukiwania.", UI.MUTED))
+	if station == WORKBENCH and _state.get("recipes", []).any(func(recipe: Dictionary) -> bool: return recipe.get("locked") != null):
+		_recipes.add_child(UI.label("Więcej przepisów odblokujesz w zakładce Badania.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	UI.clear(_details)
 	var selected := _recipe(_selected)
@@ -323,11 +320,6 @@ func _render() -> void:
 			row.add_child(UI.label("%d/%d" % [need, have], UI.GOOD if have >= need else UI.ERROR, HORIZONTAL_ALIGNMENT_RIGHT))
 			_details.add_child(row)
 		_details.add_child(UI.label("Czas: %s  ·  %d XP" % [_seconds(float(selected["seconds"])), int(selected["xp"])], UI.MUTED))
-		if selected.get("locked") != null:
-			_details.add_child(UI.label("Najpierw zbadaj: %s" % selected["locked"], UI.ERROR, HORIZONTAL_ALIGNMENT_LEFT, true))
-			_details.add_child(UI.button("Pokaż w drzewku technologii", func() -> void:
-				_open_tab(1)
-				_research.select_unlocking(selected["id"])))
 		if _selected == "nails":
 			_details.add_child(UI.label("Gwoździe kupisz też u handlarza na rynku.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 		elif _selected.begins_with("tool_"):
@@ -336,7 +328,7 @@ func _render() -> void:
 	var queue: Array = _state.get("queue", [])
 	var full := queue.size() >= int(_state.get("maxQueue", 5))
 	_craft_button.disabled = selected.is_empty() or not _can_make(selected) or full or _busy
-	_craft_button.text = "Do zbadania" if not selected.is_empty() and selected.get("locked") != null else "Kolejka pełna" if full else "Wytwórz"
+	_craft_button.text = "Kolejka pełna" if full else "Wytwórz"
 
 	UI.clear(_queue)
 	if queue.is_empty():
