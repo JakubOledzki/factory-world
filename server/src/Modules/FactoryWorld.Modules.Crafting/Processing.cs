@@ -71,6 +71,7 @@ public static class Processing
             new(Items.Fries, 2, TimeSpan.FromSeconds(15), [(Items.Potato, 3), (Items.SunflowerOil, 1)], 2),
             new(Items.VegetableSoup, 1, TimeSpan.FromSeconds(20), [(Items.Carrot, 2), (Items.Potato, 2), (Items.Cabbage, 1)], 4),
             new(Items.Bigos, 2, TimeSpan.FromSeconds(25), [(Items.Sauerkraut, 2), (Items.Potato, 2)], 3),
+            new(Items.ScrambledEggs, 2, TimeSpan.FromSeconds(15), [(Items.Egg, 3), (Items.SunflowerOil, 1)], 3),
         ]),
     ];
 

@@ -159,6 +159,7 @@ public static class PlotLayout
         Biome.Desert => Items.Shovel,
         Biome.Mountains => Items.Pickaxe,
         Biome.Farmland => Items.Hoe,
+        Biome.Grassland => Items.Shears,
         _ => null,
     };
 
@@ -250,7 +251,7 @@ public sealed class PlotService(
         return tiles;
     }
 
-    /// <summary>Whether nothing stands on a tile of the plot: no nature, field, planted tree or placed object.</summary>
+    /// <summary>Whether nothing stands on a tile of the plot: no nature, field, planted tree, animal or placed object.</summary>
     public async Task<bool> FreeAsync(Guid player, int x, int y, int tileX, int tileY, CancellationToken cancellationToken)
     {
         if (!PlotLayout.Inside(tileX, tileY) || (await TilesAsync(player, x, y, cancellationToken))[tileY * PlotLayout.Size + tileX] != (byte)TileObject.None)
@@ -262,6 +263,7 @@ public sealed class PlotService(
             """
             SELECT EXISTS (SELECT 1 FROM world.plot_fields WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty)
                 OR EXISTS (SELECT 1 FROM world.plot_trees WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty)
+                OR EXISTS (SELECT 1 FROM world.plot_animals WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty)
                 OR EXISTS (SELECT 1 FROM world.plot_objects WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty)
             """, cancellationToken);
         command.Parameters.AddWithValue("x", x);
@@ -435,6 +437,7 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
         var tool = await scope.ServiceProvider.GetRequiredService<IEquipment>().ToolAsync(client.RequireAccount(), cancellationToken);
         var fields = await scope.ServiceProvider.GetRequiredService<FarmService>().FieldsAsync(request.X, request.Y, cancellationToken);
         var trees = await scope.ServiceProvider.GetRequiredService<ForestService>().TreesAsync(request.X, request.Y, cancellationToken);
+        var animals = await scope.ServiceProvider.GetRequiredService<HusbandryService>().AnimalsAsync(request.X, request.Y, cancellationToken);
         var biome = map.BiomeAt(request.X, request.Y);
         var mines = await scope.ServiceProvider.GetRequiredService<MineService>().MinesAsync(request.X, request.Y, biome, cancellationToken);
         var objects = await scope.ServiceProvider.GetRequiredService<PlotObjectService>().ObjectsAsync(request.X, request.Y, cancellationToken);
@@ -473,6 +476,12 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             placeable = PlotObjects.Placeable,
             fertile = Farming.Fertile(biome),
             fields = fields.Select(FieldHandler.FieldJson),
+            pasture = Husbandry.Pasture(biome),
+            husbandryBonus = Husbandry.BonusPercent(biome),
+            animals = animals.Select(AnimalHandler.AnimalJson),
+            animalKinds = AnimalHandler.KindsJson(biome),
+            feed = Husbandry.Feed.Select(f => new { id = f, name = Items.Names[f] }),
+            feedPerMeal = Husbandry.FeedPerMeal,
             crops = Farming.Crops.Select(c => new
             {
                 id = c.Item,

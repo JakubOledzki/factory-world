@@ -1,6 +1,6 @@
 class_name MarketWindow
 extends GameWindow
-## The market: the NPC trader (sells trash, saplings and the sorting machine, quick sale at the floor
+## The market: the NPC trader (sells trash, saplings, animals and the sorting machine, quick sale at the floor
 ## price) and trading between players (listings, buy orders and the player's own offers).
 ## The trader's prices change: a little from day to day, and a lot during events like a drought.
 ## It covers most of the screen: categories on the left and a search field filter every tab.

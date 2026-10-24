@@ -307,5 +307,17 @@
  "computer": {
   "anchorX": 64,
   "anchorY": 72
+ },
+ "sheep": {
+  "anchorX": 56,
+  "anchorY": 62
+ },
+ "cow": {
+  "anchorX": 56,
+  "anchorY": 62
+ },
+ "chicken": {
+  "anchorX": 56,
+  "anchorY": 62
  }
 }

@@ -7,11 +7,12 @@ class_name ItemInfo
 ## ore, tool, belt or decoration finds its place on its own. Listed items win over patterns.
 const CATEGORIES := [
 	["Rośliny i nasiona", ["sapling", "wheat", "carrot", "cabbage", "corn", "potato", "sunflower"], []],
+	["Zwierzęta i hodowla", ["egg", "wool", "milk"], ["animal_*"]],
 	["Drewno i kamień", ["wood", "stone", "sand"], []],
 	["Rudy i węgiel", ["coal"], ["*_ore"]],
 	["Sztabki i materiały", ["nails"], ["*_ingot"]],
 	["Jedzenie", ["flour", "corn_flour", "sunflower_oil", "sauerkraut", "bread", "corn_bread",
-			"carrot_cake", "fries", "vegetable_soup", "bigos"], []],
+			"carrot_cake", "fries", "vegetable_soup", "bigos", "scrambled_eggs"], []],
 	["Maszyny", ["furniture_workbench", "furniture_anvil", "furniture_furnace", "furniture_brick_furnace", "furniture_blast_furnace",
 			"furniture_sorting_machine", "furniture_mill",
 			"furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen", "furniture_computer"], []],
@@ -60,6 +61,8 @@ const ITEMS := {
 	"tool_pickaxe": ["Kilof", "Do rozbijania skał i pracy w kopalni.", "Dostajesz go z działką w górach. Kupisz u handlarza za 100 $ albo wykujesz w kowadle: 3 × sztabka żelaza + 2 × drewno (20 s)."],
 	"tool_hoe": ["Motyka", "Do orania pola pod uprawy.", "Dostajesz ją z działką rolną. Kupisz u handlarza za 100 $ albo wykujesz w kowadle: 2 × sztabka żelaza + 2 × drewno (20 s)."],
 	"tool_chainsaw": ["Piła spalinowa", "Ścina drzewa o 70% szybciej niż siekiera.", "Kupisz u handlarza za 500 $."],
+	"tool_shears": ["Nożyce do strzyżenia", "Do strzyżenia owiec na pastwisku.",
+			"Dostajesz je z działką na stepie. Kupisz u handlarza za 100 $ albo wykujesz w kowadle: 2 × sztabka żelaza + 1 × drewno (20 s)."],
 	"wood": ["Drewno", "Podstawowy materiał budowlany i opał do maszyn i generatora.", "Ścinanie drzew siekierą albo piłą spalinową na działce."],
 	"stone": ["Kamień", "Na piece, młyny i hałdy.", "Rozbijanie skał kilofem i kopalnie w górach."],
 	"sand": ["Piasek", "Potrzebny do pieca piekarskiego.", "Kopanie wydm łopatą na pustyni."],
@@ -81,6 +84,15 @@ const ITEMS := {
 			"Stół warsztatowy: 1 × sztabka żelaza → 5 szt. (10 s). Kupisz też u handlarza."],
 	"sapling": ["Sadzonka drzewa", "Posadź ją na działce, a wyrośnie z niej drzewo.",
 			"Często wypada przy ścinaniu drzew; kupisz też u handlarza."],
+	"animal_chicken": ["Kura", "Wypuść ją na działce (nie na pustyni ani lodowcu), nakarm 2 × zbożem lub warzywami, a zniesie 2 jajka: w 4 min, na stepie w 3.",
+			"Kupisz u handlarza za 50 $."],
+	"animal_sheep": ["Owca", "Wypuść ją na działce, nakarm 2 × zbożem lub warzywami, a po 8 min (na stepie 6) ostrzyżesz ją nożycami: 2 × wełna.",
+			"Kupisz u handlarza za 200 $."],
+	"animal_cow": ["Krowa", "Wypuść ją na działce, nakarm 2 × zbożem lub warzywami, a po 12 min (na stepie 9) wydoisz ją: 3 × mleko.",
+			"Kupisz u handlarza za 500 $."],
+	"egg": ["Jajka", "Na jajecznicę w kuchni polowej i na sprzedaż.", "Nakarmiona kura na działce (4 min, na stepie 3)."],
+	"wool": ["Wełna", "Surowiec na sprzedaż; handlarz płaci 5 $ za sztukę.", "Strzyżenie nakarmionej owcy nożycami (8 min, na stepie 6)."],
+	"milk": ["Mleko", "Na sprzedaż; handlarz płaci 2,50 $.", "Dojenie nakarmionej krowy (12 min, na stepie 9)."],
 	"wheat": ["Pszenica", "Zboże na mąkę pszenną.", "Uprawa na polu na działce rolnej (5 min)."],
 	"carrot": ["Marchew", "Do ciasta marchewkowego i zupy.", "Uprawa na polu na działce rolnej (7 min)."],
 	"cabbage": ["Kapusta", "Do kiszenia i zupy.", "Uprawa na polu na działce rolnej (8 min)."],
@@ -137,6 +149,7 @@ const ITEMS := {
 	"vegetable_soup": ["Zupa jarzynowa", "Jedzenie na sprzedaż.",
 			"Kuchnia polowa: 2 × marchew + 2 × ziemniaki + 1 × kapusta (20 s)."],
 	"bigos": ["Bigos", "Jedzenie na sprzedaż.", "Kuchnia polowa: 2 × kapusta kiszona + 2 × ziemniaki → 2 szt. (25 s)."],
+	"scrambled_eggs": ["Jajecznica", "Jedzenie na sprzedaż.", "Kuchnia polowa: 3 × jajka + 1 × olej słonecznikowy → 2 szt. (15 s)."],
 }
 
 

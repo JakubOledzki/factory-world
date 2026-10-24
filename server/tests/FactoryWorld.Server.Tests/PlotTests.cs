@@ -62,6 +62,12 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         return (reply.Payload(), tiles.ToArray());
     }
 
+    private async Task GiveAsync(GameClient client, string item, long quantity)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IInventory>().AddAsync(client.AccountId, item, quantity, CancellationToken.None);
+    }
+
     private static (int X, int Y) Find(byte[] tiles, TileObject obj)
     {
         var i = Array.IndexOf(tiles, (byte)obj);
@@ -370,6 +376,99 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         }
 
         Assert.Equal("not_enough_items", (await client.SendAsync("plot.plantTree", At(tx + saplings, ty))).ErrorCode());
+    }
+
+    [Fact]
+    public async Task Animals_from_the_trader_are_fed_on_a_pasture_and_give_eggs_wool_and_milk_faster_on_the_steppe()
+    {
+        using var client = await PlayerAsync();
+        var prices = (await client.SendAsync("market.prices")).Payload().GetProperty("items").EnumerateArray()
+            .ToDictionary(i => i.GetProperty("id").GetString()!);
+        Assert.Equal(5000, prices[Items.Chicken].GetProperty("buyCents").GetInt64());
+        Assert.Equal(20_000, prices[Items.Sheep].GetProperty("buyCents").GetInt64());
+        Assert.Equal(500, prices[Items.Wool].GetProperty("sellCents").GetInt64());
+        Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.Sheep, quantity = 1 })).Type());
+        Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.Chicken, quantity = 1 })).Type());
+        await GiveAsync(client, Items.Wheat, 10);
+
+        // The steppe comes with shears and raises animals a quarter faster.
+        var steppe = await BuyAsync(client, Biome.Grassland);
+        Assert.Equal(Items.Shears, Tool((await client.SendAsync("character.get")).Payload()));
+        var (plot, _) = await EnterAsync(client, steppe);
+        Assert.True(plot.GetProperty("pasture").GetBoolean());
+        Assert.Equal(25, plot.GetProperty("husbandryBonus").GetInt32());
+        var kinds = plot.GetProperty("animalKinds").EnumerateArray().ToDictionary(k => k.GetProperty("id").GetString()!);
+        Assert.Equal(360, kinds[Items.Sheep].GetProperty("seconds").GetDouble());
+        Assert.Equal(Items.Shears, kinds[Items.Sheep].GetProperty("tool").GetString());
+        Assert.Equal(JsonValueKind.Null, kinds[Items.Cow].GetProperty("tool").ValueKind);
+        var (tx, ty) = (plot.GetProperty("spawn").GetProperty("x").GetInt32() + 1, plot.GetProperty("spawn").GetProperty("y").GetInt32());
+        object At(string? item = null) => new { x = steppe.X, y = steppe.Y, tileX = tx, tileY = ty, item };
+
+        Assert.Equal("unknown_animal", (await client.SendAsync("plot.release", At(Items.Wheat))).ErrorCode());
+        var released = await client.SendAsync("plot.release", At(Items.Sheep));
+        Assert.Equal("plot.animal", released.Type());
+        Assert.Equal(Items.Sheep, released.Payload().GetProperty("animal").GetProperty("kind").GetString());
+        Assert.Equal(JsonValueKind.Null, released.Payload().GetProperty("animal").GetProperty("readyAt").ValueKind);
+        Assert.False((await client.InventoryAsync()).ContainsKey(Items.Sheep));
+        Assert.Equal("blocked", (await client.SendAsync("plot.release", At(Items.Chicken))).ErrorCode());
+        Assert.Equal("blocked", (await client.SendAsync("plot.plantTree", At())).ErrorCode());
+        Assert.Equal("blocked", (await client.SendAsync("plot.place", new { x = steppe.X, y = steppe.Y, tileX = tx, tileY = ty, kind = Items.WoodenChest })).ErrorCode());
+
+        Assert.Equal("hungry", (await client.SendAsync("plot.collect", At())).ErrorCode());
+        Assert.Equal("bad_feed", (await client.SendAsync("plot.feed", At(Items.Stone))).ErrorCode());
+        var fed = await client.SendAsync("plot.feed", At(Items.Wheat));
+        Assert.Equal("plot.animal", fed.Type());
+        var readyAt = fed.Payload().GetProperty("animal").GetProperty("readyAt").GetInt64();
+        Assert.Equal((factory.Time.GetUtcNow() + TimeSpan.FromMinutes(6)).ToUnixTimeMilliseconds(), readyAt);
+        Assert.Equal(8, (await client.InventoryAsync())[Items.Wheat]);
+        Assert.Equal("already_fed", (await client.SendAsync("plot.feed", At(Items.Wheat))).ErrorCode());
+        Assert.Equal("not_ready", (await client.SendAsync("plot.collect", At())).ErrorCode());
+
+        var (again, _) = await EnterAsync(client, steppe);
+        var animal = Assert.Single(again.GetProperty("animals").EnumerateArray());
+        Assert.Equal(readyAt, animal.GetProperty("readyAt").GetInt64());
+
+        factory.Time.Advance(TimeSpan.FromMinutes(6));
+        Assert.Equal("already_fed", (await client.SendAsync("plot.feed", At(Items.Wheat))).ErrorCode());
+        // Wool is cut with the shears; eggs and milk are taken by hand.
+        Assert.Null(Tool((await client.SendAsync("character.unequip")).Payload()));
+        Assert.Equal("wrong_tool", (await client.SendAsync("plot.collect", At())).ErrorCode());
+        await client.SendAsync("character.equip", new { item = Items.Shears });
+        var collected = await client.SendAsync("plot.collect", At());
+        Assert.Equal("plot.animal", collected.Type());
+        var wool = Assert.Single(collected.Payload().GetProperty("items").EnumerateArray());
+        Assert.Equal(Items.Wool, wool.GetProperty("id").GetString());
+        Assert.Equal(2, wool.GetProperty("quantity").GetInt32());
+        Assert.Equal(2, (await client.InventoryAsync())[Items.Wool]);
+        Assert.Equal(JsonValueKind.Null, collected.Payload().GetProperty("animal").GetProperty("readyAt").ValueKind);
+        Assert.Equal("hungry", (await client.SendAsync("plot.collect", At())).ErrorCode());
+
+        var taken = await client.SendAsync("plot.takeAnimal", At());
+        Assert.Equal("plot.animal", taken.Type());
+        Assert.Equal(JsonValueKind.Null, taken.Payload().GetProperty("animal").ValueKind);
+        Assert.Equal(1, (await client.InventoryAsync())[Items.Sheep]);
+        Assert.Equal("no_animal", (await client.SendAsync("plot.feed", At(Items.Wheat))).ErrorCode());
+        Assert.Equal(0, (await EnterAsync(client, steppe)).Plot.GetProperty("animals").GetArrayLength());
+
+        // A hen lays in four minutes elsewhere on grass, and no animal lives on a glacier.
+        var forest = await BuyAsync(client, Biome.Forest);
+        var (forestPlot, _) = await EnterAsync(client, forest);
+        Assert.Equal(0, forestPlot.GetProperty("husbandryBonus").GetInt32());
+        object InForest(string? item = null) => new { x = forest.X, y = forest.Y, tileX = tx, tileY = ty, item };
+        Assert.Equal("plot.animal", (await client.SendAsync("plot.release", InForest(Items.Chicken))).Type());
+        var hen = await client.SendAsync("plot.feed", InForest(Items.Corn));
+        Assert.Equal("not_enough_items", hen.ErrorCode());
+        hen = await client.SendAsync("plot.feed", InForest(Items.Wheat));
+        Assert.Equal((factory.Time.GetUtcNow() + TimeSpan.FromMinutes(4)).ToUnixTimeMilliseconds(), hen.Payload().GetProperty("animal").GetProperty("readyAt").GetInt64());
+        factory.Time.Advance(TimeSpan.FromMinutes(4));
+        var eggs = await client.SendAsync("plot.collect", InForest());
+        Assert.Equal(2, (await client.InventoryAsync())[Items.Egg]);
+        Assert.Equal(Items.Egg, eggs.Payload().GetProperty("items")[0].GetProperty("id").GetString());
+
+        var ice = await BuyAsync(client, Biome.Ice);
+        Assert.False((await EnterAsync(client, ice)).Plot.GetProperty("pasture").GetBoolean());
+        Assert.Equal("no_pasture", (await client.SendAsync("plot.release", new { x = ice.X, y = ice.Y, tileX = tx, tileY = ty, item = Items.Sheep })).ErrorCode());
+        Assert.Equal(1, (await client.InventoryAsync())[Items.Sheep]);
     }
 
     [Fact]

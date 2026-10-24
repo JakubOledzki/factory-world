@@ -52,6 +52,7 @@ public static class Workshop
         new(Items.Shovel, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 2), (Items.Wood, 2)], 5, Items.Anvil),
         new(Items.Pickaxe, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 3), (Items.Wood, 2)], 5, Items.Anvil),
         new(Items.Hoe, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 2), (Items.Wood, 2)], 5, Items.Anvil),
+        new(Items.Shears, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 2), (Items.Wood, 1)], 5, Items.Anvil),
     ];
 
     public static Recipe? Find(string id) => Recipes.FirstOrDefault(r => r.Id == id);

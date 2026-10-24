@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FactoryWorld.Modules.Market;
 
 /// <summary>
-/// The NPC trader: always sells trash, saplings, nails, tools, an anvil, a chainsaw, belts, inserters, wooden chests, machines, the computer, generators, poles, flour, oil and bread and always buys raw materials.
+/// The NPC trader: always sells trash, saplings, animals, nails, tools, an anvil, a chainsaw, belts, inserters, wooden chests, machines, the computer, generators, poles, flour, oil and bread and always buys raw materials.
 /// These are its usual prices (cents); <see cref="TraderPrices"/> moves them with the day's drift and the market's events.
 /// What it pays is the floor of the market: a quick sale gets it at once, players' listings usually pay more.
 /// </summary>
@@ -27,6 +27,10 @@ public static class NpcPrices
         [Items.Pickaxe] = 10_000,
         [Items.Hoe] = 10_000,
         [Items.Chainsaw] = 50_000,
+        [Items.Shears] = 10_000,
+        [Items.Chicken] = 5000,
+        [Items.Sheep] = 20_000,
+        [Items.Cow] = 50_000,
         [Items.Belt] = 500,
         [Items.Inserter] = 3000,
         [Items.Splitter] = 4000,
@@ -84,6 +88,13 @@ public static class NpcPrices
         [Items.Pickaxe] = 500,
         [Items.Hoe] = 500,
         [Items.Chainsaw] = 10_000,
+        [Items.Shears] = 500,
+        [Items.Chicken] = 1000,
+        [Items.Sheep] = 5000,
+        [Items.Cow] = 12_000,
+        [Items.Egg] = 80,
+        [Items.Wool] = 500,
+        [Items.Milk] = 250,
         [Items.Anvil] = 5000,
         [Items.Belt] = 200,
         [Items.Inserter] = 1200,
@@ -113,6 +124,7 @@ public static class NpcPrices
         [Items.Fries] = 900,
         [Items.VegetableSoup] = 1100,
         [Items.Bigos] = 750,
+        [Items.ScrambledEggs] = 450,
         [Items.Generator] = 4000,
         [Items.Pole] = 100,
     };

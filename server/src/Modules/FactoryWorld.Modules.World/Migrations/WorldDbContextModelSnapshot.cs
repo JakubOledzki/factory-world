@@ -56,6 +56,39 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plots", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotAnimalRow", b =>
+                {
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.Property<int>("TileX")
+                        .HasColumnType("integer")
+                        .HasColumnName("tile_x");
+
+                    b.Property<int>("TileY")
+                        .HasColumnType("integer")
+                        .HasColumnName("tile_y");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<DateTimeOffset?>("ReadyAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ready_at");
+
+                    b.HasKey("X", "Y", "TileX", "TileY");
+
+                    b.ToTable("plot_animals", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.PlotField", b =>
                 {
                     b.Property<int>("X")
