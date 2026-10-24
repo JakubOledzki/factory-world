@@ -96,7 +96,7 @@ public sealed record ItemRequest(string Item);
 
 public sealed record ItemSummary(string Item, long? LowestCents, long Listed, long? HighestCents, long Wanted);
 
-public sealed class PlayerMarketService(GameDb db, IInventory inventory, IWallet wallet, ICharacterNames names, TimeProvider time)
+public sealed class PlayerMarketService(GameDb db, IInventory inventory, IWallet wallet, ICharacterNames names, TimeProvider time, ITechnologies technologies)
 {
     /// <summary>Puts items up for sale: they leave the inventory now and wait on the listing.</summary>
     public Task<long> ListAsync(Guid seller, OfferRequest request, CancellationToken cancellationToken)
@@ -117,6 +117,8 @@ public sealed class PlayerMarketService(GameDb db, IInventory inventory, IWallet
         Check(request);
         return db.InTransactionAsync(async () =>
         {
+            // Nobody gets what they haven't researched yet, not even from other players.
+            await technologies.RequireUnlockedAsync(buyer, request.Item, cancellationToken);
             await CheckOpenCountAsync(OfferKind.Order, buyer, cancellationToken);
             var balance = await wallet.DebitAsync(buyer, request.Quantity * request.PriceCents,
                 $"buy order {request.Quantity} {request.Item}", cancellationToken);
@@ -130,6 +132,7 @@ public sealed class PlayerMarketService(GameDb db, IInventory inventory, IWallet
         db.InTransactionAsync(async () =>
         {
             var listing = await TakeAsync(OfferKind.Listing, buyer, request, cancellationToken);
+            await technologies.RequireUnlockedAsync(buyer, listing.ItemId, cancellationToken);
             var cents = request.Quantity * listing.PriceCents;
             var balance = await wallet.DebitAsync(buyer, cents, $"market buy {request.Quantity} {listing.ItemId}", cancellationToken);
             await wallet.CreditAsync(listing.OwnerId, cents, $"market sold {request.Quantity} {listing.ItemId}", cancellationToken);
@@ -216,6 +219,8 @@ public sealed class PlayerMarketService(GameDb db, IInventory inventory, IWallet
             throw new GameException("unknown_item", $"Unknown item '{item}'.");
         }
 
+        // The market doesn't show what the viewer hasn't researched yet.
+        await technologies.RequireUnlockedAsync(viewer, item!, cancellationToken);
         var listings = await QueryAsync(OfferKind.Listing,
             "item_id = @item AND closed_at IS NULL ORDER BY price_cents, id", item!, null, cancellationToken);
         var orders = await QueryAsync(OfferKind.Order,
@@ -388,20 +393,22 @@ public sealed class PlayerMarketService(GameDb db, IInventory inventory, IWallet
     };
 }
 
-/// <summary>Every item with the trader's prices and the best offers of players.</summary>
+/// <summary>Every item the player has researched, with the trader's quick sale price and the best offers of players.</summary>
 public sealed class OverviewHandler(IServiceScopeFactory scopes, TraderMarket trader) : IMessageHandler
 {
     public string Type => "market.overview";
 
     public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
     {
-        client.RequireAccount();
+        var account = client.RequireAccount();
         await using var scope = scopes.CreateAsyncScope();
         var summary = await scope.ServiceProvider.GetRequiredService<PlayerMarketService>().SummaryAsync(cancellationToken);
+        // What the player hasn't researched yet isn't on the market for them.
+        var locked = await scope.ServiceProvider.GetRequiredService<ITechnologies>().LockedAsync(account, cancellationToken);
         var prices = trader.Prices();
         return new Reply("market.overview", new
         {
-            items = Items.Names.Select(item =>
+            items = Items.Names.Where(item => !locked.ContainsKey(item.Key)).Select(item =>
             {
                 summary.TryGetValue(item.Key, out var s);
                 return new

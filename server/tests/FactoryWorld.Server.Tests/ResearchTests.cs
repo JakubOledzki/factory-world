@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Text.Json;
 using FactoryWorld.Modules.Abstractions.Contracts;
+using FactoryWorld.Modules.Market;
 using FactoryWorld.Modules.Research;
 using FactoryWorld.Modules.World;
 using Microsoft.Extensions.DependencyInjection;
@@ -72,7 +73,7 @@ public sealed class ResearchTests(ServerFactory factory) : IClassFixture<ServerF
         Assert.Equal("locked", (await client.SendAsync("crafting.craft", new { workbench = bench, recipe = Items.Belt })).ErrorCode());
         Assert.Equal(2, Count(await client.InventoryAsync(), Items.IronIngot));
 
-        // The trader keeps them back as well, and says so in its prices.
+        // The trader keeps them back as well: it doesn't offer them, but still buys them back.
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 100_000, "test", CancellationToken.None);
@@ -82,14 +83,54 @@ public sealed class ResearchTests(ServerFactory factory) : IClassFixture<ServerF
         Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.Nails, quantity = 1 })).Type());
         var prices = (await client.SendAsync("market.prices")).Payload().GetProperty("items").EnumerateArray()
             .ToDictionary(p => p.GetProperty("id").GetString()!);
-        Assert.Equal("Automatyzacja", prices[Items.Inserter].GetProperty("locked").GetString());
-        Assert.Equal(JsonValueKind.Null, prices[Items.Nails].GetProperty("locked").ValueKind);
+        Assert.Equal(JsonValueKind.Null, prices[Items.Inserter].GetProperty("buyCents").ValueKind);
+        Assert.Equal(NpcPrices.Buys[Items.Inserter], prices[Items.Inserter].GetProperty("sellCents").GetInt64());
+        Assert.Equal(NpcPrices.Sells[Items.Nails], prices[Items.Nails].GetProperty("buyCents").GetInt64());
+        Assert.False(prices[Items.Nails].TryGetProperty("locked", out _));
 
         var tree = await TechnologiesAsync(client);
         Assert.Equal("available", tree[TechTree.Logistics].GetProperty("status").GetString());
         Assert.Equal("locked", tree[TechTree.Automation].GetProperty("status").GetString());
         Assert.Equal(1, tree[TechTree.Automation].GetProperty("tier").GetInt32());
         Assert.Equal(2, TechTree.Tier(TechTree.ById[TechTree.Sorting]));
+    }
+
+    [Fact]
+    public async Task Other_players_offers_of_what_isnt_researched_yet_are_hidden_and_cannot_be_bought()
+    {
+        using var seller = await PlayerAsync();
+        using var buyer = await PlayerAsync();
+        await ResearchAsync(seller, TechTree.Logistics);
+        await GiveAsync(seller, Items.Belt, 10);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(buyer.AccountId, 100_000, "test", CancellationToken.None);
+        }
+
+        Assert.Equal("market.done", (await seller.SendAsync("market.list", new { item = Items.Belt, quantity = 5, priceCents = 400 })).Type());
+        var listing = (await seller.SendAsync("market.item", new { item = Items.Belt })).Payload().GetProperty("listings").EnumerateArray()
+            .First(l => l.GetProperty("mine").GetBoolean()).GetProperty("id").GetInt64();
+
+        // Not in the overview, so no category or search shows it; its board, buying and ordering say it's locked.
+        static async Task<HashSet<string>> OverviewAsync(GameClient client) =>
+            (await client.SendAsync("market.overview")).Payload().GetProperty("items").EnumerateArray()
+                .Select(i => i.GetProperty("id").GetString()!).ToHashSet();
+        var overview = await OverviewAsync(buyer);
+        Assert.DoesNotContain(Items.Belt, overview);
+        Assert.DoesNotContain(Items.Mill, overview);
+        Assert.Contains(Items.Wood, overview);
+        Assert.Contains(Items.Belt, await OverviewAsync(seller));
+        Assert.Equal("locked", (await buyer.SendAsync("market.item", new { item = Items.Belt })).ErrorCode());
+        Assert.Equal("locked", (await buyer.SendAsync("market.purchase", new { id = listing, quantity = 1 })).ErrorCode());
+        Assert.Equal("locked", (await buyer.SendAsync("market.order", new { item = Items.Belt, quantity = 1, priceCents = 400 })).ErrorCode());
+        Assert.Equal(100_000, await buyer.BalanceAsync());
+        Assert.Equal(0, Count(await buyer.InventoryAsync(), Items.Belt));
+
+        // Once researched, it's there like anything else.
+        await ResearchAsync(buyer, TechTree.Logistics);
+        Assert.Contains(Items.Belt, await OverviewAsync(buyer));
+        Assert.Equal("market.done", (await buyer.SendAsync("market.purchase", new { id = listing, quantity = 1 })).Type());
+        Assert.Equal(1, Count(await buyer.InventoryAsync(), Items.Belt));
     }
 
     [Fact]

@@ -173,7 +173,7 @@ public sealed class MarketService(GameDb db, IInventory inventory, IWallet walle
         var price = Price(trader.Prices().Sells, item, quantity, "The trader doesn't sell this item.");
         return db.InTransactionAsync(async () =>
         {
-            // Machines and logistics come from the trader only once researched; other players may still sell them.
+            // Machines and logistics come from the trader only once researched.
             await technologies.RequireUnlockedAsync(owner, item, cancellationToken);
             var balance = await wallet.DebitAsync(owner, price * quantity, $"buy {quantity} {item}", cancellationToken);
             await inventory.AddAsync(owner, item, quantity, cancellationToken);
@@ -213,20 +213,20 @@ public sealed class PricesHandler(TraderMarket trader, IServiceScopeFactory scop
         var prices = trader.Prices();
         await using var scope = scopes.CreateAsyncScope();
         var locked = await scope.ServiceProvider.GetRequiredService<ITechnologies>().LockedAsync(client.RequireAccount(), cancellationToken);
+        // What this player hasn't researched yet the trader doesn't offer at all; it still buys it back.
+        bool Sold(string id) => prices.Sells.ContainsKey(id) && !locked.ContainsKey(id);
         return new Reply("market.prices", new
         {
             items = Items.Names.Keys
-                .Where(id => prices.Sells.ContainsKey(id) || prices.Buys.ContainsKey(id))
+                .Where(id => Sold(id) || prices.Buys.ContainsKey(id))
                 .Select(id => new
                 {
                     id,
                     name = Items.Names[id],
-                    buyCents = prices.Sells.TryGetValue(id, out var buy) ? buy : (long?)null,
-                    buyChange = prices.Sells.ContainsKey(id) ? TraderPrices.Change(buy, NpcPrices.Sells[id]) : (int?)null,
+                    buyCents = Sold(id) ? prices.Sells[id] : (long?)null,
+                    buyChange = Sold(id) ? TraderPrices.Change(prices.Sells[id], NpcPrices.Sells[id]) : (int?)null,
                     sellCents = prices.Buys.TryGetValue(id, out var sell) ? sell : (long?)null,
                     sellChange = prices.Buys.ContainsKey(id) ? TraderPrices.Change(sell, NpcPrices.Buys[id]) : (int?)null,
-                    // The technology to research before the trader sells it to this player, or null.
-                    locked = prices.Sells.ContainsKey(id) ? locked.GetValueOrDefault(id) : null,
                 }),
             @event = Describe(prices.Event),
             next = Describe(trader.NextEvent()),
