@@ -903,7 +903,9 @@ func _draw_power_reach() -> void:
 	var hovered_pole: bool = _hovered.x >= 0 and _placed.has(_hovered) and _placed[_hovered]["kind"] == POLE
 	if not placing_power and not hovered_pole:
 		return
-	var areas: Array[Vector2i] = _power.poles() if placing_power else [_hovered]
+	var areas: Array[Vector2i] = _power.poles()
+	if not placing_power:
+		areas = [_hovered]
 	var ground := _ground_cell()
 	if _placing == POLE and ground.x >= 0:
 		areas.append(ground)

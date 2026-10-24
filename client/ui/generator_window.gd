@@ -136,7 +136,8 @@ func _render() -> void:
 		_network.add_theme_color_override("font_color", UI.MUTED)
 	else:
 		var speed := float(network["speed"])
-		var line := "Sieć: %d %s pobiera %s, generatory dają %s." % [int(network["machines"]), _machines(int(network["machines"])),
+		var count := int(network["machines"])
+		var line := "Sieć: %d %s %s %s, generatory dają %s." % [count, _machines(count), ("pobierają" if _machines(count) == "maszyny" else "pobiera"),
 			kw(float(network["demandKw"])), kw(minf(float(network["supplyKw"]), float(network["demandKw"])))]
 		if speed >= 0.999:
 			line += " Maszyny mają pełną moc."
@@ -193,7 +194,10 @@ func _update_runs_out() -> void:
 		_runs_out.text = "Generator wygasł: dołóż drewna albo węgla." if float(_state.get("total", 0.0)) <= 0.0 else ""
 		return
 	var left := maxi(0, ceili((float(at) - _server_now()) / 1000.0))
-	_runs_out.text = "Opał skończy się za %d min %02d s." % [left / 60, left % 60]
+	if left >= 3600:
+		_runs_out.text = "Opał skończy się za %d h %02d min." % [left / 3600, left / 60 % 60]
+	else:
+		_runs_out.text = "Opał skończy się za %d min %02d s." % [left / 60, left % 60]
 
 
 static func _energy(kj: float) -> String:

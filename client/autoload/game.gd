@@ -66,6 +66,9 @@ const ERRORS := {
 	"machine_full": "Tyle się nie zmieści w maszynie.",
 	"machine_busy": "Przy ogniu leży już inne paliwo. Wyjmij je najpierw.",
 	"not_processable": "Tego nie da się tu włożyć.",
+	"not_fuel": "Generator pali tylko drewno i węgiel.",
+	"generator_busy": "Przy ogniu leży już inny opał. Wyjmij go najpierw.",
+	"generator_full": "Tyle opału nie zmieści się w generatorze.",
 }
 
 var token := ""

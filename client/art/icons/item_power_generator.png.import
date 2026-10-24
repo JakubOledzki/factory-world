@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ckdqda0qunnl"
-path="res://.godot/imported/power_pole.png-fa836737db93f7f06e25fc9f419417a6.ctex"
+uid="uid://b5t7un22diwqq"
+path="res://.godot/imported/item_power_generator.png-3614911ec0d6f4c3ce5403e5f90b91ca.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://art/icons/power_pole.png"
-dest_files=["res://.godot/imported/power_pole.png-fa836737db93f7f06e25fc9f419417a6.ctex"]
+source_file="res://art/icons/item_power_generator.png"
+dest_files=["res://.godot/imported/item_power_generator.png-3614911ec0d6f4c3ce5403e5f90b91ca.ctex"]
 
 [params]
 

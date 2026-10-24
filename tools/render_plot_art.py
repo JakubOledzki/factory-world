@@ -1016,7 +1016,7 @@ def render_power(layout: dict):
         target = Vector((0, 0, tz))
         layout[name] = render_sprite(name, w, h, target, crafted(build))
         layout[name]["wireX"], layout[name]["wireY"] = anchor(w, h, target, wire)
-        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"power_{name}.png")
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"item_power_{name}.png")
 
 
 # --- Icons ------------------------------------------------------------------------------------------
