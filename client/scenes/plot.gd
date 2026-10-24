@@ -80,7 +80,8 @@ const WORK := {
 	DUNE: {"name": "Wydma", "tool": "tool_shovel", "verb": "Kop", "need": "łopaty"},
 }
 ## Tools that do another's work: a chainsaw cuts trees like an axe, only faster.
-const STANDS_IN := {"tool_chainsaw": "tool_axe"}
+## Bronze and steel pickaxes break rock and work mines like the iron one, only faster.
+const STANDS_IN := {"tool_chainsaw": "tool_axe", "tool_bronze_pickaxe": "tool_pickaxe", "tool_steel_pickaxe": "tool_pickaxe"}
 const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalnia"}
 ## What a player can put on a plot from the inventory, and its sprite there; belts are drawn by
 ## PlotLogistics, flat on the ground.
@@ -96,6 +97,9 @@ const PLACED_SPRITES := {
 	"furniture_forester_hut": "forester_hut", "furniture_forester_lodge": "forester_lodge",
 	"furniture_forestry_station": "forestry_station", "furniture_sawmill": "sawmill",
 	"furniture_electric_sawmill": "electric_sawmill", "furniture_industrial_sawmill": "industrial_sawmill",
+	"furniture_drill": "drill", "furniture_heavy_drill": "heavy_drill", "furniture_quarry": "quarry",
+	"furniture_crusher": "crusher", "furniture_stonemason": "stonemason", "furniture_foundry": "foundry",
+	"power_water_wheel": "water_wheel", "power_hydro_plant": "hydro_plant", "logistics_cable_station": "cable_station",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
@@ -103,7 +107,17 @@ const COMPUTER := "furniture_computer"
 const ANIMAL_SPRITES := {"animal_chicken": "chicken", "animal_sheep": "sheep", "animal_cow": "cow"}
 ## Placed objects that open the machine window.
 const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen",
-	"furniture_sawmill", "furniture_electric_sawmill", "furniture_industrial_sawmill"]
+	"furniture_sawmill", "furniture_electric_sawmill", "furniture_industrial_sawmill",
+	"furniture_quarry", "furniture_crusher", "furniture_stonemason", "furniture_foundry"]
+## Drills, which stand right next to a mine (one to a mine) and work it on power.
+const DRILLS := ["furniture_drill", "furniture_heavy_drill"]
+## Water power, which burns nothing and stands only in the mountains, by a lake or on the coast.
+const HYDRO := ["power_water_wheel", "power_hydro_plant"]
+const QUARRY := "furniture_quarry"
+const CABLE_STATION := "logistics_cable_station"
+## Biomes with water to turn a wheel: mountains, coast and lakeshore.
+const WATER_BIOMES := [6, 10, 11]
+const MOUNTAINS := 6
 ## Forester's buildings of every level and how far their forest reaches from the building's tile;
 ## each covers 3 × 3 tiles (FOOTPRINT each way) and keeps a clearing FOREST_CLEARING tiles out.
 const FORESTERS := {"furniture_forester_hut": 5, "furniture_forester_lodge": 6, "furniture_forestry_station": 7}
@@ -121,7 +135,7 @@ const INSERTERS := [INSERTER, "logistics_fast_inserter", "logistics_express_inse
 const FURNACES := ["furniture_furnace", "furniture_brick_furnace", "furniture_blast_furnace"]
 ## Belts, inserters and splitters: turned with R and laid one after another.
 const MACHINERY := [BELT, "logistics_fast_belt", "logistics_express_belt", INSERTER, "logistics_fast_inserter",
-	"logistics_express_inserter", SPLITTER]
+	"logistics_express_inserter", SPLITTER, CABLE_STATION]
 const GENERATOR := "power_generator"
 const POLE := "power_pole"
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo"]
@@ -299,6 +313,7 @@ var _market_window: MarketWindow
 ## "Rynek [M]" in the bar: shown while a computer stands on the plot.
 var _market_button: Button
 var _generator_window: GeneratorWindow
+var _drill_window: DrillWindow
 var _achievements_window: AchievementsWindow
 var _clock_offset := 0.0
 var _next_station_poll := 0.0
@@ -907,7 +922,31 @@ func _can_place(cell: Vector2i) -> bool:
 	for at in _footprint(_placing, cell):
 		if not _free_ground(at, not big):
 			return false
+	if _placing in DRILLS:
+		var mine := _mine_beside(cell)
+		return mine >= 0 and _drill_at(mine).x < 0
+	if _placing == QUARRY:
+		return int(_plot.get("biome", -1)) == MOUNTAINS
+	if _placing in HYDRO:
+		return int(_plot.get("biome", -1)) in WATER_BIOMES
 	return true
+
+
+## The mine a drill on `cell` would work: one it touches, corners included; or -1.
+func _mine_beside(cell: Vector2i) -> int:
+	for id: int in _mines:
+		var r := Rect2i(_mine_rect(id))
+		if cell.x >= r.position.x - 1 and cell.x <= r.end.x and cell.y >= r.position.y - 1 and cell.y <= r.end.y:
+			return id
+	return -1
+
+
+## The tile of the drill working a mine, or (-1, -1).
+func _drill_at(mine: int) -> Vector2i:
+	for cell: Vector2i in _placed:
+		if _placed[cell]["kind"] in DRILLS and _mine_beside(cell) == mine:
+			return cell
+	return Vector2i(-1, -1)
 
 
 func _free_ground(cell: Vector2i, mind_player := true) -> bool:
@@ -1013,6 +1052,8 @@ func _placed_label(cell: Vector2i) -> String:
 	var facing: String = DIRECTIONS[int(object.get("rotation", 0)) & 3]
 	if object["kind"] in BELTS:
 		return "%s %s: [R] obróć, kliknij, aby schować" % [object["name"], facing]
+	if object["kind"] == CABLE_STATION:
+		return "%s %s: wiezie po linie do następnej stacji przed nią (do 24 pól). [R] obróć, kliknij, aby schować" % [object["name"], facing]
 	if object["kind"] in INSERTERS:
 		var held := _logistics.held(cell)
 		var carrying := ", niesie: %s" % _item_name(held).to_lower() if held != "" else ""
@@ -1039,6 +1080,10 @@ func _placed_label(cell: Vector2i) -> String:
 		return "Słup energetyczny (%s): kliknij po więcej" % _power.describe(object["id"])
 	if object["kind"] == GENERATOR:
 		return "Generator parowy: kliknij, aby dołożyć opału"
+	if object["kind"] in HYDRO:
+		return "%s (woda kręci nim bez opału): kliknij po więcej" % object["name"]
+	if object["kind"] in DRILLS:
+		return "%s%s: kliknij, aby zobaczyć urobek" % [object["name"], _power_note(object["id"])]
 	return "%s%s: kliknij, aby użyć" % [object["name"], _power_note(object["id"]) if _power.runs_on_power(object["kind"]) else ""]
 
 
@@ -1082,7 +1127,7 @@ func _draw_marks() -> void:
 ## The tiles poles power, on the ground: of every pole while a pole, a generator or a machine that
 ## runs on power is being placed (with the wires a new pole would get), and of a pole under the mouse.
 func _draw_power_reach() -> void:
-	var placing_power: bool = _placing == POLE or _placing == GENERATOR or _power.runs_on_power(_placing)
+	var placing_power: bool = _placing == POLE or _placing == GENERATOR or _placing in HYDRO or _power.runs_on_power(_placing)
 	var hovered_pole: bool = _hovered.x >= 0 and _placed.has(_hovered) and _placed[_hovered]["kind"] == POLE
 	if not placing_power and not hovered_pole:
 		return
@@ -1343,12 +1388,23 @@ func _start_work(cell: Vector2i, mode := "harvest") -> void:
 	_work_seconds = _harvest_seconds
 	if mode == "harvest" and _work_kind(cell) == TREE:
 		_work_seconds = _saw_seconds if Game.holds("tool_chainsaw") else _chop_seconds
+	if mode == "harvest" and _work_kind(cell) == ROCK:
+		_work_seconds = float(_plot.get("rockSeconds", _harvest_seconds)) / _pickaxe_speed()
 	if mode == "mine":
-		_work_seconds = _mine_seconds
+		_work_seconds = _mine_seconds / _pickaxe_speed()
 	_work_left = _work_seconds
 	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
 	_work_bar.max_value = _work_seconds
 	_work_bar.visible = true
+
+
+## How many times faster than an iron pickaxe the best pickaxe in the tool bar breaks rock.
+func _pickaxe_speed() -> float:
+	var best := 1.0
+	var speeds: Dictionary = _plot.get("pickaxes", {})
+	for held: Dictionary in Game.tools():
+		best = maxf(best, float(speeds.get(held["id"], 0.0)))
+	return best
 
 
 func _stop_work() -> void:
@@ -1873,6 +1929,10 @@ func _place_object(cell: Vector2i) -> void:
 	elif FORESTERS.has(kind):
 		_show_toast("%s stoi na działce i już sadzi las wokół siebie. Drewno wyjmiesz ręcznie albo podajnikiem." % object["name"])
 		_poll_forestry()
+	elif kind in DRILLS:
+		_show_toast("%s stoi przy kopalni. Podłącz je słupem do prądu, a samo zacznie wydobywać." % object["name"])
+	elif kind in HYDRO:
+		_show_toast("%s stoi na działce i daje prąd bez opału. Postaw obok słup energetyczny." % object["name"])
 	else:
 		_show_toast("%s stoi na działce. Kliknij, aby użyć." % object["name"])
 	_reload_inventory()
@@ -1906,15 +1966,18 @@ func _use_placed(cell: Vector2i) -> void:
 		_storage_window.open_at(_at, object["id"])
 	elif object["kind"] in ["furniture_workbench", "furniture_anvil"]:
 		_crafting_window.open_at(object["id"], object["kind"])
-	elif object["kind"] == GENERATOR:
+	elif object["kind"] == GENERATOR or object["kind"] in HYDRO:
 		_generator_window.open_at(_at, object["id"])
+	elif object["kind"] in DRILLS:
+		_drill_window.open_at(_at, object["id"])
 	elif FORESTERS.has(object["kind"]):
 		_forester_window.open_at(_at, object["id"])
 
 
 func _using_window_open() -> bool:
 	return _crafting_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
-		or _splitter_window.visible or _generator_window.visible or _market_window.visible or _forester_window.visible
+		or _splitter_window.visible or _generator_window.visible or _market_window.visible or _forester_window.visible \
+		or _drill_window.visible
 
 
 func _hide_placed_windows() -> void:
@@ -1923,6 +1986,7 @@ func _hide_placed_windows() -> void:
 	_machine_window.hide_window()
 	_forester_window.hide_window()
 	_generator_window.hide_window()
+	_drill_window.hide_window()
 	_storage_window.hide_window()
 	_splitter_window.hide_window()
 	_market_window.hide_window()
@@ -2234,7 +2298,7 @@ func _update_mine_label(id: int) -> void:
 
 ## Walks to the entrance of a mine and starts mining with the pickaxe.
 func _go_to_mine(id: int) -> void:
-	if not Game.holds("tool_pickaxe"):
+	if not _holds("tool_pickaxe"):
 		_show_toast("Kopalnia: potrzebujesz kilofa. Zmień narzędzie w slocie [Q].", UI.ERROR)
 		return
 	if _mine_left_units(id) <= 0:
@@ -2262,9 +2326,10 @@ func _start_mining(id: int) -> void:
 	_work_mine = id
 
 
-## One load of ore; the player keeps mining while standing at the mine until it runs dry.
-func _mine_request(id: int) -> void:
-	var reply := await Net.request("plot.mine", {"x": _at.x, "y": _at.y, "mine": id})
+## One load of ore (or five at once with dynamite); the player keeps mining while standing at the
+## mine until it runs dry.
+func _mine_request(id: int, blast := false) -> void:
+	var reply := await Net.request("plot.blast" if blast else "plot.mine", {"x": _at.x, "y": _at.y, "mine": id})
 	if reply["type"] != "plot.mined":
 		_show_error(reply)
 		return
@@ -2275,6 +2340,9 @@ func _mine_request(id: int) -> void:
 	var r := _mine_rect(id)
 	var at := Vector2(r.get_center().x, r.end.y - 1.0) * TILE
 	var items: Array = result["items"]
+	if blast:
+		_float_text("BUM! %d urobków" % int(result.get("blasted", 5)), UI.GOLD, at - Vector2(0, 20))
+		_reload_inventory()
 	if items.is_empty():
 		_float_text("Pusto, tym razem nic", UI.MUTED, at)
 	for i in items.size():
@@ -2291,7 +2359,7 @@ func _mine_request(id: int) -> void:
 		_reload_inventory()
 	if int(state["units"]) <= 0:
 		_show_toast("Kopalnia wyczerpana. Odnowi się za %d min." % roundi(_mine_refill_left(id) / 60.0), UI.MUTED)
-	elif _work.x < 0 and _path.is_empty() and _near_mine(id) and Game.holds("tool_pickaxe"):
+	elif not blast and _work.x < 0 and _path.is_empty() and _near_mine(id) and _holds("tool_pickaxe"):
 		_start_mining(id)
 
 
@@ -2339,6 +2407,27 @@ func _render_mine_window() -> void:
 	var mine: Dictionary = _mines[_mine_open]
 	_mine_window.set_title("Kopalnia, poziom %d" % int(mine.get("level", 1)))
 	_mine_box.add_child(UI.label("Teraz: %s." % _mine_level_text(mine), UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true))
+	if int(mine.get("rare", 1)) > 1:
+		_mine_box.add_child(UI.label("Głęboka kopalnia: srebro i złoto trafiają się %d razy częściej." % int(mine["rare"]), UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT, true))
+	if int(_plot.get("miningBonus", 0)) > 0:
+		_mine_box.add_child(UI.label("W górach kopie się o %d%% szybciej. Kilof z brązu i stalowy przyspieszają jeszcze bardziej." % int(_plot["miningBonus"]), UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	var dynamite := _count("dynamite")
+	var blast_row := HBoxContainer.new()
+	blast_row.add_theme_constant_override("separation", 6)
+	blast_row.add_child(UI.item_icon("dynamite", 26))
+	var blast_label := UI.label("Dynamit: %d. Jedna laska wydobywa 5 urobków naraz." % dynamite, UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
+	blast_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	blast_row.add_child(blast_label)
+	var blast := UI.button("Wysadź", func() -> void:
+		await _mine_request(_mine_open, true)
+		_render_mine_window(), true)
+	blast.disabled = dynamite == 0 or _mine_left_units(_mine_open) <= 0
+	blast.tooltip_text = "Dynamit zrobisz przy stole warsztatowym z siarki, węgla i piasku (technologia „Materiały wybuchowe”)" if dynamite == 0 else ""
+	blast_row.add_child(blast)
+	_mine_box.add_child(blast_row)
+	var drill := _drill_at(_mine_open)
+	if drill.x >= 0:
+		_mine_box.add_child(UI.label("Przy kopalni pracuje %s: kopie razem z tobą." % String(_placed[drill]["name"]).to_lower(), UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	var next: Variant = mine.get("upgrade")
 	if next == null:
 		_mine_box.add_child(UI.label("Kopalnia jest rozbudowana do końca.", UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT, true))
@@ -2362,7 +2451,8 @@ func _render_mine_window() -> void:
 	var button := UI.button("Rozbuduj do poziomu %d" % int(next["level"]), _upgrade_mine.bind(_mine_open), true)
 	button.disabled = not enough
 	if not enough:
-		button.tooltip_text = "Brakuje materiałów. Sztabki przetopisz w piecu, drewno zetniesz siekierą."
+		button.tooltip_text = "Brakuje materiałów. Sztabki przetopisz w piecu, drewno zetniesz siekierą." if int(next["level"]) <= 3 \
+			else "Brakuje materiałów. Obudowę górniczą zrobisz przy stole warsztatowym (technologia „Głębokie górnictwo”), brąz i stal w odlewni."
 	_mine_box.add_child(button)
 
 
@@ -2685,6 +2775,8 @@ func _update_hint() -> void:
 		"tool_axe": "Kliknij drzewo, aby je ściąć siekierą.",
 		"tool_chainsaw": "Kliknij drzewo, aby je ściąć piłą spalinową (o 70% szybciej niż siekierą).",
 		"tool_pickaxe": "Kliknij kopalnię, aby wydobywać rudy, albo skałę, aby ją rozbić kilofem." if not _mines.is_empty() else "Kliknij skałę, aby ją rozbić kilofem.",
+		"tool_bronze_pickaxe": "Kliknij kopalnię albo skałę: kilof z brązu kopie o 25% szybciej niż żelazny.",
+		"tool_steel_pickaxe": "Kliknij kopalnię albo skałę: kilof stalowy kopie o 50% szybciej niż żelazny.",
 		"tool_shovel": "Kliknij wydmę, aby ją przekopać łopatą.",
 		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile else "Motyką orze się tylko żyzne gleby.",
 		"tool_shears": "Kliknij owcę, aby ją ostrzyc nożycami, albo inne zwierzę, aby je nakarmić." if _pasture else "Na tej działce nie da się trzymać zwierząt.",
@@ -2857,6 +2949,11 @@ func _build_windows() -> void:
 		_poll_logistics())
 	_generator_window.failed.connect(_show_error)
 	_generator_window.pick_up_requested.connect(_pick_up_placed)
+	_drill_window = DrillWindow.new()
+	_drill_window.position = Vector2(1280 - 420 - 12, 64)
+	_drill_window.inventory_changed.connect(_on_furnace_changed)
+	_drill_window.failed.connect(_show_error)
+	_drill_window.pick_up_requested.connect(_pick_up_placed)
 	_company_window = CompanyWindow.new()
 	_company_window.position = Vector2(1280 - 520 - 12, 64)
 	_company_window.inventory_changed.connect(_reload_inventory)
@@ -2882,6 +2979,7 @@ func _build_windows() -> void:
 	layer.add_child(_market_window)
 	layer.add_child(_mine_window)
 	layer.add_child(_generator_window)
+	layer.add_child(_drill_window)
 	_achievements_window = AchievementsWindow.new()
 	_achievements_window.failed.connect(_show_error)
 	layer.add_child(_achievements_window)

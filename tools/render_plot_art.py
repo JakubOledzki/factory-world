@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [logistics] [<sprite>...] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [logistics] [<sprite>...] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -1484,6 +1484,262 @@ def render_mine(layout: dict):
     layout["mine"] = render_sprite("mine", w, h, target, mine)
 
 
+# --- Mountain industry ------------------------------------------------------------------------------
+# Each stands on one tile: the drills next to a mine, the quarry in the mountains, the water wheel and
+# the hydro plant by water. A cable station stands over a belt band (drawn by the client) with the
+# cable's wheel on top, CABLE_TOP up, where the client hangs the rope.
+
+CABLE_TOP = 2.3
+
+
+def build_drill():
+    """A mining drill: a yellow steel mast on a skid driving a bit into the rock, a motor at its foot,
+    a short chute and a bin of ore beside it."""
+    yellow = ra.rusty_metal("drill_yellow", (0.7, 0.45, 0.03), rust=0.25)
+    dark = ra.rusty_metal("drill_dark", (0.06, 0.06, 0.07), rust=0.3)
+    steel = ra.plain("drill_bit", (0.55, 0.55, 0.57), 0.25, 1.0, grime=0.3)
+    ore = rock("drill_ore", (0.1, 0.08, 0.07))
+    ra.box("drill_skid", (1.4, 1.1, 0.12), (0, 0, 0.06), dark, bevel=0.02)
+    for x in (-0.25, 0.25):
+        ra.box("drill_mast", (0.09, 0.09, 1.9), (x, 0.15, 1.05), yellow)
+    for z in (0.6, 1.2, 1.8):
+        ra.box("drill_rung", (0.6, 0.06, 0.06), (0, 0.15, z), yellow)
+    ra.box("drill_head", (0.62, 0.4, 0.3), (0, 0.15, 1.45), yellow, bevel=0.03)
+    ra.cylinder("drill_rod", 0.05, 1.5, (0, 0.15, 0.6), steel, verts=12)
+    ra.cylinder("drill_tip", 0.12, 0.25, (0, 0.15, 0.14), steel, radius2=0.02, verts=12)
+    ra.cylinder("drill_motor", 0.2, 0.42, (-0.45, -0.25, 0.35), dark, rotation=(0, math.radians(90), 0), verts=20)
+    ra.box("drill_lamp", (0.06, 0.03, 0.06), (0.2, -0.06, 1.45), ra.emission("drill_lamp", (1.0, 0.55, 0.1), 4.0))
+    ra.box("drill_chute", (0.2, 0.55, 0.06), (0.4, -0.25, 0.42), dark, rotation=(math.radians(-25), 0, 0))
+    ra.box("drill_bin", (0.5, 0.45, 0.32), (0.4, -0.5, 0.28), dark, bevel=0.02)
+    for k in range(6):
+        a = k / 6 * math.tau
+        o = ra.sphere("drill_ore", 0.09, (0.4 + math.cos(a) * 0.12, -0.5 + math.sin(a) * 0.1, 0.46), ore, segments=8)
+        ra.displace(o, 0.03, 0.2, 1)
+
+
+def build_heavy_drill():
+    """The heavy drill: a taller red rig with a pneumatic hammer, braced legs, a compressor tank,
+    a quartz-lit control box and a bigger ore bin."""
+    red = ra.rusty_metal("hdrill_red", (0.45, 0.06, 0.03), rust=0.25)
+    dark = ra.rusty_metal("hdrill_dark", (0.06, 0.06, 0.07), rust=0.3)
+    steel = ra.plain("hdrill_bit", (0.55, 0.55, 0.57), 0.25, 1.0, grime=0.3)
+    ore = rock("hdrill_ore", (0.1, 0.08, 0.07))
+    ra.box("hdrill_base", (1.5, 1.2, 0.16), (0, 0, 0.08), dark, bevel=0.02)
+    for x in (-0.32, 0.32):
+        ra.box("hdrill_mast", (0.11, 0.11, 2.5), (x, 0.2, 1.4), red)
+        ra.box("hdrill_brace", (0.07, 0.07, 1.2), (x * 1.7, 0.2, 0.62), red, rotation=(0, x * math.radians(-60), 0))
+    for z in (0.7, 1.4, 2.1, 2.62):
+        ra.box("hdrill_rung", (0.75, 0.07, 0.07), (0, 0.2, z), red)
+    ra.box("hdrill_hammer", (0.5, 0.42, 0.55), (0, 0.2, 1.75), dark, bevel=0.04)
+    ra.cylinder("hdrill_rod", 0.07, 1.6, (0, 0.2, 0.75), steel, verts=12)
+    ra.cylinder("hdrill_tip", 0.15, 0.3, (0, 0.2, 0.17), steel, radius2=0.02, verts=12)
+    ra.cylinder("hdrill_tank", 0.22, 0.7, (-0.45, -0.3, 0.42), red, rotation=(0, math.radians(90), 0), verts=20)
+    ra.box("hdrill_box", (0.3, 0.2, 0.4), (-0.55, 0.45, 0.4), dark, bevel=0.02)
+    ra.box("hdrill_light", (0.08, 0.03, 0.08), (-0.55, 0.34, 0.5), ra.emission("hdrill_light", (0.4, 0.8, 1.0), 4.0))
+    ra.box("hdrill_bin", (0.6, 0.55, 0.38), (0.45, -0.45, 0.33), dark, bevel=0.02)
+    for k in range(8):
+        a = k / 8 * math.tau
+        o = ra.sphere("hdrill_ore", 0.1, (0.45 + math.cos(a) * 0.15, -0.45 + math.sin(a) * 0.13, 0.55), ore, segments=8)
+        ra.displace(o, 0.03, 0.2, 1)
+
+
+def build_quarry():
+    """A quarry: a stepped face of rock with fresh cuts, a wooden hand crane lifting a block, and cut
+    stone stacked in front."""
+    stone = rock("quarry_rock", (0.15, 0.145, 0.14))
+    cut = ra.plain("quarry_cut", (0.32, 0.3, 0.28), 0.85, variation=0.2, bump=0.3)
+    timber = ra.wood("quarry_timber", (0.15, 0.09, 0.05))
+    rope = ra.plain("quarry_rope", (0.45, 0.35, 0.2), 0.9)
+    face = ra.sphere("quarry_face", 1.0, (0, 0.45, 0.1), stone, scale=(0.95, 0.55, 0.75), segments=24)
+    ra.displace(face, 0.12, 0.35, 2)
+    for i, (w, z, y) in enumerate(((1.3, 0.12, -0.05), (0.9, 0.36, 0.1), (0.55, 0.6, 0.22))):
+        ra.box("quarry_step", (w, 0.5, 0.24), (0, y, z), cut, bevel=0.02)
+    for x, y in ((-0.55, -0.55), (-0.25, -0.6), (-0.4, -0.55)):
+        ra.box("quarry_block", (0.26, 0.22, 0.2), (x, y, 0.1 + (0.2 if x == -0.4 else 0)), cut, bevel=0.015)
+    # The crane: a mast with a jib swung over the face.
+    ra.box("quarry_mast", (0.1, 0.1, 1.6), (0.6, -0.4, 0.8), timber)
+    ra.box("quarry_jib", (0.9, 0.08, 0.08), (0.3, -0.25, 1.45), timber, rotation=(0, math.radians(-15), math.radians(25)))
+    ra.box("quarry_strut", (0.06, 0.06, 0.8), (0.48, -0.36, 1.05), timber, rotation=(0, math.radians(-35), 0))
+    ra.cylinder("quarry_line", 0.012, 0.7, (-0.05, -0.1, 1.15), rope, verts=6)
+    ra.box("quarry_load", (0.26, 0.22, 0.2), (-0.05, -0.1, 0.75), cut, bevel=0.015)
+    ra.cylinder("quarry_winch", 0.08, 0.3, (0.6, -0.55, 0.45), timber, rotation=(0, math.radians(90), 0), verts=12)
+
+
+def build_crusher():
+    """A jaw crusher: a green steel hopper on four legs over a heavy body, a flywheel and belt to its
+    motor, and a heap of gravel under the chute."""
+    green = ra.rusty_metal("crush_green", (0.07, 0.2, 0.08), rust=0.3)
+    dark = ra.rusty_metal("crush_dark", (0.06, 0.06, 0.07), rust=0.3)
+    gravel = rock("crush_gravel", (0.22, 0.21, 0.2))
+    for x in (-0.38, 0.38):
+        for y in (-0.15, 0.4):
+            ra.box("crush_leg", (0.08, 0.08, 0.9), (x, y, 0.45), dark)
+    ra.box("crush_body", (0.85, 0.65, 0.5), (0, 0.12, 0.95), green, bevel=0.03)
+    v = [(-0.55, -0.25, 1.2), (0.55, -0.25, 1.2), (0.55, 0.5, 1.2), (-0.55, 0.5, 1.2),
+         (-0.35, -0.1, 1.2), (0.35, -0.1, 1.2), (0.35, 0.35, 1.2), (-0.35, 0.35, 1.2)]
+    top = [(x * 1.25, (y - 0.12) * 1.3 + 0.12, 1.6) for x, y, _ in v[:4]]
+    ra.mesh_from("crush_hopper", top + v[:4], [(0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)], green)
+    for k in range(9):
+        ra.sphere("crush_stone", 0.08, (random.uniform(-0.4, 0.4), random.uniform(-0.1, 0.4), 1.25), gravel, segments=8)
+    ra.box("crush_chute", (0.35, 0.5, 0.05), (0, -0.35, 0.6), dark, rotation=(math.radians(35), 0, 0))
+    heap = ra.sphere("crush_heap", 0.38, (0, -0.65, 0.0), gravel, scale=(1.1, 0.9, 0.55), segments=16)
+    ra.displace(heap, 0.04, 0.12, 2)
+    ra.cylinder("crush_flywheel", 0.32, 0.06, (0.5, 0.1, 0.95), dark, rotation=(0, math.radians(90), 0), verts=28)
+    ra.cylinder("crush_motor", 0.15, 0.32, (0.55, 0.5, 0.3), ra.rusty_metal("crush_motor", (0.05, 0.12, 0.35), rust=0.15),
+                rotation=(0, math.radians(90), 0), verts=18)
+
+
+def build_stonemason():
+    """A stonemason's yard: a heavy timber bench with a block being dressed, a mallet and chisel, a
+    slab of white marble leaning on it and dressed blocks beside."""
+    timber = ra.wood("mason_timber", (0.2, 0.12, 0.06))
+    stone = ra.plain("mason_stone", (0.34, 0.32, 0.3), 0.85, variation=0.2, bump=0.3)
+    marble = ra.plain("mason_marble", (0.75, 0.74, 0.72), 0.3, variation=0.25, scale=3.0, grime=0.2, bump=0.05)
+    steel = ra.rusty_metal("mason_steel", (0.35, 0.35, 0.37), rust=0.2)
+    for x in (-0.5, 0.5):
+        for y in (-0.22, 0.22):
+            ra.box("mason_leg", (0.1, 0.1, 0.6), (x, y, 0.3), timber)
+    ra.box("mason_top", (1.3, 0.6, 0.1), (0, 0, 0.65), timber, bevel=0.01)
+    ra.box("mason_block", (0.4, 0.35, 0.3), (-0.15, 0, 0.85), stone, bevel=0.02)
+    ra.cylinder("mason_mallet_handle", 0.02, 0.3, (0.3, -0.1, 0.73), timber, rotation=(0, math.radians(90), math.radians(30)), verts=8)
+    ra.cylinder("mason_mallet", 0.06, 0.14, (0.42, -0.03, 0.75), timber, verts=12)
+    ra.box("mason_chisel", (0.2, 0.02, 0.02), (0.15, 0.15, 0.71), steel, rotation=(0, 0, math.radians(-20)))
+    ra.box("mason_slab", (0.7, 0.06, 0.55), (0.1, 0.42, 0.3), marble, rotation=(math.radians(-12), 0, 0))
+    for x, z in ((-0.55, 0.12), (-0.25, 0.12), (-0.4, 0.34)):
+        ra.box("mason_dressed", (0.28, 0.24, 0.22), (x, -0.55, z), stone, bevel=0.01)
+
+
+def build_foundry():
+    """A foundry: a round brick cupola with a glowing tap hole, a tall iron chimney, a crucible on a
+    stand and ingot moulds cooling in front."""
+    brick = ra.plain("found_brick", (0.3, 0.11, 0.06), 0.9, variation=0.35, scale=10, bump=0.5)
+    iron = ra.rusty_metal("found_iron", (0.1, 0.1, 0.11), rust=0.35)
+    glow = ra.emission("found_glow", (1.0, 0.4, 0.06), 6.0)
+    bronze = ra.plain("found_bronze", (0.55, 0.32, 0.1), 0.35, 1.0, variation=0.15)
+    ra.cylinder("found_cupola", 0.5, 1.2, (0, 0.15, 0.6), brick, verts=24)
+    for z in (0.3, 0.9):
+        ra.cylinder("found_band", 0.515, 0.06, (0, 0.15, z), iron, verts=24)
+    ra.cylinder("found_cone", 0.5, 0.3, (0, 0.15, 1.35), brick, radius2=0.2, verts=24)
+    ra.cylinder("found_chimney", 0.16, 1.1, (0, 0.15, 2.0), iron, verts=14)
+    ra.cylinder("found_cap", 0.22, 0.06, (0, 0.15, 2.55), iron, verts=14)
+    ra.box("found_tap", (0.18, 0.06, 0.14), (0, -0.36, 0.35), glow)
+    ra.box("found_spout", (0.12, 0.3, 0.06), (0, -0.5, 0.28), iron, rotation=(math.radians(-15), 0, 0))
+    ra.cylinder("found_crucible", 0.13, 0.18, (0.0, -0.75, 0.12), iron, verts=16)
+    ra.cylinder("found_melt", 0.11, 0.01, (0.0, -0.75, 0.21), glow, verts=16)
+    for k, x in enumerate((0.45, 0.62)):
+        ra.box("found_mould", (0.14, 0.35, 0.06), (x, -0.45, 0.03), iron)
+        ra.box("found_ingot", (0.1, 0.3, 0.04), (x, -0.45, 0.07), bronze if k == 0 else glow)
+    ra.box("found_coal", (0.35, 0.3, 0.12), (-0.55, -0.35, 0.06), ra.plain("found_coal", (0.02, 0.02, 0.02), 0.7))
+
+
+def water_mat(name):
+    return ra.plain(name, (0.04, 0.14, 0.22), 0.05, variation=0.15, scale=4.0, grime=0.0, bump=0.3)
+
+
+def build_water_wheel():
+    """A water wheel: a wooden flume pouring onto a big paddled wheel turning a small dynamo shed,
+    water running out below and a copper terminal for the pole's wire."""
+    timber = ra.wood("wheel_timber", (0.17, 0.1, 0.05))
+    dark = ra.wood("wheel_dark", (0.09, 0.055, 0.03))
+    iron = ra.rusty_metal("wheel_iron", (0.1, 0.1, 0.11), rust=0.35)
+    water = water_mat("wheel_water")
+    copper = ra.plain("wheel_copper", (0.65, 0.28, 0.12), 0.35, 0.9, variation=0.15)
+    ra.box("wheel_pool", (1.6, 1.2, 0.04), (0, 0, 0.02), water)
+    # The wheel turns across the view, its axle running north into the shed's side.
+    for e in (-1, 1):
+        ra.torus("wheel_rim", 0.62, 0.04, (-0.2, 0.05 + e * 0.13, 0.75), dark, rotation=(math.radians(90), 0, 0))
+    for k in range(12):
+        a = k / 12 * math.tau
+        ra.box("wheel_paddle", (0.22, 0.3, 0.03), (-0.2 + math.cos(a) * 0.6, 0.05, 0.75 + math.sin(a) * 0.6), timber,
+               rotation=(0, -a + math.pi / 2, 0))
+    for k in range(4):
+        ra.box("wheel_spoke", (1.2, 0.04, 0.04), (-0.2, 0.05, 0.75), dark, rotation=(0, k * math.pi / 4, 0))
+    ra.cylinder("wheel_axle", 0.06, 0.7, (-0.2, 0.3, 0.75), iron, rotation=(math.radians(90), 0, 0), verts=12)
+    # The flume on trestles, pouring onto the top of the wheel from behind.
+    ra.box("wheel_flume", (0.34, 0.9, 0.12), (-0.2, 0.75, 1.48), timber)
+    ra.box("wheel_flow", (0.28, 0.88, 0.02), (-0.2, 0.75, 1.53), water)
+    ra.box("wheel_fall", (0.24, 0.05, 0.25), (-0.2, 0.28, 1.4), water, rotation=(math.radians(20), 0, 0))
+    for y in (0.6, 1.05):
+        ra.box("wheel_trestle", (0.06, 0.06, 1.45), (-0.2, y, 0.72), dark)
+    ra.box("wheel_shed", (0.45, 0.6, 0.6), (0.6, 0.25, 0.3), timber, bevel=0.01)
+    ra.box("wheel_roof", (0.55, 0.7, 0.05), (0.6, 0.25, 0.63), iron)
+    ra.cylinder("wheel_terminal", 0.04, 0.22, (0.7, 0.05, 0.75), copper, verts=10)
+    ra.sphere("wheel_insulator", 0.05, (0.7, 0.05, 0.88), ra.plain("wheel_porcelain", (0.75, 0.72, 0.65), 0.3), segments=10)
+
+
+def build_hydro_plant():
+    """A small hydro power plant: a concrete turbine house with a big steel penstock coming down to it,
+    white water foaming out of the tailrace, a transformer and its insulators on the roof."""
+    concrete = ra.plain("hydro_concrete", (0.36, 0.35, 0.33), 0.9, variation=0.15)
+    steel = ra.rusty_metal("hydro_steel", (0.2, 0.22, 0.24), rust=0.25)
+    green = ra.rusty_metal("hydro_green", (0.06, 0.17, 0.1), rust=0.2)
+    water = water_mat("hydro_water")
+    foam = ra.plain("hydro_foam", (0.75, 0.8, 0.85), 0.4, variation=0.2)
+    porcelain = ra.plain("hydro_porcelain", (0.75, 0.72, 0.65), 0.3)
+    ra.box("hydro_house", (1.2, 0.85, 0.85), (0, 0.15, 0.43), concrete, bevel=0.02)
+    ra.box("hydro_roof", (1.3, 0.95, 0.06), (0, 0.15, 0.88), steel)
+    for x in (-0.3, 0.3):
+        ra.box("hydro_window", (0.22, 0.02, 0.3), (x, -0.28, 0.5), ra.emission("hydro_window", (1.0, 0.8, 0.5), 2.0))
+    ra.cylinder("hydro_penstock", 0.17, 1.6, (-0.3, 0.75, 1.1), steel, rotation=(math.radians(-50), 0, 0), verts=20)
+    for t in (0.3, 0.75):
+        ra.cylinder("hydro_ring", 0.185, 0.05, (-0.3, 0.5 + t * 0.6, 0.55 + t * 0.95), steel, rotation=(math.radians(-50), 0, 0), verts=20)
+    ra.box("hydro_race", (0.5, 0.7, 0.04), (0.35, -0.55, 0.02), water)
+    for k in range(6):
+        ra.sphere("hydro_foam", random.uniform(0.06, 0.1), (0.35 + random.uniform(-0.15, 0.15), -0.32 - k * 0.08, 0.05), foam,
+                  scale=(1.2, 1, 0.5), segments=8)
+    ra.box("hydro_transformer", (0.35, 0.3, 0.35), (0.4, 0.3, 1.08), green, bevel=0.02)
+    for x in (0.3, 0.5):
+        ra.cylinder("hydro_insulator", 0.04, 0.22, (x, 0.3, 1.35), porcelain, verts=10)
+
+
+def build_cable_station():
+    """A cable station: a steel lattice tower astride the belt with a big bull wheel on top, its rope
+    running off towards the next station, and a little gondola hanging at the platform."""
+    steel = ra.rusty_metal("cable_steel", (0.2, 0.2, 0.22), rust=0.3)
+    red = ra.rusty_metal("cable_red", (0.45, 0.05, 0.03), rust=0.2)
+    dark = ra.rusty_metal("cable_dark", (0.06, 0.06, 0.07), rust=0.3)
+    for x in (-0.55, 0.55):
+        for y in (-0.55, 0.55):
+            ra.box("cable_leg", (0.07, 0.07, CABLE_TOP - 0.1), (x * 0.85, y * 0.85, (CABLE_TOP - 0.1) / 2), steel,
+                   rotation=(y * math.radians(-6), x * math.radians(6), 0))
+    for z in (0.9, 1.6):
+        for y in (-0.47, 0.47):
+            ra.box("cable_brace", (1.0, 0.05, 0.05), (0, y, z), steel)
+        for x in (-0.47, 0.47):
+            ra.box("cable_brace", (0.05, 1.0, 0.05), (x, 0, z), steel)
+    ra.box("cable_deck", (1.0, 1.0, 0.06), (0, 0, CABLE_TOP - 0.15), dark)
+    ra.torus("cable_wheel", 0.42, 0.04, (0, 0, CABLE_TOP), red)
+    for k in range(3):
+        ra.box("cable_spoke", (0.84, 0.04, 0.03), (0, 0, CABLE_TOP), red, rotation=(0, 0, k * math.pi / 3))
+    ra.cylinder("cable_hub", 0.08, 0.18, (0, 0, CABLE_TOP), dark, verts=12)
+    ra.box("cable_hanger", (0.03, 0.03, 0.35), (0.42, 0, CABLE_TOP - 0.2), dark)
+    ra.box("cable_gondola", (0.32, 0.26, 0.2), (0.42, 0, CABLE_TOP - 0.45), red, bevel=0.02)
+
+
+MOUNTAIN = {
+    # name: (canvas width, height, camera target height, builder); each stands on one tile.
+    "drill": (112, 152, 0.9, build_drill),
+    "heavy_drill": (112, 176, 1.15, build_heavy_drill),
+    "quarry": (112, 120, 0.6, build_quarry),
+    "crusher": (112, 136, 0.75, build_crusher),
+    "stonemason": (112, 112, 0.5, build_stonemason),
+    "foundry": (112, 168, 1.1, build_foundry),
+}
+
+
+def render_mountain(layout: dict, only=()):
+    for name, (w, h, tz, build) in MOUNTAIN.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build))
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
+    if not only or "cable_station" in only:
+        random.seed(zlib.crc32(b"cable_station"))
+        layout["cable_station"] = render_sprite("cable_station", 80, 160, Vector((0, 0, 1.15)), crafted(build_cable_station))
+        ra.icon_from(Image.open(OUT / "cable_station.png").convert("RGBA"), ICONS / "item_logistics_cable_station.png")
+
+
 # --- Power ----------------------------------------------------------------------------------------
 
 def build_generator():
@@ -1535,11 +1791,15 @@ POWER = {
     # name: (canvas width, height, camera target height, builder, where the wires meet it); each stands on one tile.
     "generator": (128, 128, 0.7, build_generator, Vector((0.85, 0.2, 0.9))),
     "pole": (64, 128, POLE_TOP / 2, build_pole, Vector((0, 0, POLE_TOP - 0.05))),
+    "water_wheel": (128, 144, 0.75, build_water_wheel, Vector((0.7, 0.05, 0.9))),
+    "hydro_plant": (128, 160, 0.85, build_hydro_plant, Vector((0.4, 0.3, 1.45))),
 }
 
 
-def render_power(layout: dict):
+def render_power(layout: dict, only=()):
     for name, (w, h, tz, build, wire) in POWER.items():
+        if only and name not in only:
+            continue
         random.seed(zlib.crc32(name.encode()))
         target = Vector((0, 0, tz))
         layout[name] = render_sprite(name, w, h, target, crafted(build))
@@ -1588,6 +1848,78 @@ def icon_models():
         head = ra.rusty_metal("head", (0.33, 0.33, 0.35), rust=0.25)
         ra.cylinder("pick", 0.025, 0.48, (0.13, 0.2, 0.06), head, radius2=0.008,
                     rotation=(0, math.radians(90), math.radians(30)))
+
+    def pick(color, metallic_rust=0.2):
+        def build():
+            ra.cylinder("handle", 0.022, 0.5, (0, -0.02, 0.04), ra.wood("handle", (0.25, 0.15, 0.07)),
+                        rotation=(0, math.radians(90), math.radians(-60)))
+            head = ra.rusty_metal("head", color, rust=metallic_rust)
+            ra.cylinder("pick", 0.028, 0.5, (0.13, 0.2, 0.06), head, radius2=0.008,
+                        rotation=(0, math.radians(90), math.radians(30)))
+        return build
+
+    def crystals(color, roughness=0.15, count=6):
+        def build():
+            m = ra.plain("crystal", color, roughness, 0.0, variation=0.2, grime=0.1)
+            base = rock("crystal_rock", (0.12, 0.11, 0.1))
+            b = ra.sphere("crystal_rock", 0.15, (0, 0, 0.0), base, scale=(1.3, 1, 0.5), segments=12)
+            ra.displace(b, 0.03, 0.15, 1)
+            for i in range(count):
+                a = i / count * math.tau
+                tilt = (math.cos(a) * 0.4, math.sin(a) * 0.4, 0)
+                ra.cylinder("crystal", 0.035, 0.22, (math.cos(a) * 0.06, math.sin(a) * 0.05, 0.12), m, radius2=0.005,
+                            rotation=(tilt[1], -tilt[0], 0), verts=6)
+            ra.cylinder("crystal", 0.045, 0.28, (0, 0, 0.16), m, radius2=0.006, verts=6)
+        return build
+
+    def gravel(color, specks):
+        def build():
+            mat = rock("gravel", color)
+            m = ra.plain("speck", specks, 0.35, 0.6)
+            for i in range(22):
+                a = random.random() * math.tau
+                r = random.uniform(0, 0.16)
+                ra.sphere("gravel", random.uniform(0.035, 0.055), (math.cos(a) * r, math.sin(a) * r * 0.8, 0.03 + (0.16 - r) * 0.5),
+                          mat if i % 3 else m, segments=6)
+        return build
+
+    def blocks(color, size=(0.14, 0.12, 0.1), roughness=0.85):
+        def build():
+            m = ra.plain("block", color, roughness, variation=0.2, bump=0.3)
+            for x, y, z in ((-0.08, 0, 0.05), (0.08, 0, 0.05), (0, 0, 0.15)):
+                ra.box("block", size, (x, y, z), m, bevel=0.008)
+        return build
+
+    def slabs():
+        m = ra.plain("marble", (0.78, 0.77, 0.75), 0.25, variation=0.3, scale=3.0, grime=0.15)
+        for k in range(3):
+            ra.box("slab", (0.34, 0.22, 0.03), (0, 0, 0.02 + k * 0.035), m, bevel=0.004, rotation=(0, 0, k * 0.08))
+
+    def bricks():
+        m = ra.plain("brick", (0.4, 0.12, 0.06), 0.9, variation=0.35, scale=10, bump=0.4)
+        for row in range(3):
+            for k in range(2):
+                ra.box("brick", (0.22, 0.1, 0.07), (0, -0.06 + k * 0.12, 0.04 + row * 0.075), m, bevel=0.005,
+                       rotation=(0, 0, math.pi / 2 if row % 2 else 0))
+
+    def dynamite():
+        red = ra.plain("dyn_red", (0.5, 0.04, 0.03), 0.6)
+        fuse = ra.plain("dyn_fuse", (0.6, 0.55, 0.45), 0.9)
+        tape = ra.plain("dyn_tape", (0.05, 0.05, 0.05), 0.5)
+        for i, (x, z) in enumerate(((-0.06, 0.05), (0.06, 0.05), (0.0, 0.15))):
+            ra.cylinder("dyn", 0.055, 0.34, (x, 0, z), red, rotation=(math.radians(90), 0, math.radians(20)), verts=16)
+        ra.cylinder("dyn_tape", 0.13, 0.04, (0, 0, 0.09), tape, rotation=(math.radians(90), 0, math.radians(20)), verts=16)
+        ra.cylinder("dyn_fuse", 0.008, 0.18, (-0.08, 0.2, 0.2), fuse, rotation=(math.radians(50), 0, math.radians(20)), verts=6)
+        ra.sphere("dyn_spark", 0.025, (-0.11, 0.27, 0.27), ra.emission("spark", (1.0, 0.7, 0.2), 8.0), segments=8)
+
+    def mine_support():
+        timber = ra.wood("support", (0.2, 0.12, 0.06))
+        steel = ra.rusty_metal("support_steel", (0.2, 0.2, 0.22), rust=0.3)
+        for x in (-0.12, 0.12):
+            ra.box("post", (0.05, 0.05, 0.3), (x, 0, 0.15), timber)
+        ra.box("cap", (0.34, 0.06, 0.06), (0, 0, 0.32), timber)
+        for x in (-0.12, 0.12):
+            ra.box("bracket", (0.07, 0.07, 0.03), (x, 0, 0.29), steel)
 
     def wood():
         bark_m = bark()
@@ -1849,6 +2181,22 @@ def icon_models():
         "item_silver_ingot": ingots((0.5, 0.52, 0.56), 0.3),
         "item_gold_ingot": ingots((0.6, 0.36, 0.06), 0.3),
         "item_nails": nails,
+        "item_tool_bronze_pickaxe": pick((0.55, 0.32, 0.1), 0.15),
+        "item_tool_steel_pickaxe": pick((0.5, 0.52, 0.56), 0.05),
+        "item_sulfur": crystals((0.85, 0.72, 0.08), 0.4),
+        "item_salt": crystals((0.85, 0.78, 0.78), 0.35),
+        "item_quartz": crystals((0.75, 0.78, 0.82), 0.05),
+        "item_marble": blocks((0.78, 0.77, 0.75), (0.14, 0.12, 0.1), 0.3),
+        "item_crushed_iron_ore": gravel((0.18, 0.09, 0.05), (0.4, 0.4, 0.42)),
+        "item_crushed_copper_ore": gravel((0.14, 0.13, 0.12), (0.75, 0.35, 0.12)),
+        "item_crushed_tin_ore": gravel((0.08, 0.06, 0.05), (0.62, 0.62, 0.58)),
+        "item_bronze_ingot": ingots((0.5, 0.28, 0.08), 0.35),
+        "item_steel_ingot": ingots((0.32, 0.34, 0.37), 0.25),
+        "item_stone_blocks": blocks((0.34, 0.32, 0.3)),
+        "item_marble_slabs": slabs,
+        "item_bricks": bricks,
+        "item_dynamite": dynamite,
+        "item_mine_support": mine_support,
         "item_logistics_belt": lambda: belt_frame(0.26, True, 1.6),
         "item_logistics_inserter": lambda: inserter(0.4, arm=True),
         "item_logistics_fast_belt": lambda: belt_frame(0.26, True, 1.6, tier="fast"),
@@ -1878,7 +2226,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "office", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "office", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -1910,8 +2258,12 @@ if __name__ == "__main__":
         render_forestry_industry(layout, [a for a in args if a in FORESTRY_INDUSTRY])
     if "office" in args:
         render_office(layout)
-    if "power" in args:
-        render_power(layout)
+    if "power" in args or any(a in POWER for a in args):
+        # Names of power sprites render just those.
+        render_power(layout, [a for a in args if a in POWER])
+    if "mountain" in args or any(a in MOUNTAIN or a == "cable_station" for a in args):
+        # Names of mountain industry sprites render just those.
+        render_mountain(layout, [a for a in args if a in MOUNTAIN or a == "cable_station"])
     if "logistics" in args or any(a in LOGISTICS for a in args):
         # Names of logistics sprites render just those.
         render_logistics(layout, [a for a in args if a in LOGISTICS])

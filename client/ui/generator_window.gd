@@ -2,7 +2,8 @@ class_name GeneratorWindow
 extends GameWindow
 ## A steam generator on a plot: wood or coal goes on its fire and it gives power to the machines on
 ## the poles it stands next to, as much as they draw, up to its full power. It burns only while a
-## pole connects it to machines, faster the more they draw.
+## pole connects it to machines, faster the more they draw. A water wheel or a small water power
+## plant opens the same window without the fire: water turns it all the time and it burns nothing.
 
 ## Items went from the inventory into the generator or back: [{id, name, quantity}] taken out.
 signal inventory_changed(taken: Array, xp: Variant)
@@ -11,6 +12,7 @@ signal pick_up_requested(id: String)
 
 ## How often (ms) the window asks again while it is open: inserters may put fuel in.
 const POLL := 2000.0
+const HYDRO_NAMES := {"power_water_wheel": "Koło wodne", "power_hydro_plant": "Mała elektrownia wodna"}
 
 var generator := ""
 var plot := Vector2i(-1, -1)
@@ -27,7 +29,9 @@ var _output_bar: ProgressBar
 var _network: Label
 var _runs_out: Label
 var _load := VBoxContainer.new()
+var _load_heading: Label
 var _help: Label
+var _pick_up: Button
 
 
 func _init() -> void:
@@ -44,14 +48,15 @@ func _init() -> void:
 	_network = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
 	content.add_child(_network)
 	content.add_child(HSeparator.new())
-	var heading := UI.label("Dołóż do ognia", UI.GOLD)
-	heading.add_theme_font_override("font", UI.bold())
-	content.add_child(heading)
+	_load_heading = UI.label("Dołóż do ognia", UI.GOLD)
+	_load_heading.add_theme_font_override("font", UI.bold())
+	content.add_child(_load_heading)
 	_load.add_theme_constant_override("separation", 4)
 	content.add_child(_load)
 	_help = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
 	content.add_child(_help)
-	content.add_child(UI.button("Schowaj generator do ekwipunku", func() -> void: pick_up_requested.emit(generator)))
+	_pick_up = UI.button("Schowaj generator do ekwipunku", func() -> void: pick_up_requested.emit(generator))
+	content.add_child(_pick_up)
 
 
 func open_at(at: Vector2i, id: String) -> void:
@@ -99,6 +104,13 @@ static func kw(value: float) -> String:
 func _render() -> void:
 	if _state.is_empty():
 		return
+	var hydro: bool = _state.get("hydro", false)
+	set_title(HYDRO_NAMES.get(_state.get("kind", ""), "Generator parowy"))
+	_pick_up.text = "Schowaj do ekwipunku" if hydro else "Schowaj generator do ekwipunku"
+	_fuel_row.visible = not hydro
+	_load_heading.visible = not hydro
+	_load.visible = not hydro
+	_runs_out.visible = not hydro
 	for child in _fuel_row.get_children():
 		child.free()
 	var fuel: Variant = _state.get("fuel")
@@ -122,28 +134,28 @@ func _render() -> void:
 
 	var output := float(_state["outputKw"])
 	var capacity := float(_state["capacityKw"])
-	_output.text = "Daje %s z %s" % [kw(output), kw(capacity)]
+	_output.text = ("Woda daje %s z %s" if hydro else "Daje %s z %s") % [kw(output), kw(capacity)]
 	_output.add_theme_color_override("font_color", UI.GOLD if output > 0 else UI.MUTED)
 	_output_bar.max_value = capacity
 	_output_bar.value = output
 
 	var network: Variant = _state.get("network")
 	if network == null:
-		_network.text = "Żaden słup go nie sięga. Postaw słup energetyczny najwyżej 2 pola od generatora, a słupy przy maszynach połączą się przewodami."
+		_network.text = "Żaden słup go nie sięga. Postaw słup energetyczny najwyżej 2 pola od niego, a słupy przy maszynach połączą się przewodami."
 		_network.add_theme_color_override("font_color", UI.ERROR)
 	elif int(network["machines"]) == 0:
-		_network.text = "Słupy nie sięgają jeszcze żadnej maszyny, więc generator nie pali opału."
+		_network.text = "Słupy nie sięgają jeszcze żadnej maszyny." if hydro else "Słupy nie sięgają jeszcze żadnej maszyny, więc generator nie pali opału."
 		_network.add_theme_color_override("font_color", UI.MUTED)
 	else:
 		var speed := float(network["speed"])
 		var count := int(network["machines"])
-		var line := "Sieć: %d %s %s %s, generatory dają %s." % [count, _machines(count), ("pobierają" if _machines(count) == "maszyny" else "pobiera"),
+		var line := "Sieć: %d %s %s %s, źródła prądu dają %s." % [count, _machines(count), ("pobierają" if _machines(count) == "maszyny" else "pobiera"),
 			kw(float(network["demandKw"])), kw(minf(float(network["supplyKw"]), float(network["demandKw"])))]
 		if speed >= 0.999:
 			line += " Maszyny mają pełną moc."
 			_network.add_theme_color_override("font_color", UI.TEXT)
 		elif speed > 0.0:
-			line += " Za mało prądu: maszyny pracują na %d%%. Dołóż drugi generator." % roundi(speed * 100.0)
+			line += " Za mało prądu: maszyny pracują na %d%%. Dołóż drugi generator albo koło wodne." % roundi(speed * 100.0)
 			_network.add_theme_color_override("font_color", UI.ERROR)
 		else:
 			line += " Brak prądu: maszyny stoją."
@@ -179,6 +191,12 @@ func _render() -> void:
 		_load.add_child(UI.label("Nie masz drewna ani węgla. Drewno daje ścinanie drzew, węgiel skały i kopalnie w górach.",
 			UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
+	if hydro:
+		var bonus := float(_state.get("hydroBonus", 1.0))
+		_help.text = "Woda kręci nim bez przerwy i nie trzeba dokładać opału. Daje prąd od razu, przed generatorami parowymi: one dopalają tylko to, czego brakuje.%s" % [
+			" Górski potok płynie szybciej: +%d%% mocy." % roundi((bonus - 1.0) * 100.0) if bonus > 1.0 else ""]
+		_fit.call_deferred()
+		return
 	var lines: Array[String] = []
 	for option: Dictionary in _state.get("fuels", []):
 		lines.append("%s: %s, przy pełnej mocy na %d s." % [option["name"], _energy(float(option["kj"])), roundi(float(option["kj"]) / capacity)])
@@ -189,6 +207,8 @@ func _render() -> void:
 
 
 func _update_runs_out() -> void:
+	if _state.get("hydro", false):
+		return
 	var at: Variant = _state.get("runsOutAt")
 	if at == null:
 		_runs_out.text = "Generator wygasł: dołóż drewna albo węgla." if float(_state.get("total", 0.0)) <= 0.0 else ""

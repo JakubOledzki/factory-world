@@ -650,8 +650,13 @@ func _show_survey() -> void:
 		for row: Array in [["Ropa naftowa", survey["oil"]], ["Gaz ziemny", survey["gas"]]]:
 			var size := int(row[1])
 			_plot_box.add_child(UI.label("%s: %s" % [row[0], DEPOSITS[size]], UI.GOOD if size > 0 else UI.TEXT))
+		# Mountain rock may hold a mineral, which comes up from the mines with the ore.
+		if int(_plot.get("biome", -1)) == 6:
+			var mineral := int(survey.get("mineralSize", 0))
+			var text := "Minerał w skale: %s (%s)" % [survey.get("mineralName", ""), DEPOSITS[mineral]] if mineral > 0 else "Minerał w skale: brak"
+			_plot_box.add_child(UI.label(text, UI.GOOD if mineral > 0 else UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true))
 		return
-	_plot_box.add_child(UI.label("Ropa i gaz: nie wiadomo", UI.TEXT))
+	_plot_box.add_child(UI.label("Ropa, gaz i minerały: nie wiadomo" if int(_plot.get("biome", -1)) == 6 else "Ropa i gaz: nie wiadomo", UI.TEXT))
 	var price := int(_plot.get("surveyPriceCents", 0))
 	_plot_box.add_child(_small("Złoża zobaczysz dopiero po badaniu geologicznym.", UI.MUTED))
 	var order := UI.button("Zleć badanie (%s)" % UI.money(price), _on_survey)
@@ -668,8 +673,8 @@ func _on_survey() -> void:
 	var result: Dictionary = reply["payload"]
 	_set_balance(int(result["balanceCents"]))
 	var survey: Dictionary = result["survey"]
-	var found := int(survey["oil"]) > 0 or int(survey["gas"]) > 0
-	_show_toast("Badanie zakończone: %s." % ("są złoża!" if found else "brak ropy i gazu"), UI.GOLD if found else UI.TEXT)
+	var found := int(survey["oil"]) > 0 or int(survey["gas"]) > 0 or int(survey.get("mineralSize", 0)) > 0
+	_show_toast("Badanie zakończone: %s." % ("są złoża!" if found else "brak złóż"), UI.GOLD if found else UI.TEXT)
 	if _selected == plot:
 		_plot["survey"] = survey
 		_show_plot()

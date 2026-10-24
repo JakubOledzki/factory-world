@@ -6,6 +6,10 @@ extends Node2D
 ## new pole is wired at once; how well each network is powered comes with the plot's logistics.
 
 const GENERATOR := "power_generator"
+## Water power: wired to a pole like a generator, but burns nothing.
+const HYDRO := ["power_water_wheel", "power_hydro_plant"]
+## Sprites whose layout says where wires meet them, by kind.
+const WIRE_SPRITES := {"power_generator": "generator", "power_water_wheel": "water_wheel", "power_hydro_plant": "hydro_plant"}
 const POLE := "power_pole"
 const WIRE := Color(0.08, 0.07, 0.06, 0.9)
 const WIRE_SHINE := Color(0.62, 0.42, 0.25, 0.55)
@@ -46,7 +50,7 @@ func apply(summary: Dictionary) -> void:
 	_networks = {}
 	for network: Dictionary in summary.get("networks", []):
 		_networks[int(network["id"])] = network
-		for key: String in ["poles", "generators", "consumers"]:
+		for key: String in ["poles", "generators", "consumers", "hydro"]:
 			for id: String in network.get(key, []):
 				_network_of[id] = int(network["id"])
 	queue_redraw()
@@ -56,7 +60,7 @@ func apply(summary: Dictionary) -> void:
 func has_power() -> bool:
 	for cell: Vector2i in _placed:
 		var kind: String = _placed[cell]["kind"]
-		if kind == POLE or kind == GENERATOR or demand.has(kind):
+		if kind == POLE or kind == GENERATOR or kind in HYDRO or demand.has(kind):
 			return true
 	return false
 
@@ -107,13 +111,14 @@ func describe(id: String) -> String:
 		return "bez sieci"
 	if float(n["demandKw"]) <= 0.0:
 		return "sieć bez maszyn, %s mocy" % GeneratorWindow.kw(float(n["supplyKw"]))
-	return "sieć: maszyny pobierają %s, generatory dają %s" % [GeneratorWindow.kw(float(n["demandKw"])),
+	return "sieć: maszyny pobierają %s, źródła prądu dają %s" % [GeneratorWindow.kw(float(n["demandKw"])),
 		GeneratorWindow.kw(minf(float(n["demandKw"]), float(n["supplyKw"])))]
 
 
 ## Where the wires meet an object standing on a tile, on the screen of the plot.
 func _wire_point(cell: Vector2i) -> Vector2:
-	var sprite := "pole" if _placed[cell]["kind"] == POLE else "generator"
+	var kind: String = _placed[cell]["kind"]
+	var sprite: String = "pole" if kind == POLE else WIRE_SPRITES.get(kind, "generator")
 	var at: Dictionary = layout.get(sprite, {})
 	var centre := (Vector2(cell) + Vector2(0.5, 0.5)) * tile
 	return centre + Vector2(float(at.get("wireX", 0)) - float(at.get("anchorX", 0)), float(at.get("wireY", 0)) - float(at.get("anchorY", 0)))
@@ -133,7 +138,7 @@ func _draw() -> void:
 				_wire(_wire_point(all_poles[i]), _wire_point(all_poles[j]))
 	for cell: Vector2i in _placed:
 		var object: Dictionary = _placed[cell]
-		if object["kind"] == GENERATOR:
+		if object["kind"] == GENERATOR or object["kind"] in HYDRO:
 			for pole in all_poles:
 				if covers(pole, cell):
 					_wire(_wire_point(cell), _wire_point(pole))

@@ -9,10 +9,20 @@ extends Node2D
 ## items glide along the belts instead of jumping once a second. Fast and express belts move their
 ## items 2 and 3 places a tick, in turns within the tick, and a splitter keeps up with the belt that
 ## feeds it from behind; fast and express inserters swing in fewer ticks. They are painted red and blue.
+## A cable station runs like a fast belt, but sends what reaches its end along a cable, over whatever
+## stands below, to the next station ahead facing the same way (up to CABLE_SPAN tiles off).
 
 const BELT := "logistics_belt"
 const INSERTER := "logistics_inserter"
 const SPLITTER := "logistics_splitter"
+const CABLE := "logistics_cable_station"
+## Tiles a cable runs at most, and places a tick a cable station moves items, as on the server.
+const CABLE_SPAN := 24
+const CABLE_SPEED := 2
+## Height of the cable at the stations, in metres.
+const CABLE_HEIGHT := 2.3
+const CABLE_COLOR := Color("#2b2b30")
+const GONDOLA_COLOR := Color("#c8321e")
 ## Places a tick an item moves along a belt of each level, and ticks an inserter's arm takes to swing one way.
 const BELT_SPEEDS := {"logistics_belt": 1, "logistics_fast_belt": 2, "logistics_express_belt": 3}
 const INSERTER_SWINGS := {"logistics_inserter": 4, "logistics_fast_inserter": 2, "logistics_express_inserter": 1}
@@ -61,6 +71,8 @@ var _storages := {}
 var _time := 0.0
 var _textures := {}
 var _icons := {}
+## Drawn above everything standing on the plot: the cables between stations.
+var _cables: CableLines
 
 
 func _ready() -> void:
@@ -108,7 +120,7 @@ func set_objects(placed: Dictionary) -> void:
 	for cell: Vector2i in placed:
 		var object: Dictionary = placed[cell]
 		var rotation := int(object.get("rotation", 0))
-		if BELT_SPEEDS.has(object["kind"]) or object["kind"] == SPLITTER:
+		if BELT_SPEEDS.has(object["kind"]) or object["kind"] in [SPLITTER, CABLE]:
 			var old: Dictionary = _find(_belts, object["id"])
 			var items: Array = old.get("items", [])
 			if items.size() != belt_slots * belt_lanes:
@@ -116,7 +128,8 @@ func set_objects(placed: Dictionary) -> void:
 				items.resize(belt_slots * belt_lanes)
 			belts[cell] = {"id": object["id"], "rotation": rotation, "items": items, "moved": {}, "out": [], "bend": 0,
 				"splitter": object["kind"] == SPLITTER, "filter": old.get("filter", []), "filterSide": int(old.get("filterSide", 0)),
-				"turn": int(old.get("turn", 0)), "speed": int(BELT_SPEEDS.get(object["kind"], 1)), "suffix": tier_suffix(object["kind"])}
+				"turn": int(old.get("turn", 0)), "speed": CABLE_SPEED if object["kind"] == CABLE else int(BELT_SPEEDS.get(object["kind"], 1)),
+				"suffix": tier_suffix(object["kind"]), "cable": object["kind"] == CABLE}
 		elif INSERTER_SWINGS.has(object["kind"]):
 			var old: Dictionary = _find(_inserters, object["id"])
 			inserters[cell] = {"id": object["id"], "rotation": rotation, "hand": old.get("hand"), "swing": int(old.get("swing", 0)),
@@ -141,6 +154,9 @@ func set_objects(placed: Dictionary) -> void:
 		arm.cell = cell
 		arm.position = (Vector2(cell) + Vector2(0.5, 0.5)) * tile + Vector2(0, 1)
 	_link_belts()
+	if _cables == null and arms_parent != null:
+		_cables = CableLines.new(self)
+		arms_parent.add_child(_cables)
 	queue_redraw()
 
 
@@ -244,7 +260,11 @@ func _link_belts() -> void:
 			belt["speed"] = int(feeder["speed"]) if not feeder.is_empty() and not feeder["splitter"] and feeder["rotation"] == belt["rotation"] else 1
 	for cell: Vector2i in _belts:
 		var belt: Dictionary = _belts[cell]
-		if belt["splitter"]:
+		var cable := _cable_target(cell)
+		if cable.x > -9999:
+			# Over the cable onto the start of the station ahead.
+			belt["out"] = [{"to": cable, "into": [0, 1], "entry": 0, "cable": true}]
+		elif belt["splitter"]:
 			var left := left_of(belt["rotation"])
 			belt["out"] = [_connect(cell, left), _connect(cell, -left)]
 		else:
@@ -253,6 +273,20 @@ func _link_belts() -> void:
 	var seen := {}
 	for start: Vector2i in _belts:
 		_downstream(start, seen)
+
+
+## The station a cable station sends its items to: the nearest one ahead facing the same way, at
+## least two tiles off; (-9999, -9999) when there is none (it then passes items on like a belt).
+func _cable_target(cell: Vector2i) -> Vector2i:
+	var belt: Dictionary = _belts[cell]
+	if not belt.get("cable", false):
+		return Vector2i(-9999, -9999)
+	var way := facing(belt["rotation"])
+	for d in range(2, CABLE_SPAN + 1):
+		var other: Dictionary = _belts.get(cell + way * d, {})
+		if not other.is_empty() and other.get("cable", false) and int(other["rotation"]) == int(belt["rotation"]):
+			return cell + way * d
+	return Vector2i(-9999, -9999)
 
 
 func _downstream(cell: Vector2i, seen: Dictionary) -> void:
@@ -278,6 +312,8 @@ func _process(_delta: float) -> void:
 	if now - _time >= tick_ms:
 		_time = now - fmod(now - _time, tick_ms)
 	queue_redraw()
+	if _cables != null:
+		_cables.queue_redraw()
 	for cell: Vector2i in _inserters:
 		_inserters[cell]["arm"].queue_redraw()
 
@@ -437,11 +473,81 @@ func _draw() -> void:
 				continue
 			var lane := 0 if i < belt_slots else 1
 			var at := (i % belt_slots + 0.5) / belt_slots
+			if belt["moved"].has(i) and _came_by_cable(cell, i):
+				# Just off the cable: it rides the gondola, drawn with the cable.
+				continue
 			if belt["moved"].has(i):
 				at -= (1.0 - f) * int(belt["moved"][i]) / belt_slots
 			var point: Array = _belt_point(cell, at, LANE_OFFSET if lane == 0 else -LANE_OFFSET)
 			var p := _screen(cell, point[0], BAND_HEIGHT)
 			draw_texture_rect(_icon(items[i]), Rect2(p - Vector2(ITEM_SIZE / 2, ITEM_SIZE * 0.8), Vector2(ITEM_SIZE, ITEM_SIZE)), false)
+
+
+## Whether the item at place `i` of the belt at `cell` came on this tick over a cable.
+func _came_by_cable(cell: Vector2i, i: int) -> bool:
+	if i % belt_slots != 0:
+		return false
+	var belt: Dictionary = _belts[cell]
+	if not belt.get("cable", false) or int(belt["moved"][i]) > i % belt_slots + 1:
+		return false
+	var behind: Dictionary = _belts.get(cell - facing(belt["rotation"]), {})
+	return behind.is_empty() or behind.get("out", [{}])[0].get("to", Vector2i(-9999, -9999)) != cell
+
+
+## The cables between stations, high above the plot, with gondolas running along them and the items
+## that ride over this tick. A node of its own so it is drawn above everything standing on the plot.
+class CableLines extends Node2D:
+	var logistics: PlotLogistics
+
+	func _init(owner_node: PlotLogistics) -> void:
+		logistics = owner_node
+		z_index = 20
+
+	func _draw() -> void:
+		var t := logistics.tile
+		var lift := PlotLogistics.CABLE_HEIGHT * PlotLogistics.PPM * cos(PI / 4)
+		var f := logistics._fraction()
+		var now: float = logistics.server_now.call()
+		for cell: Vector2i in logistics._belts:
+			var belt: Dictionary = logistics._belts[cell]
+			var out: Array = belt["out"]
+			if out.is_empty() or out[0].is_empty() or not out[0].get("cable", false):
+				continue
+			var to: Vector2i = out[0]["to"]
+			var dir := Vector2(PlotLogistics.facing(belt["rotation"]))
+			var side := Vector2(-dir.y, dir.x) * 0.18
+			var from_px := (Vector2(cell) + Vector2(0.5, 0.5)) * t - Vector2(0, lift)
+			var to_px := (Vector2(to) + Vector2(0.5, 0.5)) * t - Vector2(0, lift)
+			var sag := Vector2(0, minf(18.0, from_px.distance_to(to_px) * 0.04))
+			# Two ropes, one each way, hanging a little in the middle.
+			for s: float in [1.0, -1.0]:
+				var offset := side * t * s
+				var points: PackedVector2Array = []
+				for k in 13:
+					var u := k / 12.0
+					points.append(from_px.lerp(to_px, u) + offset + sag * 4.0 * u * (1.0 - u))
+				draw_polyline(points, PlotLogistics.CABLE_COLOR, 2.0, true)
+			# Gondolas go round, out along the left rope and back along the right one.
+			var length := maxf(1.0, from_px.distance_to(to_px) / t.x)
+			var turn := fmod(now / 4000.0 / length * 3.0, 1.0)
+			for g in 3:
+				var u := fmod(turn + g / 3.0, 1.0)
+				var s := 1.0 if u < 0.5 else -1.0
+				var v := u * 2.0 if u < 0.5 else (1.0 - u) * 2.0
+				var p := from_px.lerp(to_px, v) + side * t * s + sag * 4.0 * v * (1.0 - v)
+				draw_line(p, p + Vector2(0, 7), PlotLogistics.CABLE_COLOR, 1.5)
+				draw_rect(Rect2(p + Vector2(-6, 7), Vector2(12, 8)), PlotLogistics.GONDOLA_COLOR)
+			# What came over this tick rides down the cable to the station ahead.
+			var next: Dictionary = logistics._belts.get(to, {})
+			if next.is_empty():
+				continue
+			for lane in logistics.belt_lanes:
+				var at := lane * logistics.belt_slots
+				var item: Variant = next["items"][at]
+				if item != null and next["moved"].has(at) and logistics._came_by_cable(to, at):
+					var p := from_px.lerp(to_px, f) + sag * 4.0 * f * (1.0 - f) + Vector2(0, 9)
+					var size := PlotLogistics.ITEM_SIZE
+					draw_texture_rect(logistics._icon(item), Rect2(p - Vector2(size / 2, size * 0.8), Vector2(size, size)), false)
 
 
 ## The arm of one inserter, a node of its own so it is drawn in front of or behind what stands near.
