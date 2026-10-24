@@ -45,14 +45,16 @@ public sealed class ProcessingTests(ServerFactory factory) : IClassFixture<Serve
         throw new InvalidOperationException("No such plot.");
     }
 
-    /// <summary>Buys a plot and puts a machine of <paramref name="kind"/> on its first free tile.</summary>
-    private async Task<(int X, int Y, string Id)> MachineOnPlotAsync(GameClient client, string kind)
+    /// <summary>Buys a plot and puts a machine of <paramref name="kind"/> on its first free tile; one that runs
+    /// on power gets a pole and a generator with coal next to it, unless <paramref name="powered"/> says no.</summary>
+    private async Task<(int X, int Y, string Id)> MachineOnPlotAsync(GameClient client, string kind, bool? powered = null)
     {
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 1_000_000, "test", CancellationToken.None);
         }
 
+        powered ??= Processing.ByKind[kind].Powered;
         var (x, y) = FreePlot(Biome.Grassland);
         Assert.Equal("world.bought", (await client.SendAsync("world.buy", new { x, y })).Type());
         var plot = await client.SendAsync("plot.enter", new { x, y });
@@ -60,11 +62,26 @@ public sealed class ProcessingTests(ServerFactory factory) : IClassFixture<Serve
         using var tiles = new MemoryStream();
         gzip.CopyTo(tiles);
         var bytes = tiles.ToArray();
-        var free = Enumerable.Range(PlotLayout.Size * 20, bytes.Length - PlotLayout.Size * 20).First(i => bytes[i] == (byte)TileObject.None);
+        // A free tile with two more east of it and the three under them, for a pole and a generator.
+        bool Free(int i) => bytes[i] == (byte)TileObject.None;
+        var free = Enumerable.Range(PlotLayout.Size * 20, bytes.Length - PlotLayout.Size * 22)
+            .First(i => i % PlotLayout.Size < PlotLayout.Size - 3 && Enumerable.Range(0, 3).All(d => Free(i + d) && Free(i + d + PlotLayout.Size)));
+        var (tileX, tileY) = (free % PlotLayout.Size, free / PlotLayout.Size);
 
         await GiveAsync(client, kind, 1);
-        var placed = await client.SendAsync("plot.place", new { x, y, kind, tileX = free % PlotLayout.Size, tileY = free / PlotLayout.Size });
+        var placed = await client.SendAsync("plot.place", new { x, y, kind, tileX, tileY });
         Assert.Equal("plot.placed", placed.Type());
+        if (powered == true)
+        {
+            await GiveAsync(client, Items.Pole, 1);
+            await GiveAsync(client, Items.Generator, 1);
+            await GiveAsync(client, Items.Coal, 10);
+            Assert.Equal("plot.placed", (await client.SendAsync("plot.place", new { x, y, kind = Items.Pole, tileX = tileX + 1, tileY = tileY + 1 })).Type());
+            var generator = (await client.SendAsync("plot.place", new { x, y, kind = Items.Generator, tileX = tileX + 2, tileY = tileY + 1 }))
+                .Payload().GetProperty("object").GetProperty("id").GetString();
+            Assert.Equal("generator", (await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Coal, quantity = 10 })).Type());
+        }
+
         return (x, y, placed.Payload().GetProperty("object").GetProperty("id").GetString()!);
     }
 

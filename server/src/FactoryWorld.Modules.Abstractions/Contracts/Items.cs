@@ -97,6 +97,10 @@ public static class Items
     public const string VegetableSoup = "vegetable_soup";
     public const string Bigos = "bigos";
 
+    // Power on plots: a generator burns wood or coal, poles carry its power to machines near them.
+    public const string Generator = "power_generator";
+    public const string Pole = "power_pole";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -171,6 +175,8 @@ public static class Items
         [Fries] = "Frytki",
         [VegetableSoup] = "Zupa jarzynowa",
         [Bigos] = "Bigos",
+        [Generator] = "Generator parowy",
+        [Pole] = "Słup energetyczny",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);

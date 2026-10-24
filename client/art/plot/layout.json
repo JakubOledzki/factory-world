@@ -272,5 +272,32 @@
  "belt_nw_express": {
   "anchorX": 36,
   "anchorY": 38
+ },
+ "generator": {
+  "anchorX": 64,
+  "anchorY": 80,
+  "wireX": 91,
+  "wireY": 55
+ },
+ "pole": {
+  "anchorX": 32,
+  "anchorY": 91,
+  "wireX": 32,
+  "wireY": 38
+ },
+ "train_locomotive": {
+  "anchorX": 176,
+  "anchorY": 153,
+  "lengthPx": 288
+ },
+ "train_wagon": {
+  "anchorX": 144,
+  "anchorY": 145,
+  "lengthPx": 224
+ },
+ "train_wagon_open": {
+  "anchorX": 144,
+  "anchorY": 145,
+  "lengthPx": 224
  }
 }

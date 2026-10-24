@@ -83,7 +83,8 @@ public sealed record MineLoad(MineState Mine, IReadOnlyList<(string Item, int Qu
 
 public sealed record MineUpgrade(MineState Mine, XpGain Xp);
 
-public sealed class MineService(GameDb db, PlotService plots, IInventory inventory, ICharacterProgress progress, TimeProvider time)
+public sealed class MineService(
+    GameDb db, PlotService plots, IInventory inventory, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
 {
     /// <summary>The mines of a plot and how many loads each has left.</summary>
     public async Task<IReadOnlyList<MineState>> MinesAsync(int x, int y, Biome biome, CancellationToken cancellationToken)
@@ -110,7 +111,7 @@ public sealed class MineService(GameDb db, PlotService plots, IInventory invento
     public Task<MineLoad> MineAsync(Guid player, int x, int y, int mine, Action<TimeSpan> pace, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var site = await SiteAsync(player, x, y, mine, cancellationToken);
+            var site = await SiteAsync(player, x, y, mine, PlotRight.Work, cancellationToken);
             await plots.RequireToolAsync(player, Items.Pickaxe, cancellationToken);
             var (used, emptyAt, level) = await LockAsync(x, y, mine, cancellationToken);
             var before = State(site, used, emptyAt, level);
@@ -131,6 +132,7 @@ public sealed class MineService(GameDb db, PlotService plots, IInventory invento
                 await inventory.AddAsync(player, item, quantity, cancellationToken);
             }
 
+            await stats.RecordAsync(player, items.Select(i => ProductionEntry.Made(i.Item, i.Quantity, time.GetUtcNow())).ToList(), cancellationToken);
             var xp = await progress.AddXpAsync(player, Mining.XpPerLoad, cancellationToken);
             return new MineLoad(State(site, used, emptyAt, level), items, xp);
         }, cancellationToken);
@@ -140,7 +142,7 @@ public sealed class MineService(GameDb db, PlotService plots, IInventory invento
     public Task<MineUpgrade> UpgradeAsync(Guid player, int x, int y, int mine, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var site = await SiteAsync(player, x, y, mine, cancellationToken);
+            var site = await SiteAsync(player, x, y, mine, PlotRight.Build, cancellationToken);
             var (used, emptyAt, level) = await LockAsync(x, y, mine, cancellationToken);
             if (level >= Mining.Levels.Count)
             {
@@ -169,9 +171,9 @@ public sealed class MineService(GameDb db, PlotService plots, IInventory invento
             return new MineUpgrade(State(site, used, emptyAt, next.Level), xp);
         }, cancellationToken);
 
-    private async Task<MineSite> SiteAsync(Guid player, int x, int y, int mine, CancellationToken cancellationToken)
+    private async Task<MineSite> SiteAsync(Guid player, int x, int y, int mine, PlotRight right, CancellationToken cancellationToken)
     {
-        var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+        var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken, right);
         return PlotLayout.Mines(x, y, biome).FirstOrDefault(m => m.Id == mine)
             ?? throw new GameException("no_mine", "There is no such mine on this plot.");
     }

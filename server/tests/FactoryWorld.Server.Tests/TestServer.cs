@@ -61,10 +61,31 @@ public sealed class GameClient(WebSocket socket) : IDisposable
     /// <summary>The account made by <see cref="RegisterAsync"/>.</summary>
     public Guid AccountId { get; private set; }
 
+    /// <summary>Messages the server sent without being asked (no id), e.g. "achievement.unlocked", oldest first.</summary>
+    public List<JsonElement> Notices { get; } = [];
+
     public async Task<JsonElement> SendRawAsync(string frame)
     {
         await socket.SendAsync(Encoding.UTF8.GetBytes(frame), WebSocketMessageType.Text, true, CancellationToken.None);
+        return await ReceiveAsync();
+    }
 
+    public async Task<JsonElement> SendAsync(string type, object? payload = null)
+    {
+        var id = (++_nextId).ToString();
+        var reply = await SendRawAsync(JsonSerializer.Serialize(new { type, id, payload }));
+        // Notices from the previous request come before this reply.
+        while (reply.TryGetProperty("id", out var replyId) && replyId.ValueKind == JsonValueKind.Null)
+        {
+            Notices.Add(reply);
+            reply = await ReceiveAsync();
+        }
+
+        return reply;
+    }
+
+    private async Task<JsonElement> ReceiveAsync()
+    {
         // Large replies (a plot's tiles) can come in several frames.
         using var message = new MemoryStream();
         var buffer = new byte[64 * 1024];
@@ -78,9 +99,6 @@ public sealed class GameClient(WebSocket socket) : IDisposable
 
         return JsonDocument.Parse(message.ToArray()).RootElement.Clone();
     }
-
-    public Task<JsonElement> SendAsync(string type, object? payload = null) =>
-        SendRawAsync(JsonSerializer.Serialize(new { type, id = (++_nextId).ToString(), payload }));
 
     /// <summary>Registers a new account with a unique e-mail and returns the session token.</summary>
     public async Task<string> RegisterAsync(string? email = null)

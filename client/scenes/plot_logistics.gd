@@ -4,7 +4,7 @@ extends Node2D
 ## over) with stripes running along them and the items they carry on two lanes; a belt fed from one
 ## side only turns the corner. Splitters stand where a belt meets them from behind and send what it
 ## brings to the belts on their left and right. Inserters stand on their tiles and swing an arm from
-## the tile behind them to the tile in front.
+## the tile behind them to the tile in front, when they have power.
 ## The server works the machinery out in ticks; between its answers the same rules run here, so
 ## items glide along the belts instead of jumping once a second. Fast and express belts move their
 ## items 2 and 3 places a tick, in turns within the tick, and a splitter keeps up with the belt that
@@ -121,7 +121,7 @@ func set_objects(placed: Dictionary) -> void:
 			var old: Dictionary = _find(_inserters, object["id"])
 			inserters[cell] = {"id": object["id"], "rotation": rotation, "hand": old.get("hand"), "swing": int(old.get("swing", 0)),
 				"was": int(old.get("swing", 0)), "arm": old.get("arm"), "swingTicks": int(INSERTER_SWINGS[object["kind"]]),
-				"suffix": tier_suffix(object["kind"])}
+				"suffix": tier_suffix(object["kind"]), "speed": float(old.get("speed", 1.0)), "charge": float(old.get("charge", 0.0))}
 	var kept := {}
 	for cell: Vector2i in inserters:
 		if inserters[cell]["arm"] != null:
@@ -175,6 +175,8 @@ func apply(state: Dictionary) -> void:
 			inserter["swing"] = int(inserters_by_id[inserter["id"]]["swing"])
 			inserter["swingTicks"] = int(inserters_by_id[inserter["id"]].get("swingTicks", inserter["swingTicks"]))
 			inserter["was"] = inserter["swing"]
+			inserter["speed"] = float(inserters_by_id[inserter["id"]].get("speed", 1.0))
+			inserter["charge"] = float(inserters_by_id[inserter["id"]].get("charge", 0.0))
 	_storages = {}
 	for summary: Dictionary in state.get("storages", []):
 		_storages[summary["id"]] = summary
@@ -280,7 +282,8 @@ func _process(_delta: float) -> void:
 		_inserters[cell]["arm"].queue_redraw()
 
 
-## One tick: belts move their items forward, inserter arms swing; picking up and dropping is left to the server.
+## One tick: belts move their items forward, inserter arms swing (slower short of power, not at
+## all without, as on the server); picking up and dropping is left to the server.
 func _step() -> void:
 	var phases := 0
 	for cell in _order:
@@ -309,6 +312,14 @@ func _step() -> void:
 	for cell: Vector2i in _inserters:
 		var inserter: Dictionary = _inserters[cell]
 		inserter["was"] = inserter["swing"]
+		var speed := float(inserter["speed"])
+		if speed <= 0.0:
+			continue
+		if speed < 1.0:
+			inserter["charge"] = minf(float(inserter["charge"]), 1.0) + speed
+			if float(inserter["charge"]) < 1.0:
+				continue
+			inserter["charge"] = float(inserter["charge"]) - 1.0
 		if inserter["hand"] != null and int(inserter["swing"]) < int(inserter["swingTicks"]):
 			inserter["swing"] = int(inserter["swing"]) + 1
 		elif inserter["hand"] == null and int(inserter["swing"]) > 0:

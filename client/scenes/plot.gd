@@ -17,6 +17,7 @@ const ACTIONS := {
 	"interact": [KEY_E],
 	"inventory": [KEY_I],
 	"station": [KEY_T],
+	"company": [KEY_K],
 	"tool": [KEY_Q],
 	"plant": [KEY_P],
 	"upgrade_mine": [KEY_U],
@@ -24,6 +25,8 @@ const ACTIONS := {
 	"world_map": [KEY_N],
 	"garage": [KEY_G],
 	"rotate": [KEY_R],
+	"stats": [KEY_L],
+	"achievements": [KEY_O],
 }
 
 const LAYOUT_FILE := "res://art/plot/layout.json"
@@ -79,6 +82,7 @@ const PLACED_SPRITES := {
 	"furniture_bakery": "bakery", "furniture_kitchen": "kitchen", "logistics_inserter": "inserter", "logistics_splitter": "splitter",
 	"storage_wooden_chest": "wooden_chest", "storage_iron_chest": "iron_chest", "storage_wood_pile": "wood_pile",
 	"storage_heap": "heap", "storage_grain_silo": "grain_silo",
+	"power_generator": "generator", "power_pole": "pole",
 }
 ## Placed objects that open the machine window.
 const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen"]
@@ -93,12 +97,16 @@ const FURNACES := ["furniture_furnace", "furniture_brick_furnace", "furniture_bl
 ## Belts, inserters and splitters: turned with R and laid one after another.
 const MACHINERY := [BELT, "logistics_fast_belt", "logistics_express_belt", INSERTER, "logistics_fast_inserter",
 	"logistics_express_inserter", SPLITTER]
+const GENERATOR := "power_generator"
+const POLE := "power_pole"
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo"]
 ## Where a rotation faces, as players read it: 0 south, 1 east, 2 north, 3 west.
 const DIRECTIONS := ["na południe", "na wschód", "na północ", "na zachód"]
 const DIRECTION_ARROWS := ["↓", "→", "↑", "←"]
 ## How often (ms) the belts and inserters are asked for while the plot has any.
 const LOGISTICS_POLL := 1000.0
+## How often (ms) the station is asked for, to draw trains coming and going.
+const STATION_POLL := 4000.0
 ## Crops in the order of the art; the server sends their names and growing times.
 const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower"]
 ## A crop shows as a sprout until this much of its growing time is left, then half grown.
@@ -171,6 +179,7 @@ var _using := Vector2i(-1, -1)
 ## Which way the next belt or inserter will face (see DIRECTIONS).
 var _place_rotation := 1
 var _logistics: PlotLogistics
+var _power: PlotPower
 var _next_logistics_poll := 0.0
 var _polling_logistics := false
 
@@ -232,24 +241,20 @@ var _loading: Label
 
 var _inventory_window: GameWindow
 var _slots: InventoryGrid
-var _station_window: GameWindow
+var _station_window: StationWindow
+## Trains on the track, drawn from what the station knows.
+var _trains: PlotTrains
 var _crafting_window: CraftingWindow
 var _furnace_window: FurnaceWindow
 var _storage_window: StorageWindow
 var _splitter_window: SplitterWindow
+var _company_window: CompanyWindow
+var _stats_window: StatsWindow
 var _machine_window: MachineWindow
-var _station_box: VBoxContainer
-var _station_state := {}
+var _generator_window: GeneratorWindow
+var _achievements_window: AchievementsWindow
 var _clock_offset := 0.0
 var _next_station_poll := 0.0
-var _trip_labels: Array = []
-var _send_to: OptionButton
-var _send_x: SpinBox
-var _send_y: SpinBox
-var _send_item: OptionButton
-var _send_quantity: SpinBox
-var _send_info: Label
-var _send_button: Button
 
 
 func _ready() -> void:
@@ -304,7 +309,15 @@ func _build_world() -> void:
 	_objects.y_sort_enabled = true
 	_objects.tile_set = _tile_set(false)
 	_sorted.add_child(_objects)
+	_trains = PlotTrains.new()
+	_trains.layout = _layout
+	_trains.server_now = _server_now
+	_sorted.add_child(_trains)
 	_logistics.arms_parent = _sorted
+	# Wires hang over everything standing on the plot.
+	_power = PlotPower.new()
+	_power.tile = TILE
+	_power.layout = _layout
 
 	_player = GaragePlayer.new(Game.character.get("appearance", {}), Game.appearance_options)
 	_player.light = LIGHT
@@ -315,6 +328,8 @@ func _build_world() -> void:
 	add_child(_player.shadow)
 	move_child(_player.shadow, _marks.get_index())
 	_sorted.add_child(_player)
+
+	add_child(_power)
 
 	_camera.position_smoothing_enabled = true
 	_camera.position_smoothing_speed = 8.0
@@ -394,6 +409,7 @@ func _apply_plot(plot: Dictionary) -> void:
 	for object: Dictionary in plot.get("objects", []):
 		_placed[Vector2i(object["tileX"], object["tileY"])] = object
 	_logistics.set_objects(_placed)
+	_power.set_objects(_placed)
 
 	# The ground: the biome's texture repeated over the plot, squashed to the 45° view.
 	var floor_name: String = FLOORS.get(int(plot["biome"]), "grass")
@@ -441,6 +457,8 @@ func _apply_plot(plot: Dictionary) -> void:
 	station_shadow.offset = -station_anchor
 	station_shadow.position = foot
 	_shadows.add_child(station_shadow)
+	_trains.shadows_parent = _shadows
+	_trains.stop = Vector2(foot.x, (int(plot["railRow"]) + 0.5) * TILE.y)
 	for mine: Dictionary in plot.get("mines", []):
 		_add_mine(mine)
 
@@ -853,7 +871,7 @@ func _placed_label(cell: Vector2i) -> String:
 	if object["kind"] in INSERTERS:
 		var held := _logistics.held(cell)
 		var carrying := ", niesie: %s" % _item_name(held).to_lower() if held != "" else ""
-		return "%s %s%s: [R] obróć, kliknij, aby schować" % [object["name"], facing, carrying]
+		return "%s %s%s%s: [R] obróć, kliknij, aby schować" % [object["name"], facing, carrying, _power_note(object["id"])]
 	if object["kind"] == SPLITTER:
 		var filter := _logistics.splitter(object["id"])
 		var sorting := "na zmianę w lewo i w prawo" if (filter["items"] as Array).is_empty() \
@@ -864,10 +882,27 @@ func _placed_label(cell: Vector2i) -> String:
 		var fill := "%d/%d miejsc" % [int(summary["usedSlots"]), int(summary["slots"])] if int(summary["slots"]) > 1 \
 			else "%d/%d" % [int(summary["stored"]), int(summary["capacity"])]
 		return "%s (%s): kliknij, aby otworzyć" % [object["name"], fill]
-	return "%s: kliknij, aby użyć" % object["name"]
+	if object["kind"] == POLE:
+		return "Słup energetyczny (%s): kliknij po więcej" % _power.describe(object["id"])
+	if object["kind"] == GENERATOR:
+		return "Generator parowy: kliknij, aby dołożyć opału"
+	return "%s%s: kliknij, aby użyć" % [object["name"], _power_note(object["id"]) if _power.runs_on_power(object["kind"]) else ""]
+
+
+## How a machine that runs on power is doing, as a note after its name; "" with full power.
+func _power_note(id: String) -> String:
+	if _power.network(id).is_empty():
+		return " (bez prądu: postaw słup najwyżej 2 pola obok)"
+	var speed := _power.speed(id)
+	if speed <= 0.0:
+		return " (bez prądu: generator wygasł)"
+	if speed < 0.999:
+		return " (za mało prądu: %d%%)" % roundi(speed * 100.0)
+	return ""
 
 
 func _draw_marks() -> void:
+	_draw_power_reach()
 	if _hovered.x >= 0 and WORK.has(_work_kind(_hovered)) and not _fields.has(_hovered):
 		var ok: bool = Game.tool().get("id", "") == WORK[_work_kind(_hovered)]["tool"]
 		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8) if ok else Color(1.0, 0.42, 0.35, 0.8))
@@ -881,6 +916,32 @@ func _draw_marks() -> void:
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8))
 	if _work.x >= 0:
 		_draw_ring(_cell_centre(_work), Color(1, 1, 1, 0.7))
+
+
+## The tiles poles power, on the ground: of every pole while a pole, a generator or a machine that
+## runs on power is being placed (with the wires a new pole would get), and of a pole under the mouse.
+func _draw_power_reach() -> void:
+	var placing_power: bool = _placing == POLE or _placing == GENERATOR or _power.runs_on_power(_placing)
+	var hovered_pole: bool = _hovered.x >= 0 and _placed.has(_hovered) and _placed[_hovered]["kind"] == POLE
+	if not placing_power and not hovered_pole:
+		return
+	var areas: Array[Vector2i] = _power.poles()
+	if not placing_power:
+		areas = [_hovered]
+	var ground := _ground_cell()
+	if _placing == POLE and ground.x >= 0:
+		areas.append(ground)
+	var fill := Color(1.0, 0.82, 0.3, 0.07)
+	for pole in areas:
+		var r := _power.supply_radius
+		var rect := Rect2(Vector2(pole - Vector2i(r, r)) * TILE, Vector2(2 * r + 1, 2 * r + 1) * TILE)
+		var strong := pole == ground or pole == _hovered
+		_marks.draw_rect(rect, Color(fill, 0.13) if strong else fill)
+		_marks.draw_rect(rect, Color(1.0, 0.82, 0.3, 0.75 if strong else 0.3), false, 2.0)
+	if _placing == POLE and ground.x >= 0:
+		for pole in _power.poles():
+			if _power.wired(pole, ground):
+				_marks.draw_dashed_line(_cell_centre(ground), _cell_centre(pole), Color(1.0, 0.82, 0.3, 0.8), 2.0, 8.0)
 
 
 ## What is being placed, see-through on the tile under the mouse, with the way it will face.
@@ -945,9 +1006,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("cancel"):
 		if _placing != "":
 			_stop_placing()
-		elif _station_window.visible or _inventory_window.visible or _mine_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _storage_window,
-					_splitter_window, _mine_window]:
+		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _achievements_window.visible \
+				or _mine_window.visible or _using_window_open():
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _generator_window, _storage_window, _splitter_window, _stats_window, _company_window, _achievements_window, _mine_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -983,6 +1044,12 @@ func _unhandled_input(event: InputEvent) -> void:
 			_reload_inventory()
 	elif event.is_action_pressed("station"):
 		_go_to_station()
+	elif event.is_action_pressed("company"):
+		_company_window.toggle()
+	elif event.is_action_pressed("stats"):
+		_stats_window.toggle()
+	elif event.is_action_pressed("achievements"):
+		_achievements_window.toggle()
 	elif event.is_action_pressed("tool"):
 		_tool_slot.open()
 	elif event.is_action_pressed("plant"):
@@ -1178,7 +1245,7 @@ func _vanish(sprite_name: String, cell: Vector2i, fall: bool) -> void:
 
 ## What a click on a tile does: work nature, sow an empty field, reap a ripe crop.
 func _act_on(cell: Vector2i) -> void:
-	if _turnable(cell):
+	if _turnable(cell) or (_placed.has(cell) and _placed[cell]["kind"] == POLE):
 		_open_object_menu(cell)
 		return
 	if _placed.has(cell):
@@ -1407,6 +1474,7 @@ func _place_object(cell: Vector2i) -> void:
 	_astar.set_point_solid(at, not _is_belt(at))
 	_draw_cell(at)
 	_logistics.set_objects(_placed)
+	_power.set_objects(_placed)
 	if kind in MACHINERY:
 		_show_toast("%s stoi %s. %s" % [object["name"], DIRECTIONS[int(object["rotation"])], "Kliknij kolejne pole albo Esc." if more else ""])
 	else:
@@ -1418,7 +1486,7 @@ func _place_object(cell: Vector2i) -> void:
 ## The placed object next to the player, or (-1, -1).
 func _nearest_placed() -> Vector2i:
 	for cell: Vector2i in _placed:
-		if _near(cell) and not _turnable(cell):
+		if _near(cell) and not _turnable(cell) and _placed[cell]["kind"] != POLE:
 			return cell
 	return Vector2i(-1, -1)
 
@@ -1438,17 +1506,20 @@ func _use_placed(cell: Vector2i) -> void:
 		_storage_window.open_at(_at, object["id"])
 	elif object["kind"] == "furniture_workbench":
 		_crafting_window.open_at(object["id"])
+	elif object["kind"] == GENERATOR:
+		_generator_window.open_at(_at, object["id"])
 
 
 func _using_window_open() -> bool:
 	return _crafting_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
-		or _splitter_window.visible
+		or _splitter_window.visible or _generator_window.visible
 
 
 func _hide_placed_windows() -> void:
 	_crafting_window.hide_window()
 	_furnace_window.hide_window()
 	_machine_window.hide_window()
+	_generator_window.hide_window()
 	_storage_window.hide_window()
 	_splitter_window.hide_window()
 
@@ -1467,6 +1538,7 @@ func _pick_up_placed(id: String) -> void:
 				_hovered = Vector2i(-1, -1)
 			_draw_cell(cell)
 	_logistics.set_objects(_placed)
+	_power.set_objects(_placed)
 	_hide_placed_windows()
 	_using = Vector2i(-1, -1)
 	_reload_inventory()
@@ -1476,7 +1548,8 @@ func _pick_up_placed(id: String) -> void:
 func _open_object_menu(cell: Vector2i) -> void:
 	_menu_object = cell
 	_object_menu.clear()
-	_object_menu.add_item("Obróć  [R]", 0)
+	if _turnable(cell):
+		_object_menu.add_item("Obróć  [R]", 0)
 	_object_menu.add_item("Schowaj do ekwipunku", 1)
 	if _placed.has(cell) and _placed[cell]["kind"] == SPLITTER:
 		_object_menu.add_item("Ustaw, co idzie w którą stronę", 2)
@@ -1517,6 +1590,7 @@ func _rotate_placed(cell: Vector2i) -> void:
 		return
 	_placed[cell] = reply["payload"]["object"]
 	_logistics.set_objects(_placed)
+	_power.set_objects(_placed)
 	_draw_cell(cell)
 	_poll_logistics()
 
@@ -1531,6 +1605,7 @@ func _poll_logistics() -> void:
 	_polling_logistics = false
 	if reply["type"] == "logistics":
 		_logistics.apply(reply["payload"])
+		_power.apply(reply["payload"].get("power", {}))
 
 
 ## Orders from a workbench are done: they are in the inventory now.
@@ -1542,6 +1617,11 @@ func _on_crafted(done: Array, xp: Variant) -> void:
 	_gain(xp, at, done.size() * 0.25)
 	_show_toast("Gotowe: %s. Leży w ekwipunku." % ", ".join(done.map(func(item: Dictionary) -> String: return item["name"])))
 	_reload_inventory()
+
+
+func _on_researched(finished: Array, xp: Variant) -> void:
+	_gain(xp, _player.position, 0.0)
+	_show_toast("Zbadano: %s. Nowe przepisy czekają przy stole." % ", ".join(finished.map(func(t: Dictionary) -> String: return t["name"])), UI.GOOD)
 
 
 func _on_furnace_changed(taken: Array, xp: Variant) -> void:
@@ -1852,9 +1932,9 @@ func _process(delta: float) -> void:
 	if _using.x >= 0 and (not _placed.has(_using) or not _near(_using, REACH + 1.5)):
 		_hide_placed_windows()
 		_using = Vector2i(-1, -1)
-	if _logistics.has_machinery() and Time.get_ticks_msec() >= _next_logistics_poll:
+	if (_logistics.has_machinery() or _power.has_power()) and Time.get_ticks_msec() >= _next_logistics_poll:
 		_poll_logistics()
-	_update_trips()
+	_poll_station()
 
 
 func _screen(world: Vector2) -> Vector2:
@@ -1960,6 +2040,7 @@ func _build_hud() -> void:
 		if _inventory_window.visible:
 			_reload_inventory()))
 	bar.add_child(UI.button("Stacja  [T]", _go_to_station))
+	bar.add_child(UI.button("Spółka  [K]", func() -> void: _company_window.toggle()))
 	_plant_button = UI.button("", func() -> void: _set_planting(not _planting))
 	_plant_button.tooltip_text = "Sadzonki kupisz na rynku w garażu. Z każdego ściętego drzewa jest szansa na nową."
 	bar.add_child(_plant_button)
@@ -1968,7 +2049,9 @@ func _build_hud() -> void:
 	_mine_button.tooltip_text = "Rozbudowana kopalnia daje więcej jednostek, szybciej i szybciej się odnawia."
 	_mine_button.visible = false
 	bar.add_child(_mine_button)
+	bar.add_child(UI.button("Statystyki  [L]", func() -> void: _stats_window.toggle()))
 	bar.add_child(UI.button("Mapa świata  [N]", Game.open_world_map))
+	bar.add_child(UI.button("Osiągnięcia  [O]", func() -> void: _achievements_window.toggle()))
 	bar.add_child(UI.button("Garaż  [G]", Game.open_garage))
 	_hud.add_child(bar)
 	bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 10)
@@ -2099,6 +2182,13 @@ func _update_hint() -> void:
 func _set_balance(cents: int) -> void:
 	_balance = cents
 	_money.text = UI.money(cents)
+	_station_window.set_player(_items, cents)
+
+
+func _reload_balance() -> void:
+	var wallet := await Net.request("wallet.get")
+	if wallet["type"] == "wallet":
+		_set_balance(int(wallet["payload"]["balanceCents"]))
 
 
 # --- Minimap ------------------------------------------------------------------------------------------
@@ -2170,22 +2260,19 @@ func _build_windows() -> void:
 	_slots.failed.connect(_show_error)
 	_inventory_window.content.add_child(_slots)
 	_inventory_window.content.add_child(UI.label("Przeciągnij przedmiot na inny kafelek, aby zmienić kolejność.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
-	_station_window = GameWindow.new("Stacja kolejowa", 430)
-	_station_window.position = Vector2(1280 - 430 - 12, 64)
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 520)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_station_box = VBoxContainer.new()
-	_station_box.add_theme_constant_override("separation", 6)
-	_station_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(_station_box)
-	_station_window.content.add_child(scroll)
+	_station_window = StationWindow.new()
+	_station_window.position = Vector2(1280 - 470 - 12, 64)
+	_station_window.inventory_changed.connect(_reload_inventory)
+	_station_window.balance_changed.connect(_reload_balance)
+	_station_window.failed.connect(_show_error)
+	_station_window.toast.connect(func(text: String) -> void: _show_toast(text, UI.GOLD))
 	_crafting_window = CraftingWindow.new()
 	_crafting_window.can_pick_up = true
 	_crafting_window.position = Vector2(1280 - 400 - 12, 64)
 	_crafting_window.finished.connect(_on_crafted)
 	_crafting_window.inventory_changed.connect(_reload_inventory)
 	_crafting_window.failed.connect(_show_error)
+	_crafting_window.researched.connect(_on_researched)
 	_crafting_window.pick_up_requested.connect(_pick_up_placed)
 	_furnace_window = FurnaceWindow.new()
 	_furnace_window.can_pick_up = true
@@ -2214,8 +2301,24 @@ func _build_windows() -> void:
 	_machine_window.inventory_changed.connect(_on_furnace_changed)
 	_machine_window.failed.connect(_show_error)
 	_machine_window.pick_up_requested.connect(_pick_up_placed)
+	_generator_window = GeneratorWindow.new()
+	_generator_window.position = Vector2(1280 - 400 - 12, 64)
+	_generator_window.inventory_changed.connect(func(_taken: Array, _xp: Variant) -> void:
+		_reload_inventory()
+		_poll_logistics())
+	_generator_window.failed.connect(_show_error)
+	_generator_window.pick_up_requested.connect(_pick_up_placed)
+	_company_window = CompanyWindow.new()
+	_company_window.position = Vector2(1280 - 520 - 12, 64)
+	_company_window.inventory_changed.connect(_reload_inventory)
+	_company_window.failed.connect(_show_error)
+	_stats_window = StatsWindow.new()
+	_stats_window.position = Vector2(1280 - 640 - 12, 64)
+	_stats_window.failed.connect(_show_error)
 	var layer := _hud
+	layer.add_child(_stats_window)
 	layer.add_child(_inventory_window)
+	layer.add_child(_company_window)
 	layer.add_child(_storage_window)
 	layer.add_child(_splitter_window)
 	layer.add_child(_station_window)
@@ -2223,6 +2326,10 @@ func _build_windows() -> void:
 	layer.add_child(_furnace_window)
 	layer.add_child(_machine_window)
 	layer.add_child(_mine_window)
+	layer.add_child(_generator_window)
+	_achievements_window = AchievementsWindow.new()
+	_achievements_window.failed.connect(_show_error)
+	layer.add_child(_achievements_window)
 
 
 func _reload_inventory() -> void:
@@ -2237,272 +2344,36 @@ func _reload_inventory() -> void:
 	_storage_window.set_items(_items)
 	_splitter_window.set_items(_items)
 	_machine_window.set_items(_items)
+	_generator_window.set_items(_items)
+	_station_window.set_player(_items, _balance)
 	if _mine_window.visible:
 		_render_mine_window()
-	if _station_window.visible and not _station_state.is_empty():
-		_show_station()
 
 
 func _refresh_station() -> void:
-	var replies := [
-		await Net.request("station.get", {"x": _at.x, "y": _at.y}),
-		await Net.request("inventory.get"),
-	]
-	if replies[1]["type"] == "inventory":
-		_items = replies[1]["payload"]["items"]
-	_apply_station(replies[0])
+	await _station_window.refresh()
+	_show_trains()
 
 
-func _apply_station(reply: Dictionary) -> void:
-	if reply["type"] != "station":
-		_show_error(reply)
+## Trains on the track, from what the station said last; asked again every few seconds, more
+## often while a train is at the platform.
+func _show_trains() -> void:
+	var station := _station_window.state()
+	if station.is_empty():
 		return
-	_station_state = reply["payload"]
-	_clock_offset = float(_station_state["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
-	_show_station()
+	_clock_offset = float(station["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
+	_trains.show_station(station, _at)
+
+
+func _poll_station() -> void:
+	if Time.get_ticks_msec() < _next_station_poll:
+		return
+	_next_station_poll = Time.get_ticks_msec() + (STATION_POLL / 2.0 if _trains.busy() else STATION_POLL)
+	_refresh_station()
 
 
 func _server_now() -> float:
 	return Time.get_unix_time_from_system() * 1000.0 + _clock_offset
-
-
-func _section(text: String) -> void:
-	var l := UI.label(text, UI.GOLD)
-	l.add_theme_font_override("font", UI.bold())
-	_station_box.add_child(l)
-
-
-func _item_row(stack: Dictionary, quantity_text: String) -> HBoxContainer:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	row.add_child(UI.item_icon(stack["id"], 26))
-	var name_label := UI.label(stack["name"])
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(name_label)
-	row.add_child(UI.label(quantity_text, UI.MUTED))
-	return row
-
-
-func _show_station() -> void:
-	for child in _station_box.get_children():
-		child.free()
-	_trip_labels.clear()
-	var state := _station_state
-
-	_section("Magazyn stacji")
-	var stock: Array = state["items"]
-	if stock.is_empty():
-		_station_box.add_child(UI.label("Pusto. Załaduj towary z ekwipunku poniżej.", UI.MUTED))
-	for stack: Dictionary in stock:
-		var row := _item_row(stack, "× %d" % int(stack["quantity"]))
-		row.add_child(UI.button("Do ekwipunku", _station_action.bind("station.unload", stack["id"], int(stack["quantity"]))))
-		_station_box.add_child(row)
-
-	_station_box.add_child(HSeparator.new())
-	_section("Załaduj z ekwipunku")
-	var loadable := 0
-	for stack: Dictionary in _items:
-		var item: String = stack["id"]
-		if item.begins_with("furniture_"):
-			continue
-		loadable += 1
-		var quantity := int(stack["quantity"])
-		var row := _item_row(stack, "masz %d" % quantity)
-		if quantity > 10:
-			row.add_child(UI.button("10", _station_action.bind("station.load", item, 10)))
-		row.add_child(UI.button("Wszystko", _station_action.bind("station.load", item, quantity)))
-		_station_box.add_child(row)
-	if loadable == 0:
-		_station_box.add_child(UI.label("Ekwipunek jest pusty.", UI.MUTED))
-
-	_station_box.add_child(HSeparator.new())
-	_section("Wyślij pociąg")
-	_build_send_form(stock)
-
-	var incoming: Array = state["incoming"]
-	var outgoing: Array = state["outgoing"]
-	if not incoming.is_empty() or not outgoing.is_empty():
-		_station_box.add_child(HSeparator.new())
-		_section("W drodze")
-	for trip: Dictionary in outgoing:
-		_trip_row(trip, "→ %d × %d" % [int(trip["toX"]), int(trip["toY"])])
-	for trip: Dictionary in incoming:
-		_trip_row(trip, "← z %d × %d" % [int(trip["fromX"]), int(trip["fromY"])])
-	_update_trips()
-
-
-func _trip_row(trip: Dictionary, route: String) -> void:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	row.add_child(UI.item_icon(trip["item"], 22))
-	var text := UI.label("%d × %s  %s" % [int(trip["quantity"]), trip["name"], route])
-	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	text.clip_text = true
-	row.add_child(text)
-	var left := UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
-	left.custom_minimum_size.x = 56
-	row.add_child(left)
-	_station_box.add_child(row)
-	_trip_labels.append([left, float(trip["arrivesAt"])])
-
-
-func _update_trips() -> void:
-	if _station_state.is_empty():
-		return
-	var now := _server_now()
-	for entry: Array in _trip_labels:
-		var label: Label = entry[0]
-		if is_instance_valid(label):
-			var seconds := ceili(maxf(entry[1] - now, 0.0) / 1000.0)
-			label.text = "%d:%02d" % [seconds / 60, seconds % 60] if seconds > 0 else "na miejscu"
-	# Ask for the station again when a train has arrived.
-	for trip: Dictionary in _station_state.get("incoming", []):
-		if float(trip["arrivesAt"]) <= now and now >= _next_station_poll and _station_window.visible:
-			_next_station_poll = now + 1500.0
-			_refresh_station()
-			break
-
-
-func _station_action(type: String, item: String, quantity: int) -> void:
-	var reply := await Net.request(type, {"x": _at.x, "y": _at.y, "item": item, "quantity": quantity})
-	if reply["type"] != "station":
-		_show_error(reply)
-		return
-	var inventory := await Net.request("inventory.get")
-	if inventory["type"] == "inventory":
-		_items = inventory["payload"]["items"]
-	_apply_station(reply)
-	if _inventory_window.visible:
-		_reload_inventory()
-
-
-func _build_send_form(stock: Array) -> void:
-	if stock.is_empty():
-		_station_box.add_child(UI.label("Najpierw załaduj coś na stację.", UI.MUTED))
-		return
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 8)
-	grid.add_theme_constant_override("v_separation", 4)
-	_station_box.add_child(grid)
-
-	grid.add_child(UI.label("Dokąd", UI.MUTED))
-	_send_to = OptionButton.new()
-	_send_to.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	for plot in _my_plots:
-		if plot != _at:
-			_send_to.add_item("Moja działka %d × %d" % [plot.x, plot.y])
-			_send_to.set_item_metadata(_send_to.item_count - 1, plot)
-	_send_to.add_item("Inna działka (podaj X i Y)")
-	_send_to.set_item_metadata(_send_to.item_count - 1, null)
-	_send_to.item_selected.connect(func(_i: int) -> void: _update_send())
-	grid.add_child(_send_to)
-
-	grid.add_child(UI.label("X, Y", UI.MUTED))
-	var xy := HBoxContainer.new()
-	_send_x = SpinBox.new()
-	_send_x.max_value = _world_width - 1
-	_send_x.value = _at.x
-	_send_y = SpinBox.new()
-	_send_y.max_value = 3000
-	_send_y.value = _at.y
-	for spin: SpinBox in [_send_x, _send_y]:
-		spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		spin.value_changed.connect(func(_v: float) -> void: _update_send())
-		xy.add_child(spin)
-	grid.add_child(xy)
-
-	grid.add_child(UI.label("Towar", UI.MUTED))
-	_send_item = OptionButton.new()
-	for stack: Dictionary in stock:
-		_send_item.add_icon_item(UI.texture("icons/" + ("item_" + stack["id"] if not stack["id"].begins_with("furniture_") else stack["id"])),
-			"%s (%d)" % [stack["name"], int(stack["quantity"])])
-		_send_item.set_item_metadata(_send_item.item_count - 1, stack)
-	_send_item.add_theme_constant_override("icon_max_width", 22)
-	_send_item.item_selected.connect(func(_i: int) -> void:
-		_send_quantity.max_value = _send_stack()["quantity"]
-		_send_quantity.value = _send_quantity.max_value
-		_update_send())
-	grid.add_child(_send_item)
-
-	grid.add_child(UI.label("Ilość", UI.MUTED))
-	_send_quantity = SpinBox.new()
-	_send_quantity.min_value = 1
-	_send_quantity.max_value = stock[0]["quantity"]
-	_send_quantity.value = stock[0]["quantity"]
-	_send_quantity.value_changed.connect(func(_v: float) -> void: _update_send())
-	grid.add_child(_send_quantity)
-
-	_send_info = UI.label("", UI.MUTED)
-	_station_box.add_child(_send_info)
-	_send_button = UI.button("Wyślij pociąg", _send, true)
-	_station_box.add_child(_send_button)
-	_update_send()
-
-
-func _send_stack() -> Dictionary:
-	return _send_item.get_item_metadata(_send_item.selected)
-
-
-func _send_target() -> Vector2i:
-	var chosen: Variant = _send_to.get_item_metadata(_send_to.selected)
-	if chosen is Vector2i:
-		return chosen
-	return Vector2i(int(_send_x.value), int(_send_y.value))
-
-
-## Distance, time and fee of the trip, as the server counts them (see RailRules).
-func _update_send() -> void:
-	var manual: bool = _send_to.get_item_metadata(_send_to.selected) == null
-	_send_x.editable = manual
-	_send_y.editable = manual
-	var target := _send_target()
-	if not manual:
-		_send_x.set_value_no_signal(target.x)
-		_send_y.set_value_no_signal(target.y)
-	var dx := absi(target.x - _at.x)
-	dx = mini(dx, _world_width - dx)
-	var km := sqrt(float(dx * dx + (target.y - _at.y) * (target.y - _at.y))) * 5.0
-	var rates: Dictionary = _station_state["rates"]
-	var seconds := maxf(rates["minTripSeconds"], km / 100.0 * rates["secondsPer100Km"])
-	var quantity := int(_send_quantity.value)
-	var fee := int(rates["baseFeeCents"]) + ceili(km / 100.0 * quantity * float(rates["centsPerItemPer100Km"]))
-	_send_info.text = "Odległość %s km  ·  w drodze %d:%02d  ·  opłata %s" % [
-		_grouped(roundi(km)), int(seconds) / 60, int(seconds) % 60, UI.money(fee)]
-	_send_button.disabled = target == _at or fee > _balance
-	if fee > _balance:
-		_send_info.text += "\nNie masz tyle pieniędzy."
-	elif target == _at:
-		_send_info.text += "\nTo jest ta sama stacja."
-
-
-func _grouped(value: int) -> String:
-	var text := str(value)
-	var out := ""
-	for i in text.length():
-		if i > 0 and (text.length() - i) % 3 == 0:
-			out += " "
-		out += text[i]
-	return out
-
-
-func _send() -> void:
-	var target := _send_target()
-	var stack := _send_stack()
-	_send_button.disabled = true
-	var reply := await Net.request("station.send", {
-		"x": _at.x, "y": _at.y, "toX": target.x, "toY": target.y,
-		"item": stack["id"], "quantity": int(_send_quantity.value),
-	})
-	if reply["type"] != "station":
-		_show_error(reply)
-		_send_button.disabled = false
-		return
-	_show_toast("Pociąg z %d × %s odjechał do działki %d × %d." % [int(_send_quantity.value), stack["name"], target.x, target.y], UI.GOLD)
-	_apply_station(reply)
-	var wallet := await Net.request("wallet.get")
-	if wallet["type"] == "wallet":
-		_set_balance(int(wallet["payload"]["balanceCents"]))
 
 
 # --- Server ---------------------------------------------------------------------------------------------
@@ -2523,6 +2394,10 @@ func _load() -> void:
 		_biome_names[int(biome["id"])] = biome["name"]
 	for owned: Dictionary in info["payload"]["plots"]:
 		_my_plots.append(Vector2i(owned["x"], owned["y"]))
+	_station_window.plot = _at
+	_station_window.world_width = _world_width
+	_station_window.my_plots = _my_plots
+	_trains.world_width = _world_width
 	_set_balance(int(wallet["payload"]["balanceCents"]))
 	_apply_plot(plot["payload"])
 	_title.text = "Działka %d × %d" % [_at.x, _at.y]

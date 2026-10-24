@@ -149,7 +149,8 @@ internal static class FurnaceRows
     }
 }
 
-public sealed class FurnaceService(GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, TimeProvider time)
+public sealed class FurnaceService(
+    GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
 {
     public Task<FurnaceReply> StateAsync(Guid owner, Guid id, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -261,24 +262,33 @@ public sealed class FurnaceService(GameDb db, IEnumerable<IPlacedObjects> places
     {
         var kind = await Workshop.RequireAsync(places, owner, id, Items.IsFurnace, Items.Furnace, cancellationToken);
         var level = Smelting.Level(kind)!;
-        var state = (await FurnaceRows.ReadAsync(db, id, cancellationToken))?.State ?? FurnaceState.Empty;
-        return (Smelting.Advance(state, level, time.GetUtcNow()), level);
+        var stored = (await FurnaceRows.ReadAsync(db, id, cancellationToken))?.State ?? FurnaceState.Empty;
+        var state = Smelting.Advance(stored, level, time.GetUtcNow());
+        var made = MachineProduction.Smelted(level, stored, state);
+        if (made.Count > 0)
+        {
+            await stats.RecordAsync(owner, made, cancellationToken);
+            await FurnaceRows.WriteAsync(db, owner, id, level, state, cancellationToken);
+        }
+
+        return (state, level);
     }
 }
 
 /// <summary>Empties a furnace that is being picked up: what it smelted, its ore and its coal go to the inventory.
 /// Processing machines (mill, bakery, ...) are emptied the same way.</summary>
-public sealed class FurnaceContents(GameDb db, IInventory inventory, TimeProvider time) : IMachineContents
+public sealed class FurnaceContents(GameDb db, IInventory inventory, IProductionStats stats, IPlotPower power, TimeProvider time) : IMachineContents
 {
     public async Task ReleaseAsync(Guid owner, Guid id, CancellationToken cancellationToken)
     {
-        await MachineRows.ReleaseAsync(db, inventory, owner, id, time.GetUtcNow(), cancellationToken);
+        await MachineRows.ReleaseAsync(db, inventory, stats, power, owner, id, time.GetUtcNow(), cancellationToken);
         if (await FurnaceRows.ReadAsync(db, id, cancellationToken) is not { } row)
         {
             return;
         }
 
         var state = Smelting.Advance(row.State, row.Level, time.GetUtcNow());
+        await stats.RecordAsync(owner, MachineProduction.Smelted(row.Level, row.State, state), cancellationToken);
         if (state.Output is { } output && state.OutputQuantity > 0)
         {
             await inventory.AddAsync(owner, output, state.OutputQuantity, cancellationToken);
@@ -301,7 +311,7 @@ public sealed class FurnaceContents(GameDb db, IInventory inventory, TimeProvide
 }
 
 /// <summary>Furnaces as inserters see them: coal and ore go in, ingots come out.</summary>
-public sealed class FurnacePorts(GameDb db) : IMachinePorts
+public sealed class FurnacePorts(GameDb db, IProductionStats stats) : IMachinePorts
 {
     public async Task<IMachinePort?> OpenAsync(Guid owner, Guid id, string kind, CancellationToken cancellationToken)
     {
@@ -310,22 +320,23 @@ public sealed class FurnacePorts(GameDb db) : IMachinePorts
             return null;
         }
 
-        return new Port(db, owner, id, level, (await FurnaceRows.ReadAsync(db, id, cancellationToken))?.State ?? FurnaceState.Empty);
+        return new Port(db, stats, owner, id, level, (await FurnaceRows.ReadAsync(db, id, cancellationToken))?.State ?? FurnaceState.Empty);
     }
 
-    private sealed class Port(GameDb db, Guid owner, Guid id, FurnaceLevel level, FurnaceState state) : IMachinePort
+    private sealed class Port(GameDb db, IProductionStats stats, Guid owner, Guid id, FurnaceLevel level, FurnaceState state) : IMachinePort
     {
+        private readonly List<ProductionEntry> _made = [];
         private bool _changed;
 
         public string? Output(DateTimeOffset now, Func<string, bool> wanted)
         {
-            state = Smelting.Advance(state, level, now);
+            Advance(now);
             return state.Output is { } output && state.OutputQuantity > 0 && wanted(output) ? output : null;
         }
 
         public void Take(string item, DateTimeOffset now)
         {
-            state = Smelting.Advance(state, level, now);
+            Advance(now);
             if (state.Output == item && state.OutputQuantity > 0)
             {
                 state = state.OutputQuantity == 1 ? state with { Output = null, OutputQuantity = 0 } : state with { OutputQuantity = state.OutputQuantity - 1 };
@@ -335,7 +346,7 @@ public sealed class FurnacePorts(GameDb db) : IMachinePorts
 
         public bool Accepts(string item, DateTimeOffset now)
         {
-            state = Smelting.Advance(state, level, now);
+            Advance(now);
             if (item == Items.Coal)
             {
                 return state.Fuel < level.MaxFuel;
@@ -358,7 +369,7 @@ public sealed class FurnacePorts(GameDb db) : IMachinePorts
 
         public DateTimeOffset? NextChange(DateTimeOffset now)
         {
-            state = Smelting.Advance(state, level, now);
+            Advance(now);
             return state.StartedAt is { } started && Smelting.For(state.Input) is { } recipe ? started + level.Time(recipe) : null;
         }
 
@@ -366,7 +377,20 @@ public sealed class FurnacePorts(GameDb db) : IMachinePorts
         {
             if (_changed)
             {
+                await stats.RecordAsync(owner, _made, cancellationToken);
                 await FurnaceRows.WriteAsync(db, owner, id, level, state, cancellationToken);
+            }
+        }
+
+        private void Advance(DateTimeOffset now)
+        {
+            var before = state;
+            state = Smelting.Advance(state, level, now);
+            var made = MachineProduction.Smelted(level, before, state);
+            if (made.Count > 0)
+            {
+                _made.AddRange(made);
+                _changed = true;
             }
         }
     }

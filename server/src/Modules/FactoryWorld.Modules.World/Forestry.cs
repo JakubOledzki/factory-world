@@ -38,7 +38,8 @@ public static class Forestry
 /// <param name="ReadyAt">When the tree can be cut.</param>
 public sealed record PlantedTree(int TileX, int TileY, DateTimeOffset ReadyAt);
 
-public sealed class ForestService(GameDb db, PlotService plots, IInventory inventory, ICharacterProgress progress, TimeProvider time)
+public sealed class ForestService(
+    GameDb db, PlotService plots, IInventory inventory, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
 {
     public async Task<IReadOnlyList<PlantedTree>> TreesAsync(int x, int y, CancellationToken cancellationToken)
     {
@@ -60,7 +61,7 @@ public sealed class ForestService(GameDb db, PlotService plots, IInventory inven
     public Task<(PlantedTree Tree, XpGain Xp)> PlantAsync(Guid player, int x, int y, int tileX, int tileY, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             var grow = Forestry.GrowTime(biome) ?? throw new GameException("no_forestry", "Nothing grows on ice.");
             if (!await plots.FreeAsync(player, x, y, tileX, tileY, cancellationToken))
             {
@@ -68,6 +69,7 @@ public sealed class ForestService(GameDb db, PlotService plots, IInventory inven
             }
 
             await inventory.RemoveAsync(player, Items.Sapling, 1, cancellationToken);
+            await stats.RecordAsync(player, [ProductionEntry.Used(Items.Sapling, 1, time.GetUtcNow())], cancellationToken);
             var tree = new PlantedTree(tileX, tileY, time.GetUtcNow() + grow);
             await using (var insert = await db.CommandAsync(
                 "INSERT INTO world.plot_trees (x, y, tile_x, tile_y, ready_at) VALUES (@x, @y, @tx, @ty, @ready) ON CONFLICT DO NOTHING",

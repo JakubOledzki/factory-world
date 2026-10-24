@@ -318,6 +318,72 @@ namespace FactoryWorld.Modules.World.Migrations
 
                     b.ToTable("surveys", "world");
                 });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.TrainRouteRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("EveryMinutes")
+                        .HasColumnType("integer")
+                        .HasColumnName("every_minutes");
+
+                    b.Property<int>("FromX")
+                        .HasColumnType("integer")
+                        .HasColumnName("from_x");
+
+                    b.Property<int>("FromY")
+                        .HasColumnType("integer")
+                        .HasColumnName("from_y");
+
+                    b.PrimitiveCollection<string[]>("Items")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("items");
+
+                    b.Property<DateTimeOffset?>("LastDepartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_departed_at");
+
+                    b.Property<string>("LastProblem")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("last_problem");
+
+                    b.Property<long>("LastQuantity")
+                        .HasColumnType("bigint")
+                        .HasColumnName("last_quantity");
+
+                    b.Property<DateTimeOffset>("NextDepartureAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_departure_at");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<int>("ToX")
+                        .HasColumnType("integer")
+                        .HasColumnName("to_x");
+
+                    b.Property<int>("ToY")
+                        .HasColumnType("integer")
+                        .HasColumnName("to_y");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NextDepartureAt");
+
+                    b.HasIndex("FromX", "FromY");
+
+                    b.HasIndex("ToX", "ToY");
+
+                    b.ToTable("train_routes", "world");
+                });
 #pragma warning restore 612, 618
         }
     }
