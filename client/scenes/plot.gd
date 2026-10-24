@@ -2529,7 +2529,7 @@ func _build_hud() -> void:
 	tool_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
 	var bar := HBoxContainer.new()
-	bar.add_theme_constant_override("separation", 6)
+	bar.add_theme_constant_override("separation", 4)
 	bar.add_child(UI.toolbar_button("inventory", "Ekwipunek  [I]", func() -> void:
 		_inventory_window.toggle()
 		if _inventory_window.visible:
@@ -2543,12 +2543,12 @@ func _build_hud() -> void:
 	# The number of saplings, in the button's corner.
 	_plant_count = UI.label("", UI.GOLD, HORIZONTAL_ALIGNMENT_RIGHT)
 	_plant_count.add_theme_font_override("font", UI.bold())
-	_plant_count.add_theme_font_size_override("font_size", 13)
+	_plant_count.add_theme_font_size_override("font_size", 11)
 	_plant_count.add_theme_constant_override("outline_size", 4)
 	_plant_count.add_theme_color_override("font_outline_color", Color.BLACK)
 	_plant_count.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_plant_button.add_child(_plant_count)
-	_plant_count.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 3)
+	_plant_count.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 1)
 	_plant_count.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	_plant_count.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	bar.add_child(_plant_button)

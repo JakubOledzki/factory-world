@@ -670,7 +670,7 @@ func _build_hud() -> void:
 
 	# Toolbar at the bottom: the windows and logging out.
 	var bar := HBoxContainer.new()
-	bar.add_theme_constant_override("separation", 6)
+	bar.add_theme_constant_override("separation", 4)
 	bar.add_child(UI.toolbar_button("inventory", "Ekwipunek  [I]", func() -> void: _inventory_window.toggle()))
 	bar.add_child(UI.toolbar_button("market", "Rynek  [M]", func() -> void: _market_window.toggle()))
 	bar.add_child(UI.toolbar_button("contracts", "Zlecenia  [J]", func() -> void: _contracts_window.toggle()))
