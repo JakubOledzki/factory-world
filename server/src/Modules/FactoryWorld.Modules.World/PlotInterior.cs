@@ -216,10 +216,12 @@ public static class HarvestRules
     /// <summary>A chainsaw cuts a tree 70% faster than an axe.</summary>
     public static readonly TimeSpan SawTime = ChopTime * 0.3;
 
-    /// <summary>How long gathering an object takes with the tool in hand.</summary>
-    public static TimeSpan TimeFor(TileObject obj, string? tool = null) => obj switch
+    /// <summary>How long gathering an object takes with the tool in hand on a plot of <paramref name="biome"/>: a rock
+    /// breaks faster in the mountains and with a better pickaxe.</summary>
+    public static TimeSpan TimeFor(TileObject obj, string? tool = null, Biome biome = Biome.Ocean) => obj switch
     {
         TileObject.Tree => tool == Items.Chainsaw ? SawTime : ChopTime,
+        TileObject.Rock => Time / (Mining.Speed(biome) * Items.Pickaxes.GetValueOrDefault(tool ?? "", 1)),
         _ => Time,
     };
 
@@ -313,7 +315,7 @@ public sealed class PlotService(
                 throw new GameException("nothing_here", "There is nothing to gather here.");
             }
 
-            pace(HarvestRules.TimeFor(obj, PlotLayout.ToolFor(obj) is { } tool ? await RequireToolAsync(player, tool, cancellationToken) : null));
+            pace(HarvestRules.TimeFor(obj, PlotLayout.ToolFor(obj) is { } tool ? await RequireToolAsync(player, tool, cancellationToken) : null, biome));
 
             await using (var insert = await db.CommandAsync(
                 "INSERT INTO world.plot_harvests (x, y, tile_x, tile_y) VALUES (@x, @y, @tx, @ty) ON CONFLICT DO NOTHING", cancellationToken))
@@ -365,13 +367,19 @@ public sealed class PlotService(
         return await GiveAsync(player, TileObject.Tree, cancellationToken);
     }
 
-    /// <summary>The tool in the player's tool bar that does the work of <paramref name="tool"/>: a chainsaw does an axe's, and faster, so it goes first.</summary>
+    /// <summary>The tool in the player's tool bar that does the work of <paramref name="tool"/>: a chainsaw does an axe's,
+    /// and a bronze or steel pickaxe an iron one's, faster, so the fastest goes first.</summary>
     public async Task<string> RequireToolAsync(Guid player, string tool, CancellationToken cancellationToken)
     {
         var held = await equipment.ToolsAsync(player, cancellationToken);
         if (tool == Items.Axe && held.Contains(Items.Chainsaw))
         {
             return Items.Chainsaw;
+        }
+
+        if (tool == Items.Pickaxe && Items.Pickaxes.Where(p => held.Contains(p.Key)).OrderByDescending(p => p.Value).Select(p => p.Key).FirstOrDefault() is { } best)
+        {
+            return best;
         }
 
         return held.Contains(tool) ? tool : throw new GameException("wrong_tool", $"You need {Items.Names[tool]} in your hand.");
@@ -485,7 +493,11 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             spawn = new { x = PlotLayout.Spawn.X, y = PlotLayout.Spawn.Y },
             tools = tools.Select(t => new { id = t, name = Items.Names[t] }),
             harvestSeconds = HarvestRules.Time.TotalSeconds,
-            mineSeconds = Mining.Time.TotalSeconds,
+            // Rocks break and mines are worked this many percent faster here; better pickaxes are faster still.
+            miningBonus = Mining.BonusPercent(biome),
+            rockSeconds = HarvestRules.TimeFor(TileObject.Rock, Items.Pickaxe, biome).TotalSeconds,
+            pickaxes = Items.Pickaxes,
+            mineSeconds = (Mining.Time / Mining.Speed(biome)).TotalSeconds,
             mineUnits = Mining.Units,
             mines = mines.Select(MineHandler.MineJson),
             chopSeconds = HarvestRules.ChopTime.TotalSeconds,

@@ -25,7 +25,33 @@ public static class LogisticsRules
         [Items.Belt] = 1,
         [Items.FastBelt] = 2,
         [Items.ExpressBelt] = 3,
+        [Items.CableStation] = 2,
     };
+
+    /// <summary>Tiles a cable runs at most from one station to the next one ahead.</summary>
+    public const int CableSpan = 24;
+
+    /// <summary>Which station each cable station sends its items to over the cable: the nearest one
+    /// ahead of it, facing the same way, at least two tiles off and no further than <see cref="CableSpan"/>.</summary>
+    public static Dictionary<Guid, Guid> CableLinks(IEnumerable<PlotObject> objects)
+    {
+        var stations = objects.Where(o => o.Kind == Items.CableStation).ToDictionary(o => (o.TileX, o.TileY));
+        var links = new Dictionary<Guid, Guid>();
+        foreach (var station in stations.Values)
+        {
+            var (dx, dy) = Facing(station.Rotation);
+            for (var d = 2; d <= CableSpan; d++)
+            {
+                if (stations.TryGetValue((station.TileX + dx * d, station.TileY + dy * d), out var other) && other.Rotation == station.Rotation)
+                {
+                    links[station.Id] = other.Id;
+                    break;
+                }
+            }
+        }
+
+        return links;
+    }
 
     /// <summary>Inserters of every level and the ticks their arm takes to swing one way.</summary>
     public static readonly IReadOnlyDictionary<string, int> InserterSwings = new Dictionary<string, int>
@@ -234,7 +260,7 @@ public sealed class PlotLogistics
     {
         var at = objects.ToDictionary(o => (o.TileX, o.TileY));
         var belts = new Dictionary<(int, int), Belt>();
-        foreach (var o in objects.Where(o => Items.IsBelt(o.Kind) || o.Kind == Items.Splitter).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
+        foreach (var o in objects.Where(o => Items.IsBelt(o.Kind) || o.Kind is Items.Splitter or Items.CableStation).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
         {
             var c = Contents(contents, o.Id);
             if (c.Belt is not { Length: LogisticsRules.BeltSlots * LogisticsRules.BeltLanes })
@@ -261,9 +287,16 @@ public sealed class PlotLogistics
 
         // Only belts turn corners; a splitter always runs straight.
         var rotations = belts.Where(b => !b.Value.IsSplitter).ToDictionary(b => b.Key, b => b.Value.Rotation);
+        var byId = belts.Values.ToDictionary(b => b.Id);
+        var cables = LogisticsRules.CableLinks(objects);
         foreach (var belt in belts.Values)
         {
-            if (belt.IsSplitter)
+            if (cables.TryGetValue(belt.Id, out var station))
+            {
+                // Over the cable onto the start of the station ahead.
+                belt.Out[0] = new Link(byId[station], [0, 1], 0);
+            }
+            else if (belt.IsSplitter)
             {
                 var left = LogisticsRules.Left(belt.Rotation);
                 belt.Out[0] = Connect(belts, rotations, belt, left);

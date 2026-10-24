@@ -138,6 +138,29 @@ public sealed class PlotForesterRow
     public DateTimeOffset BusyUntil { get; set; }
 }
 
+/// <summary>A drill standing at a mine: the mine it works, the ore it holds and how far it is with its load.</summary>
+public sealed class PlotDrillRow
+{
+    public Guid ObjectId { get; set; }
+
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public Guid OwnerId { get; set; }
+
+    public int Mine { get; set; }
+
+    /// <summary>Ore by item, as JSON.</summary>
+    public string Ores { get; set; } = "{}";
+
+    /// <summary>When, in the drill's own time on the power grid, its load started; null while it stands idle.</summary>
+    public DateTimeOffset? StartedAt { get; set; }
+
+    /// <summary>Whether it waits for its dry mine to fill up again.</summary>
+    public bool Waiting { get; set; }
+}
+
 /// <summary>What a geological survey found under a plot.</summary>
 public sealed class SurveyRow
 {
@@ -316,6 +339,22 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(f => f.BusyUntil).HasColumnName("busy_until");
             e.HasIndex(f => new { f.X, f.Y });
             e.HasIndex(f => f.OwnerId);
+        });
+
+        model.Entity<PlotDrillRow>(e =>
+        {
+            e.ToTable("plot_drills");
+            e.HasKey(d => d.ObjectId);
+            e.Property(d => d.ObjectId).HasColumnName("object_id");
+            e.Property(d => d.X).HasColumnName("x");
+            e.Property(d => d.Y).HasColumnName("y");
+            e.Property(d => d.OwnerId).HasColumnName("owner_id");
+            e.Property(d => d.Mine).HasColumnName("mine");
+            e.Property(d => d.Ores).HasColumnName("ores").HasColumnType("jsonb");
+            e.Property(d => d.StartedAt).HasColumnName("started_at");
+            e.Property(d => d.Waiting).HasColumnName("waiting");
+            e.HasIndex(d => new { d.X, d.Y });
+            e.HasIndex(d => d.OwnerId);
         });
 
         model.Entity<SurveyRow>(e =>
@@ -699,6 +738,14 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<ForesterService>());
         services.AddScoped<IMachinePorts>(provider => provider.GetRequiredService<ForesterService>());
         services.AddScoped<IMachineStatuses>(provider => provider.GetRequiredService<ForesterService>());
+        services.AddScoped<DrillService>();
+        services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<DrillService>());
+        services.AddScoped<IPlotAutomation>(provider => provider.GetRequiredService<DrillService>());
+        services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<DrillService>());
+        services.AddScoped<IMachinePorts>(provider => provider.GetRequiredService<DrillService>());
+        services.AddScoped<IMachineStatuses>(provider => provider.GetRequiredService<DrillService>());
+        services.AddSingleton<IMessageHandler, GetDrillHandler>();
+        services.AddSingleton<IMessageHandler, TakeFromDrillHandler>();
         services.AddSingleton<IMessageHandler, GetForestryHandler>();
         services.AddSingleton<IMessageHandler, TakeFromForesterHandler>();
         services.AddHostedService<RailwayDispatcher>();
@@ -712,6 +759,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, TakeAnimalHandler>();
         services.AddSingleton<IMessageHandler, MineHandler>();
         services.AddSingleton<IMessageHandler, UpgradeMineHandler>();
+        services.AddSingleton<IMessageHandler, BlastMineHandler>();
         services.AddSingleton<IMessageHandler, SurveyHandler>();
         services.AddSingleton<IMessageHandler, PlaceOnPlotHandler>();
         services.AddSingleton<IMessageHandler, PickUpFromPlotHandler>();

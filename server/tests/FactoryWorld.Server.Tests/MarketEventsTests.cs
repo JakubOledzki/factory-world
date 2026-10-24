@@ -50,7 +50,7 @@ public sealed class MarketEventsTests(ChangingPricesFactory factory) : IClassFix
     {
         var recipes = Workshop.Recipes.Select(r => (r.Id, r.Quantity, r.Ingredients))
             .Concat(Processing.Machines.SelectMany(m => m.Recipes).Select(r => (r.Id, r.Quantity, r.Ingredients)))
-            .Where(r => NpcPrices.Buys.ContainsKey(r.Id) && r.Ingredients.All(i => NpcPrices.Sells.ContainsKey(i.Item)))
+            .Where(r => NpcPrices.Buys.ContainsKey(r.Id) && r.Ingredients.Count > 0 && r.Ingredients.All(i => NpcPrices.Sells.ContainsKey(i.Item)))
             .ToList();
         Assert.Contains(recipes, r => r.Id == Items.Bread);
 

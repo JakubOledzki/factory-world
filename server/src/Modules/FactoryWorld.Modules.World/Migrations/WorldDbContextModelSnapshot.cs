@@ -89,6 +89,51 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plot_animals", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotDrillRow", b =>
+                {
+                    b.Property<Guid>("ObjectId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<int>("Mine")
+                        .HasColumnType("integer")
+                        .HasColumnName("mine");
+
+                    b.Property<string>("Ores")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("ores");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.Property<bool>("Waiting")
+                        .HasColumnType("boolean")
+                        .HasColumnName("waiting");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("ObjectId");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("X", "Y");
+
+                    b.ToTable("plot_drills", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.PlotField", b =>
                 {
                     b.Property<int>("X")

@@ -50,6 +50,10 @@ public static class Smelting
         new(Items.TinOre, Items.TinIngot, TimeSpan.FromSeconds(10)),
         new(Items.SilverOre, Items.SilverIngot, TimeSpan.FromSeconds(15)),
         new(Items.GoldOre, Items.GoldIngot, TimeSpan.FromSeconds(20)),
+        // Crushed ore smelts quicker; a crusher makes three of it from two ores.
+        new(Items.CrushedIronOre, Items.IronIngot, TimeSpan.FromSeconds(8)),
+        new(Items.CrushedCopperOre, Items.CopperIngot, TimeSpan.FromSeconds(8)),
+        new(Items.CrushedTinOre, Items.TinIngot, TimeSpan.FromSeconds(8)),
     ];
 
     public static SmeltingRecipe? For(string? input) => Recipes.FirstOrDefault(r => r.Input == input);

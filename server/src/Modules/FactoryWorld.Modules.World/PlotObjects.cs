@@ -10,7 +10,8 @@ namespace FactoryWorld.Modules.World;
 /// workbench or an anvil to craft at far from the garage, a furnace, a machine that processes crops (mill, oil
 /// press, pickling barrel, bakery, field kitchen), belts, inserters, chests, a generator and the
 /// poles that carry its power, a computer to trade on the market from the plot, a forester's building
-/// that grows and cuts a forest around itself, or a sawmill. Each stands on one tile (a forester's
+/// that grows and cuts a forest around itself, a sawmill, or the mountain industry: a drill at a mine,
+/// a quarry, a crusher, a stonemason, a foundry, water power and cable car stations. Each stands on one tile (a forester's
 /// building on 3 × 3, see <see cref="Footprints"/>), turned by quarter turns like furniture in the garage.
 /// </summary>
 public static class PlotObjects
@@ -26,7 +27,35 @@ public static class PlotObjects
         Items.Computer,
         Items.ForesterHut, Items.ForesterLodge, Items.ForestryStation,
         Items.Sawmill, Items.ElectricSawmill, Items.IndustrialSawmill,
+        Items.Drill, Items.HeavyDrill, Items.Quarry, Items.Crusher, Items.Stonemason, Items.Foundry,
+        Items.WaterWheel, Items.HydroPlant, Items.CableStation,
     };
+
+    /// <summary>Fails unless an object of <paramref name="kind"/> may stand on (tileX, tileY) of a plot of
+    /// <paramref name="biome"/>: a drill next to a mine that has none yet, a quarry in the mountains, water
+    /// power by a river, a lake or the sea.</summary>
+    public static void RequireSite(string kind, int x, int y, Biome biome, int tileX, int tileY, IEnumerable<PlacedOnPlot> others)
+    {
+        if (Items.IsDrill(kind))
+        {
+            var mines = PlotLayout.Mines(x, y, biome);
+            var mine = Drills.MineAt(mines, tileX, tileY) ?? throw new GameException("no_mine_here", "A drill stands right next to a mine.");
+            if (others.Any(o => Items.IsDrill(o.Kind) && Drills.MineAt(mines, o.TileX, o.TileY)?.Id == mine.Id))
+            {
+                throw new GameException("mine_has_drill", "This mine has a drill already.");
+            }
+        }
+
+        if (kind == Items.Quarry && biome != Biome.Mountains)
+        {
+            throw new GameException("no_quarry", "A quarry is cut into the mountains only.");
+        }
+
+        if (Items.IsHydro(kind) && !WaterPower.Allowed((int)biome))
+        {
+            throw new GameException("no_water", "Water power needs a mountain stream, a lake or the sea.");
+        }
+    }
 }
 
 public sealed record PlacedOnPlot(Guid Id, string Kind, int TileX, int TileY, int Rotation = 0);
@@ -87,6 +116,7 @@ public sealed class PlotObjectService(
             }
 
             await CatchUpAsync(x, y, cancellationToken);
+            PlotObjects.RequireSite(kind, x, y, biome, tileX, tileY, await ObjectsAsync(x, y, cancellationToken));
             await inventory.RemoveAsync(player, kind, 1, cancellationToken);
             var placed = new PlacedOnPlot(Guid.NewGuid(), kind, tileX, tileY, rotation);
             await using var insert = await db.CommandAsync(

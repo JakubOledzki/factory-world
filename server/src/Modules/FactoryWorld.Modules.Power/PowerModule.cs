@@ -47,7 +47,7 @@ public sealed record GeneratorReply(Guid Id, PowerGrid Grid, DateTimeOffset Serv
 /// to everyone who asks, so belts and inserters, the machines they feed and the generators they
 /// fuel all work with the same one.
 /// </summary>
-public sealed class PowerService(GameDb db, IPlotObjects plots, IInventory inventory, TimeProvider time, IServiceProvider services)
+public sealed class PowerService(GameDb db, IPlotObjects plots, IPlotRegistry registry, IInventory inventory, TimeProvider time, IServiceProvider services)
     : IPlotPower, IPlotAutomation
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -86,7 +86,8 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IInventory inven
         }
 
         var objects = await plots.ObjectsAsync(x, y, cancellationToken);
-        var grid = new PowerGrid(x, y, objects, data, settled, (d, at, ct) => WriteAsync(x, y, d, at, ct));
+        var biome = (await registry.FindAsync(x, y, cancellationToken))?.Biome ?? 0;
+        var grid = new PowerGrid(x, y, objects, data, settled, (d, at, ct) => WriteAsync(x, y, d, at, ct), biome);
         _grids[(x, y)] = grid;
         return grid;
     }
@@ -133,6 +134,11 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IInventory inven
             }
 
             var grid = await GeneratorGridAsync(player, x, y, id, cancellationToken);
+            if (grid.Objects.Any(o => o.Id == id && Items.IsHydro(o.Kind)))
+            {
+                throw new GameException("no_fuel_needed", "Water turns it; it burns nothing.");
+            }
+
             grid.Fuel(id, item, quantity, time.GetUtcNow());
             await inventory.RemoveAsync(player, item, quantity, cancellationToken);
             await grid.SaveAsync(cancellationToken);
@@ -188,7 +194,7 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IInventory inven
         }
 
         var grid = await OpenAsync(x, y, cancellationToken);
-        if (!grid.Objects.Any(o => o.Id == id && o.Kind == Items.Generator))
+        if (!grid.Objects.Any(o => o.Id == id && (o.Kind == Items.Generator || Items.IsHydro(o.Kind))))
         {
             throw new GameException("no_object", "There is no such generator on this plot.");
         }
@@ -261,7 +267,9 @@ public static class PowerJson
                 generators = n.Generators,
                 consumers = n.Consumers,
                 demandKw = n.DemandKw,
-                supplyKw = n.Generators.Count(g => grid.Generator(g, now).Running) * PowerRules.GeneratorKw,
+                supplyKw = grid.SupplyKw(n, now),
+                hydro = n.Hydro,
+                hydroKw = grid.HydroKw(n),
                 speed = grid.Speed(n, now),
                 // Unix milliseconds of when a generator next burns out, or null.
                 changesAt = grid.NextChange(n, now)?.ToUnixTimeMilliseconds(),
@@ -277,15 +285,21 @@ public static class PowerJson
         var now = reply.ServerTime;
         var state = grid.Generator(reply.Id, now);
         var network = grid.NetworkOf(reply.Id);
+        var kind = grid.Objects.FirstOrDefault(o => o.Id == reply.Id)?.Kind ?? Items.Generator;
+        var hydro = Items.IsHydro(kind);
         return new
         {
             id = reply.Id,
+            kind,
+            // A water power plant burns nothing: it gives capacityKw all the time, more in the mountains.
+            hydro,
             fuel = state.FuelItem is { } fuel && state.Fuel > 0 ? new { id = fuel, name = Items.Names[fuel], quantity = state.Fuel } : null,
             // kJ left in the piece burning now and in all the fuel.
             energy = state.Energy,
             total = state.Total,
             outputKw = grid.Output(reply.Id, now),
-            capacityKw = PowerRules.GeneratorKw,
+            capacityKw = hydro ? grid.HydroKw(reply.Id) : PowerRules.GeneratorKw,
+            hydroBonus = hydro ? WaterPower.Biomes.GetValueOrDefault(grid.Biome) : 0,
             runsOutAt = grid.RunsOutAt(reply.Id)?.ToUnixTimeMilliseconds(),
             serverTime = now.ToUnixTimeMilliseconds(),
             maxFuel = PowerRules.MaxFuel,
@@ -297,7 +311,8 @@ public static class PowerJson
                 generators = network.Generators.Count,
                 machines = network.Consumers.Count,
                 demandKw = network.DemandKw,
-                supplyKw = network.Generators.Count(g => grid.Generator(g, now).Running) * PowerRules.GeneratorKw,
+                supplyKw = grid.SupplyKw(network, now),
+                hydro = network.Hydro.Count,
                 speed = grid.Speed(network, now),
             },
             taken = reply.Taken.Select(t => new { id = t.Item, name = Items.Names[t.Item], quantity = t.Quantity }),

@@ -119,7 +119,7 @@ public sealed class UpgradeTests(ServerFactory factory) : IClassFixture<ServerFa
     [Fact]
     public void A_mine_built_up_gives_more_loads_quicker_and_rests_shorter()
     {
-        Assert.Equal([50, 100, 200], Mining.Levels.Select(l => l.Units));
+        Assert.Equal([50, 100, 200, 400, 800], Mining.Levels.Select(l => l.Units));
         Assert.True(Mining.Levels.Zip(Mining.Levels.Skip(1)).All(p => p.Second.Time < p.First.Time && p.Second.Refill < p.First.Refill));
         Assert.Empty(Mining.Levels[0].Cost);
         Assert.All(Mining.Levels.Skip(1), l => Assert.NotEmpty(l.Cost));
@@ -295,7 +295,7 @@ public sealed class UpgradeTests(ServerFactory factory) : IClassFixture<ServerFa
         Assert.Equal(2, built.GetProperty("level").GetInt32());
         Assert.Equal(100, built.GetProperty("capacity").GetInt32());
         Assert.Equal(99, built.GetProperty("units").GetInt32());
-        Assert.Equal(4, built.GetProperty("seconds").GetDouble());
+        Assert.Equal(4 / Mining.Speed(Biome.Mountains), built.GetProperty("seconds").GetDouble(), 6);
         Assert.Equal(0, (await client.InventoryAsync()).GetValueOrDefault(Items.IronIngot));
 
         // Its loads now take 4 s.
@@ -311,12 +311,25 @@ public sealed class UpgradeTests(ServerFactory factory) : IClassFixture<ServerFa
 
         var top = (await client.SendAsync("plot.upgradeMine", At(0))).Payload().GetProperty("mine");
         Assert.Equal(3, top.GetProperty("level").GetInt32());
+
+        // Deeper levels take mine supports and steel; the fifth is the last.
+        for (var level = 4; level <= Mining.Levels.Count; level++)
+        {
+            foreach (var cost in top.GetProperty("upgrade").GetProperty("cost").EnumerateArray())
+            {
+                await GiveAsync(client, cost.GetProperty("id").GetString()!, cost.GetProperty("quantity").GetInt32());
+            }
+
+            top = (await client.SendAsync("plot.upgradeMine", At(0))).Payload().GetProperty("mine");
+            Assert.Equal(level, top.GetProperty("level").GetInt32());
+        }
+
         Assert.Equal(JsonValueKind.Null, top.GetProperty("upgrade").ValueKind);
         Assert.Equal("mine_max_level", (await client.SendAsync("plot.upgradeMine", At(0))).ErrorCode());
 
         // The level stays with the mine.
         var again = (await client.SendAsync("plot.enter", new { x, y })).Payload().GetProperty("mines")[0];
-        Assert.Equal(3, again.GetProperty("level").GetInt32());
-        Assert.Equal(198, again.GetProperty("units").GetInt32());
+        Assert.Equal(5, again.GetProperty("level").GetInt32());
+        Assert.Equal(798, again.GetProperty("units").GetInt32());
     }
 }

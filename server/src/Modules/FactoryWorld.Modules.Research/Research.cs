@@ -37,6 +37,15 @@ public static class TechTree
     public const string ForestryIndustry = "forestry_industry";
     public const string Woodworking = "woodworking";
     public const string IndustrialForestry = "industrial_forestry";
+    public const string MiningAutomation = "mining_automation";
+    public const string Crushing = "crushing";
+    public const string Stonemasonry = "stonemasonry";
+    public const string Hydropower = "hydropower";
+    public const string Metallurgy = "metallurgy";
+    public const string Explosives = "explosives";
+    public const string DeepMining = "deep_mining";
+    public const string HydroPlant = "hydro_plant";
+    public const string CableTransport = "cable_transport";
 
     public static readonly IReadOnlyList<Technology> Technologies =
     [
@@ -82,6 +91,33 @@ public static class TechTree
         new(IndustrialForestry, "Leśnictwo przemysłowe", "Nadleśnictwo prowadzi największy las, a tartak przemysłowy robi z kłody trzy deski.",
             [Woodworking], [(Items.Plywood, 20), (Items.Beams, 40), (Items.CopperIngot, 20)], TimeSpan.FromMinutes(5), 100,
             [Items.ForestryStation, Items.IndustrialSawmill]),
+        new(Stonemasonry, "Kamieniarstwo", "Warsztat kamieniarski ciosa z kamienia bloki, a z marmuru płyty.",
+            [], [(Items.Stone, 100), (Items.IronIngot, 10)], TimeSpan.FromSeconds(90), 30,
+            [Items.Stonemason]),
+        new(Hydropower, "Energia wodna", "Koło wodne nad wodą albo w górach daje prąd bez paliwa.",
+            [], [(Items.Wood, 40), (Items.IronIngot, 20), (Items.CopperIngot, 10)], TimeSpan.FromMinutes(2), 40,
+            [Items.WaterWheel]),
+        new(MiningAutomation, "Automatyzacja górnictwa", "Wiertło przy kopalni samo wydobywa rudę, a kamieniołom w górach łamie kamień.",
+            [Automation], [(Items.IronIngot, 40), (Items.CopperIngot, 20), (Items.Inserter, 4)], TimeSpan.FromMinutes(3), 60,
+            [Items.Drill, Items.Quarry]),
+        new(Metallurgy, "Metalurgia", "Odlewnia stapia brąz i stal i wypala cegły; z brązu wykujesz lepszy kilof.",
+            [], [(Items.CopperIngot, 30), (Items.TinIngot, 10), (Items.IronIngot, 30), (Items.Coal, 30)], TimeSpan.FromMinutes(3), 60,
+            [Items.Foundry, Items.BronzePickaxe]),
+        new(Crushing, "Kruszenie", "Kruszarka mieli kamień na piasek, a rudę na kruszywo, z którego wytopisz więcej sztabek.",
+            [MiningAutomation], [(Items.Stone, 100), (Items.IronIngot, 30)], TimeSpan.FromMinutes(3), 60,
+            [Items.Crusher]),
+        new(Explosives, "Materiały wybuchowe", "Dynamit wydobywa z kopalni pięć urobków naraz.",
+            [Metallurgy], [(Items.Sulfur, 20), (Items.Coal, 20)], TimeSpan.FromMinutes(2), 50,
+            [Items.Dynamite]),
+        new(DeepMining, "Głębokie górnictwo", "Obudowa górnicza pozwala pogłębić kopalnię do poziomu 4 i 5; wiertło udarowe i kilof stalowy kopią szybciej.",
+            [MiningAutomation, Metallurgy], [(Items.SteelIngot, 30), (Items.Beams, 20), (Items.BronzeIngot, 20)], TimeSpan.FromMinutes(5), 100,
+            [Items.MineSupport, Items.HeavyDrill, Items.SteelPickaxe]),
+        new(HydroPlant, "Elektrownia wodna", "Mała elektrownia wodna daje pięć razy więcej prądu niż koło wodne.",
+            [Hydropower, Metallurgy], [(Items.SteelIngot, 20), (Items.Bricks, 40), (Items.CopperIngot, 30)], TimeSpan.FromMinutes(5), 100,
+            [Items.HydroPlant]),
+        new(CableTransport, "Kolejka linowa", "Stacje kolejki linowej wożą przedmioty po linie nad wszystkim, co stoi po drodze, do 24 pól.",
+            [Logistics, Metallurgy], [(Items.SteelIngot, 10), (Items.CopperIngot, 20), (Items.Belt, 10)], TimeSpan.FromMinutes(3), 60,
+            [Items.CableStation]),
     ];
 
     public static readonly IReadOnlyDictionary<string, Technology> ById = Technologies.ToDictionary(t => t.Id);

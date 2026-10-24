@@ -348,6 +348,7 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
     public static object Json(int x, int y, LogisticsState state)
     {
         Contents Of(Guid id) => state.Contents.GetValueOrDefault(id) ?? new Contents();
+        var cables = LogisticsRules.CableLinks(state.Objects);
         return new
         {
             x,
@@ -359,7 +360,7 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
             beltSlots = LogisticsRules.BeltSlots,
             beltLanes = LogisticsRules.BeltLanes,
             swingTicks = LogisticsRules.SwingTicks,
-            belts = state.Objects.Where(o => Items.IsBelt(o.Kind) || o.Kind == Items.Splitter)
+            belts = state.Objects.Where(o => Items.IsBelt(o.Kind) || o.Kind is Items.Splitter or Items.CableStation)
                 .Select(o => new
                 {
                     id = o.Id,
@@ -370,6 +371,8 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
                     filter = o.Kind == Items.Splitter ? Of(o.Id).Filter ?? [] : null,
                     filterSide = Of(o.Id).FilterSide,
                     turn = Of(o.Id).Turn,
+                    // Cable stations only: the station ahead that items ride the cable to.
+                    cable = cables.TryGetValue(o.Id, out var to) ? to : (Guid?)null,
                 }),
             // What every item is called, for choosing a splitter's filter.
             names = state.Objects.Any(o => o.Kind == Items.Splitter) ? Items.Names : null,

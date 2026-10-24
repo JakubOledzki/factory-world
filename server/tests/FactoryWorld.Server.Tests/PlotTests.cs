@@ -334,7 +334,7 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
     [Fact]
     public async Task A_sapling_from_the_trader_grows_into_a_tree_faster_in_a_forest_and_is_cut_with_an_axe()
     {
-        using var client = await PlayerAsync();
+        using var client = await PlayerAsync(10_000_000_00);
         var prices = (await client.SendAsync("market.prices")).Payload().GetProperty("items").EnumerateArray()
             .ToDictionary(i => i.GetProperty("id").GetString()!);
         Assert.Equal(200, prices[Items.Sapling].GetProperty("buyCents").GetInt64());
@@ -558,7 +558,8 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         using var client = await PlayerAsync();
         var mountains = await BuyAsync(client, Biome.Mountains);
         var (plot, tiles) = await EnterAsync(client, mountains);
-        Assert.Equal(5, plot.GetProperty("mineSeconds").GetDouble());
+        // Mines in the mountains work 30% faster.
+        Assert.Equal(5 / Mining.Speed(Biome.Mountains), plot.GetProperty("mineSeconds").GetDouble(), 6);
         var mines = plot.GetProperty("mines").EnumerateArray().ToList();
         Assert.Equal(PlotLayout.Mines(mountains.X, mountains.Y, Biome.Mountains).Count, mines.Count);
         var first = mines[0];
