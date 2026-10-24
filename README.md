@@ -9,7 +9,7 @@ Projekt gry: [dokument projektowy](https://claude.ai/code/artifact/50d66faa-a0b4
 | --- | --- |
 | `client/` | Klient gry w Godot 4.5 (GDScript) |
 | `server/` | Serwer gry w C#/.NET 10, modularny monolit |
-| `server/src/Modules/` | Moduły gry: `Session` (powitanie, ping), `Accounts` (rejestracja, logowanie, sesje), `Characters` (postać, wygląd, poziom), `Inventory` (przedmioty), `Wallet` (pieniądze i historia operacji), `Market` (handlarz NPC, szybka sprzedaż, handel między graczami), `Recycling` (garaż, kosz na śmieci, segregacja), `World` (mapa Ziemi, działki 5 × 5 km, zakup działek), `Crafting` (stół warsztatowy, piec kamienny, maszyny przetwórcze: młyn, tłocznia oleju, beczka do kiszenia, piec piekarski, kuchnia polowa), `Logistics` (taśmociągi, rozdzielacze, podajniki, skrzynie, stosy, hałdy i silosy na działkach) |
+| `server/src/Modules/` | Moduły gry: `Session` (powitanie, ping), `Accounts` (rejestracja, logowanie, sesje), `Characters` (postać, wygląd, poziom), `Inventory` (przedmioty), `Wallet` (pieniądze i historia operacji), `Market` (handlarz NPC, szybka sprzedaż, handel między graczami, wydarzenia rynkowe i zmienne ceny), `Recycling` (garaż, kosz na śmieci, segregacja), `World` (mapa Ziemi, działki 5 × 5 km, zakup działek), `Crafting` (stół warsztatowy, piec kamienny, maszyny przetwórcze: młyn, tłocznia oleju, beczka do kiszenia, piec piekarski, kuchnia polowa), `Logistics` (taśmociągi, rozdzielacze, podajniki, skrzynie, stosy, hałdy i silosy na działkach) |
 | `docker-compose.yml` | PostgreSQL i serwer do lokalnego uruchomienia |
 | `tools/render_art.py` | Renderuje grafikę (pusty garaż, meble z cieniami, postać w 4 kierunkach z animacją chodu, ikony) w Blenderze do `client/art/`; modele są budowane w kodzie, a gra wyświetla gotowe obrazki 2D. Wymaga modułu `bpy` (instrukcja w pliku) |
 | `tools/generate_ui.py` | Rysuje tekstury interfejsu (panele, przyciski, paski) do `client/art/ui/` |
@@ -32,6 +32,15 @@ Testy serwera potrzebują PostgreSQL (`docker compose up db`), a potem: `cd serv
 Każdy przebieg tworzy własną bazę testową i usuwa ją na końcu. Inny serwer bazy wskażesz zmienną `FW_TEST_DB`.
 
 Wdrożenie na serwer Linux: [docs/deploy.md](docs/deploy.md).
+
+## Wydarzenia rynkowe
+
+Ceny handlarza nie stoją w miejscu. To, ile płaci za każdy przedmiot, co dzień zmierza do nowej wartości (najwyżej ±10% od zwykłej ceny) i zmienia się co godzinę.
+Do tego doba dzieli się na 4 części po 6 godzin, a w mniej więcej połowie z nich trwa wydarzenie: susza (zboże i warzywa drożeją), urodzaj, boom na stal,
+boom budowlany, sroga zima, gorączka miedzi, gorączka złota, akcja recyklingu, jarmark albo wyprzedaż maszyn. Handlarz pokazuje trwające wydarzenie
+i zapowiada następne, żeby można było zawczasu zrobić zapasy. Kalendarz wynika z samego czasu (`MarketEvents`), więc nic nie trzeba zapisywać,
+a każdy serwer liczy te same ceny. Handlarz zawsze płaci mniej, niż sam bierze za ten sam towar. Ustawienie `Market:PriceChanges=false` wyłącza zmiany
+(testy serwera korzystają z niego, żeby liczyć na zwykłe ceny).
 
 Adres serwera dla klienta ustawia się w Godot w *Project Settings → factory_world/server_url*.
 
@@ -71,7 +80,7 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `inventory.get` | | `inventory` `{ slots, items: [{ id, name, quantity, slot }] }`; `slot` to kafelek ekwipunku (0 … `slots` − 1), przedmiot bez kafelka dostaje pierwszy wolny |
 | `inventory.move` | `{ item, slot }` | `inventory`; przenosi przedmiot na kafelek `slot`, a przedmiot, który tam leżał, zamienia się z nim miejscami |
 | `wallet.get` | | `wallet` `{ balanceCents }` |
-| `market.prices` | | `market.prices` `{ items: [{ id, name, buyCents, sellCents }] }` |
+| `market.prices` | | `market.prices` `{ items: [{ id, name, buyCents, buyChange, sellCents, sellChange }], event, next, serverTime }`: ceny handlarza teraz i ich zmiana w procentach względem zwykłych; `event` to trwające wydarzenie rynkowe, `next` najbliższe następne (albo `null`), każde `{ id, name, description, startsAtMs, endsAtMs, effects: [{ item, name, sellChange, buyChange }] }` |
 | `market.buy` / `market.sell` | `{ item, quantity }` | `market.traded` `{ item, quantity, balanceCents }`; `market.sell` to szybka sprzedaż: handlarz płaci od razu najniższą cenę rynku (`sellCents`) |
 | `market.overview` | | `market.overview` `{ items: [{ id, name, quickSaleCents, lowestCents, listed, highestCents, wanted }] }`: każdy przedmiot z ceną szybkiej sprzedaży (albo `null`), najtańszym ogłoszeniem i najlepszym zleceniem kupna graczy |
 | `market.item` | `{ item }` | `market.item` `{ item, name, listings, orders }`, oferty `[{ id, quantity, priceCents, owner, mine }]`: ogłoszenia od najtańszego, zlecenia od najlepiej płacącego (po 50) |
