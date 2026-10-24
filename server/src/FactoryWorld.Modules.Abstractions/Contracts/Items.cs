@@ -23,6 +23,10 @@ public static class Items
     public const string Furnace = "furniture_furnace";
     public const string Anvil = "furniture_anvil";
 
+    // Upgraded furnaces: they stand on plots only and smelt faster, holding more.
+    public const string BrickFurnace = "furniture_brick_furnace";
+    public const string BlastFurnace = "furniture_blast_furnace";
+
     // Tools: one can be held in the character's tool slot.
     public const string Axe = "tool_axe";
     public const string Shovel = "tool_shovel";
@@ -65,6 +69,12 @@ public static class Items
     public const string Inserter = "logistics_inserter";
     public const string Splitter = "logistics_splitter";
 
+    // Upgraded belts and inserters: the same, only faster.
+    public const string FastBelt = "logistics_fast_belt";
+    public const string ExpressBelt = "logistics_express_belt";
+    public const string FastInserter = "logistics_fast_inserter";
+    public const string ExpressInserter = "logistics_express_inserter";
+
     // Storage put on plots: chests take anything, piles, heaps and silos one kind of bulk goods.
     public const string WoodenChest = "storage_wooden_chest";
     public const string IronChest = "storage_iron_chest";
@@ -89,6 +99,10 @@ public static class Items
     public const string VegetableSoup = "vegetable_soup";
     public const string Bigos = "bigos";
 
+    // Power on plots: a generator burns wood or coal, poles carry its power to machines near them.
+    public const string Generator = "power_generator";
+    public const string Pole = "power_pole";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -109,6 +123,8 @@ public static class Items
         [SortingMachine] = "Automatyczna sortownia",
         [Furnace] = "Piec kamienny",
         [Anvil] = "Kowadło",
+        [BrickFurnace] = "Piec ceglany",
+        [BlastFurnace] = "Piec hutniczy",
         [Axe] = "Siekiera",
         [Shovel] = "Łopata",
         [Pickaxe] = "Kilof",
@@ -139,6 +155,10 @@ public static class Items
         [Belt] = "Taśmociąg",
         [Inserter] = "Podajnik",
         [Splitter] = "Rozdzielacz",
+        [FastBelt] = "Szybki taśmociąg",
+        [ExpressBelt] = "Ekspresowy taśmociąg",
+        [FastInserter] = "Szybki podajnik",
+        [ExpressInserter] = "Ekspresowy podajnik",
         [WoodenChest] = "Skrzynia drewniana",
         [IronChest] = "Skrzynia żelazna",
         [WoodPile] = "Stos drewna",
@@ -159,9 +179,20 @@ public static class Items
         [Fries] = "Frytki",
         [VegetableSoup] = "Zupa jarzynowa",
         [Bigos] = "Bigos",
+        [Generator] = "Generator parowy",
+        [Pole] = "Słup energetyczny",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
 
     public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw;
+
+    /// <summary>Furnaces of every level: the stone one and its upgrades.</summary>
+    public static bool IsFurnace(string id) => id is Furnace or BrickFurnace or BlastFurnace;
+
+    /// <summary>Belts of every level (not splitters).</summary>
+    public static bool IsBelt(string id) => id is Belt or FastBelt or ExpressBelt;
+
+    /// <summary>Inserters of every level.</summary>
+    public static bool IsInserter(string id) => id is Inserter or FastInserter or ExpressInserter;
 }

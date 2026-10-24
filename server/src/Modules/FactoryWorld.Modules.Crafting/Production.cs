@@ -7,7 +7,7 @@ namespace FactoryWorld.Modules.Crafting;
 /// A state worked further is always saved after this is counted, so the same batch is never counted twice.</summary>
 internal static class MachineProduction
 {
-    public static List<ProductionEntry> Smelted(FurnaceState before, FurnaceState after)
+    public static List<ProductionEntry> Smelted(FurnaceLevel level, FurnaceState before, FurnaceState after)
     {
         var entries = new List<ProductionEntry>();
         var n = before.InputQuantity - after.InputQuantity;
@@ -16,10 +16,11 @@ internal static class MachineProduction
             return entries;
         }
 
-        var first = started + recipe.Time;
-        entries.AddRange(ProductionEntry.Batches(recipe.Output, 1, true, first, recipe.Time, n));
-        entries.AddRange(ProductionEntry.Batches(recipe.Input, 1, false, first, recipe.Time, n));
-        entries.AddRange(Burnt(Items.Coal, before.Heat, Smelting.SmeltsPerCoal, first, recipe.Time, n));
+        var time = level.Time(recipe);
+        var first = started + time;
+        entries.AddRange(ProductionEntry.Batches(recipe.Output, 1, true, first, time, n));
+        entries.AddRange(ProductionEntry.Batches(recipe.Input, 1, false, first, time, n));
+        entries.AddRange(Burnt(Items.Coal, before.Heat, level.SmeltsPerCoal, first, time, n));
         return entries;
     }
 
@@ -52,6 +53,15 @@ internal static class MachineProduction
         return entries;
     }
 
+    /// <summary>As above for a machine that works in its own time (<paramref name="clock"/>, on power): its batches
+    /// are moved to the time on the plot by how far the machine is behind at <paramref name="now"/>.</summary>
+    public static List<ProductionEntry> Processed(ProcessingMachine machine, MachineState before, MachineState after, IPowerClock clock, DateTimeOffset now)
+    {
+        var entries = Processed(machine, before, after);
+        var behind = now - clock.At(now);
+        return behind <= TimeSpan.Zero ? entries : entries.Select(e => e with { At = e.At + behind }).ToList();
+    }
+
     /// <summary>One piece of fuel goes on the fire for the batch that finds no heat left, then lasts <paramref name="perFuel"/> batches.</summary>
     private static IEnumerable<ProductionEntry> Burnt(string fuel, int heat, int perFuel, DateTimeOffset first, TimeSpan step, int batches)
     {
@@ -63,7 +73,7 @@ internal static class MachineProduction
 }
 
 /// <summary>What each of the player's furnaces and processing machines is doing now.</summary>
-public sealed class CraftingMachineStatuses(GameDb db, TimeProvider time) : IMachineStatuses
+public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, TimeProvider time) : IMachineStatuses
 {
     public async Task<IReadOnlyList<MachineStatus>> StatusesAsync(Guid owner, CancellationToken cancellationToken)
     {
@@ -71,7 +81,7 @@ public sealed class CraftingMachineStatuses(GameDb db, TimeProvider time) : IMac
         var statuses = new List<MachineStatus>();
         await using (var furnaces = await db.CommandAsync(
             """
-            SELECT object_id, input_item, input_quantity, fuel, heat, output_item, output_quantity, started_at
+            SELECT object_id, input_item, input_quantity, fuel, heat, output_item, output_quantity, started_at, kind
             FROM crafting.furnaces WHERE owner_id = @owner
             """, cancellationToken))
         {
@@ -79,14 +89,17 @@ public sealed class CraftingMachineStatuses(GameDb db, TimeProvider time) : IMac
             await using var reader = await furnaces.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
+                var kind = reader.GetString(8);
+                var level = Smelting.Level(kind) ?? Smelting.Stone;
                 var state = Smelting.Advance(new FurnaceState(
                     reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4),
                     reader.IsDBNull(5) ? null : reader.GetString(5), reader.GetInt32(6),
-                    reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7)), now);
-                statuses.Add(Furnace(reader.GetGuid(0), state));
+                    reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7)), level, now);
+                statuses.Add(Furnace(reader.GetGuid(0), state, level.Kind));
             }
         }
 
+        var stored = new List<(Guid Id, ProcessingMachine Machine, MachineState State)>();
         await using (var machines = await db.CommandAsync(
             """
             SELECT object_id, kind, recipe, inputs, fuel_item, fuel, heat, output, started_at
@@ -102,29 +115,38 @@ public sealed class CraftingMachineStatuses(GameDb db, TimeProvider time) : IMac
                     continue;
                 }
 
-                var state = Processing.Advance(machine, new MachineState(
+                stored.Add((reader.GetGuid(0), machine, new MachineState(
                     reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetFieldValue<int[]>(3),
                     reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetInt32(5), reader.GetInt32(6), reader.GetInt32(7),
-                    reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8)), now);
-                statuses.Add(Machine(reader.GetGuid(0), machine, state));
+                    reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8))));
             }
+        }
+
+        // Machines on power work in their own time; one at work with no power at all stalls for it.
+        foreach (var (id, machine, state) in stored)
+        {
+            var clock = machine.Powered ? await power.ClockAsync(id, cancellationToken) : PlainTime.Instance;
+            var status = Machine(id, machine, Processing.Advance(machine, state, clock.At(now)));
+            statuses.Add(status.Activity == MachineActivity.Working && machine.Powered && clock.Speed(now) <= 0
+                ? status with { Activity = MachineActivity.NoPower }
+                : status);
         }
 
         return statuses;
     }
 
-    public static MachineStatus Furnace(Guid id, FurnaceState s)
+    public static MachineStatus Furnace(Guid id, FurnaceState s, string kind = Items.Furnace)
     {
         var product = Smelting.For(s.Input)?.Output ?? s.Output;
         if (s.StartedAt is not null)
         {
-            return new(id, Items.Furnace, product, MachineActivity.Working, []);
+            return new(id, kind, product, MachineActivity.Working, []);
         }
 
         // Without ore the furnace does not say which one it waits for.
         return s.InputQuantity == 0
-            ? new(id, Items.Furnace, product, MachineActivity.NoInput, s.Input is { } ore ? [ore] : [])
-            : new(id, Items.Furnace, product, MachineActivity.NoFuel, [Items.Coal]);
+            ? new(id, kind, product, MachineActivity.NoInput, s.Input is { } ore ? [ore] : [])
+            : new(id, kind, product, MachineActivity.NoFuel, [Items.Coal]);
     }
 
     public static MachineStatus Machine(Guid id, ProcessingMachine machine, MachineState s)

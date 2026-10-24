@@ -25,9 +25,15 @@ public static class Workshop
     [
         new(Items.Workbench, 1, TimeSpan.FromSeconds(30), [(Items.Wood, 20), (Items.Nails, 5)], 10),
         new(Items.Furnace, 1, TimeSpan.FromSeconds(45), [(Items.Stone, 20)], 15),
+        new(Items.BrickFurnace, 1, TimeSpan.FromSeconds(60), [(Items.Furnace, 1), (Items.Stone, 40), (Items.Sand, 20), (Items.IronIngot, 10)], 25),
+        new(Items.BlastFurnace, 1, TimeSpan.FromSeconds(90), [(Items.BrickFurnace, 1), (Items.Stone, 60), (Items.IronIngot, 40), (Items.CopperIngot, 20)], 50),
         new(Items.Nails, 5, TimeSpan.FromSeconds(10), [(Items.IronIngot, 1)], 2),
         new(Items.Belt, 4, TimeSpan.FromSeconds(10), [(Items.IronIngot, 2), (Items.Wood, 1)], 3),
         new(Items.Inserter, 1, TimeSpan.FromSeconds(15), [(Items.IronIngot, 2), (Items.CopperIngot, 1), (Items.Nails, 5)], 5),
+        new(Items.FastBelt, 2, TimeSpan.FromSeconds(15), [(Items.Belt, 2), (Items.IronIngot, 3), (Items.CopperIngot, 1)], 5),
+        new(Items.ExpressBelt, 2, TimeSpan.FromSeconds(20), [(Items.FastBelt, 2), (Items.IronIngot, 4), (Items.TinIngot, 1)], 8),
+        new(Items.FastInserter, 1, TimeSpan.FromSeconds(20), [(Items.Inserter, 1), (Items.IronIngot, 2), (Items.CopperIngot, 2)], 8),
+        new(Items.ExpressInserter, 1, TimeSpan.FromSeconds(25), [(Items.FastInserter, 1), (Items.CopperIngot, 3), (Items.SilverIngot, 1)], 12),
         new(Items.Splitter, 1, TimeSpan.FromSeconds(20), [(Items.Belt, 2), (Items.IronIngot, 4), (Items.CopperIngot, 2)], 6),
         new(Items.WoodenChest, 1, TimeSpan.FromSeconds(10), [(Items.Wood, 10), (Items.Nails, 5)], 3),
         new(Items.IronChest, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 8)], 6),
@@ -39,6 +45,8 @@ public static class Workshop
         new(Items.PicklingBarrel, 1, TimeSpan.FromSeconds(30), [(Items.Wood, 12), (Items.Nails, 5)], 10),
         new(Items.Bakery, 1, TimeSpan.FromSeconds(90), [(Items.Stone, 40), (Items.IronIngot, 3), (Items.Sand, 10)], 30),
         new(Items.Kitchen, 1, TimeSpan.FromSeconds(90), [(Items.Stone, 20), (Items.IronIngot, 5), (Items.CopperIngot, 2)], 30),
+        new(Items.Generator, 1, TimeSpan.FromSeconds(60), [(Items.Stone, 10), (Items.IronIngot, 8), (Items.CopperIngot, 4)], 20),
+        new(Items.Pole, 2, TimeSpan.FromSeconds(5), [(Items.Wood, 2), (Items.CopperIngot, 1)], 1),
         new(Items.Anvil, 1, TimeSpan.FromSeconds(60), [(Items.IronIngot, 15), (Items.Stone, 10)], 20),
         new(Items.Axe, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 3), (Items.Wood, 2)], 5, Items.Anvil),
         new(Items.Shovel, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 2), (Items.Wood, 2)], 5, Items.Anvil),
@@ -49,22 +57,28 @@ public static class Workshop
     public static Recipe? Find(string id) => Recipes.FirstOrDefault(r => r.Id == id);
 
     /// <summary>Fails unless the player has an object of <paramref name="kind"/> with this id, in the garage or on a plot.</summary>
-    public static async Task RequireAsync(IEnumerable<IPlacedObjects> places, Guid owner, Guid id, string kind, CancellationToken cancellationToken)
+    public static Task RequireAsync(IEnumerable<IPlacedObjects> places, Guid owner, Guid id, string kind, CancellationToken cancellationToken) =>
+        RequireAsync(places, owner, id, k => k == kind, kind, cancellationToken);
+
+    /// <summary>Fails unless the player has an object of a kind <paramref name="fits"/> with this id, in
+    /// the garage or on a plot; returns its kind. <paramref name="name"/> names what is missing.</summary>
+    public static async Task<string> RequireAsync(
+        IEnumerable<IPlacedObjects> places, Guid owner, Guid id, Func<string, bool> fits, string name, CancellationToken cancellationToken)
     {
         foreach (var place in places)
         {
             if (await place.KindAsync(owner, id, cancellationToken) is { } found)
             {
-                if (found == kind)
+                if (fits(found))
                 {
-                    return;
+                    return found;
                 }
 
                 break;
             }
         }
 
-        throw new GameException("no_object", $"There is no {Items.Names[kind]} of yours here.");
+        throw new GameException("no_object", $"There is no {Items.Names[name]} of yours here.");
     }
 }
 

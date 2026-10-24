@@ -111,6 +111,7 @@ func _submit() -> void:
 	var reply := await Net.request("character.create", {"name": _name.text.strip_edges(), "appearance": _appearance})
 	if reply["type"] == "character":
 		Game.character = reply["payload"]
+		Game.watch_achievements()
 		get_tree().change_scene_to_file(Game.GARAGE_SCENE)
 		return
 	_error.text = Game.error_text(reply)

@@ -14,6 +14,7 @@ const REASONS := {
 	"no_fuel": "brak paliwa",
 	"output_full": "pełna, odbierz produkty",
 	"no_recipe": "nie wybrano przepisu",
+	"no_power": "brak prądu",
 }
 
 var _minutes := 10

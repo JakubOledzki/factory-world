@@ -4,12 +4,17 @@ using FactoryWorld.Modules.Abstractions;
 namespace FactoryWorld.Server;
 
 /// <summary>Routes each incoming envelope to the module handler registered for its type.</summary>
-public sealed class MessageDispatcher(IEnumerable<IMessageHandler> handlers, ILogger<MessageDispatcher> logger)
+public sealed class MessageDispatcher(
+    IEnumerable<IMessageHandler> handlers,
+    IEnumerable<IMessageObserver> observers,
+    ILogger<MessageDispatcher> logger)
 {
     public static JsonSerializerOptions Json => Payload.Json;
 
     private readonly Dictionary<string, IMessageHandler> _handlers =
         handlers.ToDictionary(h => h.Type, StringComparer.Ordinal);
+
+    private readonly IMessageObserver[] _observers = observers.ToArray();
 
     public async Task<Envelope> DispatchAsync(string frame, ClientContext client, CancellationToken cancellationToken)
     {
@@ -41,7 +46,9 @@ public sealed class MessageDispatcher(IEnumerable<IMessageHandler> handlers, ILo
         try
         {
             var reply = await handler.HandleAsync(request.Payload, client, cancellationToken);
-            return new Envelope(reply.Type, request.Id, JsonSerializer.SerializeToElement(reply.Payload, Json));
+            var envelope = new Envelope(reply.Type, request.Id, JsonSerializer.SerializeToElement(reply.Payload, Json));
+            await ObserveAsync(request, envelope, client, cancellationToken);
+            return envelope;
         }
         catch (GameException ex)
         {
@@ -51,6 +58,21 @@ public sealed class MessageDispatcher(IEnumerable<IMessageHandler> handlers, ILo
         {
             logger.LogError(ex, "Handler for {Type} failed", request.Type);
             return Error(request.Id, "internal", "Server error.");
+        }
+    }
+
+    private async Task ObserveAsync(Envelope request, Envelope reply, ClientContext client, CancellationToken cancellationToken)
+    {
+        foreach (var observer in _observers)
+        {
+            try
+            {
+                await observer.ObserveAsync(request, reply, client, cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                logger.LogError(ex, "Observer {Observer} failed on {Type}", observer.GetType().Name, request.Type);
+            }
         }
     }
 

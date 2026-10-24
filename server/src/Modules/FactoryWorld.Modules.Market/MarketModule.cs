@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FactoryWorld.Modules.Market;
 
 /// <summary>
-/// The NPC trader: always sells trash, saplings, nails, tools, an anvil, a chainsaw, belts, inserters, wooden chests, machines, flour, oil and bread and always buys raw materials.
+/// The NPC trader: always sells trash, saplings, nails, tools, an anvil, a chainsaw, belts, inserters, wooden chests, machines, generators, poles, flour, oil and bread and always buys raw materials.
 /// These are its usual prices (cents); <see cref="TraderPrices"/> moves them with the day's drift and the market's events.
 /// What it pays is the floor of the market: a quick sale gets it at once, players' listings usually pay more.
 /// </summary>
@@ -39,6 +39,8 @@ public static class NpcPrices
         [Items.Flour] = 400,
         [Items.SunflowerOil] = 1500,
         [Items.Bread] = 1500,
+        [Items.Generator] = 60_000,
+        [Items.Pole] = 300,
     };
 
     /// <summary>What the NPC pays the player.</summary>
@@ -74,6 +76,8 @@ public static class NpcPrices
         [Items.SortingMachine] = 50_000,
         [Items.Workbench] = 3000,
         [Items.Furnace] = 1500,
+        [Items.BrickFurnace] = 6000,
+        [Items.BlastFurnace] = 30_000,
         [Items.Axe] = 500,
         [Items.Shovel] = 500,
         [Items.Pickaxe] = 500,
@@ -83,6 +87,10 @@ public static class NpcPrices
         [Items.Belt] = 200,
         [Items.Inserter] = 1200,
         [Items.Splitter] = 1600,
+        [Items.FastBelt] = 900,
+        [Items.ExpressBelt] = 2500,
+        [Items.FastInserter] = 3500,
+        [Items.ExpressInserter] = 12_000,
         [Items.WoodenChest] = 800,
         [Items.IronChest] = 2500,
         [Items.WoodPile] = 300,
@@ -103,6 +111,8 @@ public static class NpcPrices
         [Items.Fries] = 900,
         [Items.VegetableSoup] = 1100,
         [Items.Bigos] = 750,
+        [Items.Generator] = 4000,
+        [Items.Pole] = 100,
     };
 
     public const int MaxQuantity = 1000;

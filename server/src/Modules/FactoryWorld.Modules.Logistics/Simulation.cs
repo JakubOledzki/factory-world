@@ -16,8 +16,29 @@ public static class LogisticsRules
     /// <summary>Lanes side by side on a belt, the left one (as the belt runs) first.</summary>
     public const int BeltLanes = 2;
 
-    /// <summary>Ticks an inserter's arm takes to swing from where it picks up to where it drops, and as many back.</summary>
+    /// <summary>Ticks the arm of a plain inserter takes to swing from where it picks up to where it drops, and as many back.</summary>
     public const int SwingTicks = 4;
+
+    /// <summary>Belts of every level and how many places an item moves along them in a tick.</summary>
+    public static readonly IReadOnlyDictionary<string, int> BeltSpeeds = new Dictionary<string, int>
+    {
+        [Items.Belt] = 1,
+        [Items.FastBelt] = 2,
+        [Items.ExpressBelt] = 3,
+    };
+
+    /// <summary>Inserters of every level and the ticks their arm takes to swing one way.</summary>
+    public static readonly IReadOnlyDictionary<string, int> InserterSwings = new Dictionary<string, int>
+    {
+        [Items.Inserter] = SwingTicks,
+        [Items.FastInserter] = 2,
+        [Items.ExpressInserter] = 1,
+    };
+
+    /// <summary>Places a tick an item moves along a belt of this kind; a splitter's own speed comes from the belt feeding it.</summary>
+    public static int BeltSpeed(string kind) => BeltSpeeds.GetValueOrDefault(kind, 1);
+
+    public static int Swing(string kind) => InserterSwings.GetValueOrDefault(kind, SwingTicks);
 
     /// <summary>Ticks of work done in one catch-up: 30 minutes. Machinery that keeps busy for longer
     /// while nobody looks (e.g. items going round a loop of belts) rests for the rest of the time.</summary>
@@ -50,8 +71,11 @@ public sealed class Contents
     /// <summary>The item in an inserter's hand.</summary>
     public string? Hand { get; set; }
 
-    /// <summary>How far the inserter's arm is, 0 (at the pick-up side) to <see cref="LogisticsRules.SwingTicks"/>.</summary>
+    /// <summary>How far the inserter's arm is, 0 (at the pick-up side) to its swing ticks (<see cref="LogisticsRules.Swing"/>).</summary>
     public int Swing { get; set; }
+
+    /// <summary>How much of its next move an inserter on too little power has the power for, 0 to 1.</summary>
+    public double Charge { get; set; }
 
     /// <summary>What a storage holds.</summary>
     public List<ItemStack>? Items { get; set; }
@@ -144,12 +168,14 @@ public sealed class StoragePort(StorageKind kind, Contents contents, Action chan
 /// a belt that joins another from the side as well puts all it carries on the near lane of that one.
 /// An inserter picks one item from the tile behind it (a belt, a machine's output or a storage),
 /// swings round and drops it on the tile in front, when that takes it: on a belt, on the far lane
-/// first.
+/// first. Faster belts move their items more places a tick, in turns within the tick, and faster
+/// inserters swing in fewer ticks; a splitter keeps up with the belt that feeds it from behind.
+/// Inserters run on power: on a grid short of it they swing slower, without any they stand still.
 /// </summary>
 public sealed class PlotLogistics
 {
     /// <summary>A belt or a splitter: lanes of places that items move along.</summary>
-    private sealed class Belt(Guid id, int x, int y, int rotation, Contents contents, bool splitter)
+    private sealed class Belt(Guid id, int x, int y, int rotation, Contents contents, bool splitter, int speed)
     {
         public Guid Id { get; } = id;
         public int X { get; } = x;
@@ -159,6 +185,9 @@ public sealed class PlotLogistics
         public string?[] Slots => Contents.Belt!;
         public bool IsSplitter { get; } = splitter;
 
+        /// <summary>Places items move along it in a tick.</summary>
+        public int Speed { get; set; } = speed;
+
         /// <summary>Where items go at the end of the lanes: a belt has one way on, a splitter two
         /// (its left and its right), either of which may lead nowhere.</summary>
         public Link?[] Out { get; } = splitter ? new Link?[2] : new Link?[1];
@@ -167,10 +196,14 @@ public sealed class PlotLogistics
     /// <summary>The belt items go on to, the lane each lane leads to and the place on it they come on at.</summary>
     private sealed record Link(Belt To, int[] Into, int Entry);
 
-    private sealed class Inserter(Guid id, Contents contents)
+    private sealed class Inserter(Guid id, Contents contents, int swingTicks)
     {
         public Guid Id { get; } = id;
         public Contents Contents { get; } = contents;
+        public int SwingTicks { get; } = swingTicks;
+
+        /// <summary>Its time on the plot's power grid; null runs it as if it had all the power it needs.</summary>
+        public IPowerClock? Clock { get; set; }
         public Belt? FromBelt { get; set; }
         public IMachinePort? FromPort { get; set; }
         public Belt? ToBelt { get; set; }
@@ -187,17 +220,21 @@ public sealed class PlotLogistics
     private readonly List<Inserter> _inserters = [];
     private readonly List<IMachinePort> _ports = [];
 
+    /// <summary>Turns belts take in a tick: as many as the fastest one moves places.</summary>
+    private readonly int _phases;
+
     /// <summary>Objects whose contents changed and must be written back.</summary>
     public HashSet<Guid> Changed { get; } = [];
 
     /// <param name="objects">Every object on the plot.</param>
     /// <param name="contents">Contents of belts and inserters by object id; missing ones start empty and are added.</param>
     /// <param name="ports">Machines and storage inserters can reach, by object id.</param>
-    public PlotLogistics(IReadOnlyList<PlotObject> objects, Dictionary<Guid, Contents> contents, IReadOnlyDictionary<Guid, IMachinePort> ports)
+    /// <param name="power">The plot's power grid; without one inserters work as if they had all the power they need.</param>
+    public PlotLogistics(IReadOnlyList<PlotObject> objects, Dictionary<Guid, Contents> contents, IReadOnlyDictionary<Guid, IMachinePort> ports, IPowerGrid? power = null)
     {
         var at = objects.ToDictionary(o => (o.TileX, o.TileY));
         var belts = new Dictionary<(int, int), Belt>();
-        foreach (var o in objects.Where(o => o.Kind is Items.Belt or Items.Splitter).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
+        foreach (var o in objects.Where(o => Items.IsBelt(o.Kind) || o.Kind == Items.Splitter).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
         {
             var c = Contents(contents, o.Id);
             if (c.Belt is not { Length: LogisticsRules.BeltSlots * LogisticsRules.BeltLanes })
@@ -208,8 +245,19 @@ public sealed class PlotLogistics
                 c.Belt = slots;
             }
 
-            belts[(o.TileX, o.TileY)] = new Belt(o.Id, o.TileX, o.TileY, o.Rotation, c, o.Kind == Items.Splitter);
+            belts[(o.TileX, o.TileY)] = new Belt(o.Id, o.TileX, o.TileY, o.Rotation, c, o.Kind == Items.Splitter, LogisticsRules.BeltSpeed(o.Kind));
         }
+
+        foreach (var belt in belts.Values.Where(b => b.IsSplitter))
+        {
+            var (dx, dy) = LogisticsRules.Facing(belt.Rotation);
+            if (belts.GetValueOrDefault((belt.X - dx, belt.Y - dy)) is { IsSplitter: false } feeder && feeder.Rotation == belt.Rotation)
+            {
+                belt.Speed = feeder.Speed;
+            }
+        }
+
+        _phases = belts.Count == 0 ? 0 : belts.Values.Max(b => b.Speed);
 
         // Only belts turn corners; a splitter always runs straight.
         var rotations = belts.Where(b => !b.Value.IsSplitter).ToDictionary(b => b.Key, b => b.Value.Rotation);
@@ -234,10 +282,10 @@ public sealed class PlotLogistics
             Downstream(start, seen);
         }
 
-        foreach (var o in objects.Where(o => o.Kind == Items.Inserter).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
+        foreach (var o in objects.Where(o => Items.IsInserter(o.Kind)).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
         {
             var (dx, dy) = LogisticsRules.Facing(o.Rotation);
-            var inserter = new Inserter(o.Id, Contents(contents, o.Id));
+            var inserter = new Inserter(o.Id, Contents(contents, o.Id), LogisticsRules.Swing(o.Kind)) { Clock = power?.Clock(o.Id) };
             var from = (o.TileX - dx, o.TileY - dy);
             var to = (o.TileX + dx, o.TileY + dy);
             inserter.FromBelt = belts.GetValueOrDefault(from);
@@ -336,7 +384,7 @@ public sealed class PlotLogistics
     /// <summary>The tiles that inserters pick up from and drop on, which the machines there must be opened for.</summary>
     public static IEnumerable<(int TileX, int TileY)> Reach(IEnumerable<PlotObject> objects)
     {
-        foreach (var o in objects.Where(o => o.Kind == Items.Inserter))
+        foreach (var o in objects.Where(o => Items.IsInserter(o.Kind)))
         {
             var (dx, dy) = LogisticsRules.Facing(o.Rotation);
             yield return (o.TileX - dx, o.TileY - dy);
@@ -389,40 +437,41 @@ public sealed class PlotLogistics
     private bool Step(DateTimeOffset now)
     {
         var moved = false;
-        const int size = LogisticsRules.BeltSlots;
-        foreach (var belt in _belts)
+        for (var phase = 0; phase < _phases; phase++)
         {
-            var slots = belt.Slots;
-            for (var lane = 0; lane < LogisticsRules.BeltLanes; lane++)
-            {
-                var start = lane * size;
-                var end = start + size - 1;
-                if (slots[end] is { } leaving && Pass(belt, lane, leaving))
-                {
-                    slots[end] = null;
-                    Changed.Add(belt.Id);
-                    moved = true;
-                }
-
-                for (var i = end - 1; i >= start; i--)
-                {
-                    if (slots[i] is not null && slots[i + 1] is null)
-                    {
-                        slots[i + 1] = slots[i];
-                        slots[i] = null;
-                        Changed.Add(belt.Id);
-                        moved = true;
-                    }
-                }
-            }
+            moved |= MoveBelts(phase);
         }
 
         foreach (var inserter in _inserters)
         {
             var c = inserter.Contents;
+            var speed = inserter.Clock?.Speed(now) ?? 1;
+            if (speed <= 0)
+            {
+                continue;
+            }
+
+            if (speed < 1)
+            {
+                // Short of power it gathers what one move takes over the ticks; one waiting for
+                // something to do keeps no more than that.
+                var charge = Math.Min(c.Charge, 1) + speed;
+                if (charge != c.Charge)
+                {
+                    c.Charge = charge;
+                    Changed.Add(inserter.Id);
+                }
+
+                if (charge < 1)
+                {
+                    moved = true;
+                    continue;
+                }
+            }
+
             if (c.Hand is { } hand)
             {
-                if (c.Swing < LogisticsRules.SwingTicks)
+                if (c.Swing < inserter.SwingTicks)
                 {
                     c.Swing++;
                 }
@@ -448,8 +497,53 @@ public sealed class PlotLogistics
                 continue;
             }
 
+            if (speed < 1)
+            {
+                c.Charge -= 1;
+            }
+
             Changed.Add(inserter.Id);
             moved = true;
+        }
+
+        return moved;
+    }
+
+    /// <summary>One turn of the belts within a tick: those fast enough move their items one place on.</summary>
+    private bool MoveBelts(int phase)
+    {
+        var moved = false;
+        const int size = LogisticsRules.BeltSlots;
+        foreach (var belt in _belts)
+        {
+            if (belt.Speed <= phase)
+            {
+                continue;
+            }
+
+            var slots = belt.Slots;
+            for (var lane = 0; lane < LogisticsRules.BeltLanes; lane++)
+            {
+                var start = lane * size;
+                var end = start + size - 1;
+                if (slots[end] is { } leaving && Pass(belt, lane, leaving))
+                {
+                    slots[end] = null;
+                    Changed.Add(belt.Id);
+                    moved = true;
+                }
+
+                for (var i = end - 1; i >= start; i--)
+                {
+                    if (slots[i] is not null && slots[i + 1] is null)
+                    {
+                        slots[i + 1] = slots[i];
+                        slots[i] = null;
+                        Changed.Add(belt.Id);
+                        moved = true;
+                    }
+                }
+            }
         }
 
         return moved;

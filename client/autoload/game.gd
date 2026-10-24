@@ -37,19 +37,38 @@ const ERRORS := {
 	"bad_plot": "Nie ma takiej działki.",
 	"not_buyable": "Wody nie da się kupić.",
 	"plot_taken": "Ktoś już kupił tę działkę.",
-	"not_owner": "To nie jest twoja działka.",
+	"not_owner": "To nie jest twoja działka albo twoja rola w spółce na to nie pozwala.",
+	"not_yours": "To postawił ktoś inny. Podnieść to może on albo właściciel działki.",
+	"invalid_company_name": "Nazwa spółki: 3–24 znaki, litery, cyfry lub spacje.",
+	"company_name_taken": "Spółka o tej nazwie już istnieje.",
+	"already_in_company": "Ten gracz (albo ty) jest już w spółce.",
+	"no_such_player": "Nie ma gracza o takiej nazwie.",
+	"company_full": "Spółka ma już komplet członków.",
+	"no_invite": "Ta spółka cię nie zaprosiła.",
+	"no_company": "Nie należysz do spółki.",
+	"not_allowed": "Twoja rola w spółce na to nie pozwala.",
+	"hand_over_first": "Najpierw przekaż prezesurę innemu członkowi.",
+	"not_member": "Tego gracza nie ma w twojej spółce.",
+	"not_yourself": "Tego nie możesz zrobić sam sobie.",
+	"bad_role": "Nieznana rola.",
+	"warehouse_full": "W magazynie spółki nie ma już miejsca.",
 	"wrong_tool": "Potrzebujesz innego narzędzia.",
 	"nothing_here": "Tego już tu nie ma.",
 	"too_fast": "Powoli, jeszcze nie skończyłeś.",
 	"not_a_tool": "To nie jest narzędzie.",
 	"bad_destination": "Wybierz inną działkę jako cel.",
 	"no_station": "Na tej działce nie ma stacji (nikt jej nie kupił).",
+	"bad_interval": "Pociąg może odjeżdżać co 1, 5, 15 albo 60 minut.",
+	"bad_items": "Kurs może wozić najwyżej 8 rodzajów towaru.",
+	"too_many_routes": "Ze stacji może odjeżdżać najwyżej 5 kursów.",
+	"no_route": "Tego kursu już nie ma.",
 	"not_fertile": "Orać można tylko żyzne gleby.",
 	"unknown_crop": "Nieznana roślina.",
 	"no_field": "Najpierw zaorz tu ziemię motyką.",
 	"not_ripe": "To jeszcze nie dojrzało.",
 	"no_mine": "Na tej działce nie ma takiej kopalni.",
 	"mine_empty": "Kopalnia jest wyczerpana, odnowi się za chwilę.",
+	"mine_max_level": "Ta kopalnia jest już rozbudowana do końca.",
 	"already_surveyed": "Ta działka jest już zbadana.",
 	"no_offer": "Tej oferty już nie ma.",
 	"own_offer": "To twoja własna oferta.",
@@ -66,6 +85,9 @@ const ERRORS := {
 	"machine_full": "Tyle się nie zmieści w maszynie.",
 	"machine_busy": "Przy ogniu leży już inne paliwo. Wyjmij je najpierw.",
 	"not_processable": "Tego nie da się tu włożyć.",
+	"not_fuel": "Generator pali tylko drewno i węgiel.",
+	"generator_busy": "Przy ogniu leży już inny opał. Wyjmij go najpierw.",
+	"generator_full": "Tyle opału nie zmieści się w generatorze.",
 	"no_contract": "Tego zlecenia już nie ma.",
 	"own_contract": "To twoje własne zlecenie.",
 	"contract_taken": "Ktoś inny już realizuje to zlecenie.",
@@ -95,6 +117,7 @@ var plot := Vector2i(-1, -1)
 func _ready() -> void:
 	get_tree().root.theme = UI.theme()
 	add_child(ItemTooltip.new())
+	add_child(AchievementToast.new())
 	var config := ConfigFile.new()
 	if config.load(SESSION_FILE) == OK:
 		token = config.get_value("session", "token", "")
@@ -135,6 +158,7 @@ func enter_game() -> void:
 	var reply := await Net.request("character.get")
 	if reply["type"] == "character":
 		character = reply["payload"]
+		watch_achievements()
 		get_tree().change_scene_to_file(GARAGE_SCENE)
 	else:
 		character = {}
@@ -186,6 +210,13 @@ func _on_reconnected() -> void:
 	if reply["type"] != "auth.ok":
 		_save_token("")
 		get_tree().change_scene_to_file(LOGIN_SCENE)
+	elif not character.is_empty():
+		watch_achievements()
+
+
+## From now on the server tells this connection of every badge the player unlocks (AchievementToast).
+func watch_achievements() -> void:
+	Net.send("achievements.watch")
 
 
 func _save_token(value: String) -> void:

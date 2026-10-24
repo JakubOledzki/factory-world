@@ -12,9 +12,13 @@
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.World\FactoryWorld.Modules.World.csproj" />
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Crafting\FactoryWorld.Modules.Crafting.csproj" />
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Logistics\FactoryWorld.Modules.Logistics.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Power\FactoryWorld.Modules.Power.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Tutorial\FactoryWorld.Modules.Tutorial.csproj" />
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Statistics\FactoryWorld.Modules.Statistics.csproj" />
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Contracts\FactoryWorld.Modules.Contracts.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Companies\FactoryWorld.Modules.Companies.csproj" />
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Research\FactoryWorld.Modules.Research.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Achievements\FactoryWorld.Modules.Achievements.csproj" />
   </ItemGroup>
 
   <ItemGroup>

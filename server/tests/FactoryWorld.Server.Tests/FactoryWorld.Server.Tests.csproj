@@ -28,8 +28,11 @@
     <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.World\FactoryWorld.Modules.World.csproj" />
     <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Crafting\FactoryWorld.Modules.Crafting.csproj" />
     <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Logistics\FactoryWorld.Modules.Logistics.csproj" />
+    <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Power\FactoryWorld.Modules.Power.csproj" />
+    <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Tutorial\FactoryWorld.Modules.Tutorial.csproj" />
     <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Contracts\FactoryWorld.Modules.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Research\FactoryWorld.Modules.Research.csproj" />
+    <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Achievements\FactoryWorld.Modules.Achievements.csproj" />
   </ItemGroup>
 
 </Project>

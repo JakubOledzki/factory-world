@@ -419,7 +419,7 @@ public sealed class CraftingTests(ServerFactory factory) : IClassFixture<ServerF
         var start = DateTimeOffset.UnixEpoch;
         var s = Smelting.Start(FurnaceState.Empty with { Input = Items.IronOre, InputQuantity = 12, Fuel = 3 }, start);
 
-        var after = Smelting.Advance(s, start + TimeSpan.FromSeconds(61));
+        var after = Smelting.Advance(s, Smelting.Stone, start + TimeSpan.FromSeconds(61));
 
         Assert.Equal(6, after.OutputQuantity);
         Assert.Equal(6, after.InputQuantity);

@@ -91,6 +91,7 @@ func _apply(reply: Dictionary) -> void:
 		failed.emit(reply)
 		return
 	_state = reply["payload"]
+	set_title(_state.get("name", "Piec kamienny"))
 	_clock_offset = float(_state["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
 	updated.emit(_state)
 	_render()
@@ -148,7 +149,7 @@ func _render() -> void:
 		var name_label := UI.label("%s  ×%d" % [stack["name"], owned])
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if item != COAL:
-			name_label.tooltip_text = "→ %s, %d s" % [smeltable[item]["outputName"], int(smeltable[item]["seconds"])]
+			name_label.tooltip_text = "→ %s, %s s" % [smeltable[item]["outputName"], _seconds(float(smeltable[item]["seconds"]))]
 			name_label.mouse_filter = Control.MOUSE_FILTER_STOP
 		row.add_child(name_label)
 		for amount: int in [1, 10, 0]:
@@ -162,12 +163,21 @@ func _render() -> void:
 	if not any:
 		_load.add_child(UI.label("Nie masz rudy ani węgla. Rudy i węgiel wydobywa się w kopalniach w górach.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
-	var lines: Array[String] = ["1 węgiel wystarcza na %d przetopień." % int(_state["smeltsPerCoal"])]
+	var lines: Array[String] = []
+	if int(_state.get("speed", 1)) > 1:
+		lines.append("Poziom %d: przetapia %d razy szybciej niż piec kamienny i mieści po %d rudy i węgla."
+			% [int(_state["level"]), int(_state["speed"]), int(_state["maxInput"])])
+	lines.append("1 węgiel wystarcza na %d przetopień." % int(_state["smeltsPerCoal"]))
 	for recipe: Dictionary in _state.get("recipes", []):
-		lines.append("%s → %s: %d s" % [recipe["inputName"], recipe["outputName"].to_lower(), int(recipe["seconds"])])
+		lines.append("%s → %s: %s s" % [recipe["inputName"], recipe["outputName"].to_lower(), _seconds(float(recipe["seconds"]))])
 	_help.text = "\n".join(lines)
 	_update_status()
 	_fit.call_deferred()
+
+
+## Seconds as players read them: 10, or 2,5 with a decimal comma.
+static func _seconds(seconds: float) -> String:
+	return "%d" % int(seconds) if is_equal_approx(seconds, roundf(seconds)) else ("%.1f" % seconds).replace(".", ",")
 
 
 func _slot_row(item: String, title: String, text: String, what: String, can_take: bool, accent: bool) -> HBoxContainer:
