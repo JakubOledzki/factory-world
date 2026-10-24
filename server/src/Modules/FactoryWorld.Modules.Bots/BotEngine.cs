@@ -27,6 +27,9 @@ public sealed class BotEngine(
 
     public Random Random { get; init; } = Random.Shared;
 
+    /// <summary>A new bot's first session starts within this time, so the roster shows up soon after the server starts.</summary>
+    public static readonly TimeSpan FirstSessionWithin = TimeSpan.FromMinutes(15);
+
     /// <summary>The bots as they are in memory, by roster name; empty before <see cref="EnsureBotsAsync"/>.</summary>
     public IReadOnlyCollection<Bot> Bots => _bots.Values;
 
@@ -46,6 +49,12 @@ public sealed class BotEngine(
                     {
                         continue;
                     }
+                }
+                else if (row.SessionUntil is null && row.NextSessionAt > time.GetUtcNow() + FirstSessionWithin && await XpAsync(row.AccountId, cancellationToken) == 0)
+                {
+                    // A bot that has not played yet (made when first sessions waited hours) comes in soon too.
+                    row.NextSessionAt = FirstSession();
+                    await SaveScheduleAsync(row, cancellationToken);
                 }
 
                 if (!_bots.ContainsKey(profile.Name))
@@ -155,6 +164,15 @@ public sealed class BotEngine(
 
     private TimeSpan Jitter(TimeSpan span) => span * (0.5 + Random.NextDouble());
 
+    /// <summary>Spread the first sessions out, so the bots do not all show up at once.</summary>
+    private DateTimeOffset FirstSession() => time.GetUtcNow() + FirstSessionWithin * Random.NextDouble();
+
+    private async Task<long> XpAsync(Guid account, CancellationToken cancellationToken)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<ICharacterXp>().XpAsync(account, cancellationToken) ?? 0;
+    }
+
     /// <summary>Registers the bot like a new player would: an account with a password nobody keeps, then a character.</summary>
     private async Task<BotRow?> CreateAsync(BotProfile profile, CancellationToken cancellationToken)
     {
@@ -208,8 +226,7 @@ public sealed class BotEngine(
             CharacterName = characterName,
             AccountId = client.Context.AccountId!.Value,
             CreatedAt = now,
-            // Spread the first sessions out, so the bots do not all show up at once.
-            NextSessionAt = now + TimeSpan.FromHours(profile.RestHours) * Random.NextDouble(),
+            NextSessionAt = FirstSession(),
         };
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<GameDb>();

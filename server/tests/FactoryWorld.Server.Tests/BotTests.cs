@@ -200,7 +200,9 @@ public sealed class BotLimitTests(ServerFactory factory) : IClassFixture<ServerF
     public async Task Bots_log_in_for_a_session_and_out_again_for_hours()
     {
         await Engine.EnsureBotsAsync(CancellationToken.None);
-        factory.Time.Advance(TimeSpan.FromHours(BotRoster.All.Max(b => b.RestHours)));
+
+        // New bots all come in within minutes of the server starting, not hours.
+        factory.Time.Advance(BotEngine.FirstSessionWithin);
         await Engine.TickAsync(CancellationToken.None);
         Assert.All(Engine.Bots, b => Assert.NotNull(b.Row.SessionUntil));
 
