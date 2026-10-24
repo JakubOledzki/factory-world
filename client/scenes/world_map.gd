@@ -608,9 +608,15 @@ func _show_plot() -> void:
 			var mine: bool = owner["mine"]
 			_plot_box.add_child(UI.label("Twoja działka" if mine else "Właściciel: %s" % owner.get("name", "?"),
 				UI.GOLD if mine else UI.TEXT))
+			var company: Variant = _plot.get("company")
+			if company != null:
+				_plot_box.add_child(UI.label("Działka spółki %s%s" % [company["name"], " (twojej)" if company["member"] and not mine else ""],
+					UI.GOLD if company["member"] else UI.MUTED))
 			if mine:
 				_plot_box.add_child(UI.button("Wejdź na działkę", Game.enter_plot.bind(plot), true))
 				_show_survey()
+			elif _plot.get("canEnter", false):
+				_plot_box.add_child(UI.button("Wejdź na działkę spółki", Game.enter_plot.bind(plot), true))
 		elif _plot.get("priceCents") != null:
 			var price: int = _plot["priceCents"]
 			var price_row := HBoxContainer.new()
@@ -746,6 +752,9 @@ func _load() -> void:
 		var at := Vector2i(plot["x"], plot["y"])
 		_my_plots.append(at)
 		_owned[at] = true
+	# Plots other members brought into the player's company: theirs to work on too.
+	for plot: Dictionary in info["payload"].get("sharedPlots", []):
+		_my_plots.append(Vector2i(plot["x"], plot["y"]))
 	_update_mine_button()
 	_set_balance(int(wallet["payload"]["balanceCents"]))
 	# The legend was built before the names arrived.

@@ -17,6 +17,7 @@ const ACTIONS := {
 	"interact": [KEY_E],
 	"inventory": [KEY_I],
 	"station": [KEY_T],
+	"company": [KEY_K],
 	"tool": [KEY_Q],
 	"plant": [KEY_P],
 	"cancel": [KEY_ESCAPE],
@@ -221,6 +222,7 @@ var _crafting_window: CraftingWindow
 var _furnace_window: FurnaceWindow
 var _storage_window: StorageWindow
 var _splitter_window: SplitterWindow
+var _company_window: CompanyWindow
 var _machine_window: MachineWindow
 var _station_box: VBoxContainer
 var _station_state := {}
@@ -928,8 +930,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("cancel"):
 		if _placing != "":
 			_stop_placing()
-		elif _station_window.visible or _inventory_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _storage_window, _splitter_window]:
+		elif _station_window.visible or _inventory_window.visible or _company_window.visible or _using_window_open():
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _storage_window, _splitter_window, _company_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -965,6 +967,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_reload_inventory()
 	elif event.is_action_pressed("station"):
 		_go_to_station()
+	elif event.is_action_pressed("company"):
+		_company_window.toggle()
 	elif event.is_action_pressed("tool"):
 		_tool_slot.open()
 	elif event.is_action_pressed("plant"):
@@ -1848,6 +1852,7 @@ func _build_hud() -> void:
 		if _inventory_window.visible:
 			_reload_inventory()))
 	bar.add_child(UI.button("Stacja  [T]", _go_to_station))
+	bar.add_child(UI.button("Spółka  [K]", func() -> void: _company_window.toggle()))
 	_plant_button = UI.button("", func() -> void: _set_planting(not _planting))
 	_plant_button.tooltip_text = "Sadzonki kupisz na rynku w garażu. Z każdego ściętego drzewa jest szansa na nową."
 	bar.add_child(_plant_button)
@@ -2093,8 +2098,13 @@ func _build_windows() -> void:
 	_machine_window.inventory_changed.connect(_on_furnace_changed)
 	_machine_window.failed.connect(_show_error)
 	_machine_window.pick_up_requested.connect(_pick_up_placed)
+	_company_window = CompanyWindow.new()
+	_company_window.position = Vector2(1280 - 520 - 12, 64)
+	_company_window.inventory_changed.connect(_reload_inventory)
+	_company_window.failed.connect(_show_error)
 	var layer := _hud
 	layer.add_child(_inventory_window)
+	layer.add_child(_company_window)
 	layer.add_child(_storage_window)
 	layer.add_child(_splitter_window)
 	layer.add_child(_station_window)
