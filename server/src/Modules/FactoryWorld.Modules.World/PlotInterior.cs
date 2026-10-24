@@ -49,7 +49,8 @@ public static class PlotLayout
         [Biome.Farmland] = [(TileObject.Tree, 25), (TileObject.Bush, 25), (TileObject.Rock, 4)],
         [Biome.Grassland] = [(TileObject.Tree, 15), (TileObject.Bush, 40), (TileObject.Rock, 10)],
         [Biome.Desert] = [(TileObject.Dune, 90), (TileObject.Rock, 18), (TileObject.Bush, 6)],
-        [Biome.Mountains] = [(TileObject.Rock, 260), (TileObject.Tree, 45), (TileObject.Bush, 10)],
+        // No trees grow in the mountains; the gap they left keeps every rock and bush where it stood.
+        [Biome.Mountains] = [(TileObject.Rock, 260), (TileObject.None, 45), (TileObject.Bush, 10)],
         [Biome.Tundra] = [(TileObject.Rock, 40), (TileObject.Bush, 35), (TileObject.Tree, 8)],
         [Biome.Ice] = [(TileObject.Rock, 25)],
         [Biome.City] = [],
