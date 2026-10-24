@@ -237,7 +237,7 @@ static func toolbar_button(icon_name: String, name: String, on_pressed: Callable
 	b.expand_icon = true
 	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	b.theme_type_variation = "ToolbarButton"
-	b.custom_minimum_size = Vector2(34, 32) * (TOUCH_SCALE if touch() else 1.0)
+	b.custom_minimum_size = Vector2(42, 40) * (TOUCH_SCALE if touch() else 1.0)
 	b.tooltip_text = name
 	b.add_to_group(TOOLBAR_GROUP)
 	return b
