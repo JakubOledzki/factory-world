@@ -61,7 +61,8 @@ public sealed record MineState(MineSite Site, int Units, DateTimeOffset? RefillA
 
 public sealed record MineLoad(MineState Mine, IReadOnlyList<(string Item, int Quantity)> Items, XpGain Xp);
 
-public sealed class MineService(GameDb db, PlotService plots, IInventory inventory, ICharacterProgress progress, TimeProvider time)
+public sealed class MineService(
+    GameDb db, PlotService plots, IInventory inventory, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
 {
     /// <summary>The mines of a plot and how many loads each has left.</summary>
     public async Task<IReadOnlyList<MineState>> MinesAsync(int x, int y, Biome biome, CancellationToken cancellationToken)
@@ -142,6 +143,7 @@ public sealed class MineService(GameDb db, PlotService plots, IInventory invento
                 await inventory.AddAsync(player, item, quantity, cancellationToken);
             }
 
+            await stats.RecordAsync(player, items.Select(i => ProductionEntry.Made(i.Item, i.Quantity, time.GetUtcNow())).ToList(), cancellationToken);
             var xp = await progress.AddXpAsync(player, Mining.XpPerLoad, cancellationToken);
             return new MineLoad(State(site, used, emptyAt), items, xp);
         }, cancellationToken);

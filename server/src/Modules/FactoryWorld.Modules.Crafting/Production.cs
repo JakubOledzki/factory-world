@@ -1,0 +1,155 @@
+using FactoryWorld.Modules.Abstractions;
+using FactoryWorld.Modules.Abstractions.Contracts;
+
+namespace FactoryWorld.Modules.Crafting;
+
+/// <summary>What furnaces and processing machines made and burnt between two of their states, for the production statistics.
+/// A state worked further is always saved after this is counted, so the same batch is never counted twice.</summary>
+internal static class MachineProduction
+{
+    public static List<ProductionEntry> Smelted(FurnaceState before, FurnaceState after)
+    {
+        var entries = new List<ProductionEntry>();
+        var n = before.InputQuantity - after.InputQuantity;
+        if (n <= 0 || before.StartedAt is not { } started || Smelting.For(before.Input) is not { } recipe)
+        {
+            return entries;
+        }
+
+        var first = started + recipe.Time;
+        entries.AddRange(ProductionEntry.Batches(recipe.Output, 1, true, first, recipe.Time, n));
+        entries.AddRange(ProductionEntry.Batches(recipe.Input, 1, false, first, recipe.Time, n));
+        entries.AddRange(Burnt(Items.Coal, before.Heat, Smelting.SmeltsPerCoal, first, recipe.Time, n));
+        return entries;
+    }
+
+    public static List<ProductionEntry> Processed(ProcessingMachine machine, MachineState before, MachineState after)
+    {
+        var entries = new List<ProductionEntry>();
+        if (before.StartedAt is not { } started || machine.Recipe(before.Recipe) is not { } recipe)
+        {
+            return entries;
+        }
+
+        var n = (after.Output - before.Output) / recipe.Quantity;
+        if (n <= 0)
+        {
+            return entries;
+        }
+
+        var first = started + recipe.Time;
+        entries.AddRange(ProductionEntry.Batches(recipe.Id, recipe.Quantity, true, first, recipe.Time, n));
+        foreach (var (item, quantity) in recipe.Ingredients)
+        {
+            entries.AddRange(ProductionEntry.Batches(item, quantity, false, first, recipe.Time, n));
+        }
+
+        if (machine.Fired && before.FuelItem is { } fuel && Processing.Fuels.TryGetValue(fuel, out var perFuel))
+        {
+            entries.AddRange(Burnt(fuel, before.Heat, perFuel, first, recipe.Time, n));
+        }
+
+        return entries;
+    }
+
+    /// <summary>One piece of fuel goes on the fire for the batch that finds no heat left, then lasts <paramref name="perFuel"/> batches.</summary>
+    private static IEnumerable<ProductionEntry> Burnt(string fuel, int heat, int perFuel, DateTimeOffset first, TimeSpan step, int batches)
+    {
+        for (var i = heat; i < batches; i += perFuel)
+        {
+            yield return ProductionEntry.Used(fuel, 1, first + step * i);
+        }
+    }
+}
+
+/// <summary>What each of the player's furnaces and processing machines is doing now.</summary>
+public sealed class CraftingMachineStatuses(GameDb db, TimeProvider time) : IMachineStatuses
+{
+    public async Task<IReadOnlyList<MachineStatus>> StatusesAsync(Guid owner, CancellationToken cancellationToken)
+    {
+        var now = time.GetUtcNow();
+        var statuses = new List<MachineStatus>();
+        await using (var furnaces = await db.CommandAsync(
+            """
+            SELECT object_id, input_item, input_quantity, fuel, heat, output_item, output_quantity, started_at
+            FROM crafting.furnaces WHERE owner_id = @owner
+            """, cancellationToken))
+        {
+            furnaces.Parameters.AddWithValue("owner", owner);
+            await using var reader = await furnaces.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                var state = Smelting.Advance(new FurnaceState(
+                    reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4),
+                    reader.IsDBNull(5) ? null : reader.GetString(5), reader.GetInt32(6),
+                    reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7)), now);
+                statuses.Add(Furnace(reader.GetGuid(0), state));
+            }
+        }
+
+        await using (var machines = await db.CommandAsync(
+            """
+            SELECT object_id, kind, recipe, inputs, fuel_item, fuel, heat, output, started_at
+            FROM crafting.machines WHERE owner_id = @owner
+            """, cancellationToken))
+        {
+            machines.Parameters.AddWithValue("owner", owner);
+            await using var reader = await machines.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (!Processing.ByKind.TryGetValue(reader.GetString(1), out var machine))
+                {
+                    continue;
+                }
+
+                var state = Processing.Advance(machine, new MachineState(
+                    reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetFieldValue<int[]>(3),
+                    reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetInt32(5), reader.GetInt32(6), reader.GetInt32(7),
+                    reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8)), now);
+                statuses.Add(Machine(reader.GetGuid(0), machine, state));
+            }
+        }
+
+        return statuses;
+    }
+
+    public static MachineStatus Furnace(Guid id, FurnaceState s)
+    {
+        var product = Smelting.For(s.Input)?.Output ?? s.Output;
+        if (s.StartedAt is not null)
+        {
+            return new(id, Items.Furnace, product, MachineActivity.Working, []);
+        }
+
+        // Without ore the furnace does not say which one it waits for.
+        return s.InputQuantity == 0
+            ? new(id, Items.Furnace, product, MachineActivity.NoInput, s.Input is { } ore ? [ore] : [])
+            : new(id, Items.Furnace, product, MachineActivity.NoFuel, [Items.Coal]);
+    }
+
+    public static MachineStatus Machine(Guid id, ProcessingMachine machine, MachineState s)
+    {
+        if (machine.Recipe(s.Recipe) is not { } recipe)
+        {
+            return new(id, machine.Kind, null, MachineActivity.NoRecipe, []);
+        }
+
+        if (s.StartedAt is not null)
+        {
+            return new(id, machine.Kind, recipe.Id, MachineActivity.Working, []);
+        }
+
+        if (s.Output + recipe.Quantity > Processing.MaxOutput)
+        {
+            return new(id, machine.Kind, recipe.Id, MachineActivity.OutputFull, []);
+        }
+
+        var missing = recipe.Ingredients.Where((ingredient, i) => s.Input(i) < ingredient.Quantity).Select(i => i.Item).ToList();
+        if (missing.Count > 0)
+        {
+            return new(id, machine.Kind, recipe.Id, MachineActivity.NoInput, missing);
+        }
+
+        return new(id, machine.Kind, recipe.Id, MachineActivity.NoFuel, Processing.Fuels.Keys.ToList());
+    }
+}

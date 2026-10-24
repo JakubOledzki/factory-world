@@ -118,3 +118,14 @@ public interface IMachinePorts
     /// <summary>The machine, locked until the transaction ends; null when this module keeps no machine of this kind.</summary>
     Task<IMachinePort?> OpenAsync(Guid owner, Guid id, string kind, CancellationToken cancellationToken);
 }
+
+/// <summary>The player's technology tree: research unlocks recipes, machines and what the trader sells.
+/// An item no technology covers is open to everyone from the start.</summary>
+public interface ITechnologies
+{
+    /// <summary>Every item the player cannot make or buy from the trader yet, with the name of the technology that unlocks it.</summary>
+    Task<IReadOnlyDictionary<string, string>> LockedAsync(Guid player, CancellationToken cancellationToken);
+
+    /// <summary>Fails with <c>locked</c> while the item is still to be researched.</summary>
+    Task RequireUnlockedAsync(Guid player, string item, CancellationToken cancellationToken);
+}

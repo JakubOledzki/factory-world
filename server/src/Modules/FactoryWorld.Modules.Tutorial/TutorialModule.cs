@@ -27,6 +27,7 @@ public sealed record Seen(string RequestType, JsonElement? Request, string Reply
 /// (0 when it has nothing to do with the task); the task is done once that adds up to <see cref="Goal"/>.</summary>
 /// <param name="Id">Stored in the database, so never rename one.</param>
 /// <param name="Watch">Reply types <see cref="Progress"/> looks at; the client asks for the tutorial again after them.</param>
+/// <param name="RewardItems">Items given with the reward, e.g. what the next research costs.</param>
 public sealed record TutorialStep(
     string Id,
     string Title,
@@ -36,12 +37,14 @@ public sealed record TutorialStep(
     long RewardCents,
     int RewardXp,
     IReadOnlyList<string> Watch,
-    Func<Seen, long> Progress);
+    Func<Seen, long> Progress,
+    IReadOnlyList<(string Item, int Quantity)>? RewardItems = null);
 
 /// <summary>
 /// The first steps of a new player, one task after another: from sorting trash in the garage, through
-/// the first plot and the first trees, to the first automatic line on the plot. Each task pays a reward
-/// when it is done. The tasks follow what the player does by watching the server's replies, so no other
+/// the first plot, the first trees and the first research, to the first automatic line on the plot.
+/// Each task pays a reward when it is done; the ones before research also give what it costs, since a
+/// new player has no iron or copper yet. The tasks follow what the player does by watching the server's replies, so no other
 /// module has to know about the tutorial.
 /// </summary>
 public static class TutorialRules
@@ -65,18 +68,25 @@ public static class TutorialRules
             // world.info lists the player's plots, so a player who bought one before the tutorial moves on too.
             seen => seen.ReplyType == "world.bought" || (seen.ReplyType == "world.info" && seen.Each("plots").Any()) ? 1 : 0),
         new("chop_trees", "Drwal",
-            "Zetnij 10 drzew na swojej działce.",
-            "Weź siekierę do ręki i kliknij drzewo. Sadzonki, które przy tym wypadają, przydadzą się za chwilę.",
-            10, 50_00, 20, ["plot.harvested"],
+            "Zetnij 20 drzew na swojej działce.",
+            "Weź siekierę do ręki i kliknij drzewo. Drewno przyda się do badań i magazynu, a sadzonki, które przy tym wypadają, za chwilę.",
+            20, 50_00, 20, ["plot.harvested"],
             seen => seen.ReplyType == "plot.harvested" ? Quantity(seen.Each("items"), Items.Wood) : 0),
         new("plant_tree", "Leśnik",
             "Posadź sadzonkę drzewa na wolnym polu.",
             "Wybierz sadzonkę w ekwipunku [I] i kliknij wolne pole. Sadzonki kupisz też u handlarza za 2 $.",
             1, 20_00, 10, ["plot.tree"],
-            seen => seen.ReplyType == "plot.tree" ? 1 : 0),
+            seen => seen.ReplyType == "plot.tree" ? 1 : 0,
+            [(Items.IronIngot, 10)]),
+        new("research_logistics", "Badania",
+            "Zacznij badać Logistykę przy stole warsztatowym.",
+            "Otwórz stół i zakładkę Badania. Logistyka kosztuje 10 sztabek żelaza (masz je w nagrodę) i 20 drewna, trwa minutę i odblokowuje taśmociągi i stos drewna.",
+            1, 30_00, 10, ["research"],
+            seen => Researched(seen, "logistics"),
+            [(Items.IronIngot, 20), (Items.CopperIngot, 10), (Items.Nails, 20)]),
         new("craft_wood_pile", "Warsztat",
             "Zamów stos drewna przy stole warsztatowym.",
-            "Stół stoi w garażu. Stos drewna kosztuje 4 drewna i powstaje w 5 sekund.",
+            "Najpierw musi się skończyć badanie Logistyki. Stos drewna kosztuje 4 drewna i powstaje w 5 sekund.",
             1, 30_00, 10, ["crafting"],
             seen => seen.ReplyType == "crafting" && seen.RequestType == "crafting.craft" && seen.RequestString("recipe") == Items.WoodPile ? 1 : 0),
         new("place_wood_pile", "Magazyn",
@@ -94,9 +104,14 @@ public static class TutorialRules
             "Taśmociągi kupisz u handlarza po 5 $. Taśma wiezie przedmioty w stronę, w którą jest obrócona (R).",
             3, 30_00, 15, ["plot.placed"],
             seen => Placed(seen, Items.Belt)),
+        new("research_automation", "Automatyzacja",
+            "Zacznij badać Automatyzację przy stole warsztatowym.",
+            "Kosztuje 20 sztabek żelaza, 10 sztabek miedzi i 20 gwoździ (dostałeś je za badanie Logistyki), trwa 2 minuty i odblokowuje podajnik.",
+            1, 30_00, 20, ["research"],
+            seen => Researched(seen, "automation")),
         new("place_inserter", "Podajnik",
             "Postaw podajnik między stosem drewna a początkiem taśmy.",
-            "Podajnik kupisz u handlarza za 30 $. Bierze z pola za sobą i kładzie na pole przed sobą, więc obróć go (R) w stronę taśmy.",
+            "Po badaniu podajnik kupisz u handlarza za 30 $. Bierze z pola za sobą i kładzie na pole przed sobą, więc obróć go (R) w stronę taśmy.",
             1, 50_00, 15, ["plot.placed"],
             seen => Placed(seen, Items.Inserter)),
         new("first_line", "Pierwsza automatyczna linia",
@@ -123,6 +138,9 @@ public static class TutorialRules
 
     private static long Quantity(IEnumerable<JsonElement> items, string item) =>
         items.Where(i => i.GetProperty("id").GetString() == item).Sum(i => i.GetProperty("quantity").GetInt64());
+
+    private static long Researched(Seen seen, string technology) =>
+        seen is { RequestType: "research.start", ReplyType: "research" } && seen.RequestString("technology") == technology ? 1 : 0;
 
     private static long Placed(Seen seen, string kind) =>
         seen.ReplyType == "plot.placed" && seen.Field("object")?.GetProperty("kind").GetString() == kind ? 1 : 0;
@@ -172,7 +190,7 @@ public sealed record TutorialState(int Index, long Count, bool Skipped)
     public TutorialStep? Current => Finished ? null : TutorialRules.Steps[Index];
 }
 
-public sealed class TutorialService(GameDb db, IWallet wallet, ICharacterProgress progress, TimeProvider time)
+public sealed class TutorialService(GameDb db, IWallet wallet, IInventory inventory, ICharacterProgress progress, TimeProvider time)
 {
     public async Task<TutorialState> StateAsync(Guid owner, CancellationToken cancellationToken)
     {
@@ -233,6 +251,11 @@ public sealed class TutorialService(GameDb db, IWallet wallet, ICharacterProgres
                 if (step.RewardXp > 0)
                 {
                     await progress.AddXpAsync(owner, step.RewardXp, cancellationToken);
+                }
+
+                foreach (var (item, quantity) in step.RewardItems ?? [])
+                {
+                    await inventory.AddAsync(owner, item, quantity, cancellationToken);
                 }
 
                 index++;
@@ -342,6 +365,7 @@ public abstract class TutorialHandler(IServiceScopeFactory scopes) : IMessageHan
             goal = s.Goal,
             rewardCents = s.RewardCents,
             rewardXp = s.RewardXp,
+            rewardItems = (s.RewardItems ?? []).Select(i => new { id = i.Item, name = Items.Names[i.Item], quantity = i.Quantity }),
         }),
         current = state.Index,
         count = state.Count,

@@ -102,7 +102,7 @@ func _show() -> void:
 	_bar.value = mini(int(_state.get("count", 0)), goal)
 	_count.text = "%d / %d" % [mini(int(_state.get("count", 0)), goal), goal]
 	_hint.text = step["hint"]
-	_reward.text = "Nagroda: " + _reward_text(int(step["rewardCents"]), int(step["rewardXp"]))
+	_reward.text = "Nagroda: " + _reward_text(int(step["rewardCents"]), int(step["rewardXp"]), step.get("rewardItems", []))
 	_set_confirming(false)
 
 
@@ -116,12 +116,15 @@ func _covered() -> bool:
 	return false
 
 
-func _reward_text(cents: int, xp: int) -> String:
+## Money, XP and items ({id, name, quantity}), as "50,00 $  ·  20 XP  ·  10 × Sztabka żelaza".
+func _reward_text(cents: int, xp: int, items: Array = []) -> String:
 	var parts: Array[String] = []
 	if cents > 0:
 		parts.append(UI.money(cents))
 	if xp > 0:
 		parts.append("%d XP" % xp)
+	for item: Dictionary in items:
+		parts.append("%d × %s" % [int(item["quantity"]), item["name"]])
 	return "  ·  ".join(parts)
 
 
@@ -129,15 +132,17 @@ func _reward_text(cents: int, xp: int) -> String:
 func _celebrate(done: Array, finished: bool) -> void:
 	var cents := 0
 	var xp := 0
+	var items: Array = []
 	for step: Dictionary in done:
 		cents += int(step["rewardCents"])
 		xp += int(step["rewardXp"])
+		items.append_array(step.get("rewardItems", []))
 	var names := ", ".join(done.map(func(step: Dictionary) -> String: return step["title"]))
 	var text := "Zadanie wykonane: %s" % names
 	if finished:
 		text = "Samouczek ukończony! Twoja pierwsza linia działa."
-	if cents > 0 or xp > 0:
-		text += "\n+" + _reward_text(cents, xp).replace("  ·  ", "   +")
+	if cents > 0 or xp > 0 or not items.is_empty():
+		text += "\n+" + _reward_text(cents, xp, items).replace("  ·  ", "   +")
 	_flash(text)
 	_refresh_screen()
 
@@ -247,7 +252,8 @@ func _build() -> void:
 	_hint.custom_minimum_size.x = WIDTH - 24
 	_details.add_child(_hint)
 
-	_reward = UI.label("", DONE_COLOR)
+	_reward = UI.label("", DONE_COLOR, HORIZONTAL_ALIGNMENT_LEFT, true)
+	_reward.custom_minimum_size.x = WIDTH - 24
 	_reward.add_theme_font_size_override("font_size", 13)
 	_details.add_child(_reward)
 

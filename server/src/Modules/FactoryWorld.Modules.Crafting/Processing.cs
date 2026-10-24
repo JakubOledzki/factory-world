@@ -225,14 +225,17 @@ internal static class MachineRows
     }
 
     /// <summary>The machine is being picked up: what it holds goes to the owner's inventory.</summary>
-    public static async Task ReleaseAsync(GameDb db, IInventory inventory, Guid owner, Guid id, DateTimeOffset now, CancellationToken cancellationToken)
+    public static async Task ReleaseAsync(
+        GameDb db, IInventory inventory, IProductionStats stats, Guid owner, Guid id, DateTimeOffset now, CancellationToken cancellationToken)
     {
         if (await ReadAsync(db, id, cancellationToken) is not { } row || !Processing.ByKind.TryGetValue(row.Kind, out var machine))
         {
             return;
         }
 
-        foreach (var (item, quantity) in Contents(machine, Processing.Advance(machine, row.State, now)))
+        var state = Processing.Advance(machine, row.State, now);
+        await stats.RecordAsync(owner, MachineProduction.Processed(machine, row.State, state), cancellationToken);
+        foreach (var (item, quantity) in Contents(machine, state))
         {
             await inventory.AddAsync(owner, item, quantity, cancellationToken);
         }
@@ -243,7 +246,8 @@ internal static class MachineRows
     }
 }
 
-public sealed class MachineService(GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, TimeProvider time)
+public sealed class MachineService(
+    GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, IProductionStats stats, ITechnologies technologies, TimeProvider time)
 {
     public Task<MachineReply> StateAsync(Guid owner, Guid id, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -258,6 +262,7 @@ public sealed class MachineService(GameDb db, IEnumerable<IPlacedObjects> places
         {
             var (machine, state) = await OpenAsync(owner, id, cancellationToken);
             var recipe = machine.Recipe(recipeId) ?? throw new GameException("no_recipe", "This machine has no such recipe.");
+            await technologies.RequireUnlockedAsync(owner, recipe.Id, cancellationToken);
             var taken = new List<(string, int)>();
             XpGain? xp = null;
             if (state.Recipe != recipe.Id)
@@ -413,13 +418,21 @@ public sealed class MachineService(GameDb db, IEnumerable<IPlacedObjects> places
             throw new GameException("no_object", "There is no machine of yours here.");
         }
 
-        var state = (await MachineRows.ReadAsync(db, id, cancellationToken))?.State ?? MachineState.Empty;
-        return (machine, Processing.Advance(machine, state, time.GetUtcNow()));
+        var stored = (await MachineRows.ReadAsync(db, id, cancellationToken))?.State ?? MachineState.Empty;
+        var state = Processing.Advance(machine, stored, time.GetUtcNow());
+        var made = MachineProduction.Processed(machine, stored, state);
+        if (made.Count > 0)
+        {
+            await stats.RecordAsync(owner, made, cancellationToken);
+            await MachineRows.WriteAsync(db, owner, id, machine.Kind, state, cancellationToken);
+        }
+
+        return (machine, state);
     }
 }
 
 /// <summary>Processing machines as inserters see them: ingredients of the chosen recipe and fuel go in, products come out.</summary>
-public sealed class ProcessingPorts(GameDb db) : IMachinePorts
+public sealed class ProcessingPorts(GameDb db, IProductionStats stats) : IMachinePorts
 {
     public async Task<IMachinePort?> OpenAsync(Guid owner, Guid id, string kind, CancellationToken cancellationToken)
     {
@@ -429,24 +442,25 @@ public sealed class ProcessingPorts(GameDb db) : IMachinePorts
         }
 
         var state = (await MachineRows.ReadAsync(db, id, cancellationToken))?.State ?? MachineState.Empty;
-        return new Port(db, owner, id, machine, state);
+        return new Port(db, stats, owner, id, machine, state);
     }
 
-    private sealed class Port(GameDb db, Guid owner, Guid id, ProcessingMachine machine, MachineState state) : IMachinePort
+    private sealed class Port(GameDb db, IProductionStats stats, Guid owner, Guid id, ProcessingMachine machine, MachineState state) : IMachinePort
     {
+        private readonly List<ProductionEntry> _made = [];
         private bool _changed;
 
         private ProcessingRecipe? Recipe => machine.Recipe(state.Recipe);
 
         public string? Output(DateTimeOffset now, Func<string, bool> wanted)
         {
-            state = Processing.Advance(machine, state, now);
+            Advance(now);
             return Recipe is { } recipe && state.Output > 0 && wanted(recipe.Id) ? recipe.Id : null;
         }
 
         public void Take(string item, DateTimeOffset now)
         {
-            state = Processing.Advance(machine, state, now);
+            Advance(now);
             if (Recipe?.Id == item && state.Output > 0)
             {
                 // Room again for what was waiting on a full machine.
@@ -457,7 +471,7 @@ public sealed class ProcessingPorts(GameDb db) : IMachinePorts
 
         public bool Accepts(string item, DateTimeOffset now)
         {
-            state = Processing.Advance(machine, state, now);
+            Advance(now);
             if (Slot(item) is var slot and >= 0)
             {
                 return state.Input(slot) < Processing.MaxInput;
@@ -491,7 +505,7 @@ public sealed class ProcessingPorts(GameDb db) : IMachinePorts
 
         public DateTimeOffset? NextChange(DateTimeOffset now)
         {
-            state = Processing.Advance(machine, state, now);
+            Advance(now);
             return state.StartedAt is { } started && Recipe is { } recipe ? started + recipe.Time : null;
         }
 
@@ -499,7 +513,20 @@ public sealed class ProcessingPorts(GameDb db) : IMachinePorts
         {
             if (_changed)
             {
+                await stats.RecordAsync(owner, _made, cancellationToken);
                 await MachineRows.WriteAsync(db, owner, id, machine.Kind, state, cancellationToken);
+            }
+        }
+
+        private void Advance(DateTimeOffset now)
+        {
+            var before = state;
+            state = Processing.Advance(machine, state, now);
+            var made = MachineProduction.Processed(machine, before, state);
+            if (made.Count > 0)
+            {
+                _made.AddRange(made);
+                _changed = true;
             }
         }
 
@@ -522,7 +549,9 @@ public abstract class MachineHandler(IServiceScopeFactory scopes) : IMessageHand
     public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
-        var reply = await RunAsync(scope.ServiceProvider.GetRequiredService<MachineService>(), client.RequireAccount(), payload, cancellationToken);
+        var owner = client.RequireAccount();
+        var reply = await RunAsync(scope.ServiceProvider.GetRequiredService<MachineService>(), owner, payload, cancellationToken);
+        var locked = await scope.ServiceProvider.GetRequiredService<ITechnologies>().LockedAsync(owner, cancellationToken);
         var machine = reply.Machine;
         var s = reply.State;
         var recipe = machine.Recipe(s.Recipe);
@@ -540,6 +569,7 @@ public abstract class MachineHandler(IServiceScopeFactory scopes) : IMessageHand
                 seconds = r.Time.TotalSeconds,
                 ingredients = r.Ingredients.Select(i => new { id = i.Item, name = Items.Names[i.Item], quantity = i.Quantity }),
                 xp = r.Xp,
+                locked = locked.GetValueOrDefault(r.Id),
             }),
             inputs = recipe?.Ingredients.Select((ingredient, i) => new
             {

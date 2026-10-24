@@ -389,7 +389,7 @@ public sealed class PlayerMarketService(GameDb db, IInventory inventory, IWallet
 }
 
 /// <summary>Every item with the trader's prices and the best offers of players.</summary>
-public sealed class OverviewHandler(IServiceScopeFactory scopes) : IMessageHandler
+public sealed class OverviewHandler(IServiceScopeFactory scopes, TraderMarket trader) : IMessageHandler
 {
     public string Type => "market.overview";
 
@@ -398,6 +398,7 @@ public sealed class OverviewHandler(IServiceScopeFactory scopes) : IMessageHandl
         client.RequireAccount();
         await using var scope = scopes.CreateAsyncScope();
         var summary = await scope.ServiceProvider.GetRequiredService<PlayerMarketService>().SummaryAsync(cancellationToken);
+        var prices = trader.Prices();
         return new Reply("market.overview", new
         {
             items = Items.Names.Select(item =>
@@ -407,7 +408,7 @@ public sealed class OverviewHandler(IServiceScopeFactory scopes) : IMessageHandl
                 {
                     id = item.Key,
                     name = item.Value,
-                    quickSaleCents = NpcPrices.Buys.TryGetValue(item.Key, out var floor) ? floor : (long?)null,
+                    quickSaleCents = prices.Buys.TryGetValue(item.Key, out var floor) ? floor : (long?)null,
                     lowestCents = s?.LowestCents,
                     listed = s?.Listed ?? 0,
                     highestCents = s?.HighestCents,

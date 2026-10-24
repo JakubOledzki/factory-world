@@ -204,7 +204,7 @@ public sealed class MarketTests(ServerFactory factory) : IClassFixture<ServerFac
     }
 
     [Fact]
-    public async Task Buying_trash_costs_2_dollars_each()
+    public async Task Buying_trash_costs_1_dollar_each()
     {
         using var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
@@ -217,14 +217,14 @@ public sealed class MarketTests(ServerFactory factory) : IClassFixture<ServerFac
             await client.SendAsync("market.sell", new { item, quantity });
         }
 
-        // 10 sortings earn at least 10 × 1 $, enough for 5 trash.
+        // 10 sortings earn at least 10 × 1 $, enough for 10 trash.
         var before = await client.BalanceAsync();
 
-        var reply = await client.SendAsync("market.buy", new { item = "trash", quantity = before / 200 });
+        var reply = await client.SendAsync("market.buy", new { item = "trash", quantity = before / 100 });
 
         Assert.Equal("market.traded", reply.Type());
-        Assert.Equal(before % 200, await client.BalanceAsync());
-        Assert.Equal(40 + before / 200, (await client.InventoryAsync())["trash"]);
+        Assert.Equal(before % 100, await client.BalanceAsync());
+        Assert.Equal(40 + before / 100, (await client.InventoryAsync())["trash"]);
     }
 
     [Fact]
@@ -252,7 +252,7 @@ public sealed class MarketTests(ServerFactory factory) : IClassFixture<ServerFac
 
         var items = (await client.SendAsync("market.prices")).Payload().GetProperty("items").EnumerateArray().ToList();
 
-        Assert.Equal(200, items.Single(i => i.GetProperty("id").GetString() == "trash").GetProperty("buyCents").GetInt64());
+        Assert.Equal(100, items.Single(i => i.GetProperty("id").GetString() == "trash").GetProperty("buyCents").GetInt64());
         Assert.Equal(1500, items.Single(i => i.GetProperty("id").GetString() == "waste_copper").GetProperty("sellCents").GetInt64());
         Assert.Equal(100_000, items.Single(i => i.GetProperty("id").GetString() == "furniture_sorting_machine").GetProperty("buyCents").GetInt64());
     }

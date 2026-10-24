@@ -157,9 +157,9 @@ public sealed class TutorialTests(ServerFactory factory) : IClassFixture<ServerF
         Assert.Equal("world.bought", (await client.SendAsync("world.buy", new { x = forest.X, y = forest.Y })).Type());
         Assert.Equal("chop_trees", await CurrentAsync(client));
 
-        // Ten trees.
+        // Twenty trees.
         var tiles = await TilesAsync(client, forest);
-        var trees = Enumerable.Range(0, tiles.Length).Where(i => tiles[i] == (byte)TileObject.Tree).Take(10).ToList();
+        var trees = Enumerable.Range(0, tiles.Length).Where(i => tiles[i] == (byte)TileObject.Tree).Take(20).ToList();
         foreach (var tree in trees)
         {
             factory.Time.Advance(HarvestRules.ChopTime);
@@ -174,7 +174,17 @@ public sealed class TutorialTests(ServerFactory factory) : IClassFixture<ServerF
         var (tx, ty) = FreeRow(tiles, 6);
         await GiveAsync(client, Items.Sapling, 1);
         Assert.Equal("plot.tree", (await client.SendAsync("plot.plantTree", new { x = forest.X, y = forest.Y, tileX = tx + 5, tileY = ty })).Type());
+        Assert.Equal("research_logistics", await CurrentAsync(client));
+
+        // Research, paid for by the tutorial's iron and the wood just cut; its reward is the next research's cost.
+        Assert.Equal(10, (await client.InventoryAsync())[Items.IronIngot]);
+        Assert.Equal("research", (await client.SendAsync("research.start", new { technology = "logistics" })).Type());
         Assert.Equal("craft_wood_pile", await CurrentAsync(client));
+        var inventory = await client.InventoryAsync();
+        Assert.Equal(20, inventory[Items.IronIngot]);
+        Assert.Equal(10, inventory[Items.CopperIngot]);
+        Assert.Equal(20, inventory[Items.Nails]);
+        factory.Time.Advance(TimeSpan.FromMinutes(1));
 
         // Ordering something else at the workbench does not count.
         var bench = (await client.SendAsync("garage.get")).Payload().GetProperty("objects").EnumerateArray()
@@ -196,14 +206,17 @@ public sealed class TutorialTests(ServerFactory factory) : IClassFixture<ServerF
         Assert.Equal("storage", (await client.SendAsync("storage.put", new { x = forest.X, y = forest.Y, id = pile, item = Items.Wood, quantity = 10 })).Type());
         Assert.Equal("place_belts", await CurrentAsync(client));
 
-        await GiveAsync(client, Items.Belt, 3);
+        Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.Belt, quantity = 3 })).Type());
         for (var i = 0; i < 3; i++)
         {
             await PlaceAsync(client, forest, Items.Belt, tx + 2 + i, ty);
         }
 
+        Assert.Equal("research_automation", await CurrentAsync(client));
+        Assert.Equal("research", (await client.SendAsync("research.start", new { technology = "automation" })).Type());
         Assert.Equal("place_inserter", await CurrentAsync(client));
-        await GiveAsync(client, Items.Inserter, 1);
+        factory.Time.Advance(TimeSpan.FromMinutes(2));
+        Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.Inserter, quantity = 1 })).Type());
         await PlaceAsync(client, forest, Items.Inserter, tx + 1, ty);
         Assert.Equal("first_line", await CurrentAsync(client));
 

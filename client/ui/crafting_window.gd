@@ -4,7 +4,8 @@ extends GameWindow
 ## once; the item is made after the recipe's time, one order after another, and lands in the
 ## inventory even when the player walks away. The window keeps an eye on the queue while closed,
 ## so the screen hears about finished orders. It covers most of the screen: recipes sorted into
-## categories on the left, the chosen recipe and the queue on the right.
+## categories on the left, the chosen recipe and the queue on the right. The second tab is the
+## technology tree: recipes and machines that research unlocks show which technology they need.
 
 ## Orders were finished: [{id, name, quantity}] and the XP gain (or null).
 signal finished(done: Array, xp: Variant)
@@ -13,6 +14,8 @@ signal inventory_changed
 signal failed(reply: Dictionary)
 ## The player asked to put this workbench back into the inventory (only where `can_pick_up`).
 signal pick_up_requested(id: String)
+## Research finished: [{id, name}] and the XP gain (or null).
+signal researched(finished: Array, xp: Variant)
 
 ## The workbench the window was opened at (its object id in the garage or on the plot).
 var workbench := ""
@@ -39,6 +42,10 @@ var _queue := VBoxContainer.new()
 var _job_bar: ProgressBar
 var _job_text: Label
 var _pick_up_button: Button
+var _body := HBoxContainer.new()
+var _research := ResearchPanel.new()
+var _heading_label: Label
+var _tab_buttons: Array[Button] = []
 
 
 func _init() -> void:
@@ -46,9 +53,14 @@ func _init() -> void:
 	fill_margin = Vector2(40, 24)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 8)
-	var title := _heading("Co chcesz wytworzyć?")
-	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(title)
+	for tab: String in ["Przepisy", "Badania"]:
+		var b := UI.button(tab, _open_tab.bind(_tab_buttons.size()))
+		b.custom_minimum_size.x = 150
+		top.add_child(b)
+		_tab_buttons.append(b)
+	_heading_label = _heading("Co chcesz wytworzyć?")
+	_heading_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(_heading_label)
 	_search.custom_minimum_size.x = 260
 	_search.clear_button_enabled = true
 	_search.text_changed.connect(func(_text: String) -> void:
@@ -58,10 +70,17 @@ func _init() -> void:
 	content.add_child(top)
 
 	# Categories, then the recipes, then the chosen recipe and the queue; each part scrolls on its own.
-	var body := HBoxContainer.new()
+	var body := _body
 	body.add_theme_constant_override("separation", 10)
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(body)
+	_research.visible = false
+	_research.researched.connect(func(finished: Array, xp: Variant) -> void:
+		researched.emit(finished, xp)
+		refresh())
+	_research.inventory_changed.connect(inventory_changed.emit)
+	_research.failed.connect(failed.emit)
+	content.add_child(_research)
 	_categories.chosen.connect(func(category: int) -> void:
 		_category = category
 		_recipe_list.scroll_vertical = 0
@@ -117,6 +136,19 @@ func _init() -> void:
 	_pick_up_button = UI.button("Schowaj stół do ekwipunku", func() -> void: pick_up_requested.emit(workbench))
 	_pick_up_button.visible = false
 	side.add_child(_pick_up_button)
+	_open_tab(0)
+
+
+## 0 the recipes, 1 the technology tree.
+func _open_tab(tab: int) -> void:
+	for i in _tab_buttons.size():
+		_tab_buttons[i].theme_type_variation = "AccentButton" if i == tab else ""
+	_body.visible = tab == 0
+	_search.visible = tab == 0
+	_research.visible = tab == 1
+	_heading_label.text = "Co chcesz wytworzyć?" if tab == 0 else "Drzewko technologii"
+	if tab == 1:
+		_research.set_items(_items)
 
 
 ## Opens the window at a workbench.
@@ -125,11 +157,13 @@ func open_at(id: String) -> void:
 	_pick_up_button.visible = can_pick_up
 	show_window()
 	refresh()
+	_research.refresh()
 
 
 ## The screen calls this whenever the inventory changes.
 func set_items(items: Array) -> void:
 	_items = items
+	_research.set_items(items)
 	if visible:
 		_render()
 
@@ -141,6 +175,9 @@ func refresh() -> void:
 	var reply := await Net.request("crafting.get")
 	_refreshing = false
 	_apply(reply)
+	# Once, so research that ended while the game was closed is announced without opening the tree.
+	if not _research.loaded():
+		_research.refresh()
 
 
 func _apply(reply: Dictionary) -> void:
@@ -176,6 +213,8 @@ func _recipe(id: String) -> Dictionary:
 
 
 func _can_make(recipe: Dictionary) -> bool:
+	if recipe.get("locked") != null:
+		return false
 	for ingredient: Dictionary in recipe["ingredients"]:
 		if _count(ingredient["id"]) < int(ingredient["quantity"]):
 			return false
@@ -209,6 +248,9 @@ func _render() -> void:
 		b.add_theme_constant_override("icon_max_width", 30)
 		var amount := int(recipe["quantity"])
 		b.text = "%s%s  ·  %s" % [recipe["name"], "  ×%d" % amount if amount > 1 else "", _seconds(float(recipe["seconds"]))]
+		if recipe.get("locked") != null:
+			b.text = "%s  ·  do zbadania" % recipe["name"]
+			b.tooltip_text = "Wymaga badania: %s" % recipe["locked"]
 		if recipe["id"] == _selected:
 			b.theme_type_variation = "AccentButton"
 		elif not _can_make(recipe):
@@ -256,13 +298,18 @@ func _render() -> void:
 			row.add_child(UI.label("%d/%d" % [need, have], UI.GOOD if have >= need else UI.ERROR, HORIZONTAL_ALIGNMENT_RIGHT))
 			_details.add_child(row)
 		_details.add_child(UI.label("Czas: %s  ·  %d XP" % [_seconds(float(selected["seconds"])), int(selected["xp"])], UI.MUTED))
+		if selected.get("locked") != null:
+			_details.add_child(UI.label("Najpierw zbadaj: %s" % selected["locked"], UI.ERROR, HORIZONTAL_ALIGNMENT_LEFT, true))
+			_details.add_child(UI.button("Pokaż w drzewku technologii", func() -> void:
+				_open_tab(1)
+				_research.select_unlocking(selected["id"])))
 		if _selected == "nails":
 			_details.add_child(UI.label("Gwoździe kupisz też u handlarza na rynku.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	var queue: Array = _state.get("queue", [])
 	var full := queue.size() >= int(_state.get("maxQueue", 5))
 	_craft_button.disabled = selected.is_empty() or not _can_make(selected) or full or _busy
-	_craft_button.text = "Kolejka pełna" if full else "Wytwórz"
+	_craft_button.text = "Do zbadania" if not selected.is_empty() and selected.get("locked") != null else "Kolejka pełna" if full else "Wytwórz"
 
 	UI.clear(_queue)
 	if queue.is_empty():
