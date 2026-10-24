@@ -19,6 +19,10 @@ const STICK_RADIUS := 80.0
 const BUTTON_SPOTS := [Vector2(-130, -260), Vector2(-255, -330), Vector2(-140, -410)]
 const MAIN_RADIUS := 62.0
 const BUTTON_RADIUS := 42.0
+## There is no hovering on a touch screen, so holding a toolbar button this long (seconds) shows
+## its name instead of the tooltip; lifting the finger then doesn't press it. The name stays a bit.
+const HOLD_FOR := 0.4
+const NAME_STAYS := 1.2
 
 var _root: Control
 var _stick: Control
@@ -30,6 +34,13 @@ var _scene: Node
 var _check_fullscreen_in := 0.0
 ## Keys in the texts of buttons, like "Ekwipunek  [I]", mean nothing without a keyboard.
 var _key_hint := RegEx.new()
+## The toolbar button under a finger, and for how long; and the name shown above it.
+var _held: Button
+var _held_finger := -1
+var _held_for := 0.0
+var _name_panel: PanelContainer
+var _name_label: Label
+var _name_left := 0.0
 
 
 ## A round button that sends `action` while a finger holds it.
@@ -91,6 +102,15 @@ func _ready() -> void:
 		_fullscreen.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP, Control.PRESET_MODE_MINSIZE, 8)
 		_fullscreen.grow_horizontal = Control.GROW_DIRECTION_BOTH
 
+	var name_parts := UI.panel(0)
+	_name_panel = name_parts[0]
+	_name_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_name_panel.visible = false
+	_name_label = UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+	_name_label.add_theme_font_override("font", UI.bold())
+	name_parts[1].add_child(_name_label)
+	_root.add_child(_name_panel)
+
 	_show_controls(false)
 
 
@@ -110,6 +130,7 @@ func _process(delta: float) -> void:
 		_release_stick()
 		_show_controls(_walks(scene))
 	_layout()
+	_hold_toolbar(delta)
 	_check_fullscreen_in -= delta
 	if _fullscreen != null and _check_fullscreen_in <= 0.0:
 		_check_fullscreen_in = 1.0
@@ -180,7 +201,11 @@ func _input(event: InputEvent) -> void:
 					_send(button.action, true)
 					get_viewport().set_input_as_handled()
 					return
+			if _held_finger < 0:
+				_hold_started(event)
 		else:
+			if event.index == _held_finger:
+				_hold_ended()
 			if event.index == _stick_finger:
 				_release_stick()
 				get_viewport().set_input_as_handled()
@@ -195,6 +220,53 @@ func _input(event: InputEvent) -> void:
 	elif event is InputEventScreenDrag and event.index == _stick_finger:
 		_move_stick(event.position)
 		get_viewport().set_input_as_handled()
+
+
+## A finger went down: if on a toolbar button, it may become a hold that shows the name.
+## The tap itself still reaches the button as usual.
+func _hold_started(event: InputEventScreenTouch) -> void:
+	for button: Button in get_tree().get_nodes_in_group(UI.TOOLBAR_GROUP):
+		if button.is_visible_in_tree() and not button.disabled and button.get_global_rect().has_point(event.position):
+			_held = button
+			_held_finger = event.index
+			_held_for = 0.0
+			return
+
+
+func _hold_ended() -> void:
+	if _held != null and _held_for >= HOLD_FOR:
+		# Lifting the finger reaches the button too; it stays disabled until that has passed.
+		var button := _held
+		get_tree().create_timer(0.15).timeout.connect(func() -> void:
+			if is_instance_valid(button):
+				button.disabled = false)
+		_name_left = NAME_STAYS
+	_held = null
+	_held_finger = -1
+
+
+## Shows the held button's name once the finger has stayed long enough, and hides it later.
+func _hold_toolbar(delta: float) -> void:
+	if _held != null and not is_instance_valid(_held):
+		_held = null
+		_held_finger = -1
+	if _held != null and _held_for < HOLD_FOR:
+		_held_for += delta
+		if _held_for >= HOLD_FOR and _held.is_visible_in_tree():
+			_held.disabled = true  # holding to read the name must not open the window
+			# Just the name: the first line of the tooltip, without the key.
+			_name_label.text = _key_hint.sub(_held.tooltip_text.get_slice("\n", 0), "")
+			_name_panel.reset_size()
+			var rect := _held.get_global_rect()
+			var area := _root.size
+			var at := Vector2(rect.get_center().x - _name_panel.size.x / 2, rect.position.y - _name_panel.size.y - 8)
+			_name_panel.position = at.clamp(Vector2(8, 8), area - _name_panel.size - Vector2(8, 8))
+			_name_panel.visible = true
+			_name_left = INF
+	if _name_panel != null and _name_panel.visible and _held == null:
+		_name_left -= delta
+		if _name_left <= 0.0:
+			_name_panel.visible = false
 
 
 func _send(action: String, pressed: bool) -> void:

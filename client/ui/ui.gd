@@ -12,6 +12,8 @@ const FONT_SIZE := 15
 const TITLE_SIZE := 28
 ## On phones and tablets letters are this much bigger, and buttons taller.
 const TOUCH_SCALE := 1.5
+## Group of the bottom toolbar's icon buttons.
+const TOOLBAR_GROUP := "toolbar_buttons"
 
 static var _theme: Theme
 static var _bold: Font
@@ -61,6 +63,12 @@ static func theme() -> Theme:
 		t.set_color("font_focus_color", type, ink)
 		t.set_color("font_disabled_color", type, Color(MUTED, 0.55))
 	t.set_type_variation("AccentButton", "Button")
+	# Toolbar buttons hold just a small icon, so their edges are thin.
+	t.set_stylebox("normal", "ToolbarButton", _box("button", 8, 4, 3))
+	t.set_stylebox("hover", "ToolbarButton", _box("button_hover", 8, 4, 3))
+	t.set_stylebox("pressed", "ToolbarButton", _box("button_pressed", 8, 4, 3, 1))
+	t.set_stylebox("disabled", "ToolbarButton", _box("button_pressed", 8, 4, 3, 1, Color(1, 1, 1, 0.55)))
+	t.set_type_variation("ToolbarButton", "Button")
 
 	t.set_stylebox("normal", "LineEdit", _box("inset", 8, 8, 5 + pad))
 	t.set_stylebox("focus", "LineEdit", _box("inset", 8, 8, 5 + pad, 0, Color(1.25, 1.2, 1.1)))
@@ -218,6 +226,20 @@ static func button(text: String, on_pressed: Callable, accent := false) -> Butto
 	if accent:
 		b.theme_type_variation = "AccentButton"
 	b.pressed.connect(on_pressed)
+	return b
+
+
+## A button of the bottom toolbar: just an icon from art/icons/toolbar_<name>, with its full name
+## (and key) as the tooltip. On touch screens, holding the button shows the name (see Touch).
+static func toolbar_button(icon_name: String, name: String, on_pressed: Callable) -> Button:
+	var b := button("", on_pressed)
+	b.icon = texture("icons/toolbar_" + icon_name)
+	b.expand_icon = true
+	b.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	b.theme_type_variation = "ToolbarButton"
+	b.custom_minimum_size = Vector2(34, 32) * (TOUCH_SCALE if touch() else 1.0)
+	b.tooltip_text = name
+	b.add_to_group(TOOLBAR_GROUP)
 	return b
 
 

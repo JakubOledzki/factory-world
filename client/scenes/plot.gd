@@ -187,6 +187,7 @@ var _pasture := false
 var _releasing := ""
 var _planting := false
 var _plant_button: Button
+var _plant_count: Label
 ## Shown while the player stands at a mine: opens the window where it is built up.
 var _mine_button: Button
 var _mine_window: GameWindow
@@ -1583,7 +1584,9 @@ func _set_saplings(count: int) -> void:
 func _update_plant_button() -> void:
 	if _plant_button == null:
 		return
-	_plant_button.text = ("Koniec sadzenia  [P]" if _planting else "Sadź drzewa  [P]") + "  · %d" % _saplings
+	_plant_count.text = str(_saplings)
+	_plant_button.tooltip_text = ("Koniec sadzenia  [P]" if _planting else "Sadź drzewa  [P]") \
+		+ "\nSadzonek: %d. Kupisz je na rynku w garażu albo przy komputerze na działce. Z każdego ściętego drzewa jest szansa na nową." % _saplings
 	_plant_button.modulate = Color(0.75, 1.0, 0.6) if _planting else Color.WHITE
 
 
@@ -2526,29 +2529,37 @@ func _build_hud() -> void:
 	tool_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
 	var bar := HBoxContainer.new()
-	bar.add_theme_constant_override("separation", 6)
-	bar.add_child(UI.button("Ekwipunek  [I]", func() -> void:
+	bar.add_theme_constant_override("separation", 4)
+	bar.add_child(UI.toolbar_button("inventory", "Ekwipunek  [I]", func() -> void:
 		_inventory_window.toggle()
 		if _inventory_window.visible:
 			_reload_inventory()))
-	bar.add_child(UI.button("Stacja  [T]", _go_to_station))
-	_market_button = UI.button("Rynek  [M]", _toggle_market)
-	_market_button.tooltip_text = "Rynek przez komputer stojący na działce"
+	bar.add_child(UI.toolbar_button("station", "Stacja kolejowa  [T]", _go_to_station))
+	_market_button = UI.toolbar_button("market", "Rynek  [M]\nPrzez komputer stojący na działce", _toggle_market)
 	_market_button.visible = false
 	bar.add_child(_market_button)
-	bar.add_child(UI.button("Spółka  [K]", func() -> void: _company_window.toggle()))
-	_plant_button = UI.button("", func() -> void: _set_planting(not _planting))
-	_plant_button.tooltip_text = "Sadzonki kupisz na rynku w garażu albo przy komputerze na działce. Z każdego ściętego drzewa jest szansa na nową."
+	bar.add_child(UI.toolbar_button("company", "Spółka  [K]", func() -> void: _company_window.toggle()))
+	_plant_button = UI.toolbar_button("plant", "", func() -> void: _set_planting(not _planting))
+	# The number of saplings, in the button's corner.
+	_plant_count = UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
+	_plant_count.add_theme_font_override("font", UI.bold())
+	_plant_count.add_theme_font_size_override("font_size", 11)
+	_plant_count.add_theme_constant_override("outline_size", 4)
+	_plant_count.add_theme_color_override("font_outline_color", Color.BLACK)
+	_plant_count.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_plant_button.add_child(_plant_count)
+	_plant_count.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 1)
+	_plant_count.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	_plant_count.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	bar.add_child(_plant_button)
 	_update_plant_button()
-	_mine_button = UI.button("Rozbuduj kopalnię  [U]", _toggle_mine_window)
-	_mine_button.tooltip_text = "Rozbudowana kopalnia daje więcej jednostek, szybciej i szybciej się odnawia."
+	_mine_button = UI.toolbar_button("mine_upgrade", "Rozbuduj kopalnię  [U]\nRozbudowana kopalnia daje więcej jednostek, szybciej i szybciej się odnawia.", _toggle_mine_window)
 	_mine_button.visible = false
 	bar.add_child(_mine_button)
-	bar.add_child(UI.button("Statystyki  [L]", func() -> void: _stats_window.toggle()))
-	bar.add_child(UI.button("Mapa świata  [N]", Game.open_world_map))
-	bar.add_child(UI.button("Osiągnięcia  [O]", func() -> void: _achievements_window.toggle()))
-	bar.add_child(UI.button("Garaż  [G]", Game.open_garage))
+	bar.add_child(UI.toolbar_button("stats", "Statystyki  [L]", func() -> void: _stats_window.toggle()))
+	bar.add_child(UI.toolbar_button("world_map", "Mapa świata  [N]", Game.open_world_map))
+	bar.add_child(UI.toolbar_button("achievements", "Osiągnięcia  [O]", func() -> void: _achievements_window.toggle()))
+	bar.add_child(UI.toolbar_button("garage", "Garaż  [G]", Game.open_garage))
 	_hud.add_child(bar)
 	bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 10)
 	bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
