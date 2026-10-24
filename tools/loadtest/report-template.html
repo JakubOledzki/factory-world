@@ -1,0 +1,415 @@
+<title>Factory World pod obciążeniem</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: one reading column; summary table first, then one chart per question, then the per-level timeline and conclusions. */
+:root {
+  --page: #f6f7f5; --surface: #fcfcfb; --ink: #111412; --ink-2: #4d524e; --muted: #858a84;
+  --grid: #e1e3dd; --axis: #c3c6bd; --ring: rgba(11, 14, 12, .10); --wash: rgba(42, 120, 214, .08);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #6250d6;
+  --good: #0ca30c; --warn: #fab219; --bad: #d03b3b; --good-ink: #006300;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --page: #0f110f; --surface: #1a1b1a; --ink: #f0f1ec; --ink-2: #c1c4bb; --muted: #8b8f88;
+  --grid: #2c2e2b; --axis: #3a3c38; --ring: rgba(255, 255, 255, .10); --wash: rgba(57, 135, 229, .14);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #9085e9; --good-ink: #0ca30c; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --page: #0f110f; --surface: #1a1b1a; --ink: #f0f1ec; --ink-2: #c1c4bb; --muted: #8b8f88;
+  --grid: #2c2e2b; --axis: #3a3c38; --ring: rgba(255, 255, 255, .10); --wash: rgba(57, 135, 229, .14);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #9085e9; --good-ink: #0ca30c; color-scheme: dark;
+}
+body { background: var(--page); color: var(--ink); font: 15px/1.55 var(--font); }
+main { max-width: 1080px; margin: 0 auto; padding-block: 32px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: grid; gap: 28px; }
+h1 { font-size: 28px; line-height: 1.2; margin: 0; text-wrap: balance; letter-spacing: -.01em; }
+h2 { font-size: 18px; margin: 0; text-wrap: balance; }
+h3 { font-size: 15px; margin: 0; }
+p { margin: 0; max-width: 72ch; }
+.lede { color: var(--ink-2); display: grid; gap: 8px; }
+.eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+section { display: grid; gap: 12px; min-width: 0; }
+.panel { align-content: start; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; padding: 16px; min-width: 0; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; }
+.note { font-size: 13px; color: var(--ink-2); }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+th, td { padding: 7px 10px; text-align: right; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font-weight: 600; color: var(--ink-2); font-size: 12px; }
+tbody tr:hover { background: var(--wash); }
+.chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; padding: 1px 8px; border-radius: 99px; border: 1px solid var(--ring); }
+.chip::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.ok { color: var(--good-ink); } .warn { color: #a06b00; } .bad { color: var(--bad); }
+:root[data-theme="dark"] .warn { color: var(--warn); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .warn { color: var(--warn); } }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 14px; height: 3px; border-radius: 2px; display: inline-block; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { fill: var(--muted); font: 11px var(--font); font-variant-numeric: tabular-nums; }
+svg .lbl { fill: var(--ink-2); }
+.tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--ring);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .12); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; z-index: 20;
+  font-variant-numeric: tabular-nums; min-width: 140px; }
+.tip b { display: block; margin-bottom: 2px; }
+.tip div { display: flex; justify-content: space-between; gap: 14px; }
+.tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.tabs button { font: inherit; font-size: 13px; padding: 5px 12px; border-radius: 99px; border: 1px solid var(--ring);
+  background: var(--surface); color: var(--ink-2); cursor: pointer; }
+.tabs button[aria-pressed="true"] { background: var(--ink); color: var(--page); border-color: var(--ink); }
+.tabs button:focus-visible { outline: 2px solid var(--s1); outline-offset: 2px; }
+.findings { display: grid; gap: 12px; }
+.finding { display: grid; gap: 4px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--ring); border-radius: 10px; }
+.finding .sev { font-size: 12px; font-weight: 600; }
+code { font-family: var(--mono); font-size: 12.5px; background: var(--wash); padding: 1px 5px; border-radius: 4px; }
+pre { font-family: var(--mono); font-size: 12.5px; background: var(--surface); border: 1px solid var(--ring); border-radius: 8px; padding: 12px; overflow-x: auto; margin: 0; }
+ul { margin: 0; padding-left: 20px; }
+</style>
+
+<main>
+  <header class="lede">
+    <div class="eyebrow">Test obciążenia serwera gry</div>
+    <h1>Factory World pod obciążeniem</h1>
+    <p id="intro"></p>
+  </header>
+
+  <section>
+    <h2>Podsumowanie</h2>
+    <div class="panel scroll"><table id="summary"></table></div>
+    <p class="note" id="summary-note"></p>
+  </section>
+
+  <section>
+    <h2>Czasy odpowiedzi</h2>
+    <div class="grid2">
+      <div class="panel" style="display:grid;gap:10px">
+        <h3>Wszystkie akcje gracza (ms, skala logarytmiczna)</h3>
+        <div class="legend" id="lat-legend"></div>
+        <div id="lat-chart"></div>
+      </div>
+      <div class="panel" style="display:grid;gap:10px">
+        <h3>Opóźnienie: ping i wejście do gry (p95, ms)</h3>
+        <div class="legend" id="ping-legend"></div>
+        <div id="ping-chart"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Przepustowość, błędy i zasoby</h2>
+    <div class="grid2">
+      <div class="panel" style="display:grid;gap:10px">
+        <h3>Obsłużone zapytania na sekundę</h3>
+        <div class="legend" id="tp-legend"></div>
+        <div id="tp-chart"></div>
+      </div>
+      <div class="panel" style="display:grid;gap:10px">
+        <h3>Błędy i przekroczenia czasu (% zapytań)</h3>
+        <div id="err-chart"></div>
+      </div>
+      <div class="panel" style="display:grid;gap:10px">
+        <h3>Procesor (% jednego rdzenia, średnio)</h3>
+        <div class="legend" id="cpu-legend"></div>
+        <div id="cpu-chart"></div>
+      </div>
+      <div class="panel" style="display:grid;gap:10px">
+        <h3>Pamięć serwera gry (MB, szczyt)</h3>
+        <div id="mem-chart"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="cmp-section" hidden>
+    <h2>Przed poprawkami i po nich</h2>
+    <div class="grid2">
+      <div class="panel" style="display:grid;gap:10px">
+        <h3>Czas odpowiedzi p95 (ms, skala logarytmiczna)</h3>
+        <div class="legend" id="cmp-lat-legend"></div>
+        <div id="cmp-lat"></div>
+      </div>
+      <div class="panel" style="display:grid;gap:10px">
+        <h3>Wejście do gry p95 (ms, skala logarytmiczna)</h3>
+        <div class="legend" id="cmp-join-legend"></div>
+        <div id="cmp-join"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Przebieg w czasie</h2>
+    <div class="tabs" id="tl-tabs" role="group" aria-label="Liczba graczy"></div>
+    <div class="grid2">
+      <div class="panel" style="display:grid;gap:10px">
+        <h3>Czas odpowiedzi p95 (ms)</h3>
+        <div id="tl-lat"></div>
+      </div>
+      <div class="panel" style="display:grid;gap:10px">
+        <h3>Gracze połączeni</h3>
+        <div id="tl-conn"></div>
+      </div>
+    </div>
+    <p class="note" id="tl-note"></p>
+  </section>
+
+  <section>
+    <h2>Akcje osobno (p95, ms)</h2>
+    <div class="panel scroll"><table id="ops"></table></div>
+  </section>
+
+  <section id="notes-section">
+    <!--NOTES-->
+  </section>
+</main>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+const RUNS = /*DATA*/[]/*END*/;
+const BEFORE = /*BEFORE*/[]/*END*/;
+RUNS.sort((a, b) => a.summary.players - b.summary.players);
+const before = (key) => RUNS.map(r => BEFORE.find(b => b.summary.players === r.summary.players)?.summary[key] ?? null);
+
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d = 0) => v == null ? "–" : Number(v).toLocaleString("pl-PL", { maximumFractionDigits: d, minimumFractionDigits: 0 });
+const ms = (v) => v == null ? "–" : v < 10 ? fmt(v, 1) : fmt(v, 0);
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const NS = "http://www.w3.org/2000/svg";
+const el = (tag, attrs = {}, parent) => {
+  const e = document.createElementNS(NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  if (parent) parent.appendChild(e);
+  return e;
+};
+const tip = $("tip");
+function showTip(evt, title, rows) {
+  tip.innerHTML = `<b>${title}</b>` + rows.map(([k, v, c]) =>
+    `<div><span>${c ? `<span style="color:${c}">■</span> ` : ""}${k}</span><span>${v}</span></div>`).join("");
+  tip.hidden = false;
+  const x = Math.min(evt.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+  const y = Math.min(evt.clientY + 14, window.innerHeight - tip.offsetHeight - 8);
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+const hideTip = () => { tip.hidden = true; };
+
+function legend(id, series) {
+  $(id).innerHTML = series.map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join("");
+}
+
+function niceTicks(min, max, n = 5) {
+  const span = max - min || 1, step0 = span / n, mag = 10 ** Math.floor(Math.log10(step0));
+  const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= n) || 10 * mag;
+  const ticks = [];
+  for (let v = Math.floor(min / step) * step; v <= max + step * .001; v += step) ticks.push(+v.toFixed(10));
+  return ticks;
+}
+function logTicks(min, max) {
+  const t = [];
+  for (let e = Math.floor(Math.log10(min)); e <= Math.ceil(Math.log10(max)); e++) t.push(10 ** e);
+  return t;
+}
+
+/* Line chart over the player counts, one evenly spaced step per measured level. Hover shows every series at that level. */
+function levelChart(id, { series, yLog = false, yFmt = (v) => fmt(v), marked = () => false }) {
+  const host = $(id); host.innerHTML = "";
+  const W = 480, H = 250, L = 52, R = 14, T = 12, B = 34;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, host);
+  const xs = RUNS.map(r => r.summary.players);
+  const vals = series.flatMap(s => s.values).filter(v => v != null && (!yLog || v > 0));
+  if (!vals.length) return;
+  // Player counts are evenly spaced (10, 100, 1000 … need not be powers of ten), so labels never crowd.
+  const X = (v) => L + (xs.length === 1 ? (W - L - R) / 2 : xs.indexOf(v) / (xs.length - 1) * (W - L - R));
+  let ticks, Y;
+  if (yLog) {
+    const lo = Math.min(...vals), hi = Math.max(...vals);
+    ticks = logTicks(lo, hi);
+    const a = Math.log10(ticks[0]), b = Math.log10(ticks[ticks.length - 1]);
+    Y = (v) => H - B - (Math.log10(Math.max(v, ticks[0])) - a) / (b - a || 1) * (H - T - B);
+  } else {
+    ticks = niceTicks(0, Math.max(...vals) * 1.05);
+    const top = ticks[ticks.length - 1];
+    Y = (v) => H - B - v / top * (H - T - B);
+  }
+  for (const t of ticks) {
+    el("line", { x1: L, x2: W - R, y1: Y(t), y2: Y(t), stroke: css("--grid"), "stroke-width": 1 }, svg);
+    el("text", { x: L - 8, y: Y(t) + 4, "text-anchor": "end" }, svg).textContent = yFmt(t);
+  }
+  el("line", { x1: L, x2: W - R, y1: H - B, y2: H - B, stroke: css("--axis") }, svg);
+  for (const v of xs) {
+    const t = el("text", { x: X(v), y: H - B + 18, "text-anchor": "middle", class: "lbl" }, svg);
+    t.textContent = fmt(v) + (marked(v) ? " *" : "");
+  }
+  for (const s of series) {
+    const pts = xs.map((v, i) => [v, s.values[i]]).filter(([, y]) => y != null && (!yLog || y > 0));
+    if (pts.length > 1) {
+      el("path", { d: pts.map(([v, y], i) => `${i ? "L" : "M"}${X(v)},${Y(y)}`).join(""), fill: "none",
+        stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-dasharray": s.dash || "" }, svg);
+    }
+    for (const [v, y] of pts) el("circle", { cx: X(v), cy: Y(y), r: 4, fill: s.color, stroke: css("--surface"), "stroke-width": 2 }, svg);
+  }
+  xs.forEach((v, i) => {
+    const prev = i ? X(xs[i - 1]) : L, next = i < xs.length - 1 ? X(xs[i + 1]) : W - R;
+    const hit = el("rect", { x: (prev + X(v)) / 2, y: T, width: (X(v) + next) / 2 - (prev + X(v)) / 2, height: H - T - B, fill: "transparent" }, svg);
+    const rule = el("line", { x1: X(v), x2: X(v), y1: T, y2: H - B, stroke: css("--axis"), "stroke-dasharray": "3 3", visibility: "hidden" }, svg);
+    hit.addEventListener("pointermove", (e) => {
+      rule.setAttribute("visibility", "visible");
+      showTip(e, `${fmt(v)} graczy${marked(v) ? " (poza zasięgiem maszyny testowej)" : ""}`,
+        series.map(s => [s.name, s.values[i] == null ? "–" : yFmt(s.values[i]), s.color]));
+    });
+    hit.addEventListener("pointerleave", () => { rule.setAttribute("visibility", "hidden"); hideTip(); });
+  });
+}
+
+/* Bars, one per player count. */
+function barChart(id, { values, color, yFmt = (v) => fmt(v), unit = "" }) {
+  const host = $(id); host.innerHTML = "";
+  const W = 480, H = 230, L = 52, R = 14, T = 16, B = 34;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, host);
+  const ticks = niceTicks(0, Math.max(...values.map(v => v ?? 0), 1e-9) * 1.1);
+  const top = ticks[ticks.length - 1];
+  const Y = (v) => H - B - v / top * (H - T - B);
+  for (const t of ticks) {
+    el("line", { x1: L, x2: W - R, y1: Y(t), y2: Y(t), stroke: css("--grid") }, svg);
+    el("text", { x: L - 8, y: Y(t) + 4, "text-anchor": "end" }, svg).textContent = yFmt(t);
+  }
+  const band = (W - L - R) / RUNS.length, bw = Math.min(56, band * .5);
+  RUNS.forEach((r, i) => {
+    const v = values[i] ?? 0, cx = L + band * (i + .5), h = H - B - Y(v);
+    const rad = Math.min(4, h);
+    const x = cx - bw / 2, y = Y(v);
+    el("path", { d: `M${x},${H - B}V${y + rad}Q${x},${y} ${x + rad},${y}H${x + bw - rad}Q${x + bw},${y} ${x + bw},${y + rad}V${H - B}Z`, fill: color }, svg);
+    el("text", { x: cx, y: y - 6, "text-anchor": "middle", class: "lbl" }, svg).textContent = yFmt(v) + unit;
+    el("text", { x: cx, y: H - B + 18, "text-anchor": "middle", class: "lbl" }, svg).textContent = fmt(r.summary.players);
+    const hit = el("rect", { x: cx - band / 2, y: T, width: band, height: H - T - B, fill: "transparent" }, svg);
+    hit.addEventListener("pointermove", (e) => showTip(e, `${fmt(r.summary.players)} graczy`, [["wartość", yFmt(v) + unit, color]]));
+    hit.addEventListener("pointerleave", hideTip);
+  });
+  el("line", { x1: L, x2: W - R, y1: H - B, y2: H - B, stroke: css("--axis") }, svg);
+}
+
+/* Timeline of one run: x is seconds since start; the steady phase is shaded. */
+function timeChart(id, run, key, color, yFmt = (v) => fmt(v)) {
+  const host = $(id); host.innerHTML = "";
+  const rows = run.timeline;
+  const W = 480, H = 220, L = 52, R = 14, T = 12, B = 30;
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, host);
+  const tmax = Math.max(...rows.map(r => r.t), 1);
+  const vals = rows.map(r => r[key]).filter(v => v != null);
+  const ticks = niceTicks(0, Math.max(...vals, 1) * 1.05);
+  const top = ticks[ticks.length - 1];
+  const X = (t) => L + t / tmax * (W - L - R), Y = (v) => H - B - v / top * (H - T - B);
+  const steady = rows.filter(r => r.phase === "steady");
+  if (steady.length) el("rect", { x: X(steady[0].t), y: T, width: X(steady[steady.length - 1].t) - X(steady[0].t), height: H - T - B, fill: css("--wash") }, svg);
+  for (const t of ticks) {
+    el("line", { x1: L, x2: W - R, y1: Y(t), y2: Y(t), stroke: css("--grid") }, svg);
+    el("text", { x: L - 8, y: Y(t) + 4, "text-anchor": "end" }, svg).textContent = yFmt(t);
+  }
+  for (const t of niceTicks(0, tmax, 6)) if (t <= tmax) el("text", { x: X(t), y: H - B + 16, "text-anchor": "middle" }, svg).textContent = t + " s";
+  el("line", { x1: L, x2: W - R, y1: H - B, y2: H - B, stroke: css("--axis") }, svg);
+  let d = "", pen = false;
+  for (const r of rows) {
+    if (r[key] == null) { pen = false; continue; }
+    d += `${pen ? "L" : "M"}${X(r.t)},${Y(r[key])}`; pen = true;
+  }
+  el("path", { d, fill: "none", stroke: color, "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+  const rule = el("line", { y1: T, y2: H - B, stroke: css("--axis"), "stroke-dasharray": "3 3", visibility: "hidden" }, svg);
+  const hit = el("rect", { x: L, y: T, width: W - L - R, height: H - T - B, fill: "transparent" }, svg);
+  hit.addEventListener("pointermove", (e) => {
+    const box = svg.getBoundingClientRect();
+    const t = (e.clientX - box.left) / box.width * W;
+    const r = rows.reduce((a, b) => Math.abs(X(b.t) - t) < Math.abs(X(a.t) - t) ? b : a);
+    rule.setAttribute("x1", X(r.t)); rule.setAttribute("x2", X(r.t)); rule.setAttribute("visibility", "visible");
+    showTip(e, `${fmt(r.t)} s · ${r.phase === "steady" ? "gra" : "dołączanie"}`, [
+      ["p95", ms(r.p95) + " ms"], ["zapytania/s", fmt(r.rps)], ["połączeni", fmt(r.connected)], ["błędy", fmt(r.errors)],
+      ["CPU serwera", r.serverCpu == null ? "–" : fmt(r.serverCpu) + " %"]]);
+  });
+  hit.addEventListener("pointerleave", () => { rule.setAttribute("visibility", "hidden"); hideTip(); });
+}
+
+function status(r) {
+  const s = r.summary;
+  if (s.errorRate > 1 || s.p95 > 1000) return ["bad", "przeciążony"];
+  if (s.errorRate > 0.1 || s.p95 > 200) return ["warn", "na granicy"];
+  return ["ok", "płynnie"];
+}
+
+function render() {
+  const S = RUNS.map(r => r.summary);
+  const limited = (r) => r.summary.loadgenCpuAvg != null && r.summary.machineCpuAvg > 85;
+  const marked = (v) => RUNS.some(r => r.summary.players === v && limited(r));
+  const cfg = RUNS[0]?.config ?? {};
+  $("intro").textContent = `Boty łączą się z serwerem przez prawdziwy protokół gry (WebSocket), logują się, ładują garaż, ekwipunek, portfel i ceny, a potem co ${fmt((cfg.ThinkMs ?? 2000) / 1000, 1)} s (średnio) wykonują jedną akcję: ekwipunek, rynek, mapa świata, segregacja śmieci, sprzedaż, ping. ` +
+    `Każdy poziom: dołączanie graczy, potem ${fmt(cfg.DurationSeconds)} s gry. Maszyna testowa: ${RUNS[0]?.machine?.cores ?? "?"} rdzenie, serwer, PostgreSQL i boty na tym samym komputerze.`;
+
+  const head = ["Gracze", "Stan", "Zapytania/s", "p50", "p95", "p99", "Ping p95", "Wejście p95", "Błędy", "CPU serwera", "CPU bazy", "RAM serwera"];
+  $("summary").innerHTML = `<thead><tr>${head.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>` + RUNS.map(r => {
+    const s = r.summary, [cls, label] = status(r);
+    return `<tr><td><b>${fmt(s.players)}</b>${limited(r) ? " *" : ""}</td><td><span class="chip ${cls}">${label}</span></td>` +
+      `<td>${fmt(s.throughput)} / ${fmt(s.offeredLoad)}</td><td>${ms(s.p50)} ms</td><td>${ms(s.p95)} ms</td><td>${ms(s.p99)} ms</td>` +
+      `<td>${ms(s.pingP95)} ms</td><td>${ms(s.joinP95)} ms</td><td>${fmt(s.errorRate, 2)} %</td>` +
+      `<td>${s.serverCpuAvg == null ? "–" : fmt(s.serverCpuAvg) + " %"}</td><td>${s.dbCpuAvg == null ? "–" : fmt(s.dbCpuAvg) + " %"}</td>` +
+      `<td>${s.serverRssMax == null ? "–" : fmt(s.serverRssMax) + " MB"}</td></tr>`;
+  }).join("") + "</tbody>";
+  $("summary-note").textContent = "Zapytania/s: obsłużone / zadane przez graczy (gdy pierwsza liczba jest mniejsza, serwer nie nadąża). Czasy to fazę gry, bez dołączania. CPU 100 % = jeden pełny rdzeń. " +
+    (RUNS.some(limited) ? "* Maszyna testowa była w tym pomiarze zajęta w ponad 85 %, więc boty i serwer walczyły o procesor: wynik pokazuje dolną granicę możliwości serwera." : "");
+
+  const c = [css("--s1"), css("--s2"), css("--s3"), css("--s4")];
+  const lat = [{ name: "p50", values: S.map(s => s.p50), color: c[0] }, { name: "p95", values: S.map(s => s.p95), color: c[1] }, { name: "p99", values: S.map(s => s.p99), color: c[2] }];
+  legend("lat-legend", lat);
+  levelChart("lat-chart", { series: lat, yLog: true, yFmt: ms, marked });
+  const ping = [{ name: "ping p95", values: S.map(s => s.pingP95), color: c[0] }, { name: "wejście do gry p95", values: S.map(s => s.joinP95), color: c[1] }];
+  legend("ping-legend", ping);
+  levelChart("ping-chart", { series: ping, yLog: true, yFmt: ms, marked });
+  const tp = [{ name: "obsłużone", values: S.map(s => s.throughput), color: c[0] }, { name: "zadane przez graczy", values: S.map(s => s.offeredLoad), color: css("--muted"), dash: "5 4" }];
+  legend("tp-legend", tp);
+  levelChart("tp-chart", { series: tp, yLog: true, marked });
+  if (S.every(s => !s.errorRate)) {
+    $("err-chart").innerHTML = `<p class="note">Na żadnym poziomie nie było błędów ani przekroczeń czasu (${fmt(S.reduce((a, s) => a + s.requests, 0))} zapytań).</p>`;
+  } else {
+    barChart("err-chart", { values: S.map(s => s.errorRate), color: css("--bad"), yFmt: (v) => fmt(v, 2), unit: " %" });
+  }
+  const cpu = [{ name: "serwer gry", values: S.map(s => s.serverCpuAvg), color: c[0] }, { name: "PostgreSQL", values: S.map(s => s.dbCpuAvg), color: c[1] }, { name: "boty (generator)", values: S.map(s => s.loadgenCpuAvg), color: c[2] }];
+  legend("cpu-legend", cpu);
+  levelChart("cpu-chart", { series: cpu, yFmt: (v) => fmt(v) + "%", marked });
+  barChart("mem-chart", { values: S.map(s => s.serverRssMax), color: css("--s4"), yFmt: (v) => fmt(v), unit: " MB" });
+
+  if (BEFORE.length) {
+    $("cmp-section").hidden = false;
+    const a = [{ name: "przed", values: before("p95"), color: css("--muted"), dash: "5 4" }, { name: "po", values: S.map(s => s.p95), color: c[0] }];
+    legend("cmp-lat-legend", a);
+    levelChart("cmp-lat", { series: a, yLog: true, yFmt: ms, marked });
+    const j = [{ name: "przed", values: before("joinP95"), color: css("--muted"), dash: "5 4" }, { name: "po", values: S.map(s => s.joinP95), color: c[0] }];
+    legend("cmp-join-legend", j);
+    levelChart("cmp-join", { series: j, yLog: true, yFmt: ms, marked });
+  }
+
+  const tabs = $("tl-tabs");
+  const pick = (i) => {
+    [...tabs.children].forEach((b, j) => b.setAttribute("aria-pressed", String(i === j)));
+    timeChart("tl-lat", RUNS[i], "p95", css("--s2"), ms);
+    timeChart("tl-conn", RUNS[i], "connected", css("--s1"));
+    const s = RUNS[i].summary;
+    $("tl-note").textContent = `Jasne tło to faza gry. Dołączanie ${fmt(s.players)} graczy trwało ${fmt(s.rampSeconds)} s; ponowne połączenia po błędzie: ${fmt(s.reconnects)}.`;
+  };
+  tabs.innerHTML = RUNS.map(r => `<button type="button" id="tab-${r.summary.players}">${fmt(r.summary.players)} graczy</button>`).join("");
+  [...tabs.children].forEach((b, i) => b.addEventListener("click", () => pick(i)));
+  if (RUNS.length) pick(RUNS.length - 1);
+
+  const types = [...new Set(RUNS.flatMap(r => Object.keys(r.operations)))].filter(t => t !== "connect");
+  const worst = Math.max(...RUNS.flatMap(r => types.map(t => r.operations[t]?.p95 ?? 0)));
+  $("ops").innerHTML = `<thead><tr><th>Akcja</th>${RUNS.map(r => `<th>${fmt(r.summary.players)} graczy</th>`).join("")}</tr></thead><tbody>` +
+    types.map(t => `<tr><td><code>${t}</code></td>` + RUNS.map(r => {
+      const o = r.operations[t];
+      if (!o) return "<td>–</td>";
+      const a = Math.min(.55, Math.log10(1 + (o.p95 ?? 0)) / Math.log10(1 + worst) * .55);
+      const err = o.errors ? ` <span class="bad" title="błędy">(${fmt(o.errors)} bł.)</span>` : "";
+      return `<td style="background:color-mix(in srgb, var(--s2) ${Math.round(a * 100)}%, transparent)">${ms(o.p95)}${err}</td>`;
+    }).join("") + "</tr>").join("") + "</tbody>";
+}
+
+render();
+const scheme = matchMedia("(prefers-color-scheme: dark)");
+scheme.addEventListener?.("change", render);
+new MutationObserver(render).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+</script>

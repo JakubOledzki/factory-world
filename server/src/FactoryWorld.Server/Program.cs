@@ -48,7 +48,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 builder.Services.AddHealthChecks().AddNpgSql(connectionString, name: "postgres");
-builder.Services.AddSingleton(NpgsqlDataSource.Create(connectionString));
+builder.Services.AddSingleton(NpgsqlDataSource.Create(TunedForGame(connectionString)));
 builder.Services.AddScoped<GameDb>();
 
 var app = builder.Build();
@@ -71,6 +71,36 @@ foreach (var module in modules)
 }
 
 app.Run();
+
+// Every request borrows a pooled connection for a few short queries. By default Npgsql resets each connection
+// when it goes back to the pool (one extra round trip) and PostgreSQL parses and plans every query again; with
+// thousands of players that overhead, not the queries, saturated the database (tools/loadtest). Settings written
+// in the connection string itself win over these defaults.
+static string TunedForGame(string connectionString)
+{
+    // The plain builder knows only the keys actually written; compared without spaces, as Npgsql accepts both forms.
+    var given = new System.Data.Common.DbConnectionStringBuilder { ConnectionString = connectionString }.Keys
+        .Cast<string>()
+        .Select(k => k.Replace(" ", "").ToLowerInvariant())
+        .ToHashSet();
+    var tuned = new NpgsqlConnectionStringBuilder(connectionString);
+    if (!given.Contains("noresetonclose"))
+    {
+        tuned.NoResetOnClose = true;
+    }
+
+    if (!given.Contains("maxautoprepare"))
+    {
+        tuned.MaxAutoPrepare = 64;
+    }
+
+    if (!given.Contains("autoprepareminusages"))
+    {
+        tuned.AutoPrepareMinUsages = 2;
+    }
+
+    return tuned.ConnectionString;
+}
 
 // Exposed for WebApplicationFactory in tests.
 public partial class Program;

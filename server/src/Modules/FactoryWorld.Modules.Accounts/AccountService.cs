@@ -15,6 +15,12 @@ public sealed class AccountService(AccountsDbContext db, TimeProvider time)
     /// <summary>Verified against when the e-mail is unknown, so both cases take the same time.</summary>
     private static readonly string DummyHash = Hasher.HashPassword(null!, "not-a-real-password");
 
+    /// <summary>
+    /// Password hashing is slow on purpose (PBKDF2) and takes a whole core for a moment. Only this many run at once,
+    /// so that a wave of logins (e.g. after a restart) waits in line instead of taking every core from the game.
+    /// </summary>
+    private static readonly SemaphoreSlim PasswordWork = new(Math.Max(1, Environment.ProcessorCount - 1));
+
     public async Task<LoginResult> RegisterAsync(string email, string password, CancellationToken cancellationToken)
     {
         email = AccountRules.NormalizeEmail(email);
@@ -36,7 +42,7 @@ public sealed class AccountService(AccountsDbContext db, TimeProvider time)
             PasswordHash = "",
             CreatedAt = time.GetUtcNow(),
         };
-        account.PasswordHash = Hasher.HashPassword(account, password);
+        account.PasswordHash = await HashingAsync(() => Hasher.HashPassword(account, password), cancellationToken);
         db.Accounts.Add(account);
 
         try
@@ -56,7 +62,7 @@ public sealed class AccountService(AccountsDbContext db, TimeProvider time)
         email = AccountRules.NormalizeEmail(email);
         var account = await db.Accounts.SingleOrDefaultAsync(a => a.Email == email, cancellationToken);
 
-        var result = Hasher.VerifyHashedPassword(account!, account?.PasswordHash ?? DummyHash, password);
+        var result = await HashingAsync(() => Hasher.VerifyHashedPassword(account!, account?.PasswordHash ?? DummyHash, password), cancellationToken);
         if (account is null || result == PasswordVerificationResult.Failed)
         {
             throw new GameException("invalid_credentials", "Wrong e-mail or password.");
@@ -64,7 +70,7 @@ public sealed class AccountService(AccountsDbContext db, TimeProvider time)
 
         if (result == PasswordVerificationResult.SuccessRehashNeeded)
         {
-            account.PasswordHash = Hasher.HashPassword(account, password);
+            account.PasswordHash = await HashingAsync(() => Hasher.HashPassword(account, password), cancellationToken);
             await db.SaveChangesAsync(cancellationToken);
         }
 
@@ -104,6 +110,19 @@ public sealed class AccountService(AccountsDbContext db, TimeProvider time)
         });
         await db.SaveChangesAsync(cancellationToken);
         return new LoginResult(accountId, token);
+    }
+
+    private static async Task<T> HashingAsync<T>(Func<T> work, CancellationToken cancellationToken)
+    {
+        await PasswordWork.WaitAsync(cancellationToken);
+        try
+        {
+            return work();
+        }
+        finally
+        {
+            PasswordWork.Release();
+        }
     }
 
     private static byte[] HashToken(string token) => SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token));
