@@ -24,4 +24,12 @@ public sealed class CharacterNames(GameDb db) : ICharacterNames
 
         return names;
     }
+
+    public async Task<Guid?> AccountAsync(string name, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            """SELECT "AccountId" FROM characters.characters WHERE "NormalizedName" = @name""", cancellationToken);
+        command.Parameters.AddWithValue("name", name.Trim().ToLowerInvariant());
+        return await command.ExecuteScalarAsync(cancellationToken) as Guid?;
+    }
 }

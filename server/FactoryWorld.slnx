@@ -7,6 +7,7 @@
     <Project Path="src/Modules/FactoryWorld.Modules.Accounts/FactoryWorld.Modules.Accounts.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Characters/FactoryWorld.Modules.Characters.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Contracts/FactoryWorld.Modules.Contracts.csproj" />
+    <Project Path="src/Modules/FactoryWorld.Modules.Companies/FactoryWorld.Modules.Companies.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Crafting/FactoryWorld.Modules.Crafting.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Inventory/FactoryWorld.Modules.Inventory.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Logistics/FactoryWorld.Modules.Logistics.csproj" />

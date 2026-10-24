@@ -38,6 +38,9 @@ public interface ICharacterNames
 {
     /// <summary>Name by account id; accounts without a character are left out.</summary>
     Task<IReadOnlyDictionary<Guid, string>> NamesAsync(IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken);
+
+    /// <summary>The account whose character has this name (any letter case), or null.</summary>
+    Task<Guid?> AccountAsync(string name, CancellationToken cancellationToken);
 }
 
 /// <summary>The character's tool slot: one tool (e.g. an axe) held in hand, outside the inventory.</summary>
@@ -74,8 +77,52 @@ public interface IPlotObjects
 {
     Task<IReadOnlyList<PlotObject>> ObjectsAsync(int x, int y, CancellationToken cancellationToken);
 
-    /// <summary>Fails with <c>not_owner</c> unless the player owns the plot.</summary>
-    Task RequireOwnerAsync(Guid player, int x, int y, CancellationToken cancellationToken);
+    /// <summary>Fails with <c>not_owner</c> unless the player owns the plot, or may do <paramref name="right"/>
+    /// there as a member of the company the plot belongs to.</summary>
+    Task RequireOwnerAsync(Guid player, int x, int y, CancellationToken cancellationToken, PlotRight right = PlotRight.Build);
+}
+
+/// <summary>What a player does on a plot. Its owner may do everything; members of a company the
+/// owner brought the plot into may do what their role allows.</summary>
+public enum PlotRight
+{
+    /// <summary>Enter, gather, mine, farm, plant, work machines, put into storage and the station.</summary>
+    Work,
+
+    /// <summary>Take out of storage and the station, send trains.</summary>
+    Take,
+
+    /// <summary>Put objects on the plot, turn and pick them up, set splitters.</summary>
+    Build,
+
+    /// <summary>Only the owner, e.g. a geological survey.</summary>
+    Owner,
+}
+
+/// <summary>A bought plot, for modules outside the world.</summary>
+public sealed record OwnedPlot(int X, int Y, Guid Owner, int Biome);
+
+/// <summary>Who owns which plot.</summary>
+public interface IPlotRegistry
+{
+    /// <summary>The plot if somebody bought it, otherwise null.</summary>
+    Task<OwnedPlot?> FindAsync(int x, int y, CancellationToken cancellationToken);
+}
+
+/// <summary>The company a plot belongs to, as one player sees it.</summary>
+public sealed record PlotCompany(string Name, bool Member);
+
+/// <summary>Plots that owners brought into a company, so its members work on them together.</summary>
+public interface ICompanyPlots
+{
+    /// <summary>What the player may do on the plot as a member of its company; empty when it is in none of theirs.</summary>
+    Task<IReadOnlySet<PlotRight>> RightsAsync(Guid player, int x, int y, CancellationToken cancellationToken);
+
+    /// <summary>The company the plot is in, or null.</summary>
+    Task<PlotCompany?> CompanyAsync(Guid viewer, int x, int y, CancellationToken cancellationToken);
+
+    /// <summary>Plots of the player's company that other members own.</summary>
+    Task<IReadOnlyList<(int X, int Y)>> SharedWithAsync(Guid player, CancellationToken cancellationToken);
 }
 
 /// <summary>Machinery that runs on a plot by itself (belts, inserters). It is brought up to now

@@ -50,7 +50,7 @@ public sealed class StationService(GameDb db, WorldMap map, PlotService plots, I
     public Task<StationState> StateAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             return await ReadAsync(x, y, cancellationToken);
         }, cancellationToken);
 
@@ -59,7 +59,7 @@ public sealed class StationService(GameDb db, WorldMap map, PlotService plots, I
         db.InTransactionAsync(async () =>
         {
             CheckQuantity(item, quantity);
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             await inventory.RemoveAsync(player, item, quantity, cancellationToken);
             await ChangeStockAsync(x, y, item, quantity, cancellationToken);
             return await ReadAsync(x, y, cancellationToken);
@@ -70,7 +70,7 @@ public sealed class StationService(GameDb db, WorldMap map, PlotService plots, I
         db.InTransactionAsync(async () =>
         {
             CheckQuantity(item, quantity);
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Take);
             await DeliverAsync(x, y, cancellationToken);
             await ChangeStockAsync(x, y, item, -quantity, cancellationToken);
             await inventory.AddAsync(player, item, quantity, cancellationToken);
@@ -82,7 +82,7 @@ public sealed class StationService(GameDb db, WorldMap map, PlotService plots, I
         db.InTransactionAsync(async () =>
         {
             CheckQuantity(item, quantity);
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Take);
             if (!map.Contains(toX, toY) || (toX == x && toY == y))
             {
                 throw new GameException("bad_destination", "Choose another plot to send to.");

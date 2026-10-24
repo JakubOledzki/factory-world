@@ -88,7 +88,7 @@ public sealed class MineService(GameDb db, PlotService plots, IInventory invento
     public Task<MineLoad> MineAsync(Guid player, int x, int y, int mine, Action<TimeSpan> pace, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             var site = PlotLayout.Mines(x, y, biome).FirstOrDefault(m => m.Id == mine)
                 ?? throw new GameException("no_mine", "There is no such mine on this plot.");
             await plots.RequireToolAsync(player, Items.Pickaxe, cancellationToken);

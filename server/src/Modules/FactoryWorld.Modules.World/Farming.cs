@@ -64,7 +64,7 @@ public sealed class FarmService(GameDb db, PlotService plots, IInventory invento
     public Task<FieldChange> TillAsync(Guid player, int x, int y, int tileX, int tileY, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             if (!Farming.Fertile(biome))
             {
                 throw new GameException("not_fertile", "Only fertile soil can be tilled.");
@@ -103,7 +103,7 @@ public sealed class FarmService(GameDb db, PlotService plots, IInventory invento
                 throw new GameException("unknown_crop", "There is no such crop.");
             }
 
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             var now = time.GetUtcNow();
             await using var update = await db.CommandAsync(
                 """
@@ -125,7 +125,7 @@ public sealed class FarmService(GameDb db, PlotService plots, IInventory invento
     public Task<FieldChange> ReapAsync(Guid player, int x, int y, int tileX, int tileY, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             string crop;
             DateTimeOffset planted;
             await using (var select = await db.CommandAsync(

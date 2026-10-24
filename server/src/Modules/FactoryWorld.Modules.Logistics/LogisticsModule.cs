@@ -77,14 +77,14 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
     public Task<LogisticsState> StateAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             return await RunAsync(x, y, cancellationToken);
         }, cancellationToken);
 
     /// <summary>Puts items from the inventory into a storage on the player's plot.</summary>
     public Task<(LogisticsState State, PlotObject Storage)> PutAsync(
         Guid player, int x, int y, Guid id, string item, int quantity, CancellationToken cancellationToken) =>
-        ChangeStorageAsync(player, x, y, id, async (kind, stacks) =>
+        ChangeStorageAsync(player, x, y, id, PlotRight.Work, async (kind, stacks) =>
         {
             if (quantity < 1)
             {
@@ -108,7 +108,7 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
     /// <summary>Takes items out of a storage into the inventory: <paramref name="quantity"/> of them, or all when 0.</summary>
     public Task<(LogisticsState State, PlotObject Storage)> TakeAsync(
         Guid player, int x, int y, Guid id, string item, int quantity, CancellationToken cancellationToken) =>
-        ChangeStorageAsync(player, x, y, id, async (_, stacks) =>
+        ChangeStorageAsync(player, x, y, id, PlotRight.Take, async (_, stacks) =>
         {
             if (quantity < 0)
             {
@@ -159,10 +159,10 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
         }, cancellationToken);
 
     private Task<(LogisticsState, PlotObject)> ChangeStorageAsync(
-        Guid player, int x, int y, Guid id, Func<StorageKind, List<ItemStack>, Task> change, CancellationToken cancellationToken) =>
+        Guid player, int x, int y, Guid id, PlotRight right, Func<StorageKind, List<ItemStack>, Task> change, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, right);
             var state = await RunAsync(x, y, cancellationToken);
             var storage = state.Objects.FirstOrDefault(o => o.Id == id);
             if (storage is null || Storages.Find(storage.Kind) is not { } kind)
