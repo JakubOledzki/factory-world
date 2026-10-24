@@ -87,6 +87,9 @@ public static class Items
     public const string VegetableSoup = "vegetable_soup";
     public const string Bigos = "bigos";
 
+    // Office: a computer put on a plot opens the market there, far from the garage.
+    public const string Computer = "furniture_computer";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -144,6 +147,7 @@ public static class Items
         [OilPress] = "Tłocznia oleju",
         [PicklingBarrel] = "Beczka do kiszenia",
         [Bakery] = "Piec piekarski",
+        [Computer] = "Komputer",
         [Kitchen] = "Kuchnia polowa",
         [Flour] = "Mąka pszenna",
         [CornFlour] = "Mąka kukurydziana",

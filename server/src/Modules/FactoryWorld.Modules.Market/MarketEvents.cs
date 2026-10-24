@@ -46,7 +46,7 @@ public static class MarketEvents
     private static readonly string[] Machines =
     [
         Items.SortingMachine, Items.Workbench, Items.Mill, Items.OilPress, Items.PicklingBarrel, Items.Bakery, Items.Kitchen,
-        Items.Belt, Items.Inserter, Items.Splitter, Items.WoodenChest,
+        Items.Belt, Items.Inserter, Items.Splitter, Items.WoodenChest, Items.Computer,
     ];
 
     private static readonly IReadOnlyDictionary<string, int> Nothing = new Dictionary<string, int>();

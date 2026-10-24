@@ -8,7 +8,7 @@ namespace FactoryWorld.Modules.World;
 /// <summary>
 /// Things a player carries out of the inventory and puts on a free tile of their plot, e.g. a
 /// workbench to craft at far from the garage, a furnace, a machine that processes crops (mill, oil
-/// press, pickling barrel, bakery, field kitchen), belts, inserters or chests. Each stands on one
+/// press, pickling barrel, bakery, field kitchen), belts, inserters or chests, or a computer to trade on the market from the plot. Each stands on one
 /// tile, turned by quarter turns like furniture in the garage.
 /// </summary>
 public static class PlotObjects
@@ -20,6 +20,7 @@ public static class PlotObjects
         Items.Mill, Items.OilPress, Items.PicklingBarrel, Items.Bakery, Items.Kitchen,
         Items.Belt, Items.Inserter, Items.Splitter,
         Items.WoodenChest, Items.IronChest, Items.WoodPile, Items.Heap, Items.GrainSilo,
+        Items.Computer,
     };
 }
 

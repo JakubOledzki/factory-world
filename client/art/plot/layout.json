@@ -208,5 +208,9 @@
  "splitter": {
   "anchorX": 32,
   "anchorY": 39
+ },
+ "computer": {
+  "anchorX": 64,
+  "anchorY": 72
  }
 }
