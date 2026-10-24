@@ -67,6 +67,7 @@ const ERRORS := {
 	"not_fertile": "Orać można tylko żyzne gleby.",
 	"unknown_crop": "Nieznana roślina.",
 	"no_field": "Najpierw zaorz tu ziemię motyką.",
+	"no_forestry": "Na lodowcu i w górach drzewa nie rosną: nie da się tu sadzić ani stawiać budynków leśnika.",
 	"not_ripe": "To jeszcze nie dojrzało.",
 	"no_mine": "Na tej działce nie ma takiej kopalni.",
 	"mine_empty": "Kopalnia jest wyczerpana, odnowi się za chwilę.",

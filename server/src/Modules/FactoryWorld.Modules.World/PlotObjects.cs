@@ -83,7 +83,7 @@ public sealed class PlotObjectService(
 
             if (Items.IsForester(kind) && Forestry.GrowTime(biome) is null)
             {
-                throw new GameException("no_forestry", "Nothing grows on ice.");
+                throw new GameException("no_forestry", "No trees grow here.");
             }
 
             await CatchUpAsync(x, y, cancellationToken);

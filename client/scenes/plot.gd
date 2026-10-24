@@ -72,8 +72,9 @@ const SPRITES := {
 	BUSH: ["bush_0", "bush_1"],
 }
 const SOLID := [TREE, ROCK, DUNE, STATION, MINE]
-## Objects that can be worked: their name, the tool and how the tool is named in "you need a ...".
+## Objects that can be worked: their name, the tool ("" for bare hands) and how the tool is named in "you need a ...".
 const WORK := {
+	BUSH: {"name": "Krzak", "tool": "", "verb": "Wyrwij", "need": ""},
 	TREE: {"name": "Drzewo", "tool": "tool_axe", "verb": "Zetnij", "need": "siekiery lub piły spalinowej"},
 	ROCK: {"name": "Skała", "tool": "tool_pickaxe", "verb": "Rozbij", "need": "kilofa"},
 	DUNE: {"name": "Wydma", "tool": "tool_shovel", "verb": "Kop", "need": "łopaty"},
@@ -1298,6 +1299,8 @@ func _nearest_work() -> Vector2i:
 
 ## Whether a tool in the tool bar does the work of `tool`.
 func _holds(tool: String) -> bool:
+	if tool == "":
+		return true
 	return Game.tools().any(func(held: Dictionary) -> bool: return held["id"] == tool or STANDS_IN.get(held["id"], "") == tool)
 
 
@@ -1308,7 +1311,7 @@ func _sync_tool_bar() -> void:
 	_update_hint()
 
 
-## Walks up to a tree, rock or dune and works it with the tool in hand.
+## Walks up to a tree, rock or dune and works it with the tool in hand, or pulls out a bush by hand.
 func _work_on(cell: Vector2i) -> void:
 	var kind := _work_kind(cell)
 	if _trees.has(cell) and not _tree_grown(cell):
@@ -1560,7 +1563,7 @@ func _apply_field(reply: Dictionary) -> void:
 ## Turns planting on or off: while on, a click on free ground plants a sapling from the inventory.
 func _set_planting(on: bool) -> void:
 	if on and _tree_grow_seconds <= 0.0:
-		_show_toast("Na lodowcu nic nie wyrośnie.", UI.ERROR)
+		_show_toast("Na lodowcu i w górach drzewa nie rosną.", UI.ERROR)
 		on = false
 	elif on and _saplings <= 0:
 		_show_toast("Nie masz sadzonek. Kupisz je na rynku w garażu (od handlarza albo od innych graczy).", UI.ERROR)

@@ -40,7 +40,7 @@ public static class Biomes
         new(Biome.Farmland, "Żyzne gleby", true, 1.5, [Up("+30% rolnictwo"), Up("+20% hodowla")]),
         new(Biome.Grassland, "Step i łąki", true, 1, [Up("+25% hodowla"), Up("+15% energia wiatrowa")]),
         new(Biome.Desert, "Pustynia", true, 1, [Up("+30% piasek i szkło"), Up("+25% energia słoneczna"), Down("−50% rolnictwo")]),
-        new(Biome.Mountains, "Góry", true, 1, [Up("+30% górnictwo"), Up("+15% energia wodna"), Down("−25% powierzchnia zabudowy")]),
+        new(Biome.Mountains, "Góry", true, 1, [Up("+30% górnictwo"), Up("+15% energia wodna"), Down("−25% powierzchnia zabudowy"), Down("brak leśnictwa")]),
         new(Biome.Tundra, "Tundra", true, 1, [Up("+15% łowiectwo"), Up("+15% energia wiatrowa"), Down("−30% rolnictwo")]),
         new(Biome.Ice, "Lodowiec", true, 1, [Up("+20% energia wiatrowa"), Down("brak rolnictwa i leśnictwa")]),
         new(Biome.City, "Miasto", true, 2, [Up("+25% przemysł i montaż"), Up("−10% koszt transportu na rynek"), Down("−50% rolnictwo i leśnictwo")]),

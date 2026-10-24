@@ -222,6 +222,20 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
     }
 
     [Fact]
+    public async Task A_bush_is_pulled_out_by_hand()
+    {
+        using var client = await PlayerAsync();
+        var meadow = await BuyAsync(client, Biome.Grassland);
+        var (tx, ty) = Find((await EnterAsync(client, meadow)).Tiles, TileObject.Bush);
+
+        factory.Time.Advance(HarvestRules.Time);
+        Assert.Equal("plot.harvested", (await client.SendAsync("plot.harvest", new { x = meadow.X, y = meadow.Y, tileX = tx, tileY = ty })).Type());
+        Assert.Equal((byte)TileObject.None, (await EnterAsync(client, meadow)).Tiles[ty * PlotLayout.Size + tx]);
+        factory.Time.Advance(HarvestRules.Time);
+        Assert.Equal("nothing_here", (await client.SendAsync("plot.harvest", new { x = meadow.X, y = meadow.Y, tileX = tx, tileY = ty })).ErrorCode());
+    }
+
+    [Fact]
     public async Task Goods_go_by_train_to_another_players_station_for_a_fee()
     {
         using var sender = await PlayerAsync();
@@ -361,12 +375,14 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         factory.Time.Advance(HarvestRules.ChopTime);
         Assert.Equal("nothing_here", (await client.SendAsync("plot.harvest", At(tx, ty))).ErrorCode());
 
-        // Elsewhere a sapling grows the full ten minutes, and nothing grows on ice.
+        // Elsewhere a sapling grows the full ten minutes, and no trees grow on ice or in the mountains.
         var meadow = await BuyAsync(client, Biome.Grassland);
         var (meadowPlot, _) = await EnterAsync(client, meadow);
         Assert.Equal(600, meadowPlot.GetProperty("treeGrowSeconds").GetDouble());
         var ice = await BuyAsync(client, Biome.Ice);
         Assert.Equal("no_forestry", (await client.SendAsync("plot.plantTree", new { x = ice.X, y = ice.Y, tileX = tx, tileY = ty })).ErrorCode());
+        var mountains = await BuyAsync(client, Biome.Mountains);
+        Assert.Equal("no_forestry", (await client.SendAsync("plot.plantTree", new { x = mountains.X, y = mountains.Y, tileX = tx, tileY = ty })).ErrorCode());
 
         // The cut tree may have dropped a sapling; plant them all, then there is none left.
         var saplings = (int)(await client.InventoryAsync())[Items.Sapling];
