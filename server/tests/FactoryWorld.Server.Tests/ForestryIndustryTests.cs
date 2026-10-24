@@ -112,6 +112,7 @@ public sealed class ForestryIndustryTests(ServerFactory factory) : IClassFixture
         }
 
         Assert.Null(Foresters.GrowTime(levels[0], Biome.Ice));
+        Assert.Null(Foresters.GrowTime(levels[0], Biome.Mountains));
     }
 
     [Fact]

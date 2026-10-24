@@ -144,7 +144,10 @@ public static class PlotLayout
         return mines;
     }
 
-    /// <summary>Which tool a player needs to gather an object, or null when it cannot be gathered.</summary>
+    /// <summary>Whether an object can be gathered: a bush is pulled out by hand, the rest needs <see cref="ToolFor"/>.</summary>
+    public static bool Gatherable(TileObject obj) => obj == TileObject.Bush || ToolFor(obj) is not null;
+
+    /// <summary>Which tool a player needs to gather an object, or null when none does (or it cannot be gathered).</summary>
     public static string? ToolFor(TileObject obj) => obj switch
     {
         TileObject.Tree => Items.Axe,
@@ -287,7 +290,7 @@ public sealed class PlotService(
 
     /// <summary>
     /// Cuts a tree (grown by itself or planted), breaks a rock or digs a dune with the tool in the
-    /// player's slot. <paramref name="pace"/> gets how long the work takes and refuses it if too quick.
+    /// player's slot, or pulls out a bush by hand. <paramref name="pace"/> gets how long the work takes and refuses it if too quick.
     /// </summary>
     public Task<Harvest> HarvestAsync(
         Guid player, int x, int y, int tileX, int tileY, Action<TimeSpan> pace, CancellationToken cancellationToken) =>
@@ -305,8 +308,12 @@ public sealed class PlotService(
             }
 
             var obj = (TileObject)PlotLayout.Generate(x, y, biome)[tileY * PlotLayout.Size + tileX];
-            var tool = PlotLayout.ToolFor(obj) ?? throw new GameException("nothing_here", "There is nothing to gather here.");
-            pace(HarvestRules.TimeFor(obj, await RequireToolAsync(player, tool, cancellationToken)));
+            if (!PlotLayout.Gatherable(obj))
+            {
+                throw new GameException("nothing_here", "There is nothing to gather here.");
+            }
+
+            pace(HarvestRules.TimeFor(obj, PlotLayout.ToolFor(obj) is { } tool ? await RequireToolAsync(player, tool, cancellationToken) : null));
 
             await using (var insert = await db.CommandAsync(
                 "INSERT INTO world.plot_harvests (x, y, tile_x, tile_y) VALUES (@x, @y, @tx, @ty) ON CONFLICT DO NOTHING", cancellationToken))

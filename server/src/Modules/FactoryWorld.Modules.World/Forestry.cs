@@ -21,13 +21,13 @@ public static class Forestry
 
     /// <summary>
     /// The biome's forestry bonus in percent, as the map lists it: a forest grows trees 25% faster,
-    /// a city 50% slower, and nothing grows on ice (null).
+    /// a city 50% slower, and nothing grows on ice or in the mountains (null).
     /// </summary>
     public static int? BonusPercent(Biome biome) => biome switch
     {
         Biome.Forest => 25,
         Biome.City => -50,
-        Biome.Ice => null,
+        Biome.Ice or Biome.Mountains => null,
         _ => 0,
     };
 
@@ -62,7 +62,7 @@ public sealed class ForestService(
         db.InTransactionAsync(async () =>
         {
             var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
-            var grow = Forestry.GrowTime(biome) ?? throw new GameException("no_forestry", "Nothing grows on ice.");
+            var grow = Forestry.GrowTime(biome) ?? throw new GameException("no_forestry", "No trees grow here.");
             if (!await plots.FreeAsync(player, x, y, tileX, tileY, cancellationToken))
             {
                 throw new GameException("blocked", "Something stands here.");
