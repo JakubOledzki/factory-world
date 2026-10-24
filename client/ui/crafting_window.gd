@@ -245,17 +245,17 @@ func _render() -> void:
 		var about := ItemInfo.description(_selected)
 		if about != "":
 			_details.add_child(UI.label(about, UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true))
-		_details.add_child(UI.label("Potrzebne:", UI.MUTED))
+		_details.add_child(UI.label("Potrzebne (wymagane/masz):", UI.MUTED))
 		for ingredient: Dictionary in selected["ingredients"]:
 			var need := int(ingredient["quantity"])
 			var have := _count(ingredient["id"])
 			var row := HBoxContainer.new()
 			row.add_theme_constant_override("separation", 6)
 			row.add_child(UI.item_icon(ingredient["id"], 26))
-			var name_label := UI.label("%d × %s" % [need, ingredient["name"]])
+			var name_label := UI.label(ingredient["name"])
 			name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.add_child(name_label)
-			row.add_child(UI.label("masz %d" % have, UI.GOOD if have >= need else UI.ERROR, HORIZONTAL_ALIGNMENT_RIGHT))
+			row.add_child(UI.label("%d/%d" % [need, have], UI.GOOD if have >= need else UI.ERROR, HORIZONTAL_ALIGNMENT_RIGHT))
 			_details.add_child(row)
 		_details.add_child(UI.label("Czas: %s  ·  %d XP" % [_seconds(float(selected["seconds"])), int(selected["xp"])], UI.MUTED))
 		if _selected == "nails":
