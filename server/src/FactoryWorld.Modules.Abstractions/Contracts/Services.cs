@@ -46,6 +46,19 @@ public interface ICharacterNames
     Task<IReadOnlyDictionary<Guid, string>> FindAsync(string prefix, int limit, CancellationToken cancellationToken);
 }
 
+/// <summary>Characters' experience as a whole, e.g. to keep the server's bots behind the real players.</summary>
+public interface ICharacterXp
+{
+    /// <summary>The most XP any character has, leaving out the accounts in <paramref name="excluding"/>; 0 when there is none.</summary>
+    Task<long> HighestAsync(IReadOnlyCollection<Guid> excluding, CancellationToken cancellationToken);
+
+    /// <summary>The character's XP, or null when the account has no character.</summary>
+    Task<long?> XpAsync(Guid accountId, CancellationToken cancellationToken);
+
+    /// <summary>Takes experience away from a character that has more than <paramref name="maxXp"/>, so it has exactly that much.</summary>
+    Task CapAsync(Guid accountId, long maxXp, CancellationToken cancellationToken);
+}
+
 /// <summary>The character's tool slot: one tool (e.g. an axe) held in hand, outside the inventory.</summary>
 public interface IEquipment
 {

@@ -33,6 +33,7 @@
     <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Contracts\FactoryWorld.Modules.Contracts.csproj" />
     <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Research\FactoryWorld.Modules.Research.csproj" />
     <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Achievements\FactoryWorld.Modules.Achievements.csproj" />
+    <ProjectReference Include="..\..\src\Modules\FactoryWorld.Modules.Bots\FactoryWorld.Modules.Bots.csproj" />
   </ItemGroup>
 
 </Project>
