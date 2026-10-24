@@ -319,5 +319,29 @@
  "chicken": {
   "anchorX": 56,
   "anchorY": 62
+ },
+ "forester_hut": {
+  "anchorX": 120,
+  "anchorY": 164
+ },
+ "forester_lodge": {
+  "anchorX": 120,
+  "anchorY": 179
+ },
+ "forestry_station": {
+  "anchorX": 120,
+  "anchorY": 234
+ },
+ "sawmill": {
+  "anchorX": 56,
+  "anchorY": 74
+ },
+ "electric_sawmill": {
+  "anchorX": 56,
+  "anchorY": 74
+ },
+ "industrial_sawmill": {
+  "anchorX": 56,
+  "anchorY": 91
  }
 }

@@ -1,0 +1,366 @@
+using System.IO.Compression;
+using System.Text.Json;
+using FactoryWorld.Modules.Abstractions.Contracts;
+using FactoryWorld.Modules.Crafting;
+using FactoryWorld.Modules.Research;
+using FactoryWorld.Modules.World;
+using Microsoft.Extensions.DependencyInjection;
+
+namespace FactoryWorld.Server.Tests;
+
+public sealed class ForestryIndustryTests(ServerFactory factory) : IClassFixture<ServerFactory>
+{
+    private static readonly WorldMap Map = WorldMap.Load();
+    private static int _plots;
+
+    // --- The rules, without a database ----------------------------------------------------------
+
+    private static readonly DateTimeOffset Start = DateTimeOffset.UnixEpoch;
+
+    private static ForesterLevel Hut => Foresters.Level(Items.ForesterHut)!;
+
+    [Fact]
+    public void A_forester_plants_around_its_clearing_but_not_on_the_path_from_its_door()
+    {
+        // 11 × 11 tiles, less the building with its clearing (5 × 5) and the path south of it (3 wide, 3 long).
+        var tiles = Enumerable.Range(-5, 11).SelectMany(dy => Enumerable.Range(-5, 11).Select(dx => (dx, dy)))
+            .Where(t => Foresters.Plants(Hut, 0, t.dx, t.dy)).ToList();
+        Assert.Equal(121 - 25 - 9, tiles.Count);
+        Assert.DoesNotContain((0, 4), tiles);
+        Assert.DoesNotContain((1, 5), tiles);
+        Assert.Contains((2, 5), tiles);
+        Assert.Contains((0, -4), tiles);
+        Assert.DoesNotContain((2, 2), tiles);
+
+        // Facing east, the path runs east.
+        Assert.False(Foresters.Plants(Hut, 1, 4, 0));
+        Assert.True(Foresters.Plants(Hut, 1, 0, 4));
+
+        // Bigger levels keep bigger forests.
+        Assert.True(Foresters.Plants(Foresters.Level(Items.ForestryStation)!, 0, -7, -7));
+        Assert.False(Foresters.Plants(Hut, 0, -6, -6));
+    }
+
+    [Fact]
+    public void Two_foresters_share_where_their_forests_meet_and_keep_off_each_others_clearings()
+    {
+        var a = new PlotObject(Guid.NewGuid(), Items.ForesterHut, 50, 50, 0, Guid.Empty);
+        var b = new PlotObject(Guid.NewGuid(), Items.ForesterHut, 58, 50, 0, Guid.Empty);
+        var areas = Foresters.Areas([b, a]);
+        Assert.Empty(areas[a.Id].Intersect(areas[b.Id]));
+        // (55, 48) is in both squares: the first from the west gets it.
+        Assert.Contains((55, 48), areas[a.Id]);
+        // (56, 50) is in b's clearing, so a leaves it free though it is in a's square.
+        Assert.DoesNotContain((56, 50), areas[a.Id]);
+        Assert.DoesNotContain((56, 50), areas[b.Id]);
+    }
+
+    [Fact]
+    public void A_forester_cuts_grown_trees_one_after_another_and_plants_again_until_its_store_is_full()
+    {
+        var grow = TimeSpan.FromMinutes(10);
+        var patch = new ForestPatch(Hut, grow, 0, Start);
+        for (var i = 0; i < 20; i++)
+        {
+            patch.Open.Add((i, 0));
+        }
+
+        patch.Wild.Add((0, 1));
+        patch.Advance(Start);
+        Assert.Equal(20, patch.Trees.Count);
+        Assert.All(patch.Trees.Values, ready => Assert.Equal(Start + grow, ready));
+
+        // The wild tree is cut first, 6 s after it starts.
+        patch.Advance(Start + TimeSpan.FromSeconds(5));
+        Assert.Equal(0, patch.Wood);
+        patch.Advance(Start + TimeSpan.FromSeconds(6));
+        Assert.Equal(1, patch.Wood);
+        Assert.Contains((0, 1), patch.Cleared);
+        Assert.Equal(Start + TimeSpan.FromSeconds(6) + grow, patch.Trees[(0, 1)]);
+
+        // Planted trees grow in 10 minutes, then go one every 6 s.
+        patch.Advance(Start + grow + TimeSpan.FromSeconds(60));
+        Assert.Equal(11, patch.Wood);
+        Assert.Equal(Start + grow + TimeSpan.FromSeconds(60), patch.BusyUntil);
+        Assert.Equal(11, patch.Made.Count);
+
+        // Full, it stands until wood is taken out, and then goes on from that moment.
+        var full = new ForestPatch(Hut, grow, Hut.Capacity - 1, Start);
+        full.Wild.UnionWith([(0, 0), (1, 0), (2, 0)]);
+        full.Advance(Start + TimeSpan.FromHours(1));
+        Assert.Equal(Hut.Capacity, full.Wood);
+        Assert.Equal(2, full.Wild.Count);
+        Assert.Equal(Hut.Capacity, full.Take(int.MaxValue, Start + TimeSpan.FromHours(2)));
+        full.Advance(Start + TimeSpan.FromHours(2) + TimeSpan.FromSeconds(11));
+        Assert.Equal(1, full.Wood);
+        full.Advance(Start + TimeSpan.FromHours(2) + TimeSpan.FromSeconds(12));
+        Assert.Equal(2, full.Wood);
+    }
+
+    [Fact]
+    public void Better_foresters_have_bigger_stores_grow_faster_and_cut_quicker()
+    {
+        var levels = Foresters.Levels;
+        Assert.Equal([1, 2, 3], levels.Select(l => l.Level));
+        Assert.Equal(100, levels[0].Capacity);
+        for (var i = 1; i < levels.Count; i++)
+        {
+            Assert.True(levels[i].Capacity > levels[i - 1].Capacity);
+            Assert.True(levels[i].Radius > levels[i - 1].Radius);
+            Assert.True(levels[i].CutTime < levels[i - 1].CutTime);
+            Assert.True(Foresters.GrowTime(levels[i], Biome.Forest) < Foresters.GrowTime(levels[i - 1], Biome.Forest));
+        }
+
+        Assert.Null(Foresters.GrowTime(levels[0], Biome.Ice));
+    }
+
+    [Fact]
+    public void Sawmills_of_every_level_work_wood_and_the_better_ones_run_on_power_and_glue_plywood()
+    {
+        var plain = Processing.ByKind[Items.Sawmill];
+        var electric = Processing.ByKind[Items.ElectricSawmill];
+        var industrial = Processing.ByKind[Items.IndustrialSawmill];
+        Assert.False(plain.Powered);
+        Assert.True(electric.Powered);
+        Assert.True(industrial.Powered);
+        Assert.Null(plain.Recipe(Items.Plywood));
+        Assert.NotNull(electric.Recipe(Items.Plywood));
+        Assert.True(electric.Recipe(Items.Planks)!.Time < plain.Recipe(Items.Planks)!.Time);
+        Assert.True(industrial.Recipe(Items.Planks)!.Quantity > electric.Recipe(Items.Planks)!.Quantity);
+
+        // Pellets burn in fired machines too.
+        Assert.True(Processing.Fuels[Items.WoodPellets] > Processing.Fuels[Items.Wood]);
+    }
+
+    [Fact]
+    public void The_technology_tree_unlocks_forestry_level_by_level()
+    {
+        Assert.Equal(TechTree.ForestryIndustry, TechTree.ByItem[Items.ForesterHut].Id);
+        Assert.Equal(TechTree.ForestryIndustry, TechTree.ByItem[Items.Sawmill].Id);
+        Assert.Equal(TechTree.Woodworking, TechTree.ByItem[Items.ForesterLodge].Id);
+        Assert.Equal(TechTree.Woodworking, TechTree.ByItem[Items.Plywood].Id);
+        Assert.Equal(TechTree.IndustrialForestry, TechTree.ByItem[Items.ForestryStation].Id);
+        Assert.Equal(TechTree.IndustrialForestry, TechTree.ByItem[Items.IndustrialSawmill].Id);
+        Assert.Contains(Items.ForesterHut, Workshop.Find(Items.ForesterLodge)!.Ingredients.Select(i => i.Item));
+        Assert.Contains(Items.ForesterLodge, Workshop.Find(Items.ForestryStation)!.Ingredients.Select(i => i.Item));
+        Assert.Contains(Items.Sawmill, Workshop.Find(Items.ElectricSawmill)!.Ingredients.Select(i => i.Item));
+        Assert.Contains(Items.ElectricSawmill, Workshop.Find(Items.IndustrialSawmill)!.Ingredients.Select(i => i.Item));
+    }
+
+    // --- On a plot -------------------------------------------------------------------------------
+
+    private async Task<GameClient> PlayerAsync()
+    {
+        var client = await factory.ConnectAsync();
+        await client.RegisterWithCharacterAsync();
+        return client;
+    }
+
+    private async Task GiveAsync(GameClient client, string item, long quantity)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IInventory>().AddAsync(client.AccountId, item, quantity, CancellationToken.None);
+    }
+
+    private static (int X, int Y) FreePlot(Biome biome)
+    {
+        var skip = Interlocked.Increment(ref _plots) + 9000;
+        var found = 0;
+        for (var y = 0; y < Map.Height; y += 5)
+        {
+            for (var x = 0; x < Map.Width; x += 5)
+            {
+                if (Map.BiomeAt(x, y) == biome && found++ >= skip)
+                {
+                    return (x, y);
+                }
+            }
+        }
+
+        throw new InvalidOperationException("No such plot.");
+    }
+
+    /// <summary>Buys a plot of <paramref name="biome"/> and finds a tile with a free square around it, <paramref name="reach"/> tiles each way.</summary>
+    private async Task<(int X, int Y, int TileX, int TileY, byte[] Tiles)> PlotAsync(GameClient client, Biome biome = Biome.Grassland, int reach = 3)
+    {
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 1_000_000, "test", CancellationToken.None);
+        }
+
+        var (x, y) = FreePlot(biome);
+        Assert.Equal("world.bought", (await client.SendAsync("world.buy", new { x, y })).Type());
+        var plot = await client.SendAsync("plot.enter", new { x, y });
+        using var gzip = new GZipStream(new MemoryStream(Convert.FromBase64String(plot.Payload().GetProperty("tiles").GetString()!)), CompressionMode.Decompress);
+        using var tiles = new MemoryStream();
+        gzip.CopyTo(tiles);
+        var bytes = tiles.ToArray();
+        for (var ty = 25; ty < PlotLayout.Size - 10; ty++)
+        {
+            for (var tx = 10; tx < PlotLayout.Size - 10; tx++)
+            {
+                var free = true;
+                for (var dy = -reach; dy <= reach && free; dy++)
+                {
+                    for (var dx = -reach; dx <= reach && free; dx++)
+                    {
+                        free = bytes[(ty + dy) * PlotLayout.Size + tx + dx] == (byte)TileObject.None;
+                    }
+                }
+
+                if (free)
+                {
+                    return (x, y, tx, ty, bytes);
+                }
+            }
+        }
+
+        throw new InvalidOperationException("No free square.");
+    }
+
+    private static async Task<string> PlaceAsync(GameClient client, int x, int y, string kind, int tileX, int tileY, int rotation = 0)
+    {
+        var reply = await client.SendAsync("plot.place", new { x, y, kind, tileX, tileY, rotation });
+        Assert.Equal("plot.placed", reply.Type());
+        return reply.Payload().GetProperty("object").GetProperty("id").GetString()!;
+    }
+
+    private static JsonElement Forester(JsonElement forestry, string id) =>
+        forestry.GetProperty("foresters").EnumerateArray().First(f => f.GetProperty("id").GetString() == id);
+
+    [Fact]
+    public async Task A_forester_on_a_plot_plants_its_forest_cuts_it_and_keeps_the_wood_until_taken_out()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty, _) = await PlotAsync(client);
+        await GiveAsync(client, Items.ForesterHut, 1);
+        var hut = await PlaceAsync(client, x, y, Items.ForesterHut, tx, ty);
+
+        // It covers 3 × 3 tiles: nothing else goes on them.
+        await GiveAsync(client, Items.WoodenChest, 1);
+        Assert.Equal("blocked", (await client.SendAsync("plot.place", new { x, y, kind = Items.WoodenChest, tileX = tx + 1, tileY = ty - 1 })).ErrorCode());
+
+        var planted = (await client.SendAsync("forestry.get", new { x, y })).Payload();
+        var forester = Forester(planted, hut);
+        Assert.Equal(1, forester.GetProperty("level").GetInt32());
+        Assert.Equal(100, forester.GetProperty("capacity").GetInt32());
+        var trees = forester.GetProperty("trees").GetInt32();
+        Assert.True(trees > 50, $"only {trees} trees");
+        Assert.Equal(0, forester.GetProperty("wood").GetInt32());
+        Assert.True(planted.GetProperty("trees").GetArrayLength() >= trees);
+
+        // A sapling under its care grows as on its own (10 min on grassland), then it cuts one every 6 s.
+        factory.Time.Advance(TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(60));
+        var cut = Forester((await client.SendAsync("forestry.get", new { x, y })).Payload(), hut);
+        Assert.Equal(10, cut.GetProperty("wood").GetInt32());
+
+        var taken = (await client.SendAsync("forester.take", new { x, y, id = hut })).Payload();
+        Assert.Equal(10, taken.GetProperty("taken")[0].GetProperty("quantity").GetInt32());
+        Assert.Equal(0, Forester(taken, hut).GetProperty("wood").GetInt32());
+        Assert.Equal(10, (await client.InventoryAsync()).GetValueOrDefault(Items.Wood));
+
+        // Left alone it fills up and stops.
+        factory.Time.Advance(TimeSpan.FromHours(3));
+        Assert.Equal(100, Forester((await client.SendAsync("forestry.get", new { x, y })).Payload(), hut).GetProperty("wood").GetInt32());
+        var stats = (await client.SendAsync("stats.production", new { minutes = 1440 })).Payload();
+        Assert.Contains(stats.GetProperty("stalls").EnumerateArray(), s => s.GetProperty("reason").GetString() == "output_full"
+            && s.GetProperty("kind").GetString() == Items.ForesterHut);
+
+        // Picked up, it gives its wood back; the trees it planted stay.
+        Assert.Equal("plot.pickedUp", (await client.SendAsync("plot.pickup", new { x, y, id = hut })).Type());
+        var inventory = await client.InventoryAsync();
+        Assert.Equal(110, inventory.GetValueOrDefault(Items.Wood));
+        Assert.Equal(1, inventory.GetValueOrDefault(Items.ForesterHut));
+        var plot = (await client.SendAsync("plot.enter", new { x, y })).Payload();
+        Assert.True(plot.GetProperty("trees").GetArrayLength() >= trees);
+    }
+
+    [Fact]
+    public async Task An_inserter_next_to_a_forester_takes_its_wood_into_a_chest()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty, _) = await PlotAsync(client);
+        await GiveAsync(client, Items.ForesterHut, 1);
+        await GiveAsync(client, Items.Inserter, 1);
+        await GiveAsync(client, Items.WoodenChest, 1);
+        await GiveAsync(client, Items.Pole, 1);
+        await GiveAsync(client, Items.Generator, 1);
+        await GiveAsync(client, Items.Coal, 20);
+
+        // The door faces south; the inserter stands under the building in the clearing, facing south onto the chest on the path.
+        var hut = await PlaceAsync(client, x, y, Items.ForesterHut, tx, ty);
+        await PlaceAsync(client, x, y, Items.Inserter, tx, ty + 2, 0);
+        var chest = await PlaceAsync(client, x, y, Items.WoodenChest, tx, ty + 3);
+        await PlaceAsync(client, x, y, Items.Pole, tx + 1, ty + 3);
+        var generator = await PlaceAsync(client, x, y, Items.Generator, tx - 1, ty + 3);
+        Assert.Equal("generator", (await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Coal, quantity = 20 })).Type());
+
+        factory.Time.Advance(TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(60));
+        var storages = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("storages")
+            .EnumerateArray().ToDictionary(s => s.GetProperty("id").GetString()!);
+        var stored = storages[chest].GetProperty("items").EnumerateArray()
+            .Where(i => i.GetProperty("id").GetString() == Items.Wood).Sum(i => i.GetProperty("quantity").GetInt32());
+        var left = Forester((await client.SendAsync("forestry.get", new { x, y })).Payload(), hut).GetProperty("wood").GetInt32();
+        Assert.True(stored >= 9, $"{stored} in the chest");
+        Assert.Equal(10, stored + left);
+    }
+
+    [Fact]
+    public async Task A_forester_in_a_forest_cuts_the_wild_trees_first_and_plants_where_they_stood()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty, tiles) = await PlotAsync(client, Biome.Forest, 1);
+        await GiveAsync(client, Items.ForesterHut, 1);
+        var hut = await PlaceAsync(client, x, y, Items.ForesterHut, tx, ty);
+        var wild = Enumerable.Range(-5, 11).SelectMany(dy => Enumerable.Range(-5, 11).Select(dx => (dx, dy)))
+            .Count(t => Foresters.Plants(Hut, 0, t.dx, t.dy) && tiles[(ty + t.dy) * PlotLayout.Size + tx + t.dx] == (byte)TileObject.Tree);
+        Assert.True(wild > 0);
+
+        factory.Time.Advance(TimeSpan.FromSeconds(6 * Math.Min(wild, 5)));
+        var forestry = (await client.SendAsync("forestry.get", new { x, y })).Payload();
+        Assert.Equal(Math.Min(wild, 5), Forester(forestry, hut).GetProperty("wood").GetInt32());
+        Assert.Equal(Math.Min(wild, 5), forestry.GetProperty("cleared").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task A_forester_cannot_stand_on_ice_or_on_half_a_free_square()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty, _) = await PlotAsync(client);
+        await GiveAsync(client, Items.ForesterHut, 2);
+        await GiveAsync(client, Items.WoodenChest, 1);
+        await PlaceAsync(client, x, y, Items.WoodenChest, tx, ty);
+        Assert.Equal("blocked", (await client.SendAsync("plot.place", new { x, y, kind = Items.ForesterHut, tileX = tx + 1, tileY = ty + 1, rotation = 0 })).ErrorCode());
+        Assert.Equal("plot.placed", (await client.SendAsync("plot.place", new { x, y, kind = Items.ForesterHut, tileX = tx + 2, tileY = ty + 2, rotation = 0 })).Type());
+    }
+
+    [Fact]
+    public async Task A_sawmill_on_a_plot_saws_wood_into_planks()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty, _) = await PlotAsync(client);
+        await GiveAsync(client, Items.Sawmill, 1);
+        await GiveAsync(client, Items.Wood, 5);
+        var sawmill = await PlaceAsync(client, x, y, Items.Sawmill, tx, ty);
+
+        // Planks are researched first.
+        Assert.Equal("locked", (await client.SendAsync("machine.recipe", new { machine = sawmill, recipe = Items.Planks })).ErrorCode());
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FactoryWorld.Modules.Abstractions.GameDb>();
+            await using var command = await db.CommandAsync(
+                "INSERT INTO research.technologies (owner_id, technology, starts_at, finishes_at, rewarded) VALUES (@owner, @id, @at, @at, true)", CancellationToken.None);
+            command.Parameters.AddWithValue("owner", client.AccountId);
+            command.Parameters.AddWithValue("id", TechTree.ForestryIndustry);
+            command.Parameters.AddWithValue("at", factory.Time.GetUtcNow() - TimeSpan.FromMinutes(1));
+            await command.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        Assert.Equal("machine", (await client.SendAsync("machine.recipe", new { machine = sawmill, recipe = Items.Planks })).Type());
+        Assert.Equal("machine", (await client.SendAsync("machine.load", new { machine = sawmill, item = Items.Wood, quantity = 5 })).Type());
+        factory.Time.Advance(TimeSpan.FromSeconds(40));
+        var taken = (await client.SendAsync("machine.take", new { machine = sawmill, what = "output" })).Payload();
+        Assert.Equal(10, taken.GetProperty("taken")[0].GetProperty("quantity").GetInt32());
+        Assert.Equal(10, (await client.InventoryAsync()).GetValueOrDefault(Items.Planks));
+    }
+}

@@ -8,6 +8,9 @@ extends Node2D
 ## bakery, field kitchen) from the inventory can be put on a free tile and used there, and so can
 ## belts and inserters (turned with R) that move items between machines and chests, piles and silos.
 ## A computer put on the plot opens the market there, as in the garage.
+## A forester's building (hut, lodge, forestry station) stands on 3 × 3 tiles and keeps a forest
+## around itself: it plants saplings, cuts the grown trees and keeps the wood until taken out;
+## a sawmill saws the wood into planks, beams, pellets and plywood.
 ## On a pasture (any plot but a desert or a glacier) an animal from the inventory is let out on a
 ## free tile, fed crops from a menu and, after its time, gives eggs, wool (cut with shears) or milk.
 
@@ -89,13 +92,24 @@ const PLACED_SPRITES := {
 	"storage_wooden_chest": "wooden_chest", "storage_iron_chest": "iron_chest", "storage_wood_pile": "wood_pile",
 	"storage_heap": "heap", "storage_grain_silo": "grain_silo", "furniture_computer": "computer",
 	"power_generator": "generator", "power_pole": "pole",
+	"furniture_forester_hut": "forester_hut", "furniture_forester_lodge": "forester_lodge",
+	"furniture_forestry_station": "forestry_station", "furniture_sawmill": "sawmill",
+	"furniture_electric_sawmill": "electric_sawmill", "furniture_industrial_sawmill": "industrial_sawmill",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
 ## Animals let out on a pasture, and their sprites there.
 const ANIMAL_SPRITES := {"animal_chicken": "chicken", "animal_sheep": "sheep", "animal_cow": "cow"}
 ## Placed objects that open the machine window.
-const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen"]
+const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen",
+	"furniture_sawmill", "furniture_electric_sawmill", "furniture_industrial_sawmill"]
+## Forester's buildings of every level and how far their forest reaches from the building's tile;
+## each covers 3 × 3 tiles (FOOTPRINT each way) and keeps a clearing FOREST_CLEARING tiles out.
+const FORESTERS := {"furniture_forester_hut": 5, "furniture_forester_lodge": 6, "furniture_forestry_station": 7}
+const FOOTPRINT := 1
+const FOREST_CLEARING := 2
+## How often (ms) the foresters are asked for, to draw the trees they plant and cut.
+const FORESTRY_POLL := 3000.0
 const BELT := "logistics_belt"
 const INSERTER := "logistics_inserter"
 const SPLITTER := "logistics_splitter"
@@ -202,6 +216,10 @@ var _logistics: PlotLogistics
 var _power: PlotPower
 var _next_logistics_poll := 0.0
 var _polling_logistics := false
+## The plot's foresters by id, as the server last sent them.
+var _foresters := {}
+var _next_forestry_poll := 0.0
+var _polling_forestry := false
 
 var _astar := AStarGrid2D.new()
 var _sources := {}
@@ -274,6 +292,7 @@ var _splitter_window: SplitterWindow
 var _company_window: CompanyWindow
 var _stats_window: StatsWindow
 var _machine_window: MachineWindow
+var _forester_window: ForesterWindow
 var _market_window: MarketWindow
 ## "Rynek [M]" in the bar: shown while a computer stands on the plot.
 var _market_button: Button
@@ -442,7 +461,7 @@ func _apply_plot(plot: Dictionary) -> void:
 	for tree: Dictionary in plot.get("trees", []):
 		_trees[Vector2i(tree["tileX"], tree["tileY"])] = tree["readyAt"]
 	for object: Dictionary in plot.get("objects", []):
-		_placed[Vector2i(object["tileX"], object["tileY"])] = object
+		_put_placed(object)
 	_logistics.set_objects(_placed)
 	_power.set_objects(_placed)
 
@@ -583,6 +602,8 @@ func _draw_cell(cell: Vector2i) -> void:
 ## The sprite standing on a tile: nature, the crop growing on a field, a planted tree or an animal; "" for nothing.
 func _sprite_at(cell: Vector2i) -> String:
 	if _placed.has(cell):
+		if _anchor(cell) != cell:
+			return ""  # A 3 × 3 building is drawn once, on its own tile.
 		return PLACED_SPRITES.get(_placed[cell]["kind"], "")  # "" for a belt
 	if _animals.has(cell):
 		return ANIMAL_SPRITES.get(_animals[cell]["kind"], "")
@@ -878,11 +899,54 @@ func _can_release(cell: Vector2i) -> bool:
 		and not _animals.has(cell) and cell != Vector2i(spawn.get("x", -1), spawn.get("y", -1)) and Vector2i(_player.floor_pos.floor()) != cell
 
 
-## Whether the object being placed can go on this tile: free ground, not under the player.
+## Whether the object being placed can go on this tile: free ground, not under the player; a
+## forester's building needs the 3 × 3 tiles around it free.
 func _can_place(cell: Vector2i) -> bool:
+	if _placing == "":
+		return false
+	for at in _footprint(_placing, cell):
+		if not _free_ground(at):
+			return false
+	return true
+
+
+func _free_ground(cell: Vector2i) -> bool:
 	var spawn: Dictionary = _plot.get("spawn", {})
-	return _placing != "" and _tile(cell) == NONE and not _fields.has(cell) and not _trees.has(cell) and not _placed.has(cell) \
+	return _tile(cell) == NONE and not _fields.has(cell) and not _trees.has(cell) and not _placed.has(cell) \
 		and not _animals.has(cell) and cell != Vector2i(spawn.get("x", -1), spawn.get("y", -1)) and Vector2i(_player.floor_pos.floor()) != cell
+
+
+## The tiles an object of `kind` standing on `cell` covers: 3 × 3 for a forester's building, else just its own.
+func _footprint(kind: String, cell: Vector2i) -> Array[Vector2i]:
+	var cells: Array[Vector2i] = []
+	var reach := FOOTPRINT if FORESTERS.has(kind) else 0
+	for dy in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			cells.append(cell + Vector2i(dx, dy))
+	return cells
+
+
+## Puts a placed object on every tile it covers.
+func _put_placed(object: Dictionary) -> void:
+	for cell in _footprint(object["kind"], Vector2i(object["tileX"], object["tileY"])):
+		_placed[cell] = object
+
+
+## The tile a placed object stands on, for any tile it covers.
+func _anchor(cell: Vector2i) -> Vector2i:
+	var object: Dictionary = _placed[cell]
+	return Vector2i(object["tileX"], object["tileY"])
+
+
+## The tile of a placed object the player gets to first: a big building is walked up to on its near side.
+func _approach(cell: Vector2i) -> Vector2i:
+	if not _placed.has(cell) or not FORESTERS.has(_placed[cell]["kind"]):
+		return cell
+	var best := cell
+	for at in _footprint(_placed[cell]["kind"], _anchor(cell)):
+		if _player.floor_pos.distance_to(Vector2(at) + Vector2(0.5, 0.5)) < _player.floor_pos.distance_to(Vector2(best) + Vector2(0.5, 0.5)):
+			best = at
+	return best
 
 
 ## The name of the crop, planted tree or animal under the mouse and how long until it is ripe.
@@ -934,6 +998,12 @@ func _placed_label(cell: Vector2i) -> String:
 		return "%s (%s): kliknij, aby otworzyć" % [object["name"], fill]
 	if object["kind"] == COMPUTER:
 		return "%s: kliknij, aby otworzyć rynek" % object["name"]
+	if FORESTERS.has(object["kind"]):
+		var forester: Dictionary = _foresters.get(object["id"], {})
+		if forester.is_empty():
+			return "%s: kliknij, aby otworzyć" % object["name"]
+		var full := ", pełny" if forester.get("full", false) else ""
+		return "%s (drewno %d/%d%s, drzew %d): kliknij, aby otworzyć" % [object["name"], int(forester["wood"]), int(forester["capacity"]), full, int(forester["trees"])]
 	if object["kind"] == POLE:
 		return "Słup energetyczny (%s): kliknij po więcej" % _power.describe(object["id"])
 	if object["kind"] == GENERATOR:
@@ -960,9 +1030,15 @@ func _draw_marks() -> void:
 		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8) if ok else Color(1.0, 0.42, 0.35, 0.8))
 	var ground := _ground_cell()
 	if _hovered.x >= 0 and (_placed.has(_hovered) or _animals.has(_hovered)):
-		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8))
+		var big := _placed.has(_hovered) and FORESTERS.has(_placed[_hovered]["kind"])
+		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8), 2.4 if big else 1.0)
+		if big:
+			_draw_forest(_placed[_hovered]["kind"], _hovered, int(_placed[_hovered].get("rotation", 0)))
 	if _placing != "" and ground.x >= 0:
-		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8))
+		if FORESTERS.has(_placing):
+			_draw_forest(_placing, ground, _place_rotation)
+		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8),
+			2.4 if FORESTERS.has(_placing) else 1.0)
 		_draw_ghost(ground)
 	elif _releasing != "" and ground.x >= 0:
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_release(ground) else Color(1.0, 0.42, 0.35, 0.8))
@@ -1018,10 +1094,28 @@ func _draw_ghost(cell: Vector2i) -> void:
 		_marks.draw_colored_polygon([to + head * 4, to - head * 9 + side * 7, to - head * 9 - side * 7], color)
 
 
-func _draw_ring(at: Vector2, color: Color) -> void:
+func _draw_ring(at: Vector2, color: Color, size := 1.0) -> void:
 	_marks.draw_set_transform(at, 0, Vector2(1, TILE.y / TILE.x))
-	_marks.draw_arc(Vector2.ZERO, TILE.x * 0.55, 0, TAU, 40, color, 2.5, true)
+	_marks.draw_arc(Vector2.ZERO, TILE.x * 0.55 * size, 0, TAU, 40, color, 2.5, true)
 	_marks.draw_set_transform(Vector2.ZERO)
+
+
+## The square a forester keeps its forest in, on the ground, with its clearing and the path from its door left free.
+func _draw_forest(kind: String, cell: Vector2i, rotation: int) -> void:
+	var r: int = FORESTERS[kind]
+	var area := Rect2(Vector2(cell - Vector2i(r, r)) * TILE, Vector2(2 * r + 1, 2 * r + 1) * TILE)
+	_marks.draw_rect(area, Color(0.45, 0.85, 0.35, 0.10))
+	_marks.draw_rect(area, Color(0.45, 0.85, 0.35, 0.7), false, 2.0)
+	var c := FOREST_CLEARING
+	var clearing := Rect2(Vector2(cell - Vector2i(c, c)) * TILE, Vector2(2 * c + 1, 2 * c + 1) * TILE)
+	var facing := PlotLogistics.facing(rotation)
+	var across := (Vector2i.ONE - facing.abs()) * FOOTPRINT
+	var path_from := cell + facing * (c + 1) - across
+	var path_to := cell + facing * r + across
+	var path := Rect2(Vector2(path_from.min(path_to)) * TILE, Vector2((path_to - path_from).abs() + Vector2i.ONE) * TILE)
+	for free: Rect2 in [clearing, path]:
+		_marks.draw_rect(free, Color(0.95, 0.85, 0.5, 0.12))
+		_marks.draw_rect(free, Color(0.95, 0.85, 0.5, 0.45), false, 1.5)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1069,7 +1163,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_stop_releasing()
 		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _achievements_window.visible \
 				or _mine_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _generator_window, _storage_window, _splitter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window]:
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _forester_window, _generator_window, _storage_window, _splitter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -1320,7 +1414,7 @@ func _act_on(cell: Vector2i) -> void:
 		_open_object_menu(cell)
 		return
 	if _placed.has(cell):
-		_go_and(cell, _use_placed)
+		_go_and(_approach(cell), _use_placed)
 		return
 	if _animals.has(cell):
 		_open_animal_menu(cell)
@@ -1722,9 +1816,10 @@ func _place_object(cell: Vector2i) -> void:
 		return
 	var object: Dictionary = reply["payload"]["object"]
 	var at := Vector2i(object["tileX"], object["tileY"])
-	_placed[at] = object
-	_astar.set_point_solid(at, not _is_belt(at))
-	_draw_cell(at)
+	_put_placed(object)
+	for covered in _footprint(object["kind"], at):
+		_astar.set_point_solid(covered, not _is_belt(covered))
+		_draw_cell(covered)
 	_logistics.set_objects(_placed)
 	_update_market_button()
 	_power.set_objects(_placed)
@@ -1732,6 +1827,9 @@ func _place_object(cell: Vector2i) -> void:
 		_show_toast("%s stoi %s. %s" % [object["name"], DIRECTIONS[int(object["rotation"])], "Kliknij kolejne pole albo Esc." if more else ""])
 	elif kind == COMPUTER:
 		_show_toast("%s stoi na działce. Kliknij go albo naciśnij [M], aby otworzyć rynek." % object["name"])
+	elif FORESTERS.has(kind):
+		_show_toast("%s stoi na działce i już sadzi las wokół siebie. Drewno wyjmiesz ręcznie albo podajnikiem." % object["name"])
+		_poll_forestry()
 	else:
 		_show_toast("%s stoi na działce. Kliknij, aby użyć." % object["name"])
 	_reload_inventory()
@@ -1767,17 +1865,20 @@ func _use_placed(cell: Vector2i) -> void:
 		_crafting_window.open_at(object["id"], object["kind"])
 	elif object["kind"] == GENERATOR:
 		_generator_window.open_at(_at, object["id"])
+	elif FORESTERS.has(object["kind"]):
+		_forester_window.open_at(_at, object["id"])
 
 
 func _using_window_open() -> bool:
 	return _crafting_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
-		or _splitter_window.visible or _generator_window.visible or _market_window.visible
+		or _splitter_window.visible or _generator_window.visible or _market_window.visible or _forester_window.visible
 
 
 func _hide_placed_windows() -> void:
 	_crafting_window.hide_window()
 	_furnace_window.hide_window()
 	_machine_window.hide_window()
+	_forester_window.hide_window()
 	_generator_window.hide_window()
 	_storage_window.hide_window()
 	_splitter_window.hide_window()
@@ -1820,9 +1921,13 @@ func _pick_up_placed(id: String) -> void:
 	if reply["type"] != "plot.pickedUp":
 		_show_error(reply)
 		return
+	var shown := false
+	_foresters.erase(id)
 	for cell: Vector2i in _placed.keys():
 		if _placed[cell]["id"] == id:
-			_show_toast("%s: schowano do ekwipunku." % _placed[cell]["name"])
+			if not shown:
+				_show_toast("%s: schowano do ekwipunku." % _placed[cell]["name"])
+				shown = true
 			_placed.erase(cell)
 			_astar.set_point_solid(cell, _tile(cell) in SOLID)
 			if _hovered == cell:
@@ -1898,6 +2003,64 @@ func _poll_logistics() -> void:
 	if reply["type"] == "logistics":
 		_logistics.apply(reply["payload"])
 		_power.apply(reply["payload"].get("power", {}))
+
+
+func _has_foresters() -> bool:
+	for cell: Vector2i in _placed:
+		if FORESTERS.has(_placed[cell]["kind"]):
+			return true
+	return false
+
+
+## Asks for the foresters and the trees of the plot as the server has them now.
+func _poll_forestry() -> void:
+	if _polling_forestry:
+		return
+	_polling_forestry = true
+	_next_forestry_poll = Time.get_ticks_msec() + FORESTRY_POLL
+	var reply := await Net.request("forestry.get", {"x": _at.x, "y": _at.y})
+	_polling_forestry = false
+	if reply["type"] == "forestry":
+		_apply_forestry(reply["payload"])
+
+
+## Draws what the foresters did: saplings planted on free tiles, grown trees felled and planted again.
+func _apply_forestry(forestry: Dictionary) -> void:
+	_clock_offset = float(forestry["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
+	_foresters = {}
+	for forester: Dictionary in forestry.get("foresters", []):
+		_foresters[forester["id"]] = forester
+	var seen := {}
+	for tree: Dictionary in forestry.get("trees", []):
+		var cell := Vector2i(tree["tileX"], tree["tileY"])
+		seen[cell] = true
+		if _trees.has(cell) and float(_trees[cell]) == float(tree["readyAt"]):
+			continue
+		var felled := _trees.has(cell) and _tree_grown(cell) and float(tree["readyAt"]) > _server_now()
+		var sprite := _sprite_at(cell) if felled else ""
+		_trees[cell] = tree["readyAt"]
+		if _hovered == cell:
+			_hovered = Vector2i(-1, -1)
+		_draw_cell(cell)
+		_set_minimap(cell, NONE)
+		if felled and _chunks.has(Vector2i(cell.x / CHUNK, cell.y / CHUNK)):
+			_vanish(sprite, cell, true)
+	for cell: Vector2i in _trees.keys():
+		if not seen.has(cell):
+			_trees.erase(cell)
+			_draw_cell(cell)
+	# Trees that grew here by themselves, cut by a forester.
+	for tile: Dictionary in forestry.get("cleared", []):
+		var cell := Vector2i(tile["tileX"], tile["tileY"])
+		if _tile(cell) == TREE:
+			var wild := _variant(TREE, cell)
+			_tiles[cell.y * _size + cell.x] = NONE
+			_astar.set_point_solid(cell, _placed.has(cell) and not _is_belt(cell))
+			if _chunks.has(Vector2i(cell.x / CHUNK, cell.y / CHUNK)) and not _trees.has(cell):
+				_vanish(wild, cell, true)
+			_draw_cell(cell)
+	if _forester_window.visible:
+		_forester_window.show_state(forestry)
 
 
 ## Orders from a workbench are done: they are in the inventory now.
@@ -2226,6 +2389,8 @@ func _process(delta: float) -> void:
 		_using = Vector2i(-1, -1)
 	if (_logistics.has_machinery() or _power.has_power()) and Time.get_ticks_msec() >= _next_logistics_poll:
 		_poll_logistics()
+	if _has_foresters() and Time.get_ticks_msec() >= _next_forestry_poll:
+		_poll_forestry()
 	_poll_station()
 
 
@@ -2618,6 +2783,12 @@ func _build_windows() -> void:
 	_machine_window.inventory_changed.connect(_on_furnace_changed)
 	_machine_window.failed.connect(_show_error)
 	_machine_window.pick_up_requested.connect(_pick_up_placed)
+	_forester_window = ForesterWindow.new()
+	_forester_window.position = Vector2(1280 - 420 - 12, 64)
+	_forester_window.updated.connect(_apply_forestry)
+	_forester_window.inventory_changed.connect(_on_furnace_changed)
+	_forester_window.failed.connect(_show_error)
+	_forester_window.pick_up_requested.connect(_pick_up_placed)
 	_generator_window = GeneratorWindow.new()
 	_generator_window.position = Vector2(1280 - 400 - 12, 64)
 	_generator_window.inventory_changed.connect(func(_taken: Array, _xp: Variant) -> void:
@@ -2642,6 +2813,7 @@ func _build_windows() -> void:
 	layer.add_child(_crafting_window)
 	layer.add_child(_furnace_window)
 	layer.add_child(_machine_window)
+	layer.add_child(_forester_window)
 	_market_window = MarketWindow.new()
 	_market_window.traded.connect(_on_traded)
 	_market_window.failed.connect(_show_error)

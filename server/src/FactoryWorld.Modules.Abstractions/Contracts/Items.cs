@@ -116,6 +116,19 @@ public static class Items
     public const string Generator = "power_generator";
     public const string Pole = "power_pole";
 
+    // Forestry industry: a forester's building stands on 3 × 3 tiles of a plot, plants saplings around
+    // itself and cuts the grown trees by itself; a sawmill works the wood. Each comes in three levels.
+    public const string ForesterHut = "furniture_forester_hut";
+    public const string ForesterLodge = "furniture_forester_lodge";
+    public const string ForestryStation = "furniture_forestry_station";
+    public const string Sawmill = "furniture_sawmill";
+    public const string ElectricSawmill = "furniture_electric_sawmill";
+    public const string IndustrialSawmill = "furniture_industrial_sawmill";
+    public const string Planks = "planks";
+    public const string Beams = "beams";
+    public const string WoodPellets = "wood_pellets";
+    public const string Plywood = "plywood";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -203,6 +216,16 @@ public static class Items
         [ScrambledEggs] = "Jajecznica",
         [Generator] = "Generator parowy",
         [Pole] = "Słup energetyczny",
+        [ForesterHut] = "Chata leśnika",
+        [ForesterLodge] = "Leśniczówka",
+        [ForestryStation] = "Nadleśnictwo",
+        [Sawmill] = "Tartak",
+        [ElectricSawmill] = "Tartak elektryczny",
+        [IndustrialSawmill] = "Tartak przemysłowy",
+        [Planks] = "Deski",
+        [Beams] = "Belki",
+        [WoodPellets] = "Pellet drzewny",
+        [Plywood] = "Sklejka",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
@@ -211,6 +234,9 @@ public static class Items
 
     /// <summary>Furnaces of every level: the stone one and its upgrades.</summary>
     public static bool IsFurnace(string id) => id is Furnace or BrickFurnace or BlastFurnace;
+
+    /// <summary>Forester's buildings of every level: the hut and its upgrades.</summary>
+    public static bool IsForester(string id) => id is ForesterHut or ForesterLodge or ForestryStation;
 
     /// <summary>Belts of every level (not splitters).</summary>
     public static bool IsBelt(string id) => id is Belt or FastBelt or ExpressBelt;

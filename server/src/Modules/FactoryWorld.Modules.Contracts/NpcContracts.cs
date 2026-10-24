@@ -39,6 +39,9 @@ public static class NpcContracts
         new(Items.VegetableSoup, 3, 10, 1, 2200, 12, Bakers),
         new(Items.Belt, 8, 32, 4, 400, 12, Factories),
         new(Items.WoodenChest, 1, 4, 1, 1600, 24, Factories),
+        new(Items.Planks, 20, 100, 10, 250, 8, Builders),
+        new(Items.Beams, 5, 30, 5, 800, 12, Builders),
+        new(Items.Plywood, 5, 20, 5, 1000, 24, Factories),
     ];
 
     /// <summary>A new order, for none of the items in <paramref name="taken"/> (the player's other NPC orders).</summary>

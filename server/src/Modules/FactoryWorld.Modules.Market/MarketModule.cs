@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FactoryWorld.Modules.Market;
 
 /// <summary>
-/// The NPC trader: always sells trash, saplings, animals, nails, tools, an anvil, a chainsaw, belts, inserters, wooden chests, machines, the computer, generators, poles, flour, oil and bread and always buys raw materials.
+/// The NPC trader: always sells trash, saplings, animals, nails, tools, an anvil, a chainsaw, belts, inserters, wooden chests, machines (a forester's hut and a sawmill among them), the computer, generators, poles, flour, oil, bread and planks and always buys raw materials.
 /// These are its usual prices (cents); <see cref="TraderPrices"/> moves them with the day's drift and the market's events.
 /// What it pays is the floor of the market: a quick sale gets it at once, players' listings usually pay more.
 /// </summary>
@@ -46,6 +46,9 @@ public static class NpcPrices
         [Items.Bread] = 1500,
         [Items.Generator] = 60_000,
         [Items.Pole] = 300,
+        [Items.ForesterHut] = 60_000,
+        [Items.Sawmill] = 40_000,
+        [Items.Planks] = 300,
     };
 
     /// <summary>What the NPC pays the player.</summary>
@@ -127,6 +130,16 @@ public static class NpcPrices
         [Items.ScrambledEggs] = 450,
         [Items.Generator] = 4000,
         [Items.Pole] = 100,
+        [Items.ForesterHut] = 4000,
+        [Items.ForesterLodge] = 15_000,
+        [Items.ForestryStation] = 40_000,
+        [Items.Sawmill] = 3000,
+        [Items.ElectricSawmill] = 10_000,
+        [Items.IndustrialSawmill] = 35_000,
+        [Items.Planks] = 150,
+        [Items.Beams] = 500,
+        [Items.WoodPellets] = 100,
+        [Items.Plywood] = 600,
     };
 
     public const int MaxQuantity = 1000;

@@ -119,6 +119,22 @@ public sealed class PlotObjectRow
     public int Rotation { get; set; }
 }
 
+/// <summary>A forester's building on a plot: the wood it keeps and when it can start cutting the next tree.</summary>
+public sealed class PlotForesterRow
+{
+    public Guid ObjectId { get; set; }
+
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public Guid OwnerId { get; set; }
+
+    public int Wood { get; set; }
+
+    public DateTimeOffset BusyUntil { get; set; }
+}
+
 /// <summary>What a geological survey found under a plot.</summary>
 public sealed class SurveyRow
 {
@@ -283,6 +299,20 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             // One object per tile.
             e.HasIndex(o => new { o.X, o.Y, o.TileX, o.TileY }).IsUnique();
         });
+        model.Entity<PlotForesterRow>(e =>
+        {
+            e.ToTable("plot_foresters");
+            e.HasKey(f => f.ObjectId);
+            e.Property(f => f.ObjectId).HasColumnName("object_id");
+            e.Property(f => f.X).HasColumnName("x");
+            e.Property(f => f.Y).HasColumnName("y");
+            e.Property(f => f.OwnerId).HasColumnName("owner_id");
+            e.Property(f => f.Wood).HasColumnName("wood");
+            e.Property(f => f.BusyUntil).HasColumnName("busy_until");
+            e.HasIndex(f => new { f.X, f.Y });
+            e.HasIndex(f => f.OwnerId);
+        });
+
         model.Entity<SurveyRow>(e =>
         {
             e.ToTable("surveys");
@@ -658,6 +688,14 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, RemoveRouteHandler>();
         services.AddSingleton<IMessageHandler, FindPartnersHandler>();
         services.AddScoped<IMachinePorts, StationPorts>();
+        services.AddScoped<ForesterService>();
+        services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<ForesterService>());
+        services.AddScoped<IPlotAutomation>(provider => provider.GetRequiredService<ForesterService>());
+        services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<ForesterService>());
+        services.AddScoped<IMachinePorts>(provider => provider.GetRequiredService<ForesterService>());
+        services.AddScoped<IMachineStatuses>(provider => provider.GetRequiredService<ForesterService>());
+        services.AddSingleton<IMessageHandler, GetForestryHandler>();
+        services.AddSingleton<IMessageHandler, TakeFromForesterHandler>();
         services.AddHostedService<RailwayDispatcher>();
         services.AddSingleton<IMessageHandler, TillHandler>();
         services.AddSingleton<IMessageHandler, PlantHandler>();
