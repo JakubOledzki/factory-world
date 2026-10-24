@@ -16,9 +16,9 @@ public static class PlotObjects
     /// <summary>Items that can be put on a plot.</summary>
     public static readonly IReadOnlySet<string> Placeable = new HashSet<string>
     {
-        Items.Workbench, Items.Furnace,
+        Items.Workbench, Items.Furnace, Items.BrickFurnace, Items.BlastFurnace,
         Items.Mill, Items.OilPress, Items.PicklingBarrel, Items.Bakery, Items.Kitchen,
-        Items.Belt, Items.Inserter, Items.Splitter,
+        Items.Belt, Items.FastBelt, Items.ExpressBelt, Items.Inserter, Items.FastInserter, Items.ExpressInserter, Items.Splitter,
         Items.WoodenChest, Items.IronChest, Items.WoodPile, Items.Heap, Items.GrainSilo,
     };
 }
