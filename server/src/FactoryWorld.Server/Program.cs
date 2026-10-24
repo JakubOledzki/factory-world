@@ -11,6 +11,7 @@ using FactoryWorld.Modules.Power;
 using FactoryWorld.Modules.Recycling;
 using FactoryWorld.Modules.Research;
 using FactoryWorld.Modules.Session;
+using FactoryWorld.Modules.Tutorial;
 using FactoryWorld.Modules.Statistics;
 using FactoryWorld.Modules.Wallet;
 using FactoryWorld.Modules.World;
@@ -32,6 +33,7 @@ IGameModule[] modules =
     new CraftingModule(),
     new LogisticsModule(),
     new PowerModule(),
+    new TutorialModule(),
     new StatisticsModule(),
     new ContractsModule(),
     new ResearchModule(),

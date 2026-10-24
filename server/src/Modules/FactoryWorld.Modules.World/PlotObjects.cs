@@ -186,6 +186,17 @@ public sealed class PlotObjectsQuery(GameDb db, PlotService plots) : IPlotObject
         return objects;
     }
 
+    public async Task<IReadOnlyList<PlotObject>> FixturesAsync(int x, int y, CancellationToken cancellationToken)
+    {
+        if (await StationStock.OwnerAsync(db, x, y, cancellationToken) is not { } owner)
+        {
+            return [];
+        }
+
+        var station = RailRules.StationId(x, y);
+        return RailRules.StationTiles().Select(t => new PlotObject(station, RailRules.StationKind, t.TileX, t.TileY, 0, owner)).ToList();
+    }
+
     public Task RequireOwnerAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
         plots.RequireOwnerAsync(player, x, y, cancellationToken);
 

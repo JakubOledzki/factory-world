@@ -148,6 +148,35 @@ public sealed class ShipmentRow
     public DateTimeOffset ArrivesAt { get; set; }
 }
 
+/// <summary>A train that leaves one plot's station for another's by itself, every few minutes.</summary>
+public sealed class TrainRouteRow
+{
+    public long Id { get; set; }
+
+    public Guid OwnerId { get; set; }
+
+    public int FromX { get; set; }
+
+    public int FromY { get; set; }
+
+    public int ToX { get; set; }
+
+    public int ToY { get; set; }
+
+    /// <summary>The items it takes; empty for everything in the station.</summary>
+    public string[] Items { get; set; } = [];
+
+    public int EveryMinutes { get; set; }
+
+    public DateTimeOffset NextDepartureAt { get; set; }
+
+    public DateTimeOffset? LastDepartedAt { get; set; }
+
+    public long LastQuantity { get; set; }
+
+    public string? LastProblem { get; set; }
+}
+
 public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, GameDb gameDb) : ModuleDbContext(options, gameDb)
 {
     public const string Schema = "world";
@@ -256,6 +285,25 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(s => s.ArrivesAt).HasColumnName("arrives_at");
             e.HasIndex(s => new { s.ToX, s.ToY, s.ArrivesAt });
             e.HasIndex(s => new { s.FromX, s.FromY });
+        });
+        model.Entity<TrainRouteRow>(e =>
+        {
+            e.ToTable("train_routes");
+            e.Property(r => r.Id).HasColumnName("id");
+            e.Property(r => r.OwnerId).HasColumnName("owner_id");
+            e.Property(r => r.FromX).HasColumnName("from_x");
+            e.Property(r => r.FromY).HasColumnName("from_y");
+            e.Property(r => r.ToX).HasColumnName("to_x");
+            e.Property(r => r.ToY).HasColumnName("to_y");
+            e.Property(r => r.Items).HasColumnName("items");
+            e.Property(r => r.EveryMinutes).HasColumnName("every_minutes");
+            e.Property(r => r.NextDepartureAt).HasColumnName("next_departure_at");
+            e.Property(r => r.LastDepartedAt).HasColumnName("last_departed_at");
+            e.Property(r => r.LastQuantity).HasColumnName("last_quantity");
+            e.Property(r => r.LastProblem).HasColumnName("last_problem").HasMaxLength(32);
+            e.HasIndex(r => r.NextDepartureAt);
+            e.HasIndex(r => new { r.FromX, r.FromY });
+            e.HasIndex(r => new { r.ToX, r.ToY });
         });
     }
 }
@@ -535,6 +583,11 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, LoadStationHandler>();
         services.AddSingleton<IMessageHandler, UnloadStationHandler>();
         services.AddSingleton<IMessageHandler, SendHandler>();
+        services.AddSingleton<IMessageHandler, AddRouteHandler>();
+        services.AddSingleton<IMessageHandler, RemoveRouteHandler>();
+        services.AddSingleton<IMessageHandler, FindPartnersHandler>();
+        services.AddScoped<IMachinePorts, StationPorts>();
+        services.AddHostedService<RailwayDispatcher>();
         services.AddSingleton<IMessageHandler, TillHandler>();
         services.AddSingleton<IMessageHandler, PlantHandler>();
         services.AddSingleton<IMessageHandler, ReapHandler>();

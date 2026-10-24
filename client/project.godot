@@ -13,6 +13,7 @@ config/features=PackedStringArray("4.5", "GL Compatibility")
 Net="*res://autoload/net.gd"
 Game="*res://autoload/game.gd"
 Touch="*res://autoload/touch.gd"
+Tutorial="*res://autoload/tutorial.gd"
 
 [display]
 

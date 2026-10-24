@@ -192,8 +192,10 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
         var contents = await ReadAsync(x, y, cancellationToken);
         var grid = await power.OpenAsync(x, y, cancellationToken);
 
-        // Storages are this module's own; every other machine within an inserter's reach comes from its module.
-        var at = objects.ToDictionary(o => (o.TileX, o.TileY));
+        // Storages are this module's own; every other machine within an inserter's reach comes from its
+        // module, and so does the plot's station, which inserters can load and unload too.
+        var reachable = objects.Concat(await plots.FixturesAsync(x, y, cancellationToken)).ToList();
+        var at = reachable.ToDictionary(o => (o.TileX, o.TileY));
         var ports = new Dictionary<Guid, IMachinePort>();
         var opened = new List<IMachinePort>();
         var storageChanged = new HashSet<Guid>();
@@ -232,7 +234,7 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
             }
         }
 
-        var logistics = new PlotLogistics(objects, contents, ports, grid);
+        var logistics = new PlotLogistics(reachable, contents, ports, grid);
         var simulated = logistics.Run(from, now);
         foreach (var id in logistics.Changed.Concat(storageChanged).Distinct())
         {
