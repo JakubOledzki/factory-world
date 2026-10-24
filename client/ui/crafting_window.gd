@@ -3,7 +3,8 @@ extends GameWindow
 ## The workbench: pick a recipe, see what it takes, and press "Wytwórz". The ingredients go at
 ## once; the item is made after the recipe's time, one order after another, and lands in the
 ## inventory even when the player walks away. The window keeps an eye on the queue while closed,
-## so the screen hears about finished orders.
+## so the screen hears about finished orders. It covers most of the screen: recipes sorted into
+## categories on the left, the chosen recipe and the queue on the right.
 
 ## Orders were finished: [{id, name, quantity}] and the XP gain (or null).
 signal finished(done: Array, xp: Variant)
@@ -27,6 +28,11 @@ var _next_poll := 0.0
 var _busy := false
 
 var _recipes := VBoxContainer.new()
+var _recipe_list := ScrollContainer.new()
+## The chosen category (index in ItemInfo.CATEGORIES), or -1 for all.
+var _category := -1
+var _categories := CategoryList.new()
+var _search := UI.line_edit("Szukaj przepisu…")
 var _details := VBoxContainer.new()
 var _craft_button: Button
 var _queue := VBoxContainer.new()
@@ -36,17 +42,62 @@ var _pick_up_button: Button
 
 
 func _init() -> void:
-	super("Stół warsztatowy", 400)
-	content.add_child(_heading("Co chcesz wytworzyć?"))
+	super("Stół warsztatowy", 0)
+	fill_margin = Vector2(40, 24)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 8)
+	var title := _heading("Co chcesz wytworzyć?")
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(title)
+	_search.custom_minimum_size.x = 260
+	_search.clear_button_enabled = true
+	_search.text_changed.connect(func(_text: String) -> void:
+		_recipe_list.scroll_vertical = 0
+		_render())
+	top.add_child(_search)
+	content.add_child(top)
+
+	# Categories, then the recipes, then the chosen recipe and the queue; each part scrolls on its own.
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 10)
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	content.add_child(body)
+	_categories.chosen.connect(func(category: int) -> void:
+		_category = category
+		_recipe_list.scroll_vertical = 0
+		_render())
+	body.add_child(_categories)
+	body.add_child(VSeparator.new())
+	_recipe_list.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_recipe_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_recipes.add_theme_constant_override("separation", 4)
-	content.add_child(_recipes)
-	content.add_child(HSeparator.new())
+	_recipes.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	margin.add_child(_recipes)
+	_recipe_list.add_child(margin)
+	body.add_child(_recipe_list)
+	body.add_child(VSeparator.new())
+
+	var side_scroll := ScrollContainer.new()
+	side_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	side_scroll.custom_minimum_size.x = 470 if UI.touch() else 360
+	body.add_child(side_scroll)
+	var side := VBoxContainer.new()
+	side.add_theme_constant_override("separation", 6)
+	side.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var side_margin := MarginContainer.new()
+	side_margin.add_theme_constant_override("margin_right", 16)
+	side_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	side_margin.add_child(side)
+	side_scroll.add_child(side_margin)
 	_details.add_theme_constant_override("separation", 4)
-	content.add_child(_details)
+	side.add_child(_details)
 	_craft_button = UI.button("Wytwórz", _craft, true)
-	content.add_child(_craft_button)
-	content.add_child(HSeparator.new())
-	content.add_child(_heading("Kolejka"))
+	side.add_child(_craft_button)
+	side.add_child(HSeparator.new())
+	side.add_child(_heading("Kolejka"))
 	var job := HBoxContainer.new()
 	_job_bar = ProgressBar.new()
 	_job_bar.show_percentage = false
@@ -57,13 +108,15 @@ func _init() -> void:
 	_job_text = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
 	_job_text.custom_minimum_size.x = 44
 	job.add_child(_job_text)
-	content.add_child(job)
+	side.add_child(job)
 	_queue.add_theme_constant_override("separation", 2)
-	content.add_child(_queue)
-	content.add_child(UI.label("Wytwarzanie trwa dalej, gdy odejdziesz od stołu. Gotowe przedmioty trafiają do ekwipunku.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	side.add_child(_queue)
+	side.add_child(UI.label("Wytwarzanie trwa dalej, gdy odejdziesz od stołu. Gotowe przedmioty trafiają do ekwipunku.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	if not UI.touch():
+		side.add_child(UI.label("Przytrzymaj Ctrl i najedź myszą na przedmiot, aby zobaczyć jego opis.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	_pick_up_button = UI.button("Schowaj stół do ekwipunku", func() -> void: pick_up_requested.emit(workbench))
 	_pick_up_button.visible = false
-	content.add_child(_pick_up_button)
+	side.add_child(_pick_up_button)
 
 
 ## Opens the window at a workbench.
@@ -134,8 +187,23 @@ func _render() -> void:
 		return
 	for child in _recipes.get_children():
 		child.free()
-	for recipe: Dictionary in _state["recipes"]:
+	var query := _search.text.strip_edges().to_lower()
+	var found: Array = _state["recipes"].filter(func(recipe: Dictionary) -> bool:
+		return query == "" or recipe["name"].to_lower().contains(query))
+	_categories.show_counts(CategoryList.count(found.map(func(recipe: Dictionary) -> String: return recipe["id"])), _category, true)
+	var grids := {}
+	for recipe: Dictionary in found:
+		var category := ItemInfo.category_of(recipe["id"])
+		if _category != -1 and category != _category:
+			continue
+		if not grids.has(category):
+			grids[category] = GridContainer.new()
+			grids[category].columns = 1 if UI.touch() else 2
+			grids[category].add_theme_constant_override("h_separation", 6)
+			grids[category].add_theme_constant_override("v_separation", 4)
 		var b := Button.new()
+		b.set_meta("item", recipe["id"])
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		b.icon = UI.item_texture(recipe["id"])
 		b.expand_icon = false
@@ -149,7 +217,18 @@ func _render() -> void:
 		b.pressed.connect(func() -> void:
 			_selected = recipe["id"]
 			_render())
-		_recipes.add_child(b)
+		grids[category].add_child(b)
+	# In the order of the categories, under their names when all are shown.
+	var order := grids.keys()
+	order.sort()
+	for category: int in order:
+		if _category == -1:
+			var heading := UI.label(ItemInfo.CATEGORIES[category][0].to_upper(), UI.MUTED)
+			heading.add_theme_font_override("font", UI.bold())
+			_recipes.add_child(heading)
+		_recipes.add_child(grids[category])
+	if found.is_empty():
+		_recipes.add_child(UI.label("Żaden przepis nie pasuje do wyszukiwania.", UI.MUTED))
 
 	for child in _details.get_children():
 		child.free()
@@ -157,18 +236,26 @@ func _render() -> void:
 	if not selected.is_empty():
 		var title := UI.label(selected["name"], UI.GOLD)
 		title.add_theme_font_override("font", UI.bold())
-		_details.add_child(title)
-		_details.add_child(UI.label("Potrzebne:", UI.MUTED))
+		var head := HBoxContainer.new()
+		head.add_theme_constant_override("separation", 8)
+		head.add_child(UI.item_icon(_selected, 40))
+		title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		head.add_child(title)
+		_details.add_child(head)
+		var about := ItemInfo.description(_selected)
+		if about != "":
+			_details.add_child(UI.label(about, UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true))
+		_details.add_child(UI.label("Potrzebne (wymagane/masz):", UI.MUTED))
 		for ingredient: Dictionary in selected["ingredients"]:
 			var need := int(ingredient["quantity"])
 			var have := _count(ingredient["id"])
 			var row := HBoxContainer.new()
 			row.add_theme_constant_override("separation", 6)
 			row.add_child(UI.item_icon(ingredient["id"], 26))
-			var name_label := UI.label("%d × %s" % [need, ingredient["name"]])
+			var name_label := UI.label(ingredient["name"])
 			name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 			row.add_child(name_label)
-			row.add_child(UI.label("masz %d" % have, UI.GOOD if have >= need else UI.ERROR, HORIZONTAL_ALIGNMENT_RIGHT))
+			row.add_child(UI.label("%d/%d" % [need, have], UI.GOOD if have >= need else UI.ERROR, HORIZONTAL_ALIGNMENT_RIGHT))
 			_details.add_child(row)
 		_details.add_child(UI.label("Czas: %s  ·  %d XP" % [_seconds(float(selected["seconds"])), int(selected["xp"])], UI.MUTED))
 		if _selected == "nails":

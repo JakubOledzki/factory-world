@@ -9,6 +9,9 @@ signal closed
 const GROUP := "game_windows"
 
 var content := VBoxContainer.new()
+## Set before showing: the window covers the screen but this margin, whatever its content,
+## and its content fills it (to put its own scrolling lists inside), instead of growing to fit.
+var fill_margin := Vector2.ZERO
 
 var _dragging := false
 var _title: Label
@@ -57,6 +60,8 @@ func show_window() -> void:
 	visible = true
 	move_to_front()
 	_fit.call_deferred()
+	if fill_margin != Vector2.ZERO:
+		position = fill_margin
 
 
 ## As tall as the content but no taller than the screen, and inside it: with bigger
@@ -65,7 +70,15 @@ func _fit() -> void:
 	if not is_inside_tree():
 		return
 	var frame := get_theme_stylebox("panel").get_minimum_size().y
-	var room := get_viewport_rect().size.y - 16 - frame - _bar.get_combined_minimum_size().y - 40
+	var screen := get_viewport_rect().size
+	if fill_margin != Vector2.ZERO:
+		custom_minimum_size.x = screen.x - 2 * fill_margin.x
+		content.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		_scroll.custom_minimum_size.y = 0
+		_scroll.custom_minimum_size.y = screen.y - 2 * fill_margin.y - get_combined_minimum_size().y
+		reset_size()
+		return
+	var room := screen.y - 16 - frame - _bar.get_combined_minimum_size().y - 40
 	_scroll.custom_minimum_size.y = minf(content.get_combined_minimum_size().y, room)
 	reset_size()
 	position = position.clamp(Vector2.ZERO, (get_viewport_rect().size - size).max(Vector2.ZERO))
