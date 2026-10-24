@@ -41,6 +41,9 @@ public interface ICharacterNames
 
     /// <summary>The account whose character has this name (any letter case), or null.</summary>
     Task<Guid?> AccountAsync(string name, CancellationToken cancellationToken);
+
+    /// <summary>Characters whose name starts with <paramref name="prefix"/> (any case), at most <paramref name="limit"/>, by account id.</summary>
+    Task<IReadOnlyDictionary<Guid, string>> FindAsync(string prefix, int limit, CancellationToken cancellationToken);
 }
 
 /// <summary>The character's tool slot: one tool (e.g. an axe) held in hand, outside the inventory.</summary>
@@ -76,6 +79,11 @@ public sealed record PlotObject(Guid Id, string Kind, int TileX, int TileY, int 
 public interface IPlotObjects
 {
     Task<IReadOnlyList<PlotObject>> ObjectsAsync(int x, int y, CancellationToken cancellationToken);
+
+    /// <summary>What every plot has built in and inserters can work with too (the railway station): one
+    /// object per tile it covers, all with the same id, owned by the plot's owner.</summary>
+    Task<IReadOnlyList<PlotObject>> FixturesAsync(int x, int y, CancellationToken cancellationToken);
+
 
     /// <summary>Fails with <c>not_owner</c> unless the player owns the plot, or may do <paramref name="right"/>
     /// there as a member of the company the plot belongs to.</summary>
@@ -164,4 +172,15 @@ public interface IMachinePorts
 {
     /// <summary>The machine, locked until the transaction ends; null when this module keeps no machine of this kind.</summary>
     Task<IMachinePort?> OpenAsync(Guid owner, Guid id, string kind, CancellationToken cancellationToken);
+}
+
+/// <summary>The player's technology tree: research unlocks recipes, machines and what the trader sells.
+/// An item no technology covers is open to everyone from the start.</summary>
+public interface ITechnologies
+{
+    /// <summary>Every item the player cannot make or buy from the trader yet, with the name of the technology that unlocks it.</summary>
+    Task<IReadOnlyDictionary<string, string>> LockedAsync(Guid player, CancellationToken cancellationToken);
+
+    /// <summary>Fails with <c>locked</c> while the item is still to be researched.</summary>
+    Task RequireUnlockedAsync(Guid player, string item, CancellationToken cancellationToken);
 }

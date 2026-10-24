@@ -69,7 +69,8 @@ public sealed record CraftingState(
     IReadOnlyList<(string Item, int Quantity)> Done,
     XpGain? Xp);
 
-public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, TimeProvider time)
+public sealed class CraftingService(
+    GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, IProductionStats stats, ITechnologies technologies, TimeProvider time)
 {
     /// <summary>The queue as it is now, after handing out every order that is done.</summary>
     public Task<CraftingState> StateAsync(Guid owner, CancellationToken cancellationToken) =>
@@ -85,6 +86,7 @@ public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> place
         {
             var recipe = Workshop.Find(recipeId) ?? throw new GameException("no_recipe", "There is no such recipe.");
             await Workshop.RequireAsync(places, owner, workbench, Items.Workbench, cancellationToken);
+            await technologies.RequireUnlockedAsync(owner, recipe.Id, cancellationToken);
             var (done, xp) = await CompleteDueAsync(owner, cancellationToken);
 
             // One order at a time per player, so two at once cannot both take the last queue slot.
@@ -172,10 +174,11 @@ public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> place
     {
         // DELETE ... RETURNING hands each finished order to exactly one request, so an item is never given twice.
         await using var command = await db.CommandAsync(
-            "DELETE FROM crafting.jobs WHERE owner_id = @owner AND finishes_at <= @now RETURNING recipe", cancellationToken);
+            "DELETE FROM crafting.jobs WHERE owner_id = @owner AND finishes_at <= @now RETURNING recipe, finishes_at", cancellationToken);
         command.Parameters.AddWithValue("owner", owner);
         command.Parameters.AddWithValue("now", time.GetUtcNow());
         var recipes = new List<Recipe>();
+        var made = new List<ProductionEntry>();
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
             while (await reader.ReadAsync(cancellationToken))
@@ -183,6 +186,9 @@ public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> place
                 if (Workshop.Find(reader.GetString(0)) is { } recipe)
                 {
                     recipes.Add(recipe);
+                    var at = reader.GetFieldValue<DateTimeOffset>(1);
+                    made.Add(ProductionEntry.Made(recipe.Id, recipe.Quantity, at));
+                    made.AddRange(recipe.Ingredients.Select(i => ProductionEntry.Used(i.Item, i.Quantity, at)));
                 }
             }
         }
@@ -192,6 +198,7 @@ public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> place
             return ([], null);
         }
 
+        await stats.RecordAsync(owner, made, cancellationToken);
         var done = recipes.GroupBy(r => r.Id).Select(g => (g.Key, g.Sum(r => r.Quantity))).ToList();
         foreach (var (item, quantity) in done)
         {
@@ -229,7 +236,9 @@ public abstract class CraftingHandler(IServiceScopeFactory scopes) : IMessageHan
     public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
-        var state = await RunAsync(scope.ServiceProvider.GetRequiredService<CraftingService>(), client.RequireAccount(), payload, cancellationToken);
+        var owner = client.RequireAccount();
+        var state = await RunAsync(scope.ServiceProvider.GetRequiredService<CraftingService>(), owner, payload, cancellationToken);
+        var locked = await scope.ServiceProvider.GetRequiredService<ITechnologies>().LockedAsync(owner, cancellationToken);
         return new Reply("crafting", new
         {
             recipes = Workshop.Recipes.Select(r => new
@@ -240,6 +249,8 @@ public abstract class CraftingHandler(IServiceScopeFactory scopes) : IMessageHan
                 seconds = r.Time.TotalSeconds,
                 ingredients = r.Ingredients.Select(i => new { id = i.Item, name = Items.Names[i.Item], quantity = i.Quantity }),
                 xp = r.Xp,
+                // The technology still to research before the recipe can be ordered, or null.
+                locked = locked.GetValueOrDefault(r.Id),
             }),
             // Unix milliseconds: the client compares them with serverTime, not its own clock.
             queue = state.Queue.Select(j => new

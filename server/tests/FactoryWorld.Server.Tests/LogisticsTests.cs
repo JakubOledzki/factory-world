@@ -480,6 +480,15 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
             .EnumerateArray().ToDictionary(s => s.GetProperty("id").GetString()!);
         Assert.Equal(0, StoredIn(storages[silo], Items.Wheat));
         Assert.Equal(10, StoredIn(storages[chest], Items.Flour));
+
+        // The production statistics count what the mill made while the inserters worked it, and that it now waits for wheat.
+        var stats = (await client.SendAsync("stats.production", new { minutes = 1440 })).Payload();
+        var items = stats.GetProperty("items").EnumerateArray().ToDictionary(i => i.GetProperty("id").GetString()!);
+        Assert.Equal(10, items[Items.Flour].GetProperty("produced").GetInt64());
+        Assert.Equal(20, items[Items.Wheat].GetProperty("consumed").GetInt64());
+        var stall = Assert.Single(stats.GetProperty("stalls").EnumerateArray());
+        Assert.Equal("no_input", stall.GetProperty("reason").GetString());
+        Assert.Equal(Items.Wheat, Assert.Single(stall.GetProperty("missing").EnumerateArray()).GetProperty("id").GetString());
     }
 
     [Fact]

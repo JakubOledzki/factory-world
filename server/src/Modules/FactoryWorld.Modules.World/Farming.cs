@@ -41,7 +41,8 @@ public sealed record Field(int TileX, int TileY, string? Crop, DateTimeOffset? R
 /// <param name="Xp">Null when the action gives no experience.</param>
 public sealed record FieldChange(Field Field, IReadOnlyList<(string Item, int Quantity)> Items, XpGain? Xp);
 
-public sealed class FarmService(GameDb db, PlotService plots, IInventory inventory, IEquipment equipment, ICharacterProgress progress, TimeProvider time)
+public sealed class FarmService(
+    GameDb db, PlotService plots, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
 {
     public async Task<IReadOnlyList<Field>> FieldsAsync(int x, int y, CancellationToken cancellationToken)
     {
@@ -160,6 +161,7 @@ public sealed class FarmService(GameDb db, PlotService plots, IInventory invento
             }
 
             await inventory.AddAsync(player, crop, info.Yield, cancellationToken);
+            await stats.RecordAsync(player, [ProductionEntry.Made(crop, info.Yield, time.GetUtcNow())], cancellationToken);
             var xp = await progress.AddXpAsync(player, info.Xp, cancellationToken);
             return new FieldChange(new Field(tileX, tileY, null, null), [(crop, info.Yield)], xp);
         }, cancellationToken);

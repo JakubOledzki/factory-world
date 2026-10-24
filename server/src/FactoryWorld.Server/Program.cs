@@ -9,7 +9,10 @@ using FactoryWorld.Modules.Inventory;
 using FactoryWorld.Modules.Logistics;
 using FactoryWorld.Modules.Market;
 using FactoryWorld.Modules.Recycling;
+using FactoryWorld.Modules.Research;
 using FactoryWorld.Modules.Session;
+using FactoryWorld.Modules.Tutorial;
+using FactoryWorld.Modules.Statistics;
 using FactoryWorld.Modules.Wallet;
 using FactoryWorld.Modules.World;
 using FactoryWorld.Server;
@@ -29,8 +32,11 @@ IGameModule[] modules =
     new WorldModule(),
     new CraftingModule(),
     new LogisticsModule(),
+    new TutorialModule(),
+    new StatisticsModule(),
     new ContractsModule(),
     new CompaniesModule(),
+    new ResearchModule(),
 ];
 
 foreach (var module in modules)

@@ -24,6 +24,7 @@ const ACTIONS := {
 	"world_map": [KEY_N],
 	"garage": [KEY_G],
 	"rotate": [KEY_R],
+	"stats": [KEY_L],
 }
 
 const LAYOUT_FILE := "res://art/plot/layout.json"
@@ -91,6 +92,8 @@ const DIRECTIONS := ["na południe", "na wschód", "na północ", "na zachód"]
 const DIRECTION_ARROWS := ["↓", "→", "↑", "←"]
 ## How often (ms) the belts and inserters are asked for while the plot has any.
 const LOGISTICS_POLL := 1000.0
+## How often (ms) the station is asked for, to draw trains coming and going.
+const STATION_POLL := 4000.0
 ## Crops in the order of the art; the server sends their names and growing times.
 const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower"]
 ## A crop shows as a sprout until this much of its growing time is left, then half grown.
@@ -217,25 +220,18 @@ var _loading: Label
 
 var _inventory_window: GameWindow
 var _slots: InventoryGrid
-var _station_window: GameWindow
+var _station_window: StationWindow
+## Trains on the track, drawn from what the station knows.
+var _trains: PlotTrains
 var _crafting_window: CraftingWindow
 var _furnace_window: FurnaceWindow
 var _storage_window: StorageWindow
 var _splitter_window: SplitterWindow
 var _company_window: CompanyWindow
+var _stats_window: StatsWindow
 var _machine_window: MachineWindow
-var _station_box: VBoxContainer
-var _station_state := {}
 var _clock_offset := 0.0
 var _next_station_poll := 0.0
-var _trip_labels: Array = []
-var _send_to: OptionButton
-var _send_x: SpinBox
-var _send_y: SpinBox
-var _send_item: OptionButton
-var _send_quantity: SpinBox
-var _send_info: Label
-var _send_button: Button
 
 
 func _ready() -> void:
@@ -290,6 +286,10 @@ func _build_world() -> void:
 	_objects.y_sort_enabled = true
 	_objects.tile_set = _tile_set(false)
 	_sorted.add_child(_objects)
+	_trains = PlotTrains.new()
+	_trains.layout = _layout
+	_trains.server_now = _server_now
+	_sorted.add_child(_trains)
 	_logistics.arms_parent = _sorted
 
 	_player = GaragePlayer.new(Game.character.get("appearance", {}), Game.appearance_options)
@@ -427,6 +427,8 @@ func _apply_plot(plot: Dictionary) -> void:
 	station_shadow.offset = -station_anchor
 	station_shadow.position = foot
 	_shadows.add_child(station_shadow)
+	_trains.shadows_parent = _shadows
+	_trains.stop = Vector2(foot.x, (int(plot["railRow"]) + 0.5) * TILE.y)
 	for mine: Dictionary in plot.get("mines", []):
 		_add_mine(mine)
 
@@ -930,8 +932,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("cancel"):
 		if _placing != "":
 			_stop_placing()
-		elif _station_window.visible or _inventory_window.visible or _company_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _storage_window, _splitter_window, _company_window]:
+		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _using_window_open():
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _storage_window, _splitter_window, _stats_window, _company_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -969,6 +971,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_go_to_station()
 	elif event.is_action_pressed("company"):
 		_company_window.toggle()
+	elif event.is_action_pressed("stats"):
+		_stats_window.toggle()
 	elif event.is_action_pressed("tool"):
 		_tool_slot.open()
 	elif event.is_action_pressed("plant"):
@@ -1528,6 +1532,11 @@ func _on_crafted(done: Array, xp: Variant) -> void:
 	_reload_inventory()
 
 
+func _on_researched(finished: Array, xp: Variant) -> void:
+	_gain(xp, _player.position, 0.0)
+	_show_toast("Zbadano: %s. Nowe przepisy czekają przy stole." % ", ".join(finished.map(func(t: Dictionary) -> String: return t["name"])), UI.GOOD)
+
+
 func _on_furnace_changed(taken: Array, xp: Variant) -> void:
 	var at := _cell_centre(_using) if _using.x >= 0 else _player.position
 	for i in taken.size():
@@ -1746,7 +1755,7 @@ func _process(delta: float) -> void:
 		_using = Vector2i(-1, -1)
 	if _logistics.has_machinery() and Time.get_ticks_msec() >= _next_logistics_poll:
 		_poll_logistics()
-	_update_trips()
+	_poll_station()
 
 
 func _screen(world: Vector2) -> Vector2:
@@ -1857,6 +1866,7 @@ func _build_hud() -> void:
 	_plant_button.tooltip_text = "Sadzonki kupisz na rynku w garażu. Z każdego ściętego drzewa jest szansa na nową."
 	bar.add_child(_plant_button)
 	_update_plant_button()
+	bar.add_child(UI.button("Statystyki  [L]", func() -> void: _stats_window.toggle()))
 	bar.add_child(UI.button("Mapa świata  [N]", Game.open_world_map))
 	bar.add_child(UI.button("Garaż  [G]", Game.open_garage))
 	_hud.add_child(bar)
@@ -1988,6 +1998,13 @@ func _update_hint() -> void:
 func _set_balance(cents: int) -> void:
 	_balance = cents
 	_money.text = UI.money(cents)
+	_station_window.set_player(_items, cents)
+
+
+func _reload_balance() -> void:
+	var wallet := await Net.request("wallet.get")
+	if wallet["type"] == "wallet":
+		_set_balance(int(wallet["payload"]["balanceCents"]))
 
 
 # --- Minimap ------------------------------------------------------------------------------------------
@@ -2059,22 +2076,19 @@ func _build_windows() -> void:
 	_slots.failed.connect(_show_error)
 	_inventory_window.content.add_child(_slots)
 	_inventory_window.content.add_child(UI.label("Przeciągnij przedmiot na inny kafelek, aby zmienić kolejność.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
-	_station_window = GameWindow.new("Stacja kolejowa", 430)
-	_station_window.position = Vector2(1280 - 430 - 12, 64)
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(0, 520)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_station_box = VBoxContainer.new()
-	_station_box.add_theme_constant_override("separation", 6)
-	_station_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(_station_box)
-	_station_window.content.add_child(scroll)
+	_station_window = StationWindow.new()
+	_station_window.position = Vector2(1280 - 470 - 12, 64)
+	_station_window.inventory_changed.connect(_reload_inventory)
+	_station_window.balance_changed.connect(_reload_balance)
+	_station_window.failed.connect(_show_error)
+	_station_window.toast.connect(func(text: String) -> void: _show_toast(text, UI.GOLD))
 	_crafting_window = CraftingWindow.new()
 	_crafting_window.can_pick_up = true
 	_crafting_window.position = Vector2(1280 - 400 - 12, 64)
 	_crafting_window.finished.connect(_on_crafted)
 	_crafting_window.inventory_changed.connect(_reload_inventory)
 	_crafting_window.failed.connect(_show_error)
+	_crafting_window.researched.connect(_on_researched)
 	_crafting_window.pick_up_requested.connect(_pick_up_placed)
 	_furnace_window = FurnaceWindow.new()
 	_furnace_window.can_pick_up = true
@@ -2102,7 +2116,11 @@ func _build_windows() -> void:
 	_company_window.position = Vector2(1280 - 520 - 12, 64)
 	_company_window.inventory_changed.connect(_reload_inventory)
 	_company_window.failed.connect(_show_error)
+	_stats_window = StatsWindow.new()
+	_stats_window.position = Vector2(1280 - 640 - 12, 64)
+	_stats_window.failed.connect(_show_error)
 	var layer := _hud
+	layer.add_child(_stats_window)
 	layer.add_child(_inventory_window)
 	layer.add_child(_company_window)
 	layer.add_child(_storage_window)
@@ -2125,270 +2143,33 @@ func _reload_inventory() -> void:
 	_storage_window.set_items(_items)
 	_splitter_window.set_items(_items)
 	_machine_window.set_items(_items)
-	if _station_window.visible and not _station_state.is_empty():
-		_show_station()
+	_station_window.set_player(_items, _balance)
 
 
 func _refresh_station() -> void:
-	var replies := [
-		await Net.request("station.get", {"x": _at.x, "y": _at.y}),
-		await Net.request("inventory.get"),
-	]
-	if replies[1]["type"] == "inventory":
-		_items = replies[1]["payload"]["items"]
-	_apply_station(replies[0])
+	await _station_window.refresh()
+	_show_trains()
 
 
-func _apply_station(reply: Dictionary) -> void:
-	if reply["type"] != "station":
-		_show_error(reply)
+## Trains on the track, from what the station said last; asked again every few seconds, more
+## often while a train is at the platform.
+func _show_trains() -> void:
+	var station := _station_window.state()
+	if station.is_empty():
 		return
-	_station_state = reply["payload"]
-	_clock_offset = float(_station_state["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
-	_show_station()
+	_clock_offset = float(station["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
+	_trains.show_station(station, _at)
+
+
+func _poll_station() -> void:
+	if Time.get_ticks_msec() < _next_station_poll:
+		return
+	_next_station_poll = Time.get_ticks_msec() + (STATION_POLL / 2.0 if _trains.busy() else STATION_POLL)
+	_refresh_station()
 
 
 func _server_now() -> float:
 	return Time.get_unix_time_from_system() * 1000.0 + _clock_offset
-
-
-func _section(text: String) -> void:
-	var l := UI.label(text, UI.GOLD)
-	l.add_theme_font_override("font", UI.bold())
-	_station_box.add_child(l)
-
-
-func _item_row(stack: Dictionary, quantity_text: String) -> HBoxContainer:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	row.add_child(UI.item_icon(stack["id"], 26))
-	var name_label := UI.label(stack["name"])
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(name_label)
-	row.add_child(UI.label(quantity_text, UI.MUTED))
-	return row
-
-
-func _show_station() -> void:
-	for child in _station_box.get_children():
-		child.free()
-	_trip_labels.clear()
-	var state := _station_state
-
-	_section("Magazyn stacji")
-	var stock: Array = state["items"]
-	if stock.is_empty():
-		_station_box.add_child(UI.label("Pusto. Załaduj towary z ekwipunku poniżej.", UI.MUTED))
-	for stack: Dictionary in stock:
-		var row := _item_row(stack, "× %d" % int(stack["quantity"]))
-		row.add_child(UI.button("Do ekwipunku", _station_action.bind("station.unload", stack["id"], int(stack["quantity"]))))
-		_station_box.add_child(row)
-
-	_station_box.add_child(HSeparator.new())
-	_section("Załaduj z ekwipunku")
-	var loadable := 0
-	for stack: Dictionary in _items:
-		var item: String = stack["id"]
-		if item.begins_with("furniture_"):
-			continue
-		loadable += 1
-		var quantity := int(stack["quantity"])
-		var row := _item_row(stack, "masz %d" % quantity)
-		if quantity > 10:
-			row.add_child(UI.button("10", _station_action.bind("station.load", item, 10)))
-		row.add_child(UI.button("Wszystko", _station_action.bind("station.load", item, quantity)))
-		_station_box.add_child(row)
-	if loadable == 0:
-		_station_box.add_child(UI.label("Ekwipunek jest pusty.", UI.MUTED))
-
-	_station_box.add_child(HSeparator.new())
-	_section("Wyślij pociąg")
-	_build_send_form(stock)
-
-	var incoming: Array = state["incoming"]
-	var outgoing: Array = state["outgoing"]
-	if not incoming.is_empty() or not outgoing.is_empty():
-		_station_box.add_child(HSeparator.new())
-		_section("W drodze")
-	for trip: Dictionary in outgoing:
-		_trip_row(trip, "→ %d × %d" % [int(trip["toX"]), int(trip["toY"])])
-	for trip: Dictionary in incoming:
-		_trip_row(trip, "← z %d × %d" % [int(trip["fromX"]), int(trip["fromY"])])
-	_update_trips()
-
-
-func _trip_row(trip: Dictionary, route: String) -> void:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 6)
-	row.add_child(UI.item_icon(trip["item"], 22))
-	var text := UI.label("%d × %s  %s" % [int(trip["quantity"]), trip["name"], route])
-	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	text.clip_text = true
-	row.add_child(text)
-	var left := UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
-	left.custom_minimum_size.x = 56
-	row.add_child(left)
-	_station_box.add_child(row)
-	_trip_labels.append([left, float(trip["arrivesAt"])])
-
-
-func _update_trips() -> void:
-	if _station_state.is_empty():
-		return
-	var now := _server_now()
-	for entry: Array in _trip_labels:
-		var label: Label = entry[0]
-		if is_instance_valid(label):
-			var seconds := ceili(maxf(entry[1] - now, 0.0) / 1000.0)
-			label.text = "%d:%02d" % [seconds / 60, seconds % 60] if seconds > 0 else "na miejscu"
-	# Ask for the station again when a train has arrived.
-	for trip: Dictionary in _station_state.get("incoming", []):
-		if float(trip["arrivesAt"]) <= now and now >= _next_station_poll and _station_window.visible:
-			_next_station_poll = now + 1500.0
-			_refresh_station()
-			break
-
-
-func _station_action(type: String, item: String, quantity: int) -> void:
-	var reply := await Net.request(type, {"x": _at.x, "y": _at.y, "item": item, "quantity": quantity})
-	if reply["type"] != "station":
-		_show_error(reply)
-		return
-	var inventory := await Net.request("inventory.get")
-	if inventory["type"] == "inventory":
-		_items = inventory["payload"]["items"]
-	_apply_station(reply)
-	if _inventory_window.visible:
-		_reload_inventory()
-
-
-func _build_send_form(stock: Array) -> void:
-	if stock.is_empty():
-		_station_box.add_child(UI.label("Najpierw załaduj coś na stację.", UI.MUTED))
-		return
-	var grid := GridContainer.new()
-	grid.columns = 2
-	grid.add_theme_constant_override("h_separation", 8)
-	grid.add_theme_constant_override("v_separation", 4)
-	_station_box.add_child(grid)
-
-	grid.add_child(UI.label("Dokąd", UI.MUTED))
-	_send_to = OptionButton.new()
-	_send_to.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	for plot in _my_plots:
-		if plot != _at:
-			_send_to.add_item("Moja działka %d × %d" % [plot.x, plot.y])
-			_send_to.set_item_metadata(_send_to.item_count - 1, plot)
-	_send_to.add_item("Inna działka (podaj X i Y)")
-	_send_to.set_item_metadata(_send_to.item_count - 1, null)
-	_send_to.item_selected.connect(func(_i: int) -> void: _update_send())
-	grid.add_child(_send_to)
-
-	grid.add_child(UI.label("X, Y", UI.MUTED))
-	var xy := HBoxContainer.new()
-	_send_x = SpinBox.new()
-	_send_x.max_value = _world_width - 1
-	_send_x.value = _at.x
-	_send_y = SpinBox.new()
-	_send_y.max_value = 3000
-	_send_y.value = _at.y
-	for spin: SpinBox in [_send_x, _send_y]:
-		spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		spin.value_changed.connect(func(_v: float) -> void: _update_send())
-		xy.add_child(spin)
-	grid.add_child(xy)
-
-	grid.add_child(UI.label("Towar", UI.MUTED))
-	_send_item = OptionButton.new()
-	for stack: Dictionary in stock:
-		_send_item.add_icon_item(UI.texture("icons/" + ("item_" + stack["id"] if not stack["id"].begins_with("furniture_") else stack["id"])),
-			"%s (%d)" % [stack["name"], int(stack["quantity"])])
-		_send_item.set_item_metadata(_send_item.item_count - 1, stack)
-	_send_item.add_theme_constant_override("icon_max_width", 22)
-	_send_item.item_selected.connect(func(_i: int) -> void:
-		_send_quantity.max_value = _send_stack()["quantity"]
-		_send_quantity.value = _send_quantity.max_value
-		_update_send())
-	grid.add_child(_send_item)
-
-	grid.add_child(UI.label("Ilość", UI.MUTED))
-	_send_quantity = SpinBox.new()
-	_send_quantity.min_value = 1
-	_send_quantity.max_value = stock[0]["quantity"]
-	_send_quantity.value = stock[0]["quantity"]
-	_send_quantity.value_changed.connect(func(_v: float) -> void: _update_send())
-	grid.add_child(_send_quantity)
-
-	_send_info = UI.label("", UI.MUTED)
-	_station_box.add_child(_send_info)
-	_send_button = UI.button("Wyślij pociąg", _send, true)
-	_station_box.add_child(_send_button)
-	_update_send()
-
-
-func _send_stack() -> Dictionary:
-	return _send_item.get_item_metadata(_send_item.selected)
-
-
-func _send_target() -> Vector2i:
-	var chosen: Variant = _send_to.get_item_metadata(_send_to.selected)
-	if chosen is Vector2i:
-		return chosen
-	return Vector2i(int(_send_x.value), int(_send_y.value))
-
-
-## Distance, time and fee of the trip, as the server counts them (see RailRules).
-func _update_send() -> void:
-	var manual: bool = _send_to.get_item_metadata(_send_to.selected) == null
-	_send_x.editable = manual
-	_send_y.editable = manual
-	var target := _send_target()
-	if not manual:
-		_send_x.set_value_no_signal(target.x)
-		_send_y.set_value_no_signal(target.y)
-	var dx := absi(target.x - _at.x)
-	dx = mini(dx, _world_width - dx)
-	var km := sqrt(float(dx * dx + (target.y - _at.y) * (target.y - _at.y))) * 5.0
-	var rates: Dictionary = _station_state["rates"]
-	var seconds := maxf(rates["minTripSeconds"], km / 100.0 * rates["secondsPer100Km"])
-	var quantity := int(_send_quantity.value)
-	var fee := int(rates["baseFeeCents"]) + ceili(km / 100.0 * quantity * float(rates["centsPerItemPer100Km"]))
-	_send_info.text = "Odległość %s km  ·  w drodze %d:%02d  ·  opłata %s" % [
-		_grouped(roundi(km)), int(seconds) / 60, int(seconds) % 60, UI.money(fee)]
-	_send_button.disabled = target == _at or fee > _balance
-	if fee > _balance:
-		_send_info.text += "\nNie masz tyle pieniędzy."
-	elif target == _at:
-		_send_info.text += "\nTo jest ta sama stacja."
-
-
-func _grouped(value: int) -> String:
-	var text := str(value)
-	var out := ""
-	for i in text.length():
-		if i > 0 and (text.length() - i) % 3 == 0:
-			out += " "
-		out += text[i]
-	return out
-
-
-func _send() -> void:
-	var target := _send_target()
-	var stack := _send_stack()
-	_send_button.disabled = true
-	var reply := await Net.request("station.send", {
-		"x": _at.x, "y": _at.y, "toX": target.x, "toY": target.y,
-		"item": stack["id"], "quantity": int(_send_quantity.value),
-	})
-	if reply["type"] != "station":
-		_show_error(reply)
-		_send_button.disabled = false
-		return
-	_show_toast("Pociąg z %d × %s odjechał do działki %d × %d." % [int(_send_quantity.value), stack["name"], target.x, target.y], UI.GOLD)
-	_apply_station(reply)
-	var wallet := await Net.request("wallet.get")
-	if wallet["type"] == "wallet":
-		_set_balance(int(wallet["payload"]["balanceCents"]))
 
 
 # --- Server ---------------------------------------------------------------------------------------------
@@ -2409,6 +2190,10 @@ func _load() -> void:
 		_biome_names[int(biome["id"])] = biome["name"]
 	for owned: Dictionary in info["payload"]["plots"]:
 		_my_plots.append(Vector2i(owned["x"], owned["y"]))
+	_station_window.plot = _at
+	_station_window.world_width = _world_width
+	_station_window.my_plots = _my_plots
+	_trains.world_width = _world_width
 	_set_balance(int(wallet["payload"]["balanceCents"]))
 	_apply_plot(plot["payload"])
 	_title.text = "Działka %d × %d" % [_at.x, _at.y]

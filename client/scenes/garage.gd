@@ -27,6 +27,7 @@ const ACTIONS := {
 	"interact": [KEY_E],
 	"inventory": [KEY_I],
 	"market": [KEY_M],
+	"stats": [KEY_L],
 	"contracts": [KEY_J],
 	"company": [KEY_K],
 	"cancel": [KEY_ESCAPE],
@@ -92,6 +93,7 @@ var _contracts_window: ContractsWindow
 var _crafting_window: CraftingWindow
 var _company_window: CompanyWindow
 var _furnace_window: FurnaceWindow
+var _stats_window: StatsWindow
 ## The piece of furniture whose window is open (workbench or furnace), to close it when the
 ## player walks away.
 var _using: Furniture
@@ -426,7 +428,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _menu.visible:
 			_menu.visible = false
 		else:
-			for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _company_window]:
+			for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _stats_window, _company_window]:
 				window.hide_window()
 	elif event.is_action_pressed("rotate") and _placing != "":
 		_turn_ghost(1)
@@ -445,6 +447,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_inventory_window.toggle()
 	elif event.is_action_pressed("market"):
 		_market_window.toggle()
+	elif event.is_action_pressed("stats"):
+		_stats_window.toggle()
 	elif event.is_action_pressed("contracts"):
 		_contracts_window.toggle()
 	elif event.is_action_pressed("company"):
@@ -666,6 +670,7 @@ func _build_hud() -> void:
 	bar.add_child(UI.button("Rynek  [M]", func() -> void: _market_window.toggle()))
 	bar.add_child(UI.button("Zlecenia  [J]", func() -> void: _contracts_window.toggle()))
 	bar.add_child(UI.button("Spółka  [K]", func() -> void: _company_window.toggle()))
+	bar.add_child(UI.button("Statystyki  [L]", func() -> void: _stats_window.toggle()))
 	bar.add_child(UI.button("Mapa świata  [N]", Game.open_world_map))
 	bar.add_child(UI.button("Wyloguj", Game.logout))
 	add_child(bar)
@@ -718,6 +723,7 @@ func _build_windows() -> void:
 	_crafting_window.finished.connect(_on_crafted)
 	_crafting_window.inventory_changed.connect(_reload_inventory)
 	_crafting_window.failed.connect(_show_error)
+	_crafting_window.researched.connect(_on_researched)
 	_furnace_window = FurnaceWindow.new()
 	_furnace_window.position = Vector2(1280 - 400 - 12, 64)
 	_furnace_window.updated.connect(func(furnace: Dictionary) -> void: _furnaces[furnace["id"]] = furnace)
@@ -727,7 +733,10 @@ func _build_windows() -> void:
 	_company_window.position = Vector2(1280 - 520 - 12, 64)
 	_company_window.inventory_changed.connect(_reload_inventory)
 	_company_window.failed.connect(_show_error)
-	for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _company_window]:
+	_stats_window = StatsWindow.new()
+	_stats_window.position = Vector2(1280 - 640 - 12, 64)
+	_stats_window.failed.connect(_show_error)
+	for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _stats_window, _company_window]:
 		add_child(window)
 
 
@@ -955,6 +964,12 @@ func _on_crafted(done: Array, xp: Variant) -> void:
 		_gain_xp(xp)
 	_show_toast("Gotowe: %s. Leży w ekwipunku." % ", ".join(done.map(func(item: Dictionary) -> String: return item["name"])))
 	_reload_inventory()
+
+
+func _on_researched(finished: Array, xp: Variant) -> void:
+	if xp != null:
+		_gain_xp(xp)
+	_show_toast("Zbadano: %s. Nowe przepisy czekają przy stole." % ", ".join(finished.map(func(t: Dictionary) -> String: return t["name"])), UI.GOOD)
 
 
 ## Something came out of the furnace (or went in): the inventory changed.
