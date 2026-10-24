@@ -1,6 +1,7 @@
 class_name GeneratorWindow
 extends GameWindow
-## A steam generator on a plot: wood or coal goes on its fire and it gives power to the machines on
+## A generator on a plot: wood or coal on the fire of a steam generator, gas in a gas power plant, diesel
+## or petrol in a diesel generator; it gives power to the machines on
 ## the poles it stands next to, as much as they draw, up to its full power. It burns only while a
 ## pole connects it to machines, faster the more they draw. A water wheel or a small water power
 ## plant opens the same window without the fire: water turns it all the time and it burns nothing.
@@ -12,7 +13,8 @@ signal pick_up_requested(id: String)
 
 ## How often (ms) the window asks again while it is open: inserters may put fuel in.
 const POLL := 2000.0
-const HYDRO_NAMES := {"power_water_wheel": "Koło wodne", "power_hydro_plant": "Mała elektrownia wodna"}
+const HYDRO_NAMES := {"power_water_wheel": "Koło wodne", "power_hydro_plant": "Mała elektrownia wodna", "power_tidal_plant": "Elektrownia pływowa"}
+const FUEL_NAMES := {"power_gas_plant": "Elektrownia gazowa", "power_diesel_generator": "Agregat spalinowy"}
 
 var generator := ""
 var plot := Vector2i(-1, -1)
@@ -105,7 +107,7 @@ func _render() -> void:
 	if _state.is_empty():
 		return
 	var hydro: bool = _state.get("hydro", false)
-	set_title(HYDRO_NAMES.get(_state.get("kind", ""), "Generator parowy"))
+	set_title(HYDRO_NAMES.get(_state.get("kind", ""), FUEL_NAMES.get(_state.get("kind", ""), "Generator parowy")))
 	_pick_up.text = "Schowaj do ekwipunku" if hydro else "Schowaj generator do ekwipunku"
 	_fuel_row.visible = not hydro
 	_load_heading.visible = not hydro
@@ -188,7 +190,12 @@ func _render() -> void:
 			row.add_child(b)
 		_load.add_child(row)
 	if not any:
-		_load.add_child(UI.label("Nie masz drewna ani węgla. Drewno daje ścinanie drzew, węgiel skały i kopalnie w górach.",
+		var names: Array[String] = []
+		for option: Dictionary in _state.get("fuels", []):
+			names.append(String(option["name"]).to_lower())
+		var hint := "Drewno daje ścinanie drzew, węgiel skały i kopalnie w górach." if _state.get("kind", "") == "power_generator" \
+			else "Gaz pompuje głowica gazowa, paliwa robi rafineria."
+		_load.add_child(UI.label("Nie masz opału, który ten generator spala (%s). %s" % [", ".join(names), hint],
 			UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	if hydro:
@@ -211,7 +218,7 @@ func _update_runs_out() -> void:
 		return
 	var at: Variant = _state.get("runsOutAt")
 	if at == null:
-		_runs_out.text = "Generator wygasł: dołóż drewna albo węgla." if float(_state.get("total", 0.0)) <= 0.0 else ""
+		_runs_out.text = "Generator wygasł: dołóż opału." if float(_state.get("total", 0.0)) <= 0.0 else ""
 		return
 	var left := maxi(0, ceili((float(at) - _server_now()) / 1000.0))
 	if left >= 3600:

@@ -109,6 +109,11 @@ const PLACED_SPRITES := {
 	"furniture_cannery": "cannery", "furniture_salt_pan": "salt_pan", "furniture_fish_farm": "fish_farm",
 	"furniture_shipyard": "shipyard", "furniture_port": "port", "furniture_breakwater": "breakwater",
 	"furniture_lighthouse": "lighthouse", "power_tidal_plant": "tidal_plant",
+	"furniture_pumpjack": "pumpjack", "furniture_gas_well": "gas_well", "furniture_offshore_platform": "offshore_platform",
+	"furniture_water_injector": "water_injector", "furniture_oil_separator": "oil_separator", "furniture_distillery": "distillery",
+	"furniture_refinery": "refinery", "furniture_cracker": "cracker", "furniture_chemical_plant": "chemical_plant",
+	"power_gas_plant": "gas_plant", "power_diesel_generator": "diesel_generator", "logistics_pump": "pump",
+	"storage_tank": "tank", "logistics_road": "road",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
@@ -119,7 +124,12 @@ const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_
 	"furniture_sawmill", "furniture_electric_sawmill", "furniture_industrial_sawmill",
 	"furniture_quarry", "furniture_crusher", "furniture_stonemason", "furniture_foundry",
 	"furniture_fishing_boat", "furniture_rowing_boat", "furniture_smokehouse", "furniture_cannery", "furniture_salt_pan",
-	"furniture_fish_farm"]
+	"furniture_fish_farm", "furniture_distillery", "furniture_refinery", "furniture_cracker", "furniture_chemical_plant"]
+## Wells, which pump the oil or gas the survey found under the plot, and open the well window.
+const WELLS := ["furniture_pumpjack", "furniture_gas_well", "furniture_offshore_platform"]
+## Asphalt road: walked over like a belt, and faster.
+const ROAD := "logistics_road"
+const ROAD_SPEED := 1.5
 ## Drills, which stand right next to a mine (one to a mine) and work it on power.
 const DRILLS := ["furniture_drill", "furniture_heavy_drill"]
 ## Water power, which burns nothing and stands only in the mountains, by a lake or on the coast.
@@ -127,7 +137,8 @@ const HYDRO := ["power_water_wheel", "power_hydro_plant", "power_tidal_plant"]
 const TIDAL := "power_tidal_plant"
 ## What stands on the shore, right next to the water, and on which biome's (-1 for the sea or a lake).
 const SHORE := {"furniture_fishing_boat": 10, "furniture_rowing_boat": 11, "furniture_salt_pan": 10, "power_tidal_plant": 10,
-	"furniture_fish_farm": -1, "furniture_shipyard": -1, "furniture_port": -1, "furniture_breakwater": -1}
+	"furniture_fish_farm": -1, "furniture_shipyard": -1, "furniture_port": -1, "furniture_breakwater": -1,
+	"furniture_offshore_platform": 10}
 const LIGHTHOUSE := "furniture_lighthouse"
 const SHIPYARD := "furniture_shipyard"
 const PORT := "furniture_port"
@@ -151,16 +162,22 @@ const BELT := "logistics_belt"
 const INSERTER := "logistics_inserter"
 const SPLITTER := "logistics_splitter"
 ## Belts and inserters of every level: plain, fast and express.
-const BELTS := [BELT, "logistics_fast_belt", "logistics_express_belt"]
-const INSERTERS := [INSERTER, "logistics_fast_inserter", "logistics_express_inserter"]
+## Pipes and pumps are the belts and inserters of fluids, and go with them.
+const BELTS := [BELT, "logistics_fast_belt", "logistics_express_belt", "logistics_pipe"]
+const INSERTERS := [INSERTER, "logistics_fast_inserter", "logistics_express_inserter", "logistics_pump"]
 ## Furnaces of every level, which open the furnace window.
 const FURNACES := ["furniture_furnace", "furniture_brick_furnace", "furniture_blast_furnace"]
 ## Belts, inserters and splitters: turned with R and laid one after another.
 const MACHINERY := [BELT, "logistics_fast_belt", "logistics_express_belt", INSERTER, "logistics_fast_inserter",
-	"logistics_express_inserter", SPLITTER, CABLE_STATION]
+	"logistics_express_inserter", SPLITTER, CABLE_STATION, "logistics_pipe", "logistics_pump"]
 const GENERATOR := "power_generator"
+## Generators that burn fuel, which open the generator window.
+const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator"]
+## Placed objects with nothing to open: a click shows the menu to pick them up.
+const MENU_ONLY := ["power_pole", "furniture_port", "furniture_lighthouse", "furniture_breakwater", ROAD,
+	"furniture_water_injector", "furniture_oil_separator"]
 const POLE := "power_pole"
-const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo"]
+const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo", "storage_tank"]
 ## Where a rotation faces, as players read it: 0 south, 1 east, 2 north, 3 west.
 const DIRECTIONS := ["na południe", "na wschód", "na północ", "na zachód"]
 const DIRECTION_ARROWS := ["↓", "→", "↑", "←"]
@@ -172,6 +189,10 @@ const STATION_POLL := 4000.0
 const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower"]
 ## A crop shows as a sprout until this much of its growing time is left, then half grown.
 const SPROUT_UNTIL := 0.6
+## Fertiliser sown with a crop makes it ripen this many times as fast; the crop menu numbers those choices from FERTILIZED.
+const FERTILIZER := "fertilizer"
+const FERTILIZER_SPEED := 2.0
+const FERTILIZED := 100
 ## A planted tree shows as a sapling until this much of its growing time is left, then young;
 ## grown, it looks like one of the conifers of the forest.
 const SAPLING_UNTIL := 0.5
@@ -272,6 +293,7 @@ var _field_source := 0
 ## The sea or the lake, flat on the ground under everything.
 var _water_layer: TileMapLayer
 var _water_source := 0
+var _road_source := 0
 var _shadows: TileMapLayer
 var _marks: Node2D
 var _sorted: Node2D
@@ -343,6 +365,7 @@ var _market_window: MarketWindow
 var _market_button: Button
 var _generator_window: GeneratorWindow
 var _drill_window: DrillWindow
+var _well_window: WellWindow
 var _achievements_window: AchievementsWindow
 var _clock_offset := 0.0
 var _next_station_poll := 0.0
@@ -384,6 +407,8 @@ func _build_world() -> void:
 	var field_set := TileSet.new()
 	field_set.tile_size = Vector2i(TILE)
 	_field_source = _add_source(field_set, "field", "field", false)
+	# So are asphalt roads.
+	_road_source = _add_source(field_set, "road", "road", false)
 	_field_layer.tile_set = field_set
 	add_child(_field_layer)
 	_shadows = TileMapLayer.new()
@@ -631,6 +656,8 @@ func _draw_cell(cell: Vector2i) -> void:
 		_water_layer.set_cell(cell, _water_source, Vector2i.ZERO)
 	if _fields.has(cell):
 		_field_layer.set_cell(cell, _field_source, Vector2i.ZERO)
+	elif _placed.has(cell) and _placed[cell]["kind"] == ROAD:
+		_field_layer.set_cell(cell, _road_source, Vector2i.ZERO)
 	else:
 		_field_layer.erase_cell(cell)
 	var sprite := _sprite_at(cell)
@@ -655,6 +682,8 @@ func _sprite_at(cell: Vector2i) -> String:
 	if _placed.has(cell):
 		if _anchor(cell) != cell:
 			return ""  # A 3 × 3 building is drawn once, on its own tile.
+		if _placed[cell]["kind"] == ROAD:
+			return ""  # flat on the ground, with the fields
 		return PLACED_SPRITES.get(_placed[cell]["kind"], "")  # "" for a belt
 	if _animals.has(cell):
 		return ANIMAL_SPRITES.get(_animals[cell]["kind"], "")
@@ -732,16 +761,27 @@ func _build_paths() -> void:
 			if _tiles[y * _size + x] in SOLID:
 				_astar.set_point_solid(Vector2i(x, y), true)
 	for cell: Vector2i in _placed:
-		_astar.set_point_solid(cell, not _is_belt(cell))
+		_astar.set_point_solid(cell, not _walkable(cell))
 
 
 func _solid(cell: Vector2i) -> bool:
 	var kind := _tile(cell)
-	return kind < 0 or kind in SOLID or (_placed.has(cell) and not _is_belt(cell))
+	return kind < 0 or kind in SOLID or (_placed.has(cell) and not _walkable(cell))
 
 
 func _is_belt(cell: Vector2i) -> bool:
 	return _placed.has(cell) and _placed[cell]["kind"] in BELTS
+
+
+## Belts and roads lie flat: the player walks over them.
+func _walkable(cell: Vector2i) -> bool:
+	return _is_belt(cell) or (_placed.has(cell) and _placed[cell]["kind"] == ROAD)
+
+
+## How fast the player walks where they stand: faster on a road.
+func _speed() -> float:
+	var cell := Vector2i(_player.floor_pos.floor())
+	return SPEED * ROAD_SPEED if _placed.has(cell) and _placed[cell]["kind"] == ROAD else SPEED
 
 
 ## Belts, inserters and splitters are turned and picked up from a menu; other placed objects open a window.
@@ -799,10 +839,10 @@ func _move_player(delta: float) -> void:
 		_path = PackedVector2Array()
 		_on_arrival = Callable()
 		_stop_work()
-		step = input * SPEED * delta
+		step = input * _speed() * delta
 	elif not _path.is_empty():
 		var to_next := _path[0] - _player.floor_pos
-		var length := SPEED * delta
+		var length := _speed() * delta
 		if to_next.length() <= length:
 			step = to_next
 			_path.remove_at(0)
@@ -1131,8 +1171,12 @@ func _placed_label(cell: Vector2i) -> String:
 		return "%s (drewno %d/%d%s, drzew %d): kliknij, aby otworzyć" % [object["name"], int(forester["wood"]), int(forester["capacity"]), full, int(forester["trees"])]
 	if object["kind"] == POLE:
 		return "Słup energetyczny (%s): kliknij po więcej" % _power.describe(object["id"])
-	if object["kind"] == GENERATOR:
-		return "Generator parowy: kliknij, aby dołożyć opału"
+	if object["kind"] in GENERATORS:
+		return "%s%s: kliknij, aby dołożyć opału" % [object["name"], _power_note(object["id"])]
+	if object["kind"] in WELLS:
+		return "%s%s: kliknij, aby zobaczyć szyb" % [object["name"], _power_note(object["id"]) if _power.runs_on_power(object["kind"]) else ""]
+	if object["kind"] == ROAD:
+		return "%s: po asfalcie chodzisz szybciej. Kliknij, aby schować" % object["name"]
 	if object["kind"] in HYDRO:
 		return "%s (woda kręci nim bez opału): kliknij po więcej" % object["name"]
 	if object["kind"] in DRILLS:
@@ -1180,7 +1224,7 @@ func _draw_marks() -> void:
 ## The tiles poles power, on the ground: of every pole while a pole, a generator or a machine that
 ## runs on power is being placed (with the wires a new pole would get), and of a pole under the mouse.
 func _draw_power_reach() -> void:
-	var placing_power: bool = _placing == POLE or _placing == GENERATOR or _placing in HYDRO or _power.runs_on_power(_placing)
+	var placing_power: bool = _placing == POLE or _placing in GENERATORS or _placing in HYDRO or _power.runs_on_power(_placing)
 	var hovered_pole: bool = _hovered.x >= 0 and _placed.has(_hovered) and _placed[_hovered]["kind"] == POLE
 	if not placing_power and not hovered_pole:
 		return
@@ -1566,7 +1610,7 @@ func _vanish(sprite_name: String, cell: Vector2i, fall: bool) -> void:
 
 ## What a click on a tile does: work nature, sow an empty field, reap a ripe crop, tend an animal.
 func _act_on(cell: Vector2i) -> void:
-	if _turnable(cell) or (_placed.has(cell) and _placed[cell]["kind"] in [POLE, PORT, LIGHTHOUSE, BREAKWATER]):
+	if _turnable(cell) or (_placed.has(cell) and _placed[cell]["kind"] in MENU_ONLY):
 		_open_object_menu(cell)
 		return
 	if _placed.has(cell):
@@ -1620,6 +1664,16 @@ func _open_crop_menu(cell: Vector2i) -> void:
 		var minutes := roundi(float(crop["growSeconds"]) / 60.0)
 		_crop_menu.add_icon_item(UI.texture("icons/item_" + CROPS[i]),
 			"%s  ·  %d min  ·  %d szt." % [crop["name"], minutes, int(crop["yield"])], i)
+	# With fertiliser in the bag, each crop can be sown with it too, and ripens twice as fast.
+	if _count(FERTILIZER) > 0:
+		_crop_menu.add_separator("Z nawozem (masz %d)" % _count(FERTILIZER))
+		for i in CROPS.size():
+			var crop: Dictionary = _crops.get(CROPS[i], {})
+			if crop.is_empty():
+				continue
+			var minutes := roundi(float(crop["growSeconds"]) / 60.0 / FERTILIZER_SPEED)
+			_crop_menu.add_icon_item(UI.texture("icons/item_" + FERTILIZER),
+				"%s z nawozem  ·  %d min" % [crop["name"], maxi(1, minutes)], FERTILIZED + i)
 	_crop_menu.reset_size()
 	var at := get_viewport().get_mouse_position() + Vector2(12, 4)
 	_crop_menu.popup(Rect2i(Vector2i(at), Vector2i.ZERO))
@@ -1628,14 +1682,17 @@ func _open_crop_menu(cell: Vector2i) -> void:
 func _on_crop_chosen(index: int) -> void:
 	var cell := _menu_cell
 	_menu_cell = Vector2i(-1, -1)
-	var crop: String = CROPS[index]
-	_go_and(cell, func(at: Vector2i) -> void: _plant(at, crop))
+	var fertilize := index >= FERTILIZED
+	var crop: String = CROPS[index - FERTILIZED if fertilize else index]
+	_go_and(cell, func(at: Vector2i) -> void: _plant(at, crop, fertilize))
 
 
-func _plant(cell: Vector2i, crop: String) -> void:
+func _plant(cell: Vector2i, crop: String, fertilize := false) -> void:
 	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
-	var reply := await Net.request("plot.plant", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y, "crop": crop})
+	var reply := await Net.request("plot.plant", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y, "crop": crop, "fertilize": fertilize})
 	_apply_field(reply)
+	if fertilize:
+		_reload_inventory()
 
 
 func _reap(cell: Vector2i) -> void:
@@ -1964,7 +2021,7 @@ func _place_object(cell: Vector2i) -> void:
 		return
 	var kind := _placing
 	# Belts and inserters are laid one after another until they run out.
-	var more := kind in MACHINERY and _count(kind) > 1
+	var more := (kind in MACHINERY or kind == ROAD) and _count(kind) > 1
 	if not more:
 		_stop_placing()
 	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
@@ -1976,7 +2033,7 @@ func _place_object(cell: Vector2i) -> void:
 	var at := Vector2i(object["tileX"], object["tileY"])
 	_put_placed(object)
 	for covered in _footprint(object["kind"], at):
-		_astar.set_point_solid(covered, not _is_belt(covered))
+		_astar.set_point_solid(covered, not _walkable(covered))
 		_draw_cell(covered)
 	_logistics.set_objects(_placed)
 	_update_market_button()
@@ -1992,6 +2049,9 @@ func _place_object(cell: Vector2i) -> void:
 		_show_toast("%s stoi przy kopalni. Podłącz je słupem do prądu, a samo zacznie wydobywać." % object["name"])
 	elif kind in HYDRO:
 		_show_toast("%s stoi na działce i daje prąd bez opału. Postaw obok słup energetyczny." % object["name"])
+	elif kind in WELLS:
+		_show_toast("%s stoi na złożu i sam pompuje%s. Wyjmij urobek w jego oknie albo pompą do rury." % [object["name"],
+			", gdy podłączysz go słupem do prądu" if _power.runs_on_power(kind) else ""])
 	else:
 		_show_toast("%s stoi na działce. Kliknij, aby użyć." % object["name"])
 	_reload_inventory()
@@ -2001,7 +2061,7 @@ func _place_object(cell: Vector2i) -> void:
 ## The placed object next to the player, or (-1, -1).
 func _nearest_placed() -> Vector2i:
 	for cell: Vector2i in _placed:
-		if _near(cell) and not _turnable(cell) and not _placed[cell]["kind"] in [POLE, PORT, LIGHTHOUSE, BREAKWATER]:
+		if _near(cell) and not _turnable(cell) and not _placed[cell]["kind"] in MENU_ONLY:
 			return cell
 	return Vector2i(-1, -1)
 
@@ -2025,8 +2085,10 @@ func _use_placed(cell: Vector2i) -> void:
 		_storage_window.open_at(_at, object["id"])
 	elif object["kind"] in ["furniture_workbench", "furniture_anvil", SHIPYARD]:
 		_crafting_window.open_at(object["id"], object["kind"])
-	elif object["kind"] == GENERATOR or object["kind"] in HYDRO:
+	elif object["kind"] in GENERATORS or object["kind"] in HYDRO:
 		_generator_window.open_at(_at, object["id"])
+	elif object["kind"] in WELLS:
+		_well_window.open_at(_at, object["id"])
 	elif object["kind"] in DRILLS:
 		_drill_window.open_at(_at, object["id"])
 	elif FORESTERS.has(object["kind"]):
@@ -2036,7 +2098,7 @@ func _use_placed(cell: Vector2i) -> void:
 func _using_window_open() -> bool:
 	return _crafting_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
 		or _splitter_window.visible or _generator_window.visible or _market_window.visible or _forester_window.visible \
-		or _drill_window.visible
+		or _drill_window.visible or _well_window.visible
 
 
 func _hide_placed_windows() -> void:
@@ -2046,6 +2108,7 @@ func _hide_placed_windows() -> void:
 	_forester_window.hide_window()
 	_generator_window.hide_window()
 	_drill_window.hide_window()
+	_well_window.hide_window()
 	_storage_window.hide_window()
 	_splitter_window.hide_window()
 	_market_window.hide_window()
@@ -2225,7 +2288,7 @@ func _apply_forestry(forestry: Dictionary) -> void:
 		if _tile(cell) == TREE:
 			var wild := _variant(TREE, cell)
 			_tiles[cell.y * _size + cell.x] = NONE
-			_astar.set_point_solid(cell, _placed.has(cell) and not _is_belt(cell))
+			_astar.set_point_solid(cell, _placed.has(cell) and not _walkable(cell))
 			if _chunks.has(Vector2i(cell.x / CHUNK, cell.y / CHUNK)) and not _trees.has(cell):
 				_vanish(wild, cell, true)
 			_draw_cell(cell)
@@ -3048,6 +3111,11 @@ func _build_windows() -> void:
 	_drill_window.inventory_changed.connect(_on_furnace_changed)
 	_drill_window.failed.connect(_show_error)
 	_drill_window.pick_up_requested.connect(_pick_up_placed)
+	_well_window = WellWindow.new()
+	_well_window.position = Vector2(1280 - 420 - 12, 64)
+	_well_window.inventory_changed.connect(_on_furnace_changed)
+	_well_window.failed.connect(_show_error)
+	_well_window.pick_up_requested.connect(_pick_up_placed)
 	_company_window = CompanyWindow.new()
 	_company_window.position = Vector2(1280 - 520 - 12, 64)
 	_company_window.inventory_changed.connect(_reload_inventory)
@@ -3074,6 +3142,7 @@ func _build_windows() -> void:
 	layer.add_child(_mine_window)
 	layer.add_child(_generator_window)
 	layer.add_child(_drill_window)
+	layer.add_child(_well_window)
 	_achievements_window = AchievementsWindow.new()
 	_achievements_window.failed.connect(_show_error)
 	layer.add_child(_achievements_window)

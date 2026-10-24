@@ -6,10 +6,13 @@ extends Node2D
 ## new pole is wired at once; how well each network is powered comes with the plot's logistics.
 
 const GENERATOR := "power_generator"
+## Generators that burn fuel: the steam generator, the gas power plant and the diesel generator.
+const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator"]
 ## Water power: wired to a pole like a generator, but burns nothing.
-const HYDRO := ["power_water_wheel", "power_hydro_plant"]
+const HYDRO := ["power_water_wheel", "power_hydro_plant", "power_tidal_plant"]
 ## Sprites whose layout says where wires meet them, by kind.
-const WIRE_SPRITES := {"power_generator": "generator", "power_water_wheel": "water_wheel", "power_hydro_plant": "hydro_plant"}
+const WIRE_SPRITES := {"power_generator": "generator", "power_water_wheel": "water_wheel", "power_hydro_plant": "hydro_plant",
+	"power_tidal_plant": "tidal_plant", "power_gas_plant": "gas_plant", "power_diesel_generator": "diesel_generator"}
 const POLE := "power_pole"
 const WIRE := Color(0.08, 0.07, 0.06, 0.9)
 const WIRE_SHINE := Color(0.62, 0.42, 0.25, 0.55)
@@ -60,7 +63,7 @@ func apply(summary: Dictionary) -> void:
 func has_power() -> bool:
 	for cell: Vector2i in _placed:
 		var kind: String = _placed[cell]["kind"]
-		if kind == POLE or kind == GENERATOR or kind in HYDRO or demand.has(kind):
+		if kind == POLE or kind in GENERATORS or kind in HYDRO or demand.has(kind):
 			return true
 	return false
 
@@ -138,7 +141,7 @@ func _draw() -> void:
 				_wire(_wire_point(all_poles[i]), _wire_point(all_poles[j]))
 	for cell: Vector2i in _placed:
 		var object: Dictionary = _placed[cell]
-		if object["kind"] == GENERATOR or object["kind"] in HYDRO:
+		if object["kind"] in GENERATORS or object["kind"] in HYDRO:
 			for pole in all_poles:
 				if covers(pole, cell):
 					_wire(_wire_point(cell), _wire_point(pole))

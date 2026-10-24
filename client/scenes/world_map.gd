@@ -27,6 +27,8 @@ const MINE := Color("#f5b041")
 const OTHERS := Color("#d4553f")
 ## Deposit sizes as the server numbers them.
 const DEPOSITS := ["brak", "małe złoże", "średnie złoże", "duże złoże"]
+## The coast biome, whose seabed may hold oil as well.
+const COAST := 10
 
 ## Loaded once and kept, so the map opens instantly the second time.
 static var _data: WorldData
@@ -650,6 +652,10 @@ func _show_survey() -> void:
 		for row: Array in [["Ropa naftowa", survey["oil"]], ["Gaz ziemny", survey["gas"]]]:
 			var size := int(row[1])
 			_plot_box.add_child(UI.label("%s: %s" % [row[0], DEPOSITS[size]], UI.GOOD if size > 0 else UI.TEXT))
+		# On the coast the seabed may hold oil too, which an offshore platform reaches.
+		if int(_plot.get("biome", -1)) == COAST:
+			var seabed := int(survey.get("seabed", 0))
+			_plot_box.add_child(UI.label("Ropa pod dnem morza: %s" % DEPOSITS[seabed], UI.GOOD if seabed > 0 else UI.TEXT))
 		# Mountain rock may hold a mineral, which comes up from the mines with the ore.
 		if int(_plot.get("biome", -1)) == 6:
 			var mineral := int(survey.get("mineralSize", 0))
@@ -673,7 +679,7 @@ func _on_survey() -> void:
 	var result: Dictionary = reply["payload"]
 	_set_balance(int(result["balanceCents"]))
 	var survey: Dictionary = result["survey"]
-	var found := int(survey["oil"]) > 0 or int(survey["gas"]) > 0 or int(survey.get("mineralSize", 0)) > 0
+	var found := int(survey["oil"]) > 0 or int(survey["gas"]) > 0 or int(survey.get("seabed", 0)) > 0 or int(survey.get("mineralSize", 0)) > 0
 	_show_toast("Badanie zakończone: %s." % ("są złoża!" if found else "brak złóż"), UI.GOLD if found else UI.TEXT)
 	if _selected == plot:
 		_plot["survey"] = survey

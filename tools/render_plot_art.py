@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [logistics] [<sprite>...] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [logistics] [<sprite>...] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -2116,6 +2116,405 @@ def render_coast(layout: dict, only=()):
         layout["water"] = render_water_tile()
 
 
+# --- Oil ------------------------------------------------------------------------------------------
+
+def oil_mats():
+    """The paint of the oil field: rusty steel, safety yellow, black crude and pipe grey."""
+    return {
+        "steel": ra.rusty_metal("oil_steel", (0.16, 0.16, 0.17), rust=0.35),
+        "dark": ra.rusty_metal("oil_dark", (0.05, 0.05, 0.055), rust=0.2),
+        "yellow": ra.plain("oil_yellow", (0.62, 0.42, 0.03), 0.45, 0.3, variation=0.2, grime=0.8),
+        "red": ra.plain("oil_red", (0.5, 0.06, 0.03), 0.45, 0.3, variation=0.15, grime=0.7),
+        "white": ra.plain("oil_white", (0.62, 0.62, 0.6), 0.5, 0.2, variation=0.1, grime=0.7),
+        "crude": ra.plain("oil_crude", (0.008, 0.007, 0.006), 0.08, variation=0.05, grime=0.0),
+        "concrete": ra.plain("oil_concrete", (0.3, 0.3, 0.29), 0.9, variation=0.15),
+        "brick": ra.plain("oil_brick", (0.3, 0.11, 0.06), 0.9, variation=0.35, scale=10, bump=0.5),
+        "copper": ra.plain("oil_copper", (0.65, 0.28, 0.12), 0.35, 0.9, variation=0.15),
+        "pipe": ra.rusty_metal("oil_pipe", (0.3, 0.31, 0.32), rust=0.25),
+        "glow": ra.emission("oil_glow", (1.0, 0.45, 0.08), 6.0),
+        "lamp": ra.emission("oil_lamp", (0.3, 1.0, 0.25), 3.0),
+        "window": ra.emission("oil_window", (1.0, 0.8, 0.5), 2.0),
+    }
+
+
+def flame(at, size=1.0):
+    """A gas flare: an orange tongue of fire with a bright core."""
+    ra.sphere("flare", 0.09 * size, Vector(at) + Vector((0, 0, 0.12 * size)), ra.emission("flare_outer", (1.0, 0.35, 0.05), 14.0),
+              scale=(1, 1, 2.2), segments=12)
+    ra.sphere("flare_core", 0.05 * size, Vector(at) + Vector((0, 0, 0.08 * size)), ra.emission("flare_core", (1.0, 0.85, 0.4), 25.0),
+              scale=(1, 1, 1.8), segments=10)
+
+
+def pipe_run(a, b, r, mat, name="pipe"):
+    """A straight pipe between two points."""
+    a, b = Vector(a), Vector(b)
+    d = b - a
+    obj = ra.cylinder(name, r, d.length, (a + b) / 2, mat, verts=12)
+    obj.rotation_mode = "QUATERNION"
+    obj.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(d.normalized())
+    return obj
+
+
+def build_pumpjack():
+    """A pumpjack: a yellow walking beam rocking on an A-frame, its horse head over the wellhead, a crank
+    with red counterweights driven by a motor, all on a concrete pad."""
+    m = oil_mats()
+    ra.box("pj_pad", (1.8, 0.8, 0.1), (0, 0, 0.05), m["concrete"], bevel=0.02)
+    for y in (-0.2, 0.2):
+        for x, a in ((-0.25, 18), (0.25, -18)):
+            ra.box("pj_leg", (0.07, 0.07, 1.2), (x * 0.6, y, 0.65), m["steel"], rotation=(0, math.radians(a), 0))
+    ra.box("pj_saddle", (0.2, 0.5, 0.08), (0, 0, 1.22), m["steel"])
+    ra.box("pj_beam", (1.8, 0.12, 0.16), (0.05, 0, 1.33), m["yellow"], bevel=0.02, rotation=(0, math.radians(-6), 0))
+    # The horse head over the well, at the west end.
+    ra.box("pj_head", (0.18, 0.16, 0.5), (-0.88, 0, 1.25), m["yellow"], bevel=0.04, rotation=(0, math.radians(-6), 0))
+    ra.cylinder("pj_rod", 0.015, 1.0, (-0.95, 0, 0.62), m["dark"], verts=8)
+    ra.cylinder("pj_wellhead", 0.08, 0.25, (-0.95, 0, 0.22), m["red"], verts=12)
+    pipe_run((-0.95, 0, 0.18), (-0.95, -0.38, 0.18), 0.04, m["pipe"])
+    # The crank and counterweights at the east end.
+    ra.box("pj_pitman", (0.06, 0.06, 0.75), (0.82, 0.12, 0.92), m["steel"], rotation=(0, math.radians(8), 0))
+    for y in (-0.22, 0.22):
+        ra.box("pj_weight", (0.42, 0.06, 0.32), (0.75, y, 0.55), m["red"], bevel=0.02, rotation=(0, math.radians(20), 0))
+    ra.cylinder("pj_crank", 0.1, 0.5, (0.75, 0, 0.55), m["steel"], rotation=(math.radians(90), 0, 0), verts=14)
+    ra.box("pj_gearbox", (0.36, 0.3, 0.3), (0.75, 0, 0.28), m["steel"], bevel=0.02)
+    ra.box("pj_motor", (0.24, 0.2, 0.2), (0.75, -0.3, 0.2), ra.rusty_metal("pj_motor", (0.08, 0.2, 0.12), rust=0.2), bevel=0.02)
+    ra.box("pj_puddle", (0.4, 0.3, 0.005), (-0.8, -0.15, 0.102), m["crude"])
+
+
+def build_gas_well():
+    """A gas wellhead: a red Christmas tree of valves and wheels on a gravel pad, a pipe to a little separator
+    and a flare burning on a stack."""
+    m = oil_mats()
+    ra.box("gw_pad", (1.4, 1.0, 0.06), (0, 0, 0.03), rock("gw_gravel", (0.2, 0.19, 0.18)))
+    ra.cylinder("gw_casing", 0.12, 0.3, (-0.2, 0, 0.21), m["steel"], verts=14)
+    ra.cylinder("gw_tree", 0.07, 0.75, (-0.2, 0, 0.7), m["red"], verts=12)
+    for z in (0.5, 0.8):
+        ra.box("gw_valve", (0.36, 0.12, 0.12), (-0.2, 0, z), m["red"], bevel=0.02)
+        for x in (-0.42, 0.02):
+            ra.torus("gw_wheel", 0.07, 0.012, (x, 0, z), m["dark"], rotation=(0, math.radians(90), 0))
+    ra.cylinder("gw_gauge", 0.05, 0.03, (-0.2, -0.08, 1.05), m["white"], rotation=(math.radians(90), 0, 0), verts=12)
+    pipe_run((-0.2, 0, 0.4), (0.3, 0, 0.4), 0.035, m["pipe"])
+    ra.cylinder("gw_separator", 0.14, 0.5, (0.35, 0, 0.3), m["white"], verts=16)
+    pipe_run((0.35, 0.0, 0.4), (0.55, 0.3, 0.4), 0.025, m["pipe"])
+    ra.cylinder("gw_stack", 0.04, 1.3, (0.55, 0.3, 0.7), m["steel"], verts=10)
+    flame((0.55, 0.3, 1.35), 1.0)
+
+
+def build_offshore_platform():
+    """An offshore platform standing in the sea off the shore: steel legs in the water under a deck with a
+    derrick, a crane, a block of quarters and a gas flare on a boom."""
+    m = oil_mats()
+    water = water_mat("plat_water")
+    ra.box("plat_water", (2.0, 1.4, 0.02), (0, 0.45, 0.01), water)
+    for x in (-0.55, 0.55):
+        for y in (0.2, 0.8):
+            ra.cylinder("plat_leg", 0.08, 0.7, (x, y, 0.35), m["yellow"], verts=12)
+            ra.cylinder("plat_foam", 0.12, 0.02, (x, y, 0.025), ra.plain("plat_foam", (0.7, 0.75, 0.8), 0.4), verts=12)
+    ra.box("plat_deck", (1.4, 0.9, 0.12), (0, 0.5, 0.76), m["steel"], bevel=0.02)
+    ra.box("plat_quarters", (0.45, 0.45, 0.35), (-0.4, 0.4, 1.0), m["white"], bevel=0.02)
+    ra.box("plat_window", (0.3, 0.02, 0.06), (-0.4, 0.17, 1.05), m["window"])
+    ra.cylinder("plat_helipad", 0.25, 0.04, (-0.4, 0.4, 1.2), m["dark"], verts=20)
+    # The derrick: a tapering lattice tower.
+    for dx in (-1, 1):
+        for dy in (-1, 1):
+            pipe_run((0.25 + dx * 0.2, 0.55 + dy * 0.2, 0.82), (0.25 + dx * 0.05, 0.55 + dy * 0.05, 2.2), 0.018, m["red"], "plat_strut")
+    for z, w in ((1.2, 0.15), (1.6, 0.11), (2.0, 0.07)):
+        ra.box("plat_ring", (w * 2 + 0.04, w * 2 + 0.04, 0.025), (0.25, 0.55, z), m["red"])
+    ra.cylinder("plat_crane", 0.05, 0.4, (0.55, 0.2, 1.0), m["yellow"], verts=10)
+    pipe_run((0.55, 0.2, 1.2), (0.85, -0.1, 1.45), 0.02, m["yellow"], "plat_jib")
+    pipe_run((-0.7, 0.75, 0.85), (-1.0, 1.0, 1.25), 0.02, m["steel"], "plat_boom")
+    flame((-1.0, 1.0, 1.25), 1.1)
+    # A walkway to the shore.
+    ra.box("plat_gangway", (0.18, 0.5, 0.03), (0.1, -0.15, 0.62), m["steel"], rotation=(math.radians(-18), 0, 0))
+
+
+def build_water_injector():
+    """A water injection station: a blue pump house with a big triplex pump in front, a water tank beside it and
+    a pipe going down into the ground."""
+    m = oil_mats()
+    blue = ra.rusty_metal("inj_blue", (0.05, 0.14, 0.32), rust=0.2)
+    ra.box("inj_pad", (1.5, 1.0, 0.08), (0, 0, 0.04), m["concrete"])
+    ra.box("inj_house", (0.6, 0.6, 0.6), (-0.4, 0.15, 0.38), ra.corrugated("inj_sheet", (0.3, 0.32, 0.35), 0.2))
+    ra.box("inj_roof", (0.66, 0.66, 0.04), (-0.4, 0.15, 0.7), m["steel"])
+    ra.box("inj_door", (0.2, 0.02, 0.35), (-0.4, -0.16, 0.26), m["dark"])
+    ra.box("inj_pump", (0.45, 0.3, 0.25), (0.2, -0.15, 0.22), blue, bevel=0.03)
+    for x in (0.08, 0.2, 0.32):
+        ra.cylinder("inj_plunger", 0.045, 0.2, (x, -0.15, 0.44), m["steel"], verts=10)
+    ra.cylinder("inj_tank", 0.25, 0.7, (0.45, 0.3, 0.43), blue, verts=24)
+    pipe_run((0.2, -0.15, 0.2), (0.2, -0.45, 0.2), 0.04, m["pipe"])
+    pipe_run((0.2, -0.45, 0.2), (0.2, -0.45, 0.0), 0.04, m["pipe"])
+    ra.box("inj_lamp", (0.06, 0.02, 0.04), (0.2, -0.31, 0.3), m["lamp"])
+
+
+def build_oil_separator():
+    """An oil separator: a long white drum lying on saddles, with a skimmer pit of black oil in front and pipes."""
+    m = oil_mats()
+    ra.box("sep_pad", (1.4, 0.9, 0.06), (0, 0, 0.03), m["concrete"])
+    ra.cylinder("sep_drum", 0.26, 1.0, (0, 0.15, 0.42), m["white"], rotation=(0, math.radians(90), 0), verts=24)
+    for x in (-0.48, 0.48):
+        ra.sphere("sep_end", 0.26, (x, 0.15, 0.42), m["white"], scale=(0.35, 1, 1), segments=16)
+    for x in (-0.3, 0.3):
+        ra.box("sep_saddle", (0.1, 0.4, 0.18), (x, 0.15, 0.14), m["steel"])
+    ra.box("sep_pit", (0.8, 0.3, 0.04), (0, -0.28, 0.06), m["concrete"], bevel=0.01)
+    ra.box("sep_oil", (0.72, 0.22, 0.01), (0, -0.28, 0.08), m["crude"])
+    pipe_run((0.0, 0.15, 0.68), (0.0, 0.15, 0.85), 0.03, m["pipe"])
+    pipe_run((0.0, 0.15, 0.85), (-0.5, 0.15, 0.85), 0.03, m["pipe"])
+    ra.cylinder("sep_valve", 0.06, 0.05, (0, 0.15, 0.9), m["yellow"], verts=12)
+
+
+def build_distillery():
+    """A simple fired still: a brick firebox glowing under a riveted pot, a column with a condenser coil and a
+    barrel catching the cut."""
+    m = oil_mats()
+    ra.box("dist_fire", (0.8, 0.7, 0.4), (-0.1, 0.1, 0.2), m["brick"], bevel=0.03)
+    ra.box("dist_glow", (0.25, 0.03, 0.12), (-0.1, -0.26, 0.15), m["glow"])
+    ra.cylinder("dist_pot", 0.3, 0.45, (-0.1, 0.1, 0.62), m["copper"], verts=24)
+    ra.sphere("dist_dome", 0.3, (-0.1, 0.1, 0.85), m["copper"], scale=(1, 1, 0.5), segments=20)
+    ra.cylinder("dist_column", 0.08, 0.9, (-0.1, 0.1, 1.3), m["copper"], verts=14)
+    pipe_run((-0.1, 0.1, 1.7), (0.4, 0.1, 1.4), 0.03, m["copper"])
+    for k in range(4):
+        ra.torus("dist_coil", 0.12, 0.02, (0.45, 0.1, 0.65 + k * 0.15), m["copper"])
+    ra.cylinder("dist_cooler", 0.15, 0.7, (0.45, 0.1, 0.85), ra.plain("dist_glass", (0.3, 0.4, 0.45), 0.1, variation=0.05), verts=16)
+    ra.cylinder("dist_barrel", 0.16, 0.36, (0.45, -0.3, 0.18), ra.wood("dist_barrel", (0.2, 0.12, 0.06)), verts=16)
+    ra.cylinder("dist_chimney", 0.06, 0.7, (-0.4, 0.35, 0.7), m["dark"], verts=10)
+
+
+def build_refinery():
+    """A refinery: two tall fractionating columns with ladders and platforms, a squat furnace with a stack,
+    a spherical tank and a tangle of pipes on a concrete pad."""
+    m = oil_mats()
+    ra.box("ref_pad", (1.9, 1.3, 0.08), (0, 0.1, 0.04), m["concrete"])
+    for x, h, r in ((-0.45, 2.6, 0.2), (0.0, 2.0, 0.15)):
+        ra.cylinder("ref_column", r, h, (x, 0.3, 0.08 + h / 2), m["white"], verts=20)
+        ra.sphere("ref_cap", r, (x, 0.3, 0.08 + h), m["white"], scale=(1, 1, 0.5), segments=14)
+        for z in range(1, int(h / 0.6) + 1):
+            ra.torus("ref_platform", r + 0.06, 0.012, (x, 0.3, 0.08 + z * 0.6), m["yellow"])
+        ra.box("ref_ladder", (0.08, 0.02, h), (x, 0.3 - r - 0.04, 0.08 + h / 2), m["yellow"])
+    ra.box("ref_furnace", (0.55, 0.45, 0.5), (0.55, 0.45, 0.33), m["brick"], bevel=0.02)
+    ra.box("ref_furnace_glow", (0.2, 0.02, 0.08), (0.55, 0.22, 0.25), m["glow"])
+    ra.cylinder("ref_stack", 0.07, 1.4, (0.7, 0.55, 1.25), m["red"], verts=12)
+    ra.cylinder("ref_stack_top", 0.075, 0.12, (0.7, 0.55, 1.9), m["white"], verts=12)
+    ra.sphere("ref_sphere", 0.3, (0.55, -0.25, 0.42), m["white"], segments=20)
+    for x in (0.38, 0.72):
+        ra.cylinder("ref_sphere_leg", 0.025, 0.4, (x, -0.25, 0.25), m["steel"], verts=8)
+    for z, col in ((0.5, m["pipe"]), (0.7, m["yellow"]), (0.9, m["pipe"])):
+        pipe_run((-0.45, 0.1, z), (0.55, 0.1, z), 0.03, col)
+    pipe_run((-0.45, 0.1, 0.5), (-0.45, -0.4, 0.5), 0.03, m["pipe"])
+    ra.box("ref_lamp", (0.04, 0.04, 0.04), (-0.45, 0.3, 2.75), ra.emission("ref_beacon", (1.0, 0.1, 0.05), 8.0))
+
+
+def build_cracker():
+    """A cracking unit: a tall reactor and a regenerator side by side, joined high up by a fat riser pipe,
+    with cyclones on top and a flare."""
+    m = oil_mats()
+    ra.box("crk_pad", (1.8, 1.2, 0.08), (0, 0.1, 0.04), m["concrete"])
+    ra.cylinder("crk_reactor", 0.28, 1.8, (-0.4, 0.3, 0.98), m["white"], verts=22)
+    ra.cylinder("crk_reactor_top", 0.28, 0.3, (-0.4, 0.3, 2.03), m["white"], radius2=0.12, verts=22)
+    ra.cylinder("crk_regen", 0.34, 1.3, (0.35, 0.3, 0.73), m["steel"], verts=22)
+    ra.cylinder("crk_regen_top", 0.34, 0.25, (0.35, 0.3, 1.5), m["steel"], radius2=0.15, verts=22)
+    pipe_run((-0.4, 0.3, 1.7), (0.35, 0.3, 1.25), 0.09, m["pipe"])
+    pipe_run((-0.4, 0.3, 0.4), (0.35, 0.3, 0.4), 0.07, m["pipe"])
+    for x in (-0.48, -0.32):
+        ra.cylinder("crk_cyclone", 0.05, 0.3, (x, 0.3, 2.3), m["steel"], radius2=0.02, verts=10)
+    ra.cylinder("crk_flare", 0.04, 1.8, (0.75, 0.6, 0.98), m["red"], verts=10)
+    flame((0.75, 0.6, 1.9), 1.1)
+    for k in range(3):
+        ra.torus("crk_platform", 0.34, 0.012, (-0.4, 0.3, 0.6 + k * 0.5), m["yellow"])
+    ra.box("crk_control", (0.4, 0.3, 0.3), (0.45, -0.3, 0.23), m["white"], bevel=0.02)
+    ra.box("crk_window", (0.25, 0.02, 0.07), (0.45, -0.46, 0.28), m["window"])
+
+
+def build_chemical_plant():
+    """A chemical plant: a white process building with a sawtooth roof, two green reactor vessels with stirrer
+    motors, a cooling tower letting off steam and pipe racks."""
+    m = oil_mats()
+    green = ra.rusty_metal("chem_green", (0.08, 0.28, 0.16), rust=0.15)
+    ra.box("chem_pad", (1.9, 1.3, 0.08), (0, 0.1, 0.04), m["concrete"])
+    ra.box("chem_hall", (0.9, 0.6, 0.55), (-0.4, 0.3, 0.355), m["white"], bevel=0.02)
+    for k in range(3):
+        ra.box("chem_saw", (0.3, 0.62, 0.04), (-0.7 + k * 0.3, 0.3, 0.7), m["steel"], rotation=(0, math.radians(25), 0))
+    ra.box("chem_windows", (0.7, 0.02, 0.08), (-0.4, -0.01, 0.45), m["window"])
+    for x in (0.35, 0.7):
+        ra.cylinder("chem_vessel", 0.17, 0.6, (x, -0.2, 0.4), green, verts=18)
+        ra.sphere("chem_vessel_top", 0.17, (x, -0.2, 0.7), green, scale=(1, 1, 0.45), segments=14)
+        ra.box("chem_motor", (0.12, 0.12, 0.14), (x, -0.2, 0.84), m["steel"], bevel=0.01)
+    ra.cylinder("chem_tower", 0.28, 0.9, (0.55, 0.45, 0.53), m["concrete"], radius2=0.2, verts=24)
+    for k in range(4):
+        ra.sphere("chem_steam", 0.12 + k * 0.03, (0.55 + k * 0.04, 0.45, 1.05 + k * 0.15),
+                  ra.plain("chem_steam", (0.7, 0.72, 0.75), 0.9, variation=0.1), scale=(1, 1, 0.7), segments=10)
+    for z in (0.62, 0.8):
+        pipe_run((0.05, 0.05, z), (0.7, 0.05, z), 0.025, m["yellow"] if z > 0.7 else m["pipe"])
+
+
+def build_gas_plant():
+    """A gas power plant: a turbine hall with a long gas turbine showing through its open side, a tall exhaust
+    stack, a transformer and the copper terminal the pole's wire comes to."""
+    m = oil_mats()
+    ra.box("gp_pad", (1.8, 1.1, 0.08), (0, 0.05, 0.04), m["concrete"])
+    ra.box("gp_hall", (1.0, 0.7, 0.6), (-0.3, 0.2, 0.38), ra.corrugated("gp_sheet", (0.35, 0.37, 0.4), 0.15))
+    ra.box("gp_roof", (1.06, 0.76, 0.05), (-0.3, 0.2, 0.7), m["steel"])
+    ra.cylinder("gp_turbine", 0.14, 0.8, (-0.3, -0.18, 0.3), m["yellow"], rotation=(0, math.radians(90), 0), verts=18, radius2=0.2)
+    ra.cylinder("gp_generator", 0.18, 0.3, (0.3, -0.18, 0.28), ra.rusty_metal("gp_gen", (0.08, 0.2, 0.12), rust=0.15),
+                rotation=(0, math.radians(90), 0), verts=18)
+    ra.cylinder("gp_stack", 0.12, 1.9, (-0.65, 0.4, 1.03), m["white"], verts=16)
+    for z in (1.7, 1.9):
+        ra.cylinder("gp_band", 0.125, 0.06, (-0.65, 0.4, z), m["red"], verts=16)
+    ra.box("gp_transformer", (0.3, 0.3, 0.35), (0.55, 0.3, 0.255), ra.rusty_metal("gp_tr", (0.08, 0.2, 0.12), rust=0.2), bevel=0.02)
+    ra.cylinder("gp_terminal", 0.04, 0.3, (0.6, 0.3, 0.58), m["copper"], verts=10)
+    ra.sphere("gp_insulator", 0.05, (0.6, 0.3, 0.75), ra.plain("gp_porcelain", (0.75, 0.72, 0.65), 0.3), segments=10)
+    pipe_run((-0.9, -0.3, 0.2), (-0.7, -0.3, 0.2), 0.04, m["yellow"])
+
+
+def build_diesel_generator():
+    """A diesel generator set: a green engine housing on a skid with louvres, a fuel tank under it, a short
+    exhaust with a rain cap and the terminal for the pole's wire."""
+    m = oil_mats()
+    green = ra.rusty_metal("dg_green", (0.1, 0.25, 0.12), rust=0.2)
+    ra.box("dg_skid", (1.3, 0.7, 0.12), (0, 0, 0.06), m["steel"])
+    ra.box("dg_tank", (1.1, 0.55, 0.12), (0, 0, 0.18), m["dark"], bevel=0.02)
+    ra.box("dg_body", (1.1, 0.55, 0.5), (0, 0, 0.5), green, bevel=0.03)
+    for k in range(6):
+        ra.box("dg_louvre", (0.02, 0.4, 0.03), (-0.45 + k * 0.06, -0.28, 0.5), m["dark"], rotation=(0, 0, math.radians(90)))
+    ra.box("dg_panel", (0.2, 0.02, 0.18), (0.3, -0.28, 0.55), m["dark"])
+    ra.box("dg_light", (0.05, 0.02, 0.03), (0.3, -0.295, 0.6), m["lamp"])
+    ra.cylinder("dg_exhaust", 0.05, 0.4, (-0.35, 0.15, 0.95), m["dark"], verts=10)
+    ra.box("dg_cap", (0.12, 0.12, 0.02), (-0.35, 0.15, 1.16), m["dark"], rotation=(math.radians(20), 0, 0))
+    ra.cylinder("dg_terminal", 0.04, 0.25, (0.5, 0.15, 0.85), m["copper"], verts=10)
+    ra.sphere("dg_insulator", 0.05, (0.5, 0.15, 1.0), ra.plain("dg_porcelain", (0.75, 0.72, 0.65), 0.3), segments=10)
+
+
+def build_pump():
+    """A pump on a pipe: a squat steel casing with a motor on top and flanges to the tiles behind and in front;
+    the game shows what flows through it."""
+    m = oil_mats()
+    pump_paint = ra.rusty_metal("pump_blue", (0.05, 0.14, 0.32), rust=0.15)
+    ra.box("pump_foot", (0.8, 0.8, 0.1), (0, 0, 0.05), m["steel"], bevel=0.03)
+    ra.cylinder("pump_casing", 0.28, 0.3, (0, 0, 0.25), pump_paint, verts=20)
+    ra.cylinder("pump_motor", 0.16, 0.3, (0, 0, 0.55), m["steel"], verts=16)
+    ra.box("pump_lamp", (0.06, 0.02, 0.04), (0, -0.17, 0.55), m["lamp"])
+    for y in (-0.42, 0.42):
+        ra.cylinder("pump_flange", 0.12, 0.05, (0, y, 0.25), m["pipe"], rotation=(math.radians(90), 0, 0), verts=14)
+        pipe_run((0, y * 0.6, 0.25), (0, y, 0.25), 0.08, m["pipe"])
+
+
+def build_tank():
+    """A storage tank: a white cylinder with a slightly domed roof, a stair winding up it and a gauge."""
+    m = oil_mats()
+    ra.cylinder("tank_ring", 0.85, 0.08, (0, 0, 0.04), m["concrete"], verts=40)
+    ra.cylinder("tank_body", 0.78, 1.0, (0, 0, 0.58), m["white"], verts=40)
+    ra.sphere("tank_roof", 0.78, (0, 0, 1.08), m["white"], scale=(1, 1, 0.15), segments=24)
+    for k in range(10):
+        a = math.radians(-120 + k * 14)
+        ra.box("tank_step", (0.18, 0.08, 0.02), (0.84 * math.cos(a), 0.84 * math.sin(a), 0.15 + k * 0.095), m["steel"],
+               rotation=(0, 0, a + math.pi / 2))
+    ra.box("tank_gauge", (0.04, 0.02, 0.6), (0, -0.79, 0.6), m["dark"])
+    ra.box("tank_band", (0.04, 0.025, 0.08), (0, -0.8, 0.75), m["red"])
+    pipe_run((0.5, -0.5, 0.15), (0.75, -0.75, 0.15), 0.05, m["pipe"])
+
+
+def pipe_straight(along_x=True, s=1.0, length=2.0):
+    """A pipe the length of a tile on low supports, flanged at both ends so pipes on neighbouring tiles join up."""
+    m = oil_mats()
+    rot = (0, math.radians(90), 0) if along_x else (math.radians(90), 0, 0)
+
+    def at(a, z):
+        return Vector((a * s, 0, z * s)) if along_x else Vector((0, a * s, z * s))
+
+    ra.cylinder("pipe_body", 0.16 * s, length * s, at(0, 0.3), m["pipe"], rotation=rot, verts=16)
+    for a in (-length / 2 + 0.04, length / 2 - 0.04):
+        ra.cylinder("pipe_flange", 0.2 * s, 0.06 * s, at(a, 0.3), m["steel"], rotation=rot, verts=16)
+    for a in (-0.5, 0.5):
+        ra.box("pipe_support", (0.12 * s, 0.4 * s, 0.14 * s) if along_x else (0.4 * s, 0.12 * s, 0.14 * s), at(a * length / 2, 0.07),
+               m["steel"])
+    ra.cylinder("pipe_band", 0.165 * s, 0.1 * s, at(0, 0.3), m["yellow"], rotation=rot, verts=16)
+
+
+def pipe_bend(sides):
+    """A pipe turning a corner between two sides of its tile, along a quarter circle like belt_curve."""
+    m = oil_mats()
+    (ax, ay), (bx, by) = SIDES[sides[0]], SIDES[sides[1]]
+    centre = (ax + bx, ay + by)
+    mid = math.atan2(-centre[1], -centre[0])
+    a0, a1 = mid - math.pi / 4, mid + math.pi / 4
+    n = 8
+    for k in range(n):
+        u0, u1 = a0 + (a1 - a0) * k / n, a0 + (a1 - a0) * (k + 1) / n
+        p0 = (centre[0] + math.cos(u0), centre[1] + math.sin(u0), 0.3)
+        p1 = (centre[0] + math.cos(u1), centre[1] + math.sin(u1), 0.3)
+        pipe_run(p0, p1, 0.16, m["pipe"], "pipe_body")
+        ra.sphere("pipe_joint", 0.16, p1, m["pipe"], segments=12)
+    for u in (a0, a1):
+        p = (centre[0] + math.cos(u), centre[1] + math.sin(u), 0.3)
+        ra.sphere("pipe_flange", 0.2, p, m["steel"], scale=(1, 1, 1), segments=12)
+    um = (a0 + a1) / 2
+    ra.box("pipe_support", (0.3, 0.3, 0.14), (centre[0] + math.cos(um), centre[1] + math.sin(um), 0.07), m["steel"])
+
+
+def road():
+    """A tile of asphalt 2 m square, so roads on neighbouring tiles join: dark tar with a grain of chippings."""
+    mat = ra.Mat("asphalt")
+    fine = mat.noise(60.0, detail=8)
+    coarse = mat.noise(6.0, detail=3)
+    col = mat.ramp(fine.outputs["Fac"], [(0.35, (0.018, 0.018, 0.02)), (0.6, (0.05, 0.05, 0.052)), (0.75, (0.11, 0.105, 0.1))]).outputs["Color"]
+    col = mat.mix(0.35, col, mat.ramp(coarse.outputs["Fac"], [(0.3, (0.75, 0.75, 0.75)), (0.7, (1.15, 1.15, 1.15))]).outputs["Color"], "MULTIPLY")
+    ra.box("road", (2.0, 2.0, 0.03), (0, 0, 0.015), mat.done(col, 0.85, 0.0, fine.outputs["Fac"], 0.3))
+    return meshes()
+
+
+OIL = {
+    # name: (canvas width, height, camera target height, builder); each stands on one tile.
+    "pumpjack": (128, 144, 0.7, build_pumpjack),
+    "gas_well": (112, 128, 0.55, build_gas_well),
+    "offshore_platform": (144, 176, 1.0, build_offshore_platform),
+    "water_injector": (112, 112, 0.4, build_water_injector),
+    "oil_separator": (112, 96, 0.4, build_oil_separator),
+    "distillery": (96, 144, 0.8, build_distillery),
+    "refinery": (136, 208, 1.3, build_refinery),
+    "cracker": (128, 176, 1.1, build_cracker),
+    "chemical_plant": (136, 144, 0.6, build_chemical_plant),
+    "tank": (112, 128, 0.6, build_tank),
+}
+
+# Generators, wired to the pole that reaches them: where the wires meet each.
+OIL_POWER = {
+    "gas_plant": (128, 176, 0.9, build_gas_plant, Vector((0.6, 0.3, 0.78))),
+    "diesel_generator": (112, 112, 0.5, build_diesel_generator, Vector((0.5, 0.15, 1.03))),
+}
+
+# Pipes: the belt sprites' names with "_pipe", so the game lays them like belts.
+PIPES = {
+    "belt_ew_pipe": (72, 64, 0.1, lambda: pipe_straight(True)),
+    "belt_ns_pipe": (72, 72, 0.1, lambda: pipe_straight(False)),
+    **{f"belt_{c}_pipe": (72, 72, 0.1, lambda c=c: pipe_bend(c)) for c in ("ne", "es", "sw", "nw")},
+    "pump": (64, 72, 0.3, build_pump),
+}
+
+
+def render_oil(layout: dict, only=()):
+    for name, (w, h, tz, build) in OIL.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        make = seaward(build) if name == "offshore_platform" else crafted(build)
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), make, true_scale=True)
+        icon = "item_storage_tank" if name == "tank" else f"furniture_{name}"
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"{icon}.png")
+    for name, (w, h, tz, build, wire) in OIL_POWER.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        target = Vector((0, 0, tz))
+        layout[name] = render_sprite(name, w, h, target, crafted(build), true_scale=True)
+        layout[name]["wireX"], layout[name]["wireY"] = anchor(w, h, target, wire)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"item_power_{name}.png")
+    for name, (w, h, tz, build) in PIPES.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build), true_scale=True)
+    if not only or "road" in only:
+        layout["road"] = render_sprite("road", 112, 96, Vector((0, 0, 0)), road)
+
+
 # --- Power ----------------------------------------------------------------------------------------
 
 def build_generator():
@@ -2620,8 +3019,83 @@ def icon_models():
              ra.plain("crust", (0.45, 0.25, 0.06), 0.6, variation=0.25, bump=0.6))
         ra.sphere("lemon", 0.04, (0.15, -0.12, 0.04), ra.plain("lemon", (0.85, 0.75, 0.05), 0.4), scale=(1, 1, 0.5), segments=10)
 
+    def drum(color, band=(0.6, 0.6, 0.6)):
+        def build():
+            paint = ra.rusty_metal("drum", color, rust=0.25)
+            ra.cylinder("drum", 0.15, 0.4, (0, 0, 0.2), paint, verts=28)
+            for z in (0.13, 0.27):
+                ra.cylinder("drum_rib", 0.155, 0.02, (0, 0, z), paint, verts=28)
+            ra.cylinder("drum_band", 0.152, 0.07, (0, 0, 0.2), ra.plain("drum_band", band, 0.5), verts=28)
+            ra.cylinder("drum_bung", 0.025, 0.02, (0.07, 0, 0.405), ra.plain("bung", (0.3, 0.3, 0.3), 0.4, 0.8), verts=10)
+        return build
+
+    def cylinder_of(color):
+        def build():
+            paint = ra.plain("gas_cyl", color, 0.4, 0.3, variation=0.1, grime=0.4)
+            ra.cylinder("gas_body", 0.1, 0.42, (0, 0, 0.21), paint, verts=24)
+            ra.sphere("gas_top", 0.1, (0, 0, 0.42), paint, scale=(1, 1, 0.6), segments=16)
+            ra.cylinder("gas_valve", 0.03, 0.08, (0, 0, 0.5), ra.plain("brass", (0.6, 0.42, 0.12), 0.35, 0.9), verts=10)
+            ra.torus("gas_guard", 0.06, 0.012, (0, 0, 0.55), ra.plain("guard", (0.1, 0.1, 0.1), 0.5, 0.6))
+        return build
+
+    def jerrycan(color):
+        def build():
+            paint = ra.plain("can", color, 0.4, 0.4, variation=0.12, grime=0.5)
+            ra.box("can_body", (0.3, 0.13, 0.38), (0, 0, 0.19), paint, bevel=0.03)
+            ra.box("can_x", (0.24, 0.135, 0.02), (0, 0, 0.19), paint, rotation=(0, math.radians(50), 0))
+            ra.box("can_x2", (0.24, 0.135, 0.02), (0, 0, 0.19), paint, rotation=(0, math.radians(-50), 0))
+            for x in (-0.06, 0.02, 0.1):
+                ra.box("can_handle", (0.04, 0.05, 0.06), (x, 0, 0.41), paint, bevel=0.01)
+            ra.cylinder("can_spout", 0.03, 0.06, (-0.11, 0, 0.42), ra.plain("cap", (0.1, 0.1, 0.1), 0.5), verts=12)
+        return build
+
+    def asphalt():
+        mat = ra.plain("asphalt", (0.02, 0.02, 0.022), 0.85, variation=0.25, scale=30, bump=0.8)
+        for k in range(3):
+            b = ra.box("asphalt", (0.2, 0.16, 0.07), (-0.1 + k * 0.1, (k % 2) * 0.08 - 0.04, 0.035 + (k == 1) * 0.06), mat, bevel=0.02,
+                       rotation=(0, 0, random.uniform(-0.4, 0.4)))
+            ra.displace(b, 0.01, 0.2, 1)
+
+    def plastic():
+        tray = ra.plain("plastic_bag", (0.65, 0.7, 0.75), 0.25, variation=0.05)
+        ra.sphere("bag", 0.17, (0, 0, 0.12), tray, scale=(1, 0.8, 0.75), segments=20)
+        for i in range(40):
+            a, r = random.uniform(0, math.tau), random.uniform(0, 1) ** 0.7 * 0.13
+            ra.sphere("granule", 0.018, (r * math.cos(a), r * math.sin(a) * 0.8, 0.23 + random.uniform(0, 0.03)),
+                      ra.plain(f"granule{i % 3}", [(0.85, 0.85, 0.82), (0.15, 0.35, 0.7), (0.75, 0.15, 0.1)][i % 3], 0.3), segments=8)
+
+    def rubber():
+        black = ra.plain("rubber", (0.025, 0.025, 0.027), 0.7, variation=0.1, bump=0.2)
+        for k, (x, z) in enumerate(((-0.09, 0.07), (0.09, 0.07), (0, 0.2))):
+            ra.box("bale", (0.17, 0.2, 0.12), (x, 0, z), black, bevel=0.03)
+
+    def gasket():
+        black = ra.plain("gasket", (0.03, 0.03, 0.032), 0.6, variation=0.1)
+        copper = ra.plain("gasket_ring", (0.65, 0.28, 0.12), 0.3, 0.9)
+        ra.torus("gasket", 0.14, 0.035, (-0.05, 0, 0.035), black)
+        ra.torus("gasket_ring", 0.1, 0.02, (0.12, 0.05, 0.06), copper, rotation=(math.radians(20), 0, 0))
+
+    def road_tile():
+        mat = ra.plain("road", (0.03, 0.03, 0.032), 0.85, variation=0.25, scale=30, bump=0.6)
+        ra.box("road", (0.5, 0.5, 0.04), (0, 0, 0.02), mat, bevel=0.01)
+        ra.box("road_line", (0.06, 0.2, 0.005), (0, 0, 0.042), ra.plain("road_line", (0.8, 0.75, 0.6), 0.6))
+
     return {
         "item_tool_fishing_rod": fishing_rod,
+        "item_crude_oil": drum((0.02, 0.02, 0.022), (0.55, 0.4, 0.05)),
+        "item_natural_gas": cylinder_of((0.6, 0.45, 0.04)),
+        "item_gasoline": jerrycan((0.55, 0.06, 0.03)),
+        "item_diesel": jerrycan((0.1, 0.3, 0.1)),
+        "item_kerosene": oil_bottle_of((0.2, 0.35, 0.55)),
+        "item_asphalt": asphalt,
+        "item_plastic": plastic,
+        "item_synthetic_rubber": rubber,
+        "item_fertilizer": sack((0.25, 0.45, 0.2)),
+        "item_gasket": gasket,
+        "item_logistics_pipe": lambda: pipe_straight(True, 0.22, 1.8),
+        "item_logistics_pump": lambda: (pipe_straight(False, 0.4, 2.0), build_pump()),
+        "item_logistics_road": road_tile,
+
         "item_herring": pair((0.35, 0.42, 0.5), (0.8, 0.82, 0.82)),
         "item_cod": one_fish((0.35, 0.3, 0.18), (0.8, 0.78, 0.7)),
         "item_carp": one_fish((0.4, 0.3, 0.08), (0.75, 0.6, 0.25)),
@@ -2711,7 +3185,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "office", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "office", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -2752,6 +3226,9 @@ if __name__ == "__main__":
     if "coast" in args or any(a in COAST or a.startswith("flotsam_") or a == "water" for a in args):
         # Names of coast sprites render just those.
         render_coast(layout, [a for a in args if a in COAST or a.startswith("flotsam_") or a == "water"])
+    if "oil" in args or any(a in OIL or a in OIL_POWER or a in PIPES or a == "road" for a in args):
+        # Names of oil sprites render just those.
+        render_oil(layout, [a for a in args if a in OIL or a in OIL_POWER or a in PIPES or a == "road"])
     if "logistics" in args or any(a in LOGISTICS for a in args):
         # Names of logistics sprites render just those.
         render_logistics(layout, [a for a in args if a in LOGISTICS])

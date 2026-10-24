@@ -443,5 +443,89 @@
  "water": {
   "anchorX": 32,
   "anchorY": 22
+ },
+ "pumpjack": {
+  "anchorX": 64,
+  "anchorY": 88
+ },
+ "gas_well": {
+  "anchorX": 56,
+  "anchorY": 76
+ },
+ "offshore_platform": {
+  "anchorX": 72,
+  "anchorY": 111
+ },
+ "water_injector": {
+  "anchorX": 56,
+  "anchorY": 65
+ },
+ "oil_separator": {
+  "anchorX": 56,
+  "anchorY": 57
+ },
+ "distillery": {
+  "anchorX": 48,
+  "anchorY": 90
+ },
+ "refinery": {
+  "anchorX": 68,
+  "anchorY": 133
+ },
+ "cracker": {
+  "anchorX": 64,
+  "anchorY": 113
+ },
+ "chemical_plant": {
+  "anchorX": 68,
+  "anchorY": 86
+ },
+ "tank": {
+  "anchorX": 56,
+  "anchorY": 78
+ },
+ "gas_plant": {
+  "anchorX": 64,
+  "anchorY": 108,
+  "wireX": 83,
+  "wireY": 84
+ },
+ "diesel_generator": {
+  "anchorX": 56,
+  "anchorY": 67,
+  "wireX": 72,
+  "wireY": 41
+ },
+ "belt_ew_pipe": {
+  "anchorX": 36,
+  "anchorY": 34
+ },
+ "belt_ns_pipe": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_ne_pipe": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_es_pipe": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_sw_pipe": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "belt_nw_pipe": {
+  "anchorX": 36,
+  "anchorY": 38
+ },
+ "pump": {
+  "anchorX": 32,
+  "anchorY": 43
+ },
+ "road": {
+  "anchorX": 56,
+  "anchorY": 48
  }
 }

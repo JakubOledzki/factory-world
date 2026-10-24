@@ -397,6 +397,20 @@ func _render_send() -> void:
 	_update_send()
 
 
+## Diesel a train to `km` away burns, as DieselRules counts it, when the station has enough of it
+## besides what is being sent; 0 when it goes by steam.
+func _diesel_for(km: float, sending: Dictionary, quantity: int) -> int:
+	var per_unit := float(_state["rates"].get("dieselKmPerUnit", 0))
+	if per_unit <= 0.0:
+		return 0
+	var need := maxi(1, ceili(km / per_unit))
+	for stack: Dictionary in _state["items"]:
+		if stack["id"] == "diesel":
+			var spare := int(stack["quantity"]) - (quantity if sending.get("id", "") == "diesel" else 0)
+			return need if spare >= need else 0
+	return 0
+
+
 func _send_stack() -> Dictionary:
 	return _send_item.get_item_metadata(_send_item.selected)
 
@@ -408,8 +422,15 @@ func _update_send() -> void:
 		# As SeaRules counts it; a lighthouse by either port makes the trip shorter, which shows on arrival.
 		trip["fee"] = (int(trip["fee"]) + 3) / 4
 		trip["seconds"] = float(trip["seconds"]) * 2.0
+	var diesel := 0 if _by_sea and port else _diesel_for(float(trip["km"]), _send_stack(), quantity)
+	if diesel > 0:
+		trip["seconds"] = float(trip["seconds"]) * float(_state["rates"].get("dieselTripFactor", 1.0))
 	_send_info.text = "%s  ·  %s km  ·  w drodze %s  ·  opłata %s" % [
 		_where(), _grouped(roundi(trip["km"])), _clock(trip["seconds"]), UI.money(trip["fee"])]
+	if diesel > 0:
+		_send_info.text += "\nPociąg spalinowy: spali %d × olej napędowy ze stacji i dojedzie szybciej." % diesel
+	elif not (_by_sea and port) and _state["rates"].has("dieselKmPerUnit"):
+		_send_info.text += "\nZaładuj na stację olej napędowy, a pojedzie szybszy pociąg spalinowy."
 	_send_button.disabled = _destination == plot or trip["fee"] > balance
 	if trip["fee"] > balance:
 		_send_info.text += "\nNie masz tyle pieniędzy."

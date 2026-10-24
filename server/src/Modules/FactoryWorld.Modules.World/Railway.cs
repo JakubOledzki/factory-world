@@ -239,7 +239,6 @@ internal static class StationStock
         await insert.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    /// <summary>The owner of a plot, or null when nobody bought it.</summary>
     /// <summary>Takes the diesel a train of <paramref name="km"/> burns from the station, when it holds that much; true when it did.</summary>
     public static async Task<bool> FuelAsync(GameDb db, int x, int y, double km, CancellationToken cancellationToken)
     {
@@ -253,6 +252,7 @@ internal static class StationStock
         return true;
     }
 
+    /// <summary>The owner of a plot, or null when nobody bought it.</summary>
     public static async Task<Guid?> OwnerAsync(GameDb db, int x, int y, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync("SELECT owner_id FROM world.plots WHERE x = @x AND y = @y", cancellationToken);

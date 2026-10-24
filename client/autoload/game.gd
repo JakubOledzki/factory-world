@@ -103,7 +103,7 @@ const ERRORS := {
 	"machine_full": "Tyle się nie zmieści w maszynie.",
 	"machine_busy": "Przy ogniu leży już inne paliwo. Wyjmij je najpierw.",
 	"not_processable": "Tego nie da się tu włożyć.",
-	"not_fuel": "Generator pali tylko drewno i węgiel.",
+	"not_fuel": "Ten generator tego nie spali.",
 	"generator_busy": "Przy ogniu leży już inny opał. Wyjmij go najpierw.",
 	"generator_full": "Tyle opału nie zmieści się w generatorze.",
 	"no_contract": "Tego zlecenia już nie ma.",
@@ -121,6 +121,13 @@ const ERRORS := {
 	"research_busy": "Trwa już inne badanie. Poczekaj albo je przerwij.",
 	"research_locked": "Najpierw zbadaj technologie, których ta wymaga.",
 	"no_research": "Nic się teraz nie bada.",
+	"not_surveyed": "Najpierw zbadaj złoża tej działki (mapa świata, Badanie złóż).",
+	"no_oil": "Badanie nie znalazło tu ropy.",
+	"no_gas": "Badanie nie znalazło tu gazu.",
+	"too_many_wells": "Na tym złożu stoi już tyle szybów, ile ono uniesie.",
+	"polluted": "Ropa z cieknącego szybu zanieczyściła tu ziemię. Uszczelnij szyb albo postaw przy nim separator.",
+	"no_gasket": "Nie masz uszczelki.",
+	"well_full": "W szybie jest już komplet uszczelek.",
 }
 
 var token := ""

@@ -11,6 +11,8 @@ extends Node2D
 ## feeds it from behind; fast and express inserters swing in fewer ticks. They are painted red and blue.
 ## A cable station runs like a fast belt, but sends what reaches its end along a cable, over whatever
 ## stands below, to the next station ahead facing the same way (up to CABLE_SPAN tiles off).
+## Pipes and pumps are the belts and inserters of fluids: a pipe joins only pipes and carries only
+## fluids, a pump moves only fluids, and an inserter never touches them.
 
 const BELT := "logistics_belt"
 const INSERTER := "logistics_inserter"
@@ -24,11 +26,13 @@ const CABLE_HEIGHT := 2.3
 const CABLE_COLOR := Color("#2b2b30")
 const GONDOLA_COLOR := Color("#c8321e")
 ## Places a tick an item moves along a belt of each level, and ticks an inserter's arm takes to swing one way.
-const BELT_SPEEDS := {"logistics_belt": 1, "logistics_fast_belt": 2, "logistics_express_belt": 3}
-const INSERTER_SWINGS := {"logistics_inserter": 4, "logistics_fast_inserter": 2, "logistics_express_inserter": 1}
+const BELT_SPEEDS := {"logistics_belt": 1, "logistics_fast_belt": 2, "logistics_express_belt": 3, "logistics_pipe": 3}
+const INSERTER_SWINGS := {"logistics_inserter": 4, "logistics_fast_inserter": 2, "logistics_express_inserter": 1, "logistics_pump": 1}
+## What carries fluids: a pipe instead of a belt, a pump instead of an inserter.
+const FLUID_CARRIERS := ["logistics_pipe", "logistics_pump"]
 ## Sprites of upgraded belts and inserters end in the level's name.
 const TIER_SUFFIXES := {"logistics_fast_belt": "_fast", "logistics_express_belt": "_express",
-	"logistics_fast_inserter": "_fast", "logistics_express_inserter": "_express"}
+	"logistics_fast_inserter": "_fast", "logistics_express_inserter": "_express", "logistics_pipe": "_pipe", "logistics_pump": "_pump"}
 const ARM_COLORS := {"": Color("#d9a21c"), "_fast": Color("#c8321e"), "_express": Color("#2c62c8")}
 ## Belt sprites by rotation: south and north run up and down the screen, east and west across.
 const BELT_SPRITES := ["belt_ns", "belt_ew", "belt_ns", "belt_ew"]
@@ -77,11 +81,11 @@ var _cables: CableLines
 
 func _ready() -> void:
 	for sprite: String in ["belt_ns", "belt_ew"] + CURVE_SPRITES.values():
-		for suffix: String in ["", "_fast", "_express"]:
+		for suffix: String in ["", "_fast", "_express", "_pipe"]:
 			_textures[sprite + suffix] = load("res://art/plot/%s%s.png" % [sprite, suffix])
 
 
-## "_fast" or "_express" for upgraded belts and inserters, whose sprites end so; "" for the rest.
+## "_fast" or "_express" for upgraded belts and inserters, "_pipe" for pipes, whose sprites end so; "" for the rest.
 static func tier_suffix(kind: String) -> String:
 	return TIER_SUFFIXES.get(kind, "")
 
@@ -129,7 +133,7 @@ func set_objects(placed: Dictionary) -> void:
 			belts[cell] = {"id": object["id"], "rotation": rotation, "items": items, "moved": {}, "out": [], "bend": 0,
 				"splitter": object["kind"] == SPLITTER, "filter": old.get("filter", []), "filterSide": int(old.get("filterSide", 0)),
 				"turn": int(old.get("turn", 0)), "speed": CABLE_SPEED if object["kind"] == CABLE else int(BELT_SPEEDS.get(object["kind"], 1)),
-				"suffix": tier_suffix(object["kind"]), "cable": object["kind"] == CABLE}
+				"suffix": tier_suffix(object["kind"]), "cable": object["kind"] == CABLE, "fluid": object["kind"] in FLUID_CARRIERS}
 		elif INSERTER_SWINGS.has(object["kind"]):
 			var old: Dictionary = _find(_inserters, object["id"])
 			inserters[cell] = {"id": object["id"], "rotation": rotation, "hand": old.get("hand"), "swing": int(old.get("swing", 0)),
@@ -225,7 +229,7 @@ func _bend(cell: Vector2i) -> int:
 		return 0
 	var feeds := func(from: Vector2i) -> bool:
 		var other: Dictionary = _belts.get(cell + from, {})
-		return not other.is_empty() and not other["splitter"] and facing(other["rotation"]) == -from
+		return not other.is_empty() and not other["splitter"] and other["fluid"] == belt["fluid"] and facing(other["rotation"]) == -from
 	var left := left_of(belt["rotation"])
 	var from_left: bool = feeds.call(left)
 	var from_right: bool = feeds.call(-left)
@@ -241,7 +245,7 @@ func _connect(cell: Vector2i, way: Vector2i) -> Dictionary:
 		return {}
 	var next: Dictionary = _belts[target]
 	var next_facing := facing(next["rotation"])
-	if next_facing == -way:
+	if next_facing == -way or next["fluid"] != _belts[cell]["fluid"]:
 		return {}
 	if next_facing == way or int(next["bend"]) != 0:
 		return {"to": target, "into": [0, 1], "entry": 0}
@@ -455,6 +459,8 @@ func _draw() -> void:
 			draw_texture(_textures[sprite], (Vector2(cell) + Vector2(0.5, 0.5)) * tile - anchor)
 	# Chevrons pointing the way the band runs, moving as many slots a tick as the belt is fast.
 	for cell: Vector2i in _belts:
+		if _belts[cell]["fluid"]:
+			continue  # a pipe is closed
 		var phase := fmod(float(server_now.call()) / tick_ms * int(_belts[cell]["speed"]), 1.0)
 		for k in belt_slots:
 			var s := (k + phase) / belt_slots
@@ -564,6 +570,14 @@ class InserterArm extends Node2D:
 		if inserter.is_empty():
 			return
 		var f := logistics._fraction()
+		if inserter["suffix"] == "_pump":
+			# A pump has no arm: what it moves shows over it while it flows through.
+			var flowing: Variant = inserter.get("hand")
+			if flowing != null:
+				var lift_px := PlotLogistics.PPM * cos(PI / 4)
+				var size := PlotLogistics.ITEM_SIZE
+				draw_texture_rect(logistics._icon(flowing), Rect2(Vector2(-size / 2, -1.1 * lift_px - size), Vector2(size, size)), false)
+			return
 		var swing := lerpf(float(inserter["was"]), float(inserter["swing"]), f) / maxf(int(inserter["swingTicks"]), 1)
 		var dir := Vector2(PlotLogistics.facing(inserter["rotation"]))
 		var side := Vector2(-dir.y, dir.x)
