@@ -1,0 +1,375 @@
+using System.Text.Json;
+using FactoryWorld.Modules.Abstractions;
+using FactoryWorld.Modules.Abstractions.Contracts;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using NpgsqlTypes;
+
+namespace FactoryWorld.Modules.Power;
+
+/// <summary>A plot's power grid as it was last settled (<see cref="GridData"/> as JSON).</summary>
+public sealed class PowerPlotRow
+{
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public DateTimeOffset SettledAt { get; set; }
+
+    public string Data { get; set; } = "{}";
+}
+
+public sealed class PowerDbContext(DbContextOptions<PowerDbContext> options, GameDb gameDb) : ModuleDbContext(options, gameDb)
+{
+    public const string Schema = "power";
+
+    protected override void OnModelCreating(ModelBuilder model)
+    {
+        model.HasDefaultSchema(Schema);
+        model.Entity<PowerPlotRow>(e =>
+        {
+            e.ToTable("plots");
+            e.HasKey(p => new { p.X, p.Y });
+            e.Property(p => p.X).HasColumnName("x");
+            e.Property(p => p.Y).HasColumnName("y");
+            e.Property(p => p.SettledAt).HasColumnName("settled_at");
+            e.Property(p => p.Data).HasColumnName("data").HasColumnType("jsonb");
+        });
+    }
+}
+
+/// <summary>A generator and the network it stands on, as the generator window shows them.</summary>
+public sealed record GeneratorReply(Guid Id, PowerGrid Grid, DateTimeOffset ServerTime, IReadOnlyList<(string Item, int Quantity)> Taken);
+
+/// <summary>
+/// The power grids of plots. Within one request (one scope) a plot's grid is read once and handed
+/// to everyone who asks, so belts and inserters, the machines they feed and the generators they
+/// fuel all work with the same one.
+/// </summary>
+public sealed class PowerService(GameDb db, IPlotObjects plots, IInventory inventory, TimeProvider time, IServiceProvider services)
+    : IPlotPower, IPlotAutomation
+{
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+
+    private readonly Dictionary<(int, int), PowerGrid> _grids = [];
+
+    async Task<IPowerGrid> IPlotPower.OpenAsync(int x, int y, CancellationToken cancellationToken) => await OpenAsync(x, y, cancellationToken);
+
+    public async Task<PowerGrid> OpenAsync(int x, int y, CancellationToken cancellationToken)
+    {
+        if (_grids.TryGetValue((x, y), out var open))
+        {
+            return open;
+        }
+
+        // A grid starts the first time it is looked at, so a machine's time is counted from a moment that stays put.
+        await using (var create = await db.CommandAsync(
+            "INSERT INTO power.plots (x, y, settled_at, data) VALUES (@x, @y, @now, '{}') ON CONFLICT DO NOTHING", cancellationToken))
+        {
+            create.Parameters.AddWithValue("x", x);
+            create.Parameters.AddWithValue("y", y);
+            create.Parameters.AddWithValue("now", time.GetUtcNow());
+            await create.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        DateTimeOffset settled;
+        GridData data;
+        await using (var read = await db.CommandAsync("SELECT settled_at, data FROM power.plots WHERE x = @x AND y = @y FOR UPDATE", cancellationToken))
+        {
+            read.Parameters.AddWithValue("x", x);
+            read.Parameters.AddWithValue("y", y);
+            await using var reader = await read.ExecuteReaderAsync(cancellationToken);
+            await reader.ReadAsync(cancellationToken);
+            settled = reader.GetFieldValue<DateTimeOffset>(0);
+            data = JsonSerializer.Deserialize<GridData>(reader.GetString(1), Json) ?? new GridData();
+        }
+
+        var objects = await plots.ObjectsAsync(x, y, cancellationToken);
+        var grid = new PowerGrid(x, y, objects, data, settled, (d, at, ct) => WriteAsync(x, y, d, at, ct));
+        _grids[(x, y)] = grid;
+        return grid;
+    }
+
+    public async Task<IPowerClock> ClockAsync(Guid id, CancellationToken cancellationToken)
+    {
+        // A grid already open knows its machines, even one just taken off the plot.
+        if (_grids.Values.FirstOrDefault(g => g.Knows(id)) is { } known)
+        {
+            return known.Clock(id);
+        }
+
+        if (await plots.PlotOfAsync(id, cancellationToken) is { } plot)
+        {
+            return (await OpenAsync(plot.X, plot.Y, cancellationToken)).Clock(id);
+        }
+
+        return RealClock.Instance;
+    }
+
+    /// <summary>Settles the grid at the present moment, before objects are put on the plot or taken off.</summary>
+    public async Task CatchUpAsync(int x, int y, CancellationToken cancellationToken) =>
+        await db.InTransactionAsync(async () =>
+        {
+            var grid = await OpenAsync(x, y, cancellationToken);
+            grid.Settle(time.GetUtcNow());
+            await grid.SaveAsync(cancellationToken);
+        }, cancellationToken);
+
+    public Task<GeneratorReply> StateAsync(Guid player, int x, int y, Guid id, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            var grid = await GeneratorGridAsync(player, x, y, id, cancellationToken);
+            return new GeneratorReply(id, grid, time.GetUtcNow(), []);
+        }, cancellationToken);
+
+    /// <summary>Puts wood or coal from the inventory by the generator's fire.</summary>
+    public Task<GeneratorReply> LoadAsync(Guid player, int x, int y, Guid id, string item, int quantity, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            if (quantity < 1)
+            {
+                throw new GameException("bad_quantity", "Put in at least one.");
+            }
+
+            var grid = await GeneratorGridAsync(player, x, y, id, cancellationToken);
+            grid.Fuel(id, item, quantity, time.GetUtcNow());
+            await inventory.RemoveAsync(player, item, quantity, cancellationToken);
+            await grid.SaveAsync(cancellationToken);
+            return new GeneratorReply(id, grid, time.GetUtcNow(), []);
+        }, cancellationToken);
+
+    /// <summary>Takes the fuel not burning yet back into the inventory.</summary>
+    public Task<GeneratorReply> TakeAsync(Guid player, int x, int y, Guid id, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            var grid = await GeneratorGridAsync(player, x, y, id, cancellationToken, PlotRight.Take);
+            var taken = new List<(string, int)>();
+            if (grid.Unfuel(id, time.GetUtcNow()) is { } fuel)
+            {
+                await inventory.AddAsync(player, fuel.Item, fuel.Quantity, cancellationToken);
+                taken.Add(fuel);
+                await grid.SaveAsync(cancellationToken);
+            }
+
+            return new GeneratorReply(id, grid, time.GetUtcNow(), taken);
+        }, cancellationToken);
+
+    /// <summary>A generator taken off its plot: its fuel goes back to the owner, and the grid goes on without it.</summary>
+    public async Task ReleaseAsync(Guid owner, Guid id, CancellationToken cancellationToken)
+    {
+        // Objects are taken off only after the plot was caught up, which opened its grid.
+        if (_grids.Values.FirstOrDefault(g => g.Data.Generators.ContainsKey(id) || g.Objects.Any(o => o.Id == id && o.Kind == Items.Generator)) is not { } grid)
+        {
+            return;
+        }
+
+        var now = time.GetUtcNow();
+        if (grid.Unfuel(id, now) is { } fuel)
+        {
+            await inventory.AddAsync(owner, fuel.Item, fuel.Quantity, cancellationToken);
+        }
+
+        grid.Remove(id, now);
+        await grid.SaveAsync(cancellationToken);
+    }
+
+    /// <summary>The grid of a plot the player may do <paramref name="right"/> on (owner or company member) with the generator on it, after the plot's belts and
+    /// inserters (which may have fed it) are caught up.</summary>
+    private async Task<PowerGrid> GeneratorGridAsync(Guid player, int x, int y, Guid id, CancellationToken cancellationToken, PlotRight right = PlotRight.Work)
+    {
+        await plots.RequireOwnerAsync(player, x, y, cancellationToken, right);
+        foreach (var machinery in services.GetServices<IPlotAutomation>())
+        {
+            if (!ReferenceEquals(machinery, this))
+            {
+                await machinery.CatchUpAsync(x, y, cancellationToken);
+            }
+        }
+
+        var grid = await OpenAsync(x, y, cancellationToken);
+        if (!grid.Objects.Any(o => o.Id == id && o.Kind == Items.Generator))
+        {
+            throw new GameException("no_object", "There is no such generator on this plot.");
+        }
+
+        return grid;
+    }
+
+    private async Task WriteAsync(int x, int y, GridData data, DateTimeOffset settled, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            "UPDATE power.plots SET settled_at = @settled, data = @data WHERE x = @x AND y = @y", cancellationToken);
+        command.Parameters.AddWithValue("x", x);
+        command.Parameters.AddWithValue("y", y);
+        command.Parameters.AddWithValue("settled", settled);
+        command.Parameters.AddWithValue("data", NpgsqlDbType.Jsonb, JsonSerializer.Serialize(data, Json));
+        await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>Plain time, for a machine that stands on no plot.</summary>
+    private sealed class RealClock : IPowerClock
+    {
+        public static readonly RealClock Instance = new();
+
+        public DateTimeOffset At(DateTimeOffset now) => now;
+
+        public DateTimeOffset? When(DateTimeOffset machineTime, DateTimeOffset now) => machineTime > now ? machineTime : now;
+
+        public double Speed(DateTimeOffset now) => 1;
+    }
+}
+
+/// <summary>Empties a generator that is being picked up.</summary>
+public sealed class GeneratorContents(PowerService power) : IMachineContents
+{
+    public Task ReleaseAsync(Guid owner, Guid id, CancellationToken cancellationToken) => power.ReleaseAsync(owner, id, cancellationToken);
+}
+
+public sealed record GeneratorRequest(int X, int Y, Guid Id);
+
+public sealed record LoadGeneratorRequest(int X, int Y, Guid Id, string Item, int Quantity);
+
+public static class PowerJson
+{
+    /// <summary>The plot's networks for drawing them: which poles are wired together, which machines
+    /// and generators each powers and how well; sent along with the plot's logistics.</summary>
+    public static object Grid(PowerGrid grid, DateTimeOffset now)
+    {
+        var poles = grid.Objects.Where(o => o.Kind == Items.Pole).ToList();
+        var wires = new List<Guid[]>();
+        for (var i = 0; i < poles.Count; i++)
+        {
+            for (var j = i + 1; j < poles.Count; j++)
+            {
+                if (PowerRules.Wired(poles[i], poles[j]))
+                {
+                    wires.Add([poles[i].Id, poles[j].Id]);
+                }
+            }
+        }
+
+        return new
+        {
+            supplyRadius = PowerRules.SupplyRadius,
+            wireReach = PowerRules.WireReach,
+            wires,
+            networks = grid.Networks.Select(n => new
+            {
+                id = n.Id,
+                poles = n.Poles,
+                generators = n.Generators,
+                consumers = n.Consumers,
+                demandKw = n.DemandKw,
+                supplyKw = n.Generators.Count(g => grid.Generator(g, now).Running) * PowerRules.GeneratorKw,
+                speed = grid.Speed(n, now),
+                // Unix milliseconds of when a generator next burns out, or null.
+                changesAt = grid.NextChange(n, now)?.ToUnixTimeMilliseconds(),
+            }),
+            // What every machine that runs on power draws, by kind.
+            demand = PowerRules.Demand,
+        };
+    }
+
+    public static object Generator(GeneratorReply reply)
+    {
+        var grid = reply.Grid;
+        var now = reply.ServerTime;
+        var state = grid.Generator(reply.Id, now);
+        var network = grid.NetworkOf(reply.Id);
+        return new
+        {
+            id = reply.Id,
+            fuel = state.FuelItem is { } fuel && state.Fuel > 0 ? new { id = fuel, name = Items.Names[fuel], quantity = state.Fuel } : null,
+            // kJ left in the piece burning now and in all the fuel.
+            energy = state.Energy,
+            total = state.Total,
+            outputKw = grid.Output(reply.Id, now),
+            capacityKw = PowerRules.GeneratorKw,
+            runsOutAt = grid.RunsOutAt(reply.Id)?.ToUnixTimeMilliseconds(),
+            serverTime = now.ToUnixTimeMilliseconds(),
+            maxFuel = PowerRules.MaxFuel,
+            fuels = PowerRules.Fuels.Select(f => new { id = f.Key, name = Items.Names[f.Key], kj = f.Value }),
+            // The network it feeds, or null when no pole reaches it.
+            network = network is null ? null : new
+            {
+                id = network.Id,
+                generators = network.Generators.Count,
+                machines = network.Consumers.Count,
+                demandKw = network.DemandKw,
+                supplyKw = network.Generators.Count(g => grid.Generator(g, now).Running) * PowerRules.GeneratorKw,
+                speed = grid.Speed(network, now),
+            },
+            taken = reply.Taken.Select(t => new { id = t.Item, name = Items.Names[t.Item], quantity = t.Quantity }),
+        };
+    }
+}
+
+public abstract class GeneratorHandler(IServiceScopeFactory scopes) : IMessageHandler
+{
+    public abstract string Type { get; }
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var reply = await RunAsync(scope.ServiceProvider.GetRequiredService<PowerService>(), client.RequireAccount(), payload, cancellationToken);
+        return new Reply("generator", PowerJson.Generator(reply));
+    }
+
+    protected abstract Task<GeneratorReply> RunAsync(PowerService power, Guid player, JsonElement? payload, CancellationToken cancellationToken);
+}
+
+/// <summary>What a generator holds and gives now.</summary>
+public sealed class GetGeneratorHandler(IServiceScopeFactory scopes) : GeneratorHandler(scopes)
+{
+    public override string Type => "generator.get";
+
+    protected override Task<GeneratorReply> RunAsync(PowerService power, Guid player, JsonElement? payload, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<GeneratorRequest>(payload);
+        return power.StateAsync(player, request.X, request.Y, request.Id, cancellationToken);
+    }
+}
+
+public sealed class LoadGeneratorHandler(IServiceScopeFactory scopes) : GeneratorHandler(scopes)
+{
+    public override string Type => "generator.load";
+
+    protected override Task<GeneratorReply> RunAsync(PowerService power, Guid player, JsonElement? payload, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<LoadGeneratorRequest>(payload);
+        return power.LoadAsync(player, request.X, request.Y, request.Id, request.Item ?? "", request.Quantity, cancellationToken);
+    }
+}
+
+public sealed class TakeGeneratorHandler(IServiceScopeFactory scopes) : GeneratorHandler(scopes)
+{
+    public override string Type => "generator.take";
+
+    protected override Task<GeneratorReply> RunAsync(PowerService power, Guid player, JsonElement? payload, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<GeneratorRequest>(payload);
+        return power.TakeAsync(player, request.X, request.Y, request.Id, cancellationToken);
+    }
+}
+
+/// <summary>Generators that burn wood or coal, and poles that carry their power to machines on plots. Owns the <c>power</c> schema.</summary>
+public sealed class PowerModule : IGameModule
+{
+    public string Name => "Power";
+
+    public void RegisterServices(IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddModuleDbContext<PowerDbContext>(PowerDbContext.Schema);
+        services.AddScoped<PowerService>();
+        services.AddScoped<IPlotPower>(provider => provider.GetRequiredService<PowerService>());
+        services.AddScoped<IPlotAutomation>(provider => provider.GetRequiredService<PowerService>());
+        services.AddScoped<IMachineContents, GeneratorContents>();
+        services.AddSingleton<IMessageHandler, GetGeneratorHandler>();
+        services.AddSingleton<IMessageHandler, LoadGeneratorHandler>();
+        services.AddSingleton<IMessageHandler, TakeGeneratorHandler>();
+    }
+
+    public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>
+        services.MigrateModuleAsync<PowerDbContext>(cancellationToken);
+}

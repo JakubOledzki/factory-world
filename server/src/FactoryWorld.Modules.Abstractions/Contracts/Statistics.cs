@@ -46,6 +46,9 @@ public enum MachineActivity
 
     /// <summary>Nothing set to make.</summary>
     NoRecipe,
+
+    /// <summary>A machine that runs on power has none: no pole reaches it, or its generators burnt out.</summary>
+    NoPower,
 }
 
 /// <summary>Offered by each module that keeps machines (furnaces, mills...), so the statistics can show where the factory stalls.</summary>

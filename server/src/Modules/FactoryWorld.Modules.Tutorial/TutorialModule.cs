@@ -113,10 +113,16 @@ public static class TutorialRules
             "Postaw podajnik między stosem drewna a początkiem taśmy.",
             "Po badaniu podajnik kupisz u handlarza za 30 $. Bierze z pola za sobą i kładzie na pole przed sobą, więc obróć go (R) w stronę taśmy.",
             1, 50_00, 15, ["plot.placed"],
-            seen => Placed(seen, Items.Inserter)),
+            seen => Placed(seen, Items.Inserter),
+            [(Items.Generator, 1), (Items.Pole, 2)]),
+        new("power_line", "Prąd",
+            "Daj podajnikowi prąd: postaw generator parowy z drewnem i słup energetyczny obok podajnika.",
+            "Generator i słupy dostałeś w nagrodę. Kliknij generator i dołóż drewna; słup sięga 2 pola w każdą stronę, więc postaw go tak, by sięgał i podajnika, i generatora.",
+            1, 50_00, 20, ["generator", "logistics"],
+            seen => Powered(seen)),
         new("first_line", "Pierwsza automatyczna linia",
             "Niech podajnik położy drewno na taśmę i taśma je powiezie.",
-            "Jeśli nic się nie rusza, sprawdź, czy podajnik stoi tyłem do stosu, a przodem do taśmy, i czy w stosie jest drewno.",
+            "Jeśli nic się nie rusza, sprawdź, czy podajnik stoi tyłem do stosu, a przodem do taśmy, czy w stosie jest drewno i czy generator ma opał.",
             1, 500_00, 100, ["logistics"],
             // Only machinery puts items on belts, so anything riding one is the line at work.
             seen => seen.ReplyType == "logistics"
@@ -141,6 +147,16 @@ public static class TutorialRules
 
     private static long Researched(Seen seen, string technology) =>
         seen is { RequestType: "research.start", ReplyType: "research" } && seen.RequestString("technology") == technology ? 1 : 0;
+
+    /// <summary>A generator burning for machines on its network: seen in its own window or in the plot's logistics.</summary>
+    private static long Powered(Seen seen) => seen.ReplyType switch
+    {
+        "generator" => seen.Field("network") is { ValueKind: JsonValueKind.Object } network
+            && network.GetProperty("machines").GetInt32() > 0 && seen.Field("outputKw")?.GetDouble() > 0 ? 1 : 0,
+        "logistics" => seen.Field("power") is { ValueKind: JsonValueKind.Object } power && power.TryGetProperty("networks", out var networks)
+            && networks.EnumerateArray().Any(n => n.GetProperty("consumers").GetArrayLength() > 0 && n.GetProperty("speed").GetDouble() > 0) ? 1 : 0,
+        _ => 0,
+    };
 
     private static long Placed(Seen seen, string kind) =>
         seen.ReplyType == "plot.placed" && seen.Field("object")?.GetProperty("kind").GetString() == kind ? 1 : 0;

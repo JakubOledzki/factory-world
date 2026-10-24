@@ -53,6 +53,9 @@ public sealed class Contents
     /// <summary>How far the inserter's arm is, 0 (at the pick-up side) to <see cref="LogisticsRules.SwingTicks"/>.</summary>
     public int Swing { get; set; }
 
+    /// <summary>How much of its next move an inserter on too little power has the power for, 0 to 1.</summary>
+    public double Charge { get; set; }
+
     /// <summary>What a storage holds.</summary>
     public List<ItemStack>? Items { get; set; }
 
@@ -144,7 +147,7 @@ public sealed class StoragePort(StorageKind kind, Contents contents, Action chan
 /// a belt that joins another from the side as well puts all it carries on the near lane of that one.
 /// An inserter picks one item from the tile behind it (a belt, a machine's output or a storage),
 /// swings round and drops it on the tile in front, when that takes it: on a belt, on the far lane
-/// first.
+/// first. Inserters run on power: on a grid short of it they swing slower, without any they stand still.
 /// </summary>
 public sealed class PlotLogistics
 {
@@ -171,6 +174,9 @@ public sealed class PlotLogistics
     {
         public Guid Id { get; } = id;
         public Contents Contents { get; } = contents;
+
+        /// <summary>Its time on the plot's power grid; null runs it as if it had all the power it needs.</summary>
+        public IPowerClock? Clock { get; set; }
         public Belt? FromBelt { get; set; }
         public IMachinePort? FromPort { get; set; }
         public Belt? ToBelt { get; set; }
@@ -193,7 +199,8 @@ public sealed class PlotLogistics
     /// <param name="objects">Every object on the plot.</param>
     /// <param name="contents">Contents of belts and inserters by object id; missing ones start empty and are added.</param>
     /// <param name="ports">Machines and storage inserters can reach, by object id.</param>
-    public PlotLogistics(IReadOnlyList<PlotObject> objects, Dictionary<Guid, Contents> contents, IReadOnlyDictionary<Guid, IMachinePort> ports)
+    /// <param name="power">The plot's power grid; without one inserters work as if they had all the power they need.</param>
+    public PlotLogistics(IReadOnlyList<PlotObject> objects, Dictionary<Guid, Contents> contents, IReadOnlyDictionary<Guid, IMachinePort> ports, IPowerGrid? power = null)
     {
         var at = objects.ToDictionary(o => (o.TileX, o.TileY));
         var belts = new Dictionary<(int, int), Belt>();
@@ -237,7 +244,7 @@ public sealed class PlotLogistics
         foreach (var o in objects.Where(o => o.Kind == Items.Inserter).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
         {
             var (dx, dy) = LogisticsRules.Facing(o.Rotation);
-            var inserter = new Inserter(o.Id, Contents(contents, o.Id));
+            var inserter = new Inserter(o.Id, Contents(contents, o.Id)) { Clock = power?.Clock(o.Id) };
             var from = (o.TileX - dx, o.TileY - dy);
             var to = (o.TileX + dx, o.TileY + dy);
             inserter.FromBelt = belts.GetValueOrDefault(from);
@@ -420,6 +427,30 @@ public sealed class PlotLogistics
         foreach (var inserter in _inserters)
         {
             var c = inserter.Contents;
+            var speed = inserter.Clock?.Speed(now) ?? 1;
+            if (speed <= 0)
+            {
+                continue;
+            }
+
+            if (speed < 1)
+            {
+                // Short of power it gathers what one move takes over the ticks; one waiting for
+                // something to do keeps no more than that.
+                var charge = Math.Min(c.Charge, 1) + speed;
+                if (charge != c.Charge)
+                {
+                    c.Charge = charge;
+                    Changed.Add(inserter.Id);
+                }
+
+                if (charge < 1)
+                {
+                    moved = true;
+                    continue;
+                }
+            }
+
             if (c.Hand is { } hand)
             {
                 if (c.Swing < LogisticsRules.SwingTicks)
@@ -446,6 +477,11 @@ public sealed class PlotLogistics
             else
             {
                 continue;
+            }
+
+            if (speed < 1)
+            {
+                c.Charge -= 1;
             }
 
             Changed.Add(inserter.Id);

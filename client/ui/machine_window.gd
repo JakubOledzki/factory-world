@@ -71,7 +71,7 @@ func refresh() -> void:
 	if machine == "":
 		return
 	_refreshing = true
-	_next_poll = _server_now() + 500.0
+	_next_poll = _server_now() + (500.0 if _speed() >= 0.999 else 2000.0)
 	var reply := await Net.request("machine.get", {"machine": machine})
 	_refreshing = false
 	_apply(reply)
@@ -167,6 +167,8 @@ func _render() -> void:
 	var help: Array[String] = ["Maszyna pracuje dalej, gdy odejdziesz. Mieści %d sztuk gotowych produktów." % int(_state["maxOutput"])]
 	if _state["fired"]:
 		help.append("Potrzebuje opału: węgla albo drewna.")
+	if _state.get("powered", false):
+		help.append("Działa na prąd: postaw generator parowy z opałem i słup energetyczny najwyżej 2 pola od maszyny.")
 	_help.text = " ".join(help)
 	_update_status()
 	_fit.call_deferred()
@@ -210,17 +212,35 @@ func _gap(size: int) -> Control:
 	return gap
 
 
+## How fast the machine works on the power it has: 1 for machines that need none.
+func _speed() -> float:
+	return float(_state.get("speed", 1.0)) if _state.get("powered", false) else 1.0
+
+
+## Milliseconds of work done on the batch being made; short of power the machine works slower.
+func _done() -> float:
+	var server_time := float(_state["serverTime"])
+	return server_time - float(_state["startedAt"]) + maxf(_server_now() - server_time, 0.0) * _speed()
+
+
 func _update_status() -> void:
 	var started: Variant = _state.get("startedAt")
 	_progress.visible = started != null
 	var recipe := _recipe()
 	if started != null:
 		var total := float(_state["seconds"]) * 1000.0
-		var left := maxf(float(started) + total - _server_now(), 0.0)
+		var left := maxf(total - _done(), 0.0)
 		_progress.max_value = total
 		_progress.value = total - left
-		_status.text = "Pracuje: %s, %d s (wystarczy jeszcze na %d)" % [recipe["name"].to_lower(), ceili(left / 1000.0), int(_state["batches"])]
-		_status.add_theme_color_override("font_color", UI.GOLD)
+		var speed := _speed()
+		if speed <= 0.0:
+			_status.text = "Brak prądu: %s czeka. Postaw generator z opałem i słup obok maszyny." % recipe["name"].to_lower()
+			_status.add_theme_color_override("font_color", UI.ERROR)
+		else:
+			var short := " Za mało prądu: pracuje na %d%%." % roundi(speed * 100.0) if speed < 0.999 else ""
+			_status.text = "Pracuje: %s, %d s (wystarczy jeszcze na %d).%s" % [recipe["name"].to_lower(), ceili(left / 1000.0 / speed),
+				int(_state["batches"]), short]
+			_status.add_theme_color_override("font_color", UI.GOLD if short == "" else UI.ERROR)
 	else:
 		_status.add_theme_color_override("font_color", UI.MUTED)
 		if recipe.is_empty():
@@ -238,7 +258,9 @@ func _process(_delta: float) -> void:
 		return
 	_update_status()
 	var started: Variant = _state.get("startedAt")
-	if started != null and _server_now() >= float(started) + float(_state["seconds"]) * 1000.0 and _server_now() >= _next_poll and not _refreshing:
+	# A machine short of power is asked again now and then: a generator may get fuel.
+	var due := started != null and (_done() >= float(_state["seconds"]) * 1000.0 or _speed() < 0.999)
+	if due and _server_now() >= _next_poll and not _refreshing:
 		refresh()
 
 

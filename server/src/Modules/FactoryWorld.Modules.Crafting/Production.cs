@@ -52,6 +52,15 @@ internal static class MachineProduction
         return entries;
     }
 
+    /// <summary>As above for a machine that works in its own time (<paramref name="clock"/>, on power): its batches
+    /// are moved to the time on the plot by how far the machine is behind at <paramref name="now"/>.</summary>
+    public static List<ProductionEntry> Processed(ProcessingMachine machine, MachineState before, MachineState after, IPowerClock clock, DateTimeOffset now)
+    {
+        var entries = Processed(machine, before, after);
+        var behind = now - clock.At(now);
+        return behind <= TimeSpan.Zero ? entries : entries.Select(e => e with { At = e.At + behind }).ToList();
+    }
+
     /// <summary>One piece of fuel goes on the fire for the batch that finds no heat left, then lasts <paramref name="perFuel"/> batches.</summary>
     private static IEnumerable<ProductionEntry> Burnt(string fuel, int heat, int perFuel, DateTimeOffset first, TimeSpan step, int batches)
     {
@@ -63,7 +72,7 @@ internal static class MachineProduction
 }
 
 /// <summary>What each of the player's furnaces and processing machines is doing now.</summary>
-public sealed class CraftingMachineStatuses(GameDb db, TimeProvider time) : IMachineStatuses
+public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, TimeProvider time) : IMachineStatuses
 {
     public async Task<IReadOnlyList<MachineStatus>> StatusesAsync(Guid owner, CancellationToken cancellationToken)
     {
@@ -87,6 +96,7 @@ public sealed class CraftingMachineStatuses(GameDb db, TimeProvider time) : IMac
             }
         }
 
+        var stored = new List<(Guid Id, ProcessingMachine Machine, MachineState State)>();
         await using (var machines = await db.CommandAsync(
             """
             SELECT object_id, kind, recipe, inputs, fuel_item, fuel, heat, output, started_at
@@ -102,12 +112,21 @@ public sealed class CraftingMachineStatuses(GameDb db, TimeProvider time) : IMac
                     continue;
                 }
 
-                var state = Processing.Advance(machine, new MachineState(
+                stored.Add((reader.GetGuid(0), machine, new MachineState(
                     reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetFieldValue<int[]>(3),
                     reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetInt32(5), reader.GetInt32(6), reader.GetInt32(7),
-                    reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8)), now);
-                statuses.Add(Machine(reader.GetGuid(0), machine, state));
+                    reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8))));
             }
+        }
+
+        // Machines on power work in their own time; one at work with no power at all stalls for it.
+        foreach (var (id, machine, state) in stored)
+        {
+            var clock = machine.Powered ? await power.ClockAsync(id, cancellationToken) : PlainTime.Instance;
+            var status = Machine(id, machine, Processing.Advance(machine, state, clock.At(now)));
+            statuses.Add(status.Activity == MachineActivity.Working && machine.Powered && clock.Speed(now) <= 0
+                ? status with { Activity = MachineActivity.NoPower }
+                : status);
         }
 
         return statuses;

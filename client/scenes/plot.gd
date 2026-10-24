@@ -78,6 +78,7 @@ const PLACED_SPRITES := {
 	"furniture_bakery": "bakery", "furniture_kitchen": "kitchen", "logistics_inserter": "inserter", "logistics_splitter": "splitter",
 	"storage_wooden_chest": "wooden_chest", "storage_iron_chest": "iron_chest", "storage_wood_pile": "wood_pile",
 	"storage_heap": "heap", "storage_grain_silo": "grain_silo",
+	"power_generator": "generator", "power_pole": "pole",
 }
 ## Placed objects that open the machine window.
 const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen"]
@@ -86,6 +87,8 @@ const INSERTER := "logistics_inserter"
 const SPLITTER := "logistics_splitter"
 ## Belts, inserters and splitters: turned with R and laid one after another.
 const MACHINERY := [BELT, INSERTER, SPLITTER]
+const GENERATOR := "power_generator"
+const POLE := "power_pole"
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo"]
 ## Where a rotation faces, as players read it: 0 south, 1 east, 2 north, 3 west.
 const DIRECTIONS := ["na południe", "na wschód", "na północ", "na zachód"]
@@ -159,6 +162,7 @@ var _using := Vector2i(-1, -1)
 ## Which way the next belt or inserter will face (see DIRECTIONS).
 var _place_rotation := 1
 var _logistics: PlotLogistics
+var _power: PlotPower
 var _next_logistics_poll := 0.0
 var _polling_logistics := false
 
@@ -230,6 +234,7 @@ var _splitter_window: SplitterWindow
 var _company_window: CompanyWindow
 var _stats_window: StatsWindow
 var _machine_window: MachineWindow
+var _generator_window: GeneratorWindow
 var _clock_offset := 0.0
 var _next_station_poll := 0.0
 
@@ -291,6 +296,10 @@ func _build_world() -> void:
 	_trains.server_now = _server_now
 	_sorted.add_child(_trains)
 	_logistics.arms_parent = _sorted
+	# Wires hang over everything standing on the plot.
+	_power = PlotPower.new()
+	_power.tile = TILE
+	_power.layout = _layout
 
 	_player = GaragePlayer.new(Game.character.get("appearance", {}), Game.appearance_options)
 	_player.light = LIGHT
@@ -301,6 +310,8 @@ func _build_world() -> void:
 	add_child(_player.shadow)
 	move_child(_player.shadow, _marks.get_index())
 	_sorted.add_child(_player)
+
+	add_child(_power)
 
 	_camera.position_smoothing_enabled = true
 	_camera.position_smoothing_speed = 8.0
@@ -380,6 +391,7 @@ func _apply_plot(plot: Dictionary) -> void:
 	for object: Dictionary in plot.get("objects", []):
 		_placed[Vector2i(object["tileX"], object["tileY"])] = object
 	_logistics.set_objects(_placed)
+	_power.set_objects(_placed)
 
 	# The ground: the biome's texture repeated over the plot, squashed to the 45° view.
 	var floor_name: String = FLOORS.get(int(plot["biome"]), "grass")
@@ -841,7 +853,7 @@ func _placed_label(cell: Vector2i) -> String:
 	if object["kind"] == INSERTER:
 		var held := _logistics.held(cell)
 		var carrying := ", niesie: %s" % _item_name(held).to_lower() if held != "" else ""
-		return "Podajnik %s%s: [R] obróć, kliknij, aby schować" % [facing, carrying]
+		return "Podajnik %s%s%s: [R] obróć, kliknij, aby schować" % [facing, carrying, _power_note(object["id"])]
 	if object["kind"] == SPLITTER:
 		var filter := _logistics.splitter(object["id"])
 		var sorting := "na zmianę w lewo i w prawo" if (filter["items"] as Array).is_empty() \
@@ -852,10 +864,27 @@ func _placed_label(cell: Vector2i) -> String:
 		var fill := "%d/%d miejsc" % [int(summary["usedSlots"]), int(summary["slots"])] if int(summary["slots"]) > 1 \
 			else "%d/%d" % [int(summary["stored"]), int(summary["capacity"])]
 		return "%s (%s): kliknij, aby otworzyć" % [object["name"], fill]
-	return "%s: kliknij, aby użyć" % object["name"]
+	if object["kind"] == POLE:
+		return "Słup energetyczny (%s): kliknij po więcej" % _power.describe(object["id"])
+	if object["kind"] == GENERATOR:
+		return "Generator parowy: kliknij, aby dołożyć opału"
+	return "%s%s: kliknij, aby użyć" % [object["name"], _power_note(object["id"]) if _power.runs_on_power(object["kind"]) else ""]
+
+
+## How a machine that runs on power is doing, as a note after its name; "" with full power.
+func _power_note(id: String) -> String:
+	if _power.network(id).is_empty():
+		return " (bez prądu: postaw słup najwyżej 2 pola obok)"
+	var speed := _power.speed(id)
+	if speed <= 0.0:
+		return " (bez prądu: generator wygasł)"
+	if speed < 0.999:
+		return " (za mało prądu: %d%%)" % roundi(speed * 100.0)
+	return ""
 
 
 func _draw_marks() -> void:
+	_draw_power_reach()
 	if _hovered.x >= 0 and WORK.has(_work_kind(_hovered)) and not _fields.has(_hovered):
 		var ok: bool = Game.tool().get("id", "") == WORK[_work_kind(_hovered)]["tool"]
 		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8) if ok else Color(1.0, 0.42, 0.35, 0.8))
@@ -869,6 +898,32 @@ func _draw_marks() -> void:
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8))
 	if _work.x >= 0:
 		_draw_ring(_cell_centre(_work), Color(1, 1, 1, 0.7))
+
+
+## The tiles poles power, on the ground: of every pole while a pole, a generator or a machine that
+## runs on power is being placed (with the wires a new pole would get), and of a pole under the mouse.
+func _draw_power_reach() -> void:
+	var placing_power: bool = _placing == POLE or _placing == GENERATOR or _power.runs_on_power(_placing)
+	var hovered_pole: bool = _hovered.x >= 0 and _placed.has(_hovered) and _placed[_hovered]["kind"] == POLE
+	if not placing_power and not hovered_pole:
+		return
+	var areas: Array[Vector2i] = _power.poles()
+	if not placing_power:
+		areas = [_hovered]
+	var ground := _ground_cell()
+	if _placing == POLE and ground.x >= 0:
+		areas.append(ground)
+	var fill := Color(1.0, 0.82, 0.3, 0.07)
+	for pole in areas:
+		var r := _power.supply_radius
+		var rect := Rect2(Vector2(pole - Vector2i(r, r)) * TILE, Vector2(2 * r + 1, 2 * r + 1) * TILE)
+		var strong := pole == ground or pole == _hovered
+		_marks.draw_rect(rect, Color(fill, 0.13) if strong else fill)
+		_marks.draw_rect(rect, Color(1.0, 0.82, 0.3, 0.75 if strong else 0.3), false, 2.0)
+	if _placing == POLE and ground.x >= 0:
+		for pole in _power.poles():
+			if _power.wired(pole, ground):
+				_marks.draw_dashed_line(_cell_centre(ground), _cell_centre(pole), Color(1.0, 0.82, 0.3, 0.8), 2.0, 8.0)
 
 
 ## What is being placed, see-through on the tile under the mouse, with the way it will face.
@@ -933,7 +988,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if _placing != "":
 			_stop_placing()
 		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _storage_window, _splitter_window, _stats_window, _company_window]:
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _generator_window, _storage_window, _splitter_window, _stats_window, _company_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -1166,7 +1221,7 @@ func _vanish(sprite_name: String, cell: Vector2i, fall: bool) -> void:
 
 ## What a click on a tile does: work nature, sow an empty field, reap a ripe crop.
 func _act_on(cell: Vector2i) -> void:
-	if _turnable(cell):
+	if _turnable(cell) or (_placed.has(cell) and _placed[cell]["kind"] == POLE):
 		_open_object_menu(cell)
 		return
 	if _placed.has(cell):
@@ -1395,6 +1450,7 @@ func _place_object(cell: Vector2i) -> void:
 	_astar.set_point_solid(at, not _is_belt(at))
 	_draw_cell(at)
 	_logistics.set_objects(_placed)
+	_power.set_objects(_placed)
 	if kind in MACHINERY:
 		_show_toast("%s stoi %s. %s" % [object["name"], DIRECTIONS[int(object["rotation"])], "Kliknij kolejne pole albo Esc." if more else ""])
 	else:
@@ -1406,7 +1462,7 @@ func _place_object(cell: Vector2i) -> void:
 ## The placed object next to the player, or (-1, -1).
 func _nearest_placed() -> Vector2i:
 	for cell: Vector2i in _placed:
-		if _near(cell) and not _turnable(cell):
+		if _near(cell) and not _turnable(cell) and _placed[cell]["kind"] != POLE:
 			return cell
 	return Vector2i(-1, -1)
 
@@ -1426,17 +1482,20 @@ func _use_placed(cell: Vector2i) -> void:
 		_storage_window.open_at(_at, object["id"])
 	elif object["kind"] == "furniture_workbench":
 		_crafting_window.open_at(object["id"])
+	elif object["kind"] == GENERATOR:
+		_generator_window.open_at(_at, object["id"])
 
 
 func _using_window_open() -> bool:
 	return _crafting_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
-		or _splitter_window.visible
+		or _splitter_window.visible or _generator_window.visible
 
 
 func _hide_placed_windows() -> void:
 	_crafting_window.hide_window()
 	_furnace_window.hide_window()
 	_machine_window.hide_window()
+	_generator_window.hide_window()
 	_storage_window.hide_window()
 	_splitter_window.hide_window()
 
@@ -1455,6 +1514,7 @@ func _pick_up_placed(id: String) -> void:
 				_hovered = Vector2i(-1, -1)
 			_draw_cell(cell)
 	_logistics.set_objects(_placed)
+	_power.set_objects(_placed)
 	_hide_placed_windows()
 	_using = Vector2i(-1, -1)
 	_reload_inventory()
@@ -1464,7 +1524,8 @@ func _pick_up_placed(id: String) -> void:
 func _open_object_menu(cell: Vector2i) -> void:
 	_menu_object = cell
 	_object_menu.clear()
-	_object_menu.add_item("Obróć  [R]", 0)
+	if _turnable(cell):
+		_object_menu.add_item("Obróć  [R]", 0)
 	_object_menu.add_item("Schowaj do ekwipunku", 1)
 	if _placed.has(cell) and _placed[cell]["kind"] == SPLITTER:
 		_object_menu.add_item("Ustaw, co idzie w którą stronę", 2)
@@ -1505,6 +1566,7 @@ func _rotate_placed(cell: Vector2i) -> void:
 		return
 	_placed[cell] = reply["payload"]["object"]
 	_logistics.set_objects(_placed)
+	_power.set_objects(_placed)
 	_draw_cell(cell)
 	_poll_logistics()
 
@@ -1519,6 +1581,7 @@ func _poll_logistics() -> void:
 	_polling_logistics = false
 	if reply["type"] == "logistics":
 		_logistics.apply(reply["payload"])
+		_power.apply(reply["payload"].get("power", {}))
 
 
 ## Orders from a workbench are done: they are in the inventory now.
@@ -1753,7 +1816,7 @@ func _process(delta: float) -> void:
 	if _using.x >= 0 and (not _placed.has(_using) or not _near(_using, REACH + 1.5)):
 		_hide_placed_windows()
 		_using = Vector2i(-1, -1)
-	if _logistics.has_machinery() and Time.get_ticks_msec() >= _next_logistics_poll:
+	if (_logistics.has_machinery() or _power.has_power()) and Time.get_ticks_msec() >= _next_logistics_poll:
 		_poll_logistics()
 	_poll_station()
 
@@ -2112,6 +2175,13 @@ func _build_windows() -> void:
 	_machine_window.inventory_changed.connect(_on_furnace_changed)
 	_machine_window.failed.connect(_show_error)
 	_machine_window.pick_up_requested.connect(_pick_up_placed)
+	_generator_window = GeneratorWindow.new()
+	_generator_window.position = Vector2(1280 - 400 - 12, 64)
+	_generator_window.inventory_changed.connect(func(_taken: Array, _xp: Variant) -> void:
+		_reload_inventory()
+		_poll_logistics())
+	_generator_window.failed.connect(_show_error)
+	_generator_window.pick_up_requested.connect(_pick_up_placed)
 	_company_window = CompanyWindow.new()
 	_company_window.position = Vector2(1280 - 520 - 12, 64)
 	_company_window.inventory_changed.connect(_reload_inventory)
@@ -2129,6 +2199,7 @@ func _build_windows() -> void:
 	layer.add_child(_crafting_window)
 	layer.add_child(_furnace_window)
 	layer.add_child(_machine_window)
+	layer.add_child(_generator_window)
 
 
 func _reload_inventory() -> void:
@@ -2143,6 +2214,7 @@ func _reload_inventory() -> void:
 	_storage_window.set_items(_items)
 	_splitter_window.set_items(_items)
 	_machine_window.set_items(_items)
+	_generator_window.set_items(_items)
 	_station_window.set_player(_items, _balance)
 
 

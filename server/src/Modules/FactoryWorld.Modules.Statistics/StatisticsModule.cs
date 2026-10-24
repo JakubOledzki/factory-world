@@ -267,6 +267,7 @@ public sealed class GetProductionHandler(IServiceScopeFactory scopes) : IMessage
         MachineActivity.NoFuel => "no_fuel",
         MachineActivity.OutputFull => "output_full",
         MachineActivity.NoRecipe => "no_recipe",
+        MachineActivity.NoPower => "no_power",
         _ => "working",
     };
 }

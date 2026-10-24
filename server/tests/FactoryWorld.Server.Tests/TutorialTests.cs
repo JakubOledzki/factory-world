@@ -60,14 +60,15 @@ public sealed class TutorialTests(ServerFactory factory) : IClassFixture<ServerF
         return tiles.ToArray();
     }
 
-    /// <summary>The first of <paramref name="length"/> free tiles in a row, away from the station.</summary>
+    /// <summary>The first of <paramref name="length"/> free tiles in a row, away from the station, with the row under them free too.</summary>
     private static (int X, int Y) FreeRow(byte[] tiles, int length)
     {
-        for (var ty = 20; ty < PlotLayout.Size; ty++)
+        for (var ty = 20; ty + 1 < PlotLayout.Size; ty++)
         {
             for (var tx = 0; tx + length <= PlotLayout.Size; tx++)
             {
-                if (Enumerable.Range(tx, length).All(i => tiles[ty * PlotLayout.Size + i] == (byte)TileObject.None))
+                if (Enumerable.Range(tx, length).All(i => tiles[ty * PlotLayout.Size + i] == (byte)TileObject.None
+                    && tiles[(ty + 1) * PlotLayout.Size + i] == (byte)TileObject.None))
                 {
                     return (tx, ty);
                 }
@@ -102,10 +103,11 @@ public sealed class TutorialTests(ServerFactory factory) : IClassFixture<ServerF
         Assert.Equal(1, (await client.SendAsync("garage.get")).Payload().GetProperty("results").GetArrayLength());
     }
 
-    private static async Task PlaceAsync(GameClient client, (int X, int Y) plot, string kind, int tileX, int tileY, int rotation = East)
+    private static async Task<string> PlaceAsync(GameClient client, (int X, int Y) plot, string kind, int tileX, int tileY, int rotation = East)
     {
         var reply = await client.SendAsync("plot.place", new { x = plot.X, y = plot.Y, kind, tileX, tileY, rotation });
         Assert.Equal("plot.placed", reply.Type());
+        return reply.Payload().GetProperty("object").GetProperty("id").GetString()!;
     }
 
     [Fact]
@@ -218,6 +220,13 @@ public sealed class TutorialTests(ServerFactory factory) : IClassFixture<ServerF
         factory.Time.Advance(TimeSpan.FromMinutes(2));
         Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.Inserter, quantity = 1 })).Type());
         await PlaceAsync(client, forest, Items.Inserter, tx + 1, ty);
+        Assert.Equal("power_line", await CurrentAsync(client));
+
+        // The generator and poles come with the reward; wood from chopping goes on its fire.
+        await PlaceAsync(client, forest, Items.Pole, tx + 1, ty + 1);
+        var generator = await PlaceAsync(client, forest, Items.Generator, tx + 2, ty + 1);
+        var fuelled = await client.SendAsync("generator.load", new { x = forest.X, y = forest.Y, id = generator, item = Items.Wood, quantity = 1 });
+        Assert.Equal("generator", fuelled.Type());
         Assert.Equal("first_line", await CurrentAsync(client));
 
         var before = await client.BalanceAsync();

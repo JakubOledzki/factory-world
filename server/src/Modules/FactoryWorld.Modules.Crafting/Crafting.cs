@@ -37,6 +37,8 @@ public static class Workshop
         new(Items.PicklingBarrel, 1, TimeSpan.FromSeconds(30), [(Items.Wood, 12), (Items.Nails, 5)], 10),
         new(Items.Bakery, 1, TimeSpan.FromSeconds(90), [(Items.Stone, 40), (Items.IronIngot, 3), (Items.Sand, 10)], 30),
         new(Items.Kitchen, 1, TimeSpan.FromSeconds(90), [(Items.Stone, 20), (Items.IronIngot, 5), (Items.CopperIngot, 2)], 30),
+        new(Items.Generator, 1, TimeSpan.FromSeconds(60), [(Items.Stone, 10), (Items.IronIngot, 8), (Items.CopperIngot, 4)], 20),
+        new(Items.Pole, 2, TimeSpan.FromSeconds(5), [(Items.Wood, 2), (Items.CopperIngot, 1)], 1),
     ];
 
     public static Recipe? Find(string id) => Recipes.FirstOrDefault(r => r.Id == id);

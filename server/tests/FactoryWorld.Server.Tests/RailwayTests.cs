@@ -71,6 +71,18 @@ public sealed class RailwayTests(ServerFactory factory) : IClassFixture<ServerFa
         return reply.Payload().GetProperty("object").GetProperty("id").GetString()!;
     }
 
+    /// <summary>A pole and a generator full of coal near the station, so inserters at the track have power.</summary>
+    private async Task PowerAsync(GameClient client, (int X, int Y) plot)
+    {
+        var (sx, _, _, _) = PlotLayout.Station;
+        await GiveAsync(client, Items.Pole, 1);
+        await GiveAsync(client, Items.Generator, 1);
+        await GiveAsync(client, Items.Coal, 10);
+        await PlaceAsync(client, plot, Items.Pole, sx + 2, PlotLayout.RailRow + 3, South);
+        var generator = await PlaceAsync(client, plot, Items.Generator, sx + 2, PlotLayout.RailRow + 4, South);
+        Assert.Equal("generator", (await client.SendAsync("generator.load", new { x = plot.X, y = plot.Y, id = generator, item = Items.Coal, quantity = 10 })).Type());
+    }
+
     [Fact]
     public async Task A_route_sends_a_train_at_once_and_again_every_few_minutes_with_what_the_station_holds()
     {
@@ -204,6 +216,8 @@ public sealed class RailwayTests(ServerFactory factory) : IClassFixture<ServerFa
         // At the other plot an inserter turned away from the track unloads them into a chest.
         await PlaceAsync(client, factoryPlot, Items.Inserter, sx + 3, PlotLayout.RailRow + 1, South);
         var unloading = await PlaceAsync(client, factoryPlot, Items.WoodenChest, sx + 3, PlotLayout.RailRow + 2, South);
+        await PowerAsync(client, mine);
+        await PowerAsync(client, factoryPlot);
 
         var routed = await client.SendAsync("station.route", new
         {

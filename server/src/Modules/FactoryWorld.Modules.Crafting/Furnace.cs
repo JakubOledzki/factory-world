@@ -253,11 +253,11 @@ public sealed class FurnaceService(
 
 /// <summary>Empties a furnace that is being picked up: what it smelted, its ore and its coal go to the inventory.
 /// Processing machines (mill, bakery, ...) are emptied the same way.</summary>
-public sealed class FurnaceContents(GameDb db, IInventory inventory, IProductionStats stats, TimeProvider time) : IMachineContents
+public sealed class FurnaceContents(GameDb db, IInventory inventory, IProductionStats stats, IPlotPower power, TimeProvider time) : IMachineContents
 {
     public async Task ReleaseAsync(Guid owner, Guid id, CancellationToken cancellationToken)
     {
-        await MachineRows.ReleaseAsync(db, inventory, stats, owner, id, time.GetUtcNow(), cancellationToken);
+        await MachineRows.ReleaseAsync(db, inventory, stats, power, owner, id, time.GetUtcNow(), cancellationToken);
         if (await FurnaceRows.ReadAsync(db, id, cancellationToken) is not { } row)
         {
             return;

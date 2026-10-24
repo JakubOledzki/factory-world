@@ -58,11 +58,11 @@ public sealed class LogisticsDbContext(DbContextOptions<LogisticsDbContext> opti
     }
 }
 
-/// <summary>A plot's logistics just after being brought up to now.</summary>
+/// <summary>A plot's logistics just after being brought up to now, with the power grid that runs its inserters.</summary>
 public sealed record LogisticsState(
-    DateTimeOffset SimulatedAt, DateTimeOffset ServerTime, IReadOnlyList<PlotObject> Objects, IReadOnlyDictionary<Guid, Contents> Contents);
+    DateTimeOffset SimulatedAt, DateTimeOffset ServerTime, IReadOnlyList<PlotObject> Objects, IReadOnlyDictionary<Guid, Contents> Contents, IPowerGrid Power);
 
-public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<IMachinePorts> machines, IInventory inventory, TimeProvider time)
+public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<IMachinePorts> machines, IPlotPower power, IInventory inventory, TimeProvider time)
     : IPlotAutomation
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -190,6 +190,7 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
         var objects = await plots.ObjectsAsync(x, y, cancellationToken);
         var from = await SimulatedAtAsync(x, y, cancellationToken) ?? now;
         var contents = await ReadAsync(x, y, cancellationToken);
+        var grid = await power.OpenAsync(x, y, cancellationToken);
 
         // Storages are this module's own; every other machine within an inserter's reach comes from its
         // module, and so does the plot's station, which inserters can load and unload too.
@@ -216,6 +217,12 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
                 continue;
             }
 
+            if (grid.Port(o.Id) is { } generator)
+            {
+                ports[o.Id] = generator;
+                continue;
+            }
+
             foreach (var module in machines)
             {
                 if (await module.OpenAsync(o.Owner, o.Id, o.Kind, cancellationToken) is { } port)
@@ -227,7 +234,7 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
             }
         }
 
-        var logistics = new PlotLogistics(reachable, contents, ports);
+        var logistics = new PlotLogistics(reachable, contents, ports, grid);
         var simulated = logistics.Run(from, now);
         foreach (var id in logistics.Changed.Concat(storageChanged).Distinct())
         {
@@ -238,6 +245,8 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
         {
             await port.SaveAsync(cancellationToken);
         }
+
+        await grid.SaveAsync(cancellationToken);
 
         await using (var save = await db.CommandAsync(
             """
@@ -251,7 +260,7 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
             await save.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        return new LogisticsState(simulated, now, objects, contents);
+        return new LogisticsState(simulated, now, objects, contents, grid);
     }
 
     private async Task<DateTimeOffset?> SimulatedAtAsync(int x, int y, CancellationToken cancellationToken)
@@ -362,9 +371,18 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
             // What every item is called, for choosing a splitter's filter.
             names = state.Objects.Any(o => o.Kind == Items.Splitter) ? Items.Names : null,
             inserters = state.Objects.Where(o => o.Kind == Items.Inserter)
-                .Select(o => new { id = o.Id, hand = Of(o.Id).Hand, swing = Of(o.Id).Swing }),
+                .Select(o => new
+                {
+                    id = o.Id,
+                    hand = Of(o.Id).Hand,
+                    swing = Of(o.Id).Swing,
+                    // How fast it works on the power it has (0 stands still), and the power gathered for its next move.
+                    speed = state.Power.Clock(o.Id).Speed(state.SimulatedAt),
+                    charge = Of(o.Id).Charge,
+                }),
             storages = state.Objects.Where(o => Storages.Find(o.Kind) is not null)
                 .Select(o => StorageSummary(Storages.Find(o.Kind)!, o, Of(o.Id))),
+            power = state.Power.Summary(state.ServerTime),
         };
     }
 
