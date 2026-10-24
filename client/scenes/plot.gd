@@ -8,6 +8,8 @@ extends Node2D
 ## bakery, field kitchen) from the inventory can be put on a free tile and used there, and so can
 ## belts and inserters (turned with R) that move items between machines and chests, piles and silos.
 ## A computer put on the plot opens the market there, as in the garage.
+## On a pasture (any plot but a desert or a glacier) an animal from the inventory is let out on a
+## free tile, fed crops from a menu and, after its time, gives eggs, wool (cut with shears) or milk.
 
 ## Keyboard actions of this screen: name and keys.
 const ACTIONS := {
@@ -90,6 +92,8 @@ const PLACED_SPRITES := {
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
+## Animals let out on a pasture, and their sprites there.
+const ANIMAL_SPRITES := {"animal_chicken": "chicken", "animal_sheep": "sheep", "animal_cow": "cow"}
 ## Placed objects that open the machine window.
 const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen"]
 const BELT := "logistics_belt"
@@ -158,6 +162,15 @@ var _trees := {}
 var _tree_grow_seconds := 0.0
 ## Saplings in the inventory, and whether a click on free ground plants one.
 var _saplings := 0
+## Animals on this plot by cell: { kind, name, readyAt } (readyAt null while hungry); what kinds
+## the server sends for this biome; what they eat, and how much per meal.
+var _animals := {}
+var _animal_kinds := {}
+var _feed := []
+var _feed_per_meal := 2
+var _pasture := false
+## The animal being let out from the inventory: a click on free ground puts it there; "" for none.
+var _releasing := ""
 var _planting := false
 var _plant_button: Button
 ## Shown while the player stands at a mine: opens the window where it is built up.
@@ -238,6 +251,9 @@ var _crop_menu: PopupMenu
 var _object_menu: PopupMenu
 var _menu_object := Vector2i(-1, -1)
 var _menu_cell := Vector2i(-1, -1)
+## Feed, milk, shear or take an animal.
+var _animal_menu: PopupMenu
+var _menu_animal := Vector2i(-1, -1)
 var _work_bar: ProgressBar
 var _toast: Label
 var _toast_tween: Tween
@@ -355,6 +371,7 @@ func _tile_set(shadows: bool) -> TileSet:
 	for kind: int in SPRITES:
 		sprites.append_array(SPRITES[kind])
 	sprites.append_array(["sapling", "tree_young"])
+	sprites.append_array(ANIMAL_SPRITES.values())
 	sprites.append_array(PLACED_SPRITES.values())
 	for sprite in sprites:
 		_add_source(set, sprite, sprite + ("_shadow" if shadows else ""), not shadows)
@@ -412,6 +429,13 @@ func _apply_plot(plot: Dictionary) -> void:
 	_fertile = plot.get("fertile", false)
 	for crop: Dictionary in plot.get("crops", []):
 		_crops[crop["id"]] = crop
+	_pasture = plot.get("pasture", false)
+	for kind: Dictionary in plot.get("animalKinds", []):
+		_animal_kinds[kind["id"]] = kind
+	_feed = plot.get("feed", [])
+	_feed_per_meal = int(plot.get("feedPerMeal", 2))
+	for animal: Dictionary in plot.get("animals", []):
+		_animals[Vector2i(animal["tileX"], animal["tileY"])] = animal
 	_clock_offset = float(plot["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
 	for field: Dictionary in plot.get("fields", []):
 		_fields[Vector2i(field["tileX"], field["tileY"])] = {"crop": field["crop"], "readyAt": field["readyAt"]}
@@ -556,10 +580,12 @@ func _draw_cell(cell: Vector2i) -> void:
 		_shadows.set_cell(cell, id, Vector2i.ZERO)
 
 
-## The sprite standing on a tile: nature, the crop growing on a field or a planted tree; "" for nothing.
+## The sprite standing on a tile: nature, the crop growing on a field, a planted tree or an animal; "" for nothing.
 func _sprite_at(cell: Vector2i) -> String:
 	if _placed.has(cell):
 		return PLACED_SPRITES.get(_placed[cell]["kind"], "")  # "" for a belt
+	if _animals.has(cell):
+		return ANIMAL_SPRITES.get(_animals[cell]["kind"], "")
 	if _fields.has(cell):
 		return _crop_sprite(cell)
 	if _trees.has(cell):
@@ -815,14 +841,15 @@ func _update_hover() -> void:
 		if mine >= 0:
 			_mines[mine]["sprite"].modulate = Color(1.25, 1.2, 1.1)
 	var ground := _ground_cell()
-	var pointing := cell.x >= 0 or station or mine >= 0 or _fields.has(ground) or _can_till(ground) or _can_plant(ground) or _can_place(ground)
+	var pointing := cell.x >= 0 or station or mine >= 0 or _fields.has(ground) or _can_till(ground) or _can_plant(ground) or _can_place(ground) \
+		or _can_release(ground)
 	Input.set_default_cursor_shape(Input.CURSOR_POINTING_HAND if pointing else Input.CURSOR_ARROW)
 	_marks.queue_redraw()
 	_update_prompt()
 	if mine >= 0:
 		_update_mine_label(mine)
 	else:
-		_update_field_label(cell if cell.x >= 0 and (_fields.has(cell) or _trees.has(cell) or _placed.has(cell)) else ground)
+		_update_field_label(cell if cell.x >= 0 and (_fields.has(cell) or _trees.has(cell) or _placed.has(cell) or _animals.has(cell)) else ground)
 
 
 ## The tile under the mouse, or (-1, -1) when the mouse is over the interface.
@@ -834,29 +861,41 @@ func _ground_cell() -> Vector2i:
 
 ## Whether the hoe can turn this tile into a field.
 func _can_till(cell: Vector2i) -> bool:
-	return _placing == "" and _fertile and Game.tool().get("id", "") == "tool_hoe" and _tile(cell) == NONE and not _fields.has(cell) and not _placed.has(cell)
+	return _placing == "" and _releasing == "" and _fertile and Game.tool().get("id", "") == "tool_hoe" and _tile(cell) == NONE \
+		and not _fields.has(cell) and not _placed.has(cell) and not _animals.has(cell)
 
 
 ## Whether a sapling can be planted on this tile now.
 func _can_plant(cell: Vector2i) -> bool:
-	return _planting and _tree_grow_seconds > 0.0 and _tile(cell) == NONE and not _fields.has(cell) and not _trees.has(cell) and not _placed.has(cell)
+	return _planting and _tree_grow_seconds > 0.0 and _tile(cell) == NONE and not _fields.has(cell) and not _trees.has(cell) and not _placed.has(cell) \
+		and not _animals.has(cell)
+
+
+## Whether the animal being let out can go on this tile: free ground, not under the player.
+func _can_release(cell: Vector2i) -> bool:
+	var spawn: Dictionary = _plot.get("spawn", {})
+	return _releasing != "" and _tile(cell) == NONE and not _fields.has(cell) and not _trees.has(cell) and not _placed.has(cell) \
+		and not _animals.has(cell) and cell != Vector2i(spawn.get("x", -1), spawn.get("y", -1)) and Vector2i(_player.floor_pos.floor()) != cell
 
 
 ## Whether the object being placed can go on this tile: free ground, not under the player.
 func _can_place(cell: Vector2i) -> bool:
 	var spawn: Dictionary = _plot.get("spawn", {})
 	return _placing != "" and _tile(cell) == NONE and not _fields.has(cell) and not _trees.has(cell) and not _placed.has(cell) \
-		and cell != Vector2i(spawn.get("x", -1), spawn.get("y", -1)) and Vector2i(_player.floor_pos.floor()) != cell
+		and not _animals.has(cell) and cell != Vector2i(spawn.get("x", -1), spawn.get("y", -1)) and Vector2i(_player.floor_pos.floor()) != cell
 
 
-## The name of the crop or planted tree under the mouse and how long until it is ripe.
+## The name of the crop, planted tree or animal under the mouse and how long until it is ripe.
 func _update_field_label(cell: Vector2i) -> void:
-	_field_label.visible = (_fields.has(cell) or _trees.has(cell) or _placed.has(cell)) and _menu_cell.x < 0
+	_field_label.visible = (_fields.has(cell) or _trees.has(cell) or _placed.has(cell) or _animals.has(cell)) \
+		and _menu_cell.x < 0 and _menu_animal.x < 0
 	if not _field_label.visible:
 		return
 	var crop: Variant = _fields[cell]["crop"] if _fields.has(cell) else null
 	if _placed.has(cell):
 		_field_label.text = _placed_label(cell)
+	elif _animals.has(cell):
+		_field_label.text = _animal_label(cell)
 	elif _trees.has(cell):
 		if _tree_grown(cell):
 			_field_label.text = "Drzewo: urosło, zetnij je siekierą"
@@ -920,11 +959,13 @@ func _draw_marks() -> void:
 		var ok := _holds(WORK[_work_kind(_hovered)]["tool"])
 		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8) if ok else Color(1.0, 0.42, 0.35, 0.8))
 	var ground := _ground_cell()
-	if _hovered.x >= 0 and _placed.has(_hovered):
+	if _hovered.x >= 0 and (_placed.has(_hovered) or _animals.has(_hovered)):
 		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8))
 	if _placing != "" and ground.x >= 0:
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8))
 		_draw_ghost(ground)
+	elif _releasing != "" and ground.x >= 0:
+		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_release(ground) else Color(1.0, 0.42, 0.35, 0.8))
 	elif _hovered.x < 0 and (_fields.has(ground) or _can_till(ground) or _can_plant(ground)):
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8))
 	if _work.x >= 0:
@@ -999,13 +1040,18 @@ func _unhandled_input(event: InputEvent) -> void:
 					_go_and(cell, _place_object, true)
 				else:
 					_show_toast("Tu nie można tego postawić. Wybierz wolne pole.", UI.ERROR)
+			elif _releasing != "":
+				if _can_release(cell):
+					_go_and(cell, _release_animal, true)
+				else:
+					_show_toast("Tu nie można wypuścić zwierzęcia. Wybierz wolne pole.", UI.ERROR)
 			elif _hovered.x >= 0:
 				_act_on(_hovered)
 			elif _hover_station:
 				_go_to_station()
 			elif _hover_mine >= 0:
 				_go_to_mine(_hover_mine)
-			elif _fields.has(cell):
+			elif _fields.has(cell) or _animals.has(cell):
 				_act_on(cell)
 			elif _can_plant(cell):
 				_go_and(cell, _plant_tree)
@@ -1019,6 +1065,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("cancel"):
 		if _placing != "":
 			_stop_placing()
+		elif _releasing != "":
+			_stop_releasing()
 		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _achievements_window.visible \
 				or _mine_window.visible or _using_window_open():
 			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _generator_window, _storage_window, _splitter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window]:
@@ -1266,13 +1314,16 @@ func _vanish(sprite_name: String, cell: Vector2i, fall: bool) -> void:
 
 # --- Farming ------------------------------------------------------------------------------------
 
-## What a click on a tile does: work nature, sow an empty field, reap a ripe crop.
+## What a click on a tile does: work nature, sow an empty field, reap a ripe crop, tend an animal.
 func _act_on(cell: Vector2i) -> void:
 	if _turnable(cell) or (_placed.has(cell) and _placed[cell]["kind"] == POLE):
 		_open_object_menu(cell)
 		return
 	if _placed.has(cell):
 		_go_and(cell, _use_placed)
+		return
+	if _animals.has(cell):
+		_open_animal_menu(cell)
 		return
 	if not _fields.has(cell):
 		_work_on(cell)
@@ -1385,6 +1436,7 @@ func _set_planting(on: bool) -> void:
 	_planting = on
 	if on:
 		_stop_work()
+		_stop_releasing()
 		var minutes := _tree_grow_seconds / 60.0
 		_show_toast("Sadzenie: kliknij wolne pole. Drzewo urośnie tu w %s min." % str(snappedf(minutes, 0.1)).trim_suffix(".0").replace(".", ","))
 	_update_plant_button()
@@ -1443,11 +1495,188 @@ func _plant_tree(cell: Vector2i) -> void:
 		_reload_inventory()
 
 
+# --- Husbandry -----------------------------------------------------------------------------------
+
+## Starts letting an animal from the inventory out: a click on free ground puts it there.
+func _start_releasing(kind: String) -> void:
+	if not _pasture:
+		_show_toast("Na pustyni i lodowcu nie da się trzymać zwierząt.", UI.ERROR)
+		return
+	_set_planting(false)
+	_stop_placing()
+	_stop_work()
+	_inventory_window.hide_window()
+	_releasing = kind
+	var info: Dictionary = _animal_kinds.get(kind, {})
+	if info.is_empty():
+		_show_toast("Kliknij wolne pole, aby wypuścić: %s. Esc anuluje." % _item_name(kind).to_lower())
+	else:
+		var minutes := float(info["seconds"]) / 60.0
+		_show_toast("Kliknij wolne pole, aby wypuścić: %s. Nakarmione zwierzę da %s w %s min. Esc anuluje." % [
+			_item_name(kind).to_lower(), str(info["productName"]).to_lower(), str(snappedf(minutes, 0.1)).trim_suffix(".0").replace(".", ",")])
+	_update_hint()
+
+
+func _stop_releasing() -> void:
+	_releasing = ""
+	_update_hint()
+
+
+func _release_animal(cell: Vector2i) -> void:
+	if not _can_release(cell):
+		return
+	var kind := _releasing
+	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
+	var reply := await Net.request("plot.release", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y, "item": kind})
+	if reply["type"] != "plot.animal":
+		_show_error(reply)
+		return
+	_apply_animal(reply, "−1 %s" % _item_name(kind))
+	if _count(kind) <= 1:
+		_stop_releasing()
+
+
+## What an animal under the mouse is doing, and what a click does about it.
+func _animal_label(cell: Vector2i) -> String:
+	var animal: Dictionary = _animals[cell]
+	var info: Dictionary = _animal_kinds.get(animal["kind"], {})
+	var product: String = str(info.get("productName", "")).to_lower()
+	if animal.get("readyAt") == null:
+		return "%s: głodna, kliknij, aby nakarmić" % animal["name"]
+	var left := _animal_left(cell)
+	if left <= 0.0:
+		var how := " (nożycami)" if info.get("tool") == "tool_shears" else ""
+		return "%s: kliknij, aby zebrać: %s%s" % [animal["name"], product, how]
+	return "%s: da %s za %d:%02d" % [animal["name"], product, ceili(left) / 60, ceili(left) % 60]
+
+
+## Seconds until a fed animal gives its product (0 when it does).
+func _animal_left(cell: Vector2i) -> float:
+	var ready_at: Variant = _animals[cell].get("readyAt")
+	return maxf((float(ready_at) - _server_now()) / 1000.0, 0.0) if ready_at != null else 0.0
+
+
+func _animal_ready(cell: Vector2i) -> bool:
+	return _animals.has(cell) and _animals[cell].get("readyAt") != null and _animal_left(cell) <= 0.0
+
+
+## Feed (one entry per crop in the inventory), collect or take the animal; ids 0-99 feed, 100 collects, 101 takes.
+func _open_animal_menu(cell: Vector2i) -> void:
+	_menu_animal = cell
+	_animal_menu.clear()
+	var animal: Dictionary = _animals[cell]
+	var info: Dictionary = _animal_kinds.get(animal["kind"], {})
+	if _animal_ready(cell):
+		var how := "  (nożyce w ręce)" if info.get("tool") == "tool_shears" else ""
+		_animal_menu.add_icon_item(UI.texture("icons/item_" + str(info.get("product", "egg"))),
+			"Zbierz: %s  ·  %d szt.%s" % [str(info.get("productName", "")).to_lower(), int(info.get("yield", 1)), how], 100)
+	elif animal.get("readyAt") == null:
+		var any := false
+		for i in _feed.size():
+			var feed: Dictionary = _feed[i]
+			var have := _count(feed["id"])
+			if have >= _feed_per_meal:
+				any = true
+				_animal_menu.add_icon_item(UI.texture("icons/item_" + str(feed["id"])), "Nakarm: %s × %d  (masz %d)" % [str(feed["name"]).to_lower(), _feed_per_meal, have], i)
+		if not any:
+			var names := PackedStringArray()
+			for feed: Dictionary in _feed:
+				names.append(str(feed["name"]).to_lower())
+			_animal_menu.add_item("Nakarm: brak paszy (%d × %s)" % [_feed_per_meal, " / ".join(names)], 99)
+			_animal_menu.set_item_disabled(_animal_menu.get_item_count() - 1, true)
+	else:
+		var left := ceili(_animal_left(cell))
+		_animal_menu.add_item("%s za %d:%02d" % [str(info.get("productName", "")).capitalize(), left / 60, left % 60], 99)
+		_animal_menu.set_item_disabled(_animal_menu.get_item_count() - 1, true)
+	_animal_menu.add_item("Zabierz do ekwipunku", 101)
+	_animal_menu.reset_size()
+	var at := get_viewport().get_mouse_position() + Vector2(12, 4)
+	_animal_menu.popup(Rect2i(Vector2i(at), Vector2i.ZERO))
+
+
+func _on_animal_chosen(choice: int) -> void:
+	var cell := _menu_animal
+	_menu_animal = Vector2i(-1, -1)
+	if not _animals.has(cell):
+		return
+	if choice == 100:
+		_go_and(cell, _collect_animal)
+	elif choice == 101:
+		_go_and(cell, _take_animal)
+	elif choice < _feed.size():
+		var feed: String = _feed[choice]["id"]
+		_go_and(cell, func(at: Vector2i) -> void: _feed_animal(at, feed))
+
+
+func _feed_animal(cell: Vector2i, feed: String) -> void:
+	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
+	var reply := await Net.request("plot.feed", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y, "item": feed})
+	if reply["type"] != "plot.animal":
+		_show_error(reply)
+		return
+	_apply_animal(reply, "−%d %s" % [_feed_per_meal, _item_name(feed)])
+
+
+func _collect_animal(cell: Vector2i) -> void:
+	var info: Dictionary = _animal_kinds.get(_animals[cell]["kind"], {})
+	if info.get("tool") != null and Game.tool().get("id", "") != info["tool"]:
+		_show_toast("%s: potrzebujesz %s. Zmień narzędzie w slocie [Q]." % [_animals[cell]["name"], str(info.get("toolName", "")).to_lower()], UI.ERROR)
+		return
+	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
+	var reply := await Net.request("plot.collect", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y})
+	if reply["type"] != "plot.animal":
+		_show_error(reply)
+		return
+	_apply_animal(reply, "")
+
+
+func _take_animal(cell: Vector2i) -> void:
+	var reply := await Net.request("plot.takeAnimal", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y})
+	if reply["type"] != "plot.animal":
+		_show_error(reply)
+		return
+	_apply_animal(reply, "")
+
+
+## Shows the server's answer to letting out, feeding, collecting from or taking an animal.
+func _apply_animal(reply: Dictionary, spent: String) -> void:
+	var result: Dictionary = reply["payload"]
+	_clock_offset = float(result["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
+	var cell := Vector2i(result["tileX"], result["tileY"])
+	if result.get("animal") == null:
+		_animals.erase(cell)
+	else:
+		_animals[cell] = result["animal"]
+	if _hovered == cell and not _animals.has(cell):
+		_hovered = Vector2i(-1, -1)
+	_draw_cell(cell)
+	var items: Array = result["items"]
+	var shown := 0
+	if spent != "":
+		_float_text(spent, UI.MUTED, _cell_centre(cell), 0.0)
+		shown += 1
+	for item: Dictionary in items:
+		_float_text("+%d %s" % [int(item["quantity"]), item["name"]], UI.TEXT, _cell_centre(cell), shown * 0.25, item["id"])
+		shown += 1
+	if result.get("xp") != null:
+		var gained := int(result["xp"]["xp"]) - int(Game.character.get("xp", 0))
+		if gained > 0:
+			_float_text("+%d XP" % gained, UI.GOLD, _cell_centre(cell), shown * 0.25)
+		Game.gain_xp(result["xp"])
+		_refresh_character()
+		if result["xp"].get("leveledUp", false):
+			_show_toast("Awans! Poziom %d" % int(result["xp"]["level"]), UI.GOLD)
+	_update_hint()
+	if _inventory_window.visible or _station_window.visible or spent != "" or not items.is_empty():
+		_reload_inventory()
+
+
 # --- Workbench and furnace -------------------------------------------------------------------------
 
 ## Starts putting a workbench or furnace from the inventory on the plot: a click on free ground places it.
 func _start_placing(kind: String) -> void:
 	_set_planting(false)
+	_stop_releasing()
 	_stop_work()
 	_inventory_window.hide_window()
 	_placing = kind
@@ -2174,6 +2403,15 @@ func _build_hud() -> void:
 	_object_menu.id_pressed.connect(_on_object_chosen)
 	_hud.add_child(_object_menu)
 
+	_animal_menu = PopupMenu.new()
+	_animal_menu.add_theme_constant_override("icon_max_width", 26)
+	_animal_menu.id_pressed.connect(_on_animal_chosen)
+	_animal_menu.popup_hide.connect(func() -> void:
+		await get_tree().process_frame
+		if not _animal_menu.visible:
+			_menu_animal = Vector2i(-1, -1))
+	_hud.add_child(_animal_menu)
+
 	_work_bar = ProgressBar.new()
 	_work_bar.show_percentage = false
 	_work_bar.step = 0.0
@@ -2229,6 +2467,7 @@ func _update_hint() -> void:
 		"tool_pickaxe": "Kliknij kopalnię, aby wydobywać rudy, albo skałę, aby ją rozbić kilofem." if not _mines.is_empty() else "Kliknij skałę, aby ją rozbić kilofem.",
 		"tool_shovel": "Kliknij wydmę, aby ją przekopać łopatą.",
 		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile else "Motyką orze się tylko żyzne gleby.",
+		"tool_shears": "Kliknij owcę, aby ją ostrzyc nożycami, albo inne zwierzę, aby je nakarmić." if _pasture else "Na tej działce nie da się trzymać zwierząt.",
 	}
 	if _placing in MACHINERY:
 		_hint.text = "Stawianie: kliknij wolne pole, aby postawić %s %s %s. [R] obraca, Esc kończy." % [
@@ -2240,10 +2479,15 @@ func _update_hint() -> void:
 	if _planting:
 		_hint.text = "Sadzenie: kliknij wolne pole, aby posadzić sadzonkę (masz %d). [P] lub Esc kończy." % _saplings
 		return
+	if _releasing != "":
+		_hint.text = "Wypuszczanie: kliknij wolne pole, aby wypuścić: %s (masz %d). Esc kończy." % [_item_name(_releasing).to_lower(), _count(_releasing)]
+		return
 	var held: String = Game.tool().get("id", "")
 	if held == "" and _fertile:
 		lines[""] = "Kliknij pole, aby zasiać lub zebrać plony. Do orania weź motykę [Q]."
-	_hint.text = lines.get(held, "Bez narzędzia nic tu nie zbierzesz. Narzędzia dostajesz za zakup działki w lesie, na pustyni, w górach lub na żyznych glebach.")
+	if held == "" and _pasture and not _animals.is_empty():
+		lines[""] = "Kliknij zwierzę, aby je nakarmić albo zebrać, co daje."
+	_hint.text = lines.get(held, "Bez narzędzia nic tu nie zbierzesz. Narzędzia dostajesz za zakup działki w lesie, na pustyni, w górach, na żyznych glebach lub na stepie.")
 	_hint.text += "  ·  Stacja kolejowa [T] wysyła towary do innych fabryk."
 
 
@@ -2312,6 +2556,8 @@ func _build_windows() -> void:
 	_slots.hint = func(item: String) -> String:
 		if item == "sapling":
 			return "Kliknij, aby sadzić na działce"
+		if ANIMAL_SPRITES.has(item):
+			return "Kliknij, aby wypuścić na działce"
 		if PLACED_SPRITES.has(item) or item in BELTS:
 			return "Kliknij, aby postawić na działce"
 		return "Kliknij, aby wziąć do ręki" if item in ToolSlot.TOOLS else ""
@@ -2321,6 +2567,8 @@ func _build_windows() -> void:
 		elif item == "sapling":
 			_inventory_window.hide_window()
 			_set_planting(true)
+		elif ANIMAL_SPRITES.has(item):
+			_start_releasing(item)
 		elif PLACED_SPRITES.has(item) or item in BELTS:
 			_start_placing(item))
 	_slots.changed.connect(func(items: Array) -> void:

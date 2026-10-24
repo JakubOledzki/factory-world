@@ -33,6 +33,7 @@ public static class Items
     public const string Pickaxe = "tool_pickaxe";
     public const string Hoe = "tool_hoe";
     public const string Chainsaw = "tool_chainsaw";
+    public const string Shears = "tool_shears";
 
     // Raw materials gathered on plots.
     public const string Wood = "wood";
@@ -55,6 +56,14 @@ public static class Items
 
     // Forestry: a sapling is planted on a plot and grows into a tree.
     public const string Sapling = "sapling";
+
+    // Husbandry: animals let out on a pasture, fed crops, give eggs, wool (cut with shears) and milk.
+    public const string Chicken = "animal_chicken";
+    public const string Sheep = "animal_sheep";
+    public const string Cow = "animal_cow";
+    public const string Egg = "egg";
+    public const string Wool = "wool";
+    public const string Milk = "milk";
 
     // Crops grown on fertile plots.
     public const string Wheat = "wheat";
@@ -98,6 +107,7 @@ public static class Items
     public const string Fries = "fries";
     public const string VegetableSoup = "vegetable_soup";
     public const string Bigos = "bigos";
+    public const string ScrambledEggs = "scrambled_eggs";
 
     // Office: a computer put on a plot opens the market there, far from the garage.
     public const string Computer = "furniture_computer";
@@ -133,6 +143,7 @@ public static class Items
         [Pickaxe] = "Kilof",
         [Hoe] = "Motyka",
         [Chainsaw] = "Piła spalinowa",
+        [Shears] = "Nożyce do strzyżenia",
         [Wood] = "Drewno",
         [Stone] = "Kamień",
         [Sand] = "Piasek",
@@ -149,6 +160,12 @@ public static class Items
         [GoldIngot] = "Sztabka złota",
         [Nails] = "Gwoździe",
         [Sapling] = "Sadzonka drzewa",
+        [Chicken] = "Kura",
+        [Sheep] = "Owca",
+        [Cow] = "Krowa",
+        [Egg] = "Jajka",
+        [Wool] = "Wełna",
+        [Milk] = "Mleko",
         [Wheat] = "Pszenica",
         [Carrot] = "Marchew",
         [Cabbage] = "Kapusta",
@@ -183,13 +200,14 @@ public static class Items
         [Fries] = "Frytki",
         [VegetableSoup] = "Zupa jarzynowa",
         [Bigos] = "Bigos",
+        [ScrambledEggs] = "Jajecznica",
         [Generator] = "Generator parowy",
         [Pole] = "Słup energetyczny",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
 
-    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw;
+    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw or Shears;
 
     /// <summary>Furnaces of every level: the stone one and its upgrades.</summary>
     public static bool IsFurnace(string id) => id is Furnace or BrickFurnace or BlastFurnace;

@@ -65,6 +65,22 @@ public sealed class PlotTree
     public DateTimeOffset ReadyAt { get; set; }
 }
 
+/// <summary>An animal a player let out on a plot; fed, it gives its product at <see cref="ReadyAt"/>.</summary>
+public sealed class PlotAnimalRow
+{
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public int TileX { get; set; }
+
+    public int TileY { get; set; }
+
+    public string Kind { get; set; } = "";
+
+    public DateTimeOffset? ReadyAt { get; set; }
+}
+
 /// <summary>A mine of a plot that has been worked: loads taken since it was last full, and when it ran dry.</summary>
 public sealed class PlotMine
 {
@@ -229,6 +245,17 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(t => t.TileX).HasColumnName("tile_x");
             e.Property(t => t.TileY).HasColumnName("tile_y");
             e.Property(t => t.ReadyAt).HasColumnName("ready_at");
+        });
+        model.Entity<PlotAnimalRow>(e =>
+        {
+            e.ToTable("plot_animals");
+            e.HasKey(a => new { a.X, a.Y, a.TileX, a.TileY });
+            e.Property(a => a.X).HasColumnName("x");
+            e.Property(a => a.Y).HasColumnName("y");
+            e.Property(a => a.TileX).HasColumnName("tile_x");
+            e.Property(a => a.TileY).HasColumnName("tile_y");
+            e.Property(a => a.Kind).HasColumnName("kind").HasMaxLength(32);
+            e.Property(a => a.ReadyAt).HasColumnName("ready_at");
         });
         model.Entity<PlotMine>(e =>
         {
@@ -453,7 +480,7 @@ public sealed class WorldService(
 
             var balance = await wallet.DebitAsync(owner, price, $"plot {x}:{y}", cancellationToken);
             var xp = await progress.AddXpAsync(owner, PlotRules.XpPerPlot, cancellationToken);
-            // A forest comes with an axe, a desert with a shovel, mountains with a pickaxe.
+            // A forest comes with an axe, a desert with a shovel, mountains with a pickaxe, the steppe with shears.
             var tool = PlotLayout.StarterTool(biome);
             if (tool is not null)
             {
@@ -610,6 +637,7 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<StationService>();
         services.AddScoped<FarmService>();
         services.AddScoped<ForestService>();
+        services.AddScoped<HusbandryService>();
         services.AddScoped<MineService>();
         services.AddScoped<SurveyService>();
         services.AddScoped<PlotObjectService>();
@@ -635,6 +663,10 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, PlantHandler>();
         services.AddSingleton<IMessageHandler, ReapHandler>();
         services.AddSingleton<IMessageHandler, PlantTreeHandler>();
+        services.AddSingleton<IMessageHandler, ReleaseAnimalHandler>();
+        services.AddSingleton<IMessageHandler, FeedAnimalHandler>();
+        services.AddSingleton<IMessageHandler, CollectAnimalHandler>();
+        services.AddSingleton<IMessageHandler, TakeAnimalHandler>();
         services.AddSingleton<IMessageHandler, MineHandler>();
         services.AddSingleton<IMessageHandler, UpgradeMineHandler>();
         services.AddSingleton<IMessageHandler, SurveyHandler>();
