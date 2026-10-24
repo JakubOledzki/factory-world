@@ -1,7 +1,7 @@
 extends Control
 ## The player's garage: the rendered room with furniture the player can move, and the
-## character, who walks with WSAD or by clicking. Sorting opens at the trash bin, crafting at
-## the workbench or an anvil and smelting at a furnace; the inventory, the market and the orders are windows opened
+## character, who walks with WSAD or by clicking. Sorting by hand opens at the trash bin, the
+## automatic sorting machine at itself, crafting at the workbench or an anvil and smelting at a furnace; the inventory, the market and the orders are windows opened
 ## from the toolbar.
 
 ## The garage is lit by one bulb, so the character is drawn darker than in the editor.
@@ -16,8 +16,9 @@ const BIN := "furniture_trash_bin"
 const WORKBENCH := "furniture_workbench"
 const FURNACE := "furniture_furnace"
 const ANVIL := "furniture_anvil"
+const SORTER := "furniture_sorting_machine"
 ## What [E] does next to each piece of furniture that can be used.
-const USE := {BIN: "Segreguj", WORKBENCH: "Wytwarzaj", ANVIL: "Kuj narzędzia", FURNACE: "Piec kamienny"}
+const USE := {BIN: "Segreguj", WORKBENCH: "Wytwarzaj", ANVIL: "Kuj narzędzia", FURNACE: "Piec kamienny", SORTER: "Sortownia"}
 
 ## Keyboard actions of this screen: name and keys.
 const ACTIONS := {
@@ -96,15 +97,16 @@ var _achievements_window: AchievementsWindow
 var _crafting_window: CraftingWindow
 var _company_window: CompanyWindow
 var _furnace_window: FurnaceWindow
+var _sorter_window: SorterWindow
 var _stats_window: StatsWindow
-## The piece of furniture whose window is open (workbench or furnace), to close it when the
-## player walks away.
+## The piece of furniture whose window is open (workbench, furnace or sorting machine), to close
+## it when the player walks away.
 var _using: Furniture
 ## Last known state of each furnace by id, to show the fire while it burns.
 var _furnaces := {}
 
 var _trash: Label
-var _sort_buttons: Array[Button] = []
+var _sort_button: Button
 var _queue_text: Label
 var _machine_hint: Label
 ## Sorting by hand: the next bag is started while the player stays at the bin.
@@ -226,11 +228,18 @@ func _use(object: Furniture) -> void:
 		WORKBENCH, ANVIL:
 			_using = object
 			_furnace_window.hide_window()
+			_sorter_window.hide_window()
 			_crafting_window.open_at(object.id, object.kind)
 		FURNACE:
 			_using = object
 			_crafting_window.hide_window()
+			_sorter_window.hide_window()
 			_furnace_window.open_at(object.id)
+		SORTER:
+			_using = object
+			_crafting_window.hide_window()
+			_furnace_window.hide_window()
+			_sorter_window.open_at(object.id)
 
 
 ## Shows the furniture the server sent: adds new pieces, moves and removes the others.
@@ -431,7 +440,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _menu.visible:
 			_menu.visible = false
 		else:
-			for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _stats_window, _company_window, _achievements_window]:
+			for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _sorter_window, _stats_window, _company_window, _achievements_window]:
 				window.hide_window()
 	elif event.is_action_pressed("rotate") and _placing != "":
 		_turn_ghost(1)
@@ -441,9 +450,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			pass
 		elif object.kind == BIN:
 			_sorting_window.toggle()
-		elif (object.kind in [WORKBENCH, ANVIL] and _crafting_window.visible or object.kind == FURNACE and _furnace_window.visible) and _using == object:
+		elif (object.kind in [WORKBENCH, ANVIL] and _crafting_window.visible or object.kind == FURNACE and _furnace_window.visible or object.kind == SORTER and _sorter_window.visible) and _using == object:
 			_crafting_window.hide_window()
 			_furnace_window.hide_window()
+			_sorter_window.hide_window()
 		else:
 			_use(object)
 	elif event.is_action_pressed("inventory"):
@@ -735,6 +745,10 @@ func _build_windows() -> void:
 	_furnace_window.updated.connect(func(furnace: Dictionary) -> void: _furnaces[furnace["id"]] = furnace)
 	_furnace_window.inventory_changed.connect(_on_furnace_emptied)
 	_furnace_window.failed.connect(_show_error)
+	_sorter_window = SorterWindow.new()
+	_sorter_window.position = Vector2(1280 - 360 - 12, 64)
+	_sorter_window.inventory_changed.connect(_on_sorter_emptied)
+	_sorter_window.failed.connect(_show_error)
 	_company_window = CompanyWindow.new()
 	_company_window.position = Vector2(1280 - 520 - 12, 64)
 	_company_window.inventory_changed.connect(_reload_inventory)
@@ -744,7 +758,7 @@ func _build_windows() -> void:
 	_stats_window.failed.connect(_show_error)
 	_achievements_window = AchievementsWindow.new()
 	_achievements_window.failed.connect(_show_error)
-	for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _stats_window, _company_window, _achievements_window]:
+	for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _sorter_window, _stats_window, _company_window, _achievements_window]:
 		add_child(window)
 
 
@@ -762,14 +776,8 @@ func _build_sorting(page: VBoxContainer) -> void:
 	bin.add_child(bin_text)
 	page.add_child(bin)
 
-	var buttons := HBoxContainer.new()
-	buttons.add_theme_constant_override("separation", 6)
-	for count in [1, 10]:
-		var b := UI.button("Segreguj %d" % count, _on_sort_button.bind(count), count == 10)
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		buttons.add_child(b)
-		_sort_buttons.append(b)
-	page.add_child(buttons)
+	_sort_button = UI.button("Zacznij segregować", _on_sort_button, true)
+	page.add_child(_sort_button)
 
 	_queue_text = UI.label("", UI.MUTED)
 	page.add_child(_queue_text)
@@ -791,7 +799,7 @@ func _build_sorting(page: VBoxContainer) -> void:
 	_recent.add_theme_constant_override("v_separation", 2)
 	_recent.custom_minimum_size.y = 32
 	page.add_child(_recent)
-	_machine_hint = UI.label("Segregujesz ręcznie, więc musisz stać przy koszu. Automatyczna sortownia (Rynek, 1000 $) segreguje sama do 10 worków.", UI.MUTED)
+	_machine_hint = UI.label("Segregujesz ręcznie, więc musisz stać przy koszu. Automatyczna sortownia (Rynek, 1000 $) to osobna maszyna: włóż do niej do 50 worków, a posegreguje je sama.", UI.MUTED)
 	_machine_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_machine_hint.custom_minimum_size.x = 280
 	page.add_child(_machine_hint)
@@ -868,6 +876,7 @@ func _apply_inventory(inventory: Dictionary) -> void:
 	_contracts_window.set_player(_items, _balance)
 	_crafting_window.set_items(_items)
 	_furnace_window.set_items(_items)
+	_sorter_window.set_items(_items)
 
 
 func _reload_inventory() -> void:
@@ -918,7 +927,7 @@ func _update_bin() -> void:
 	if not _near(bin, LEAVE):
 		if _sorting_window.visible:
 			_sorting_window.hide_window()
-		if not _has_machine() and (_hand_sorting or not _garage.get("queue", []).is_empty()):
+		if _hand_sorting or not _garage.get("queue", []).is_empty():
 			_stop_hand_sorting()
 	var top := RoomProjection.to_screen(bin.floor_pos, 1.25)
 	var queue: Array = _garage.get("queue", [])
@@ -938,9 +947,10 @@ func _update_use() -> void:
 	if _using != null and (not is_instance_valid(_using) or not _objects.has(_using.id) or not _near(_using, LEAVE)):
 		_crafting_window.hide_window()
 		_furnace_window.hide_window()
+		_sorter_window.hide_window()
 		_using = null
 	var object := _usable_near()
-	var open := object != null and (object.kind == BIN and _sorting_window.visible or _using == object and (_crafting_window.visible or _furnace_window.visible))
+	var open := object != null and (object.kind == BIN and _sorting_window.visible or _using == object and (_crafting_window.visible or _furnace_window.visible or _sorter_window.visible))
 	_prompt.visible = object != null and not open and _placing == ""
 	if _prompt.visible:
 		_prompt.text = "[E] %s" % USE[object.kind]
@@ -980,6 +990,13 @@ func _on_researched(finished: Array, xp: Variant) -> void:
 	_show_toast("Zbadano: %s. Nowe przepisy czekają przy stole." % ", ".join(finished.map(func(t: Dictionary) -> String: return t["name"])), UI.GOOD)
 
 
+## Something came out of the sorting machine (or trash went in): the inventory changed.
+func _on_sorter_emptied(taken: Array, xp: Variant) -> void:
+	_on_furnace_emptied(taken, xp)
+	# The bin shows how much trash the player has left.
+	_collect()
+
+
 ## Something came out of the furnace (or went in): the inventory changed.
 func _on_furnace_emptied(taken: Array, xp: Variant) -> void:
 	var furnace: Furniture = _using if _using != null and is_instance_valid(_using) else null
@@ -1017,37 +1034,16 @@ func _collect() -> void:
 		_apply_garage(reply["payload"])
 
 
-func _has_machine() -> bool:
-	for object: Dictionary in _garage.get("objects", []):
-		if object["kind"] == "furniture_sorting_machine":
-			return true
-	return false
-
-
 func _update_queue() -> void:
 	var queue: Array = _garage.get("queue", [])
-	var max_queue: int = _garage.get("maxQueue", 10)
 	var trash: int = _garage.get("trash", 0)
-	var machine := _has_machine()
-	_machine_hint.visible = not machine
-	_sort_buttons[1].visible = machine
-	if machine:
+	if trash < 1 and queue.is_empty():
 		_hand_sorting = false
-		var free := max_queue - queue.size()
-		_queue_text.text = "Sortownia: %d / %d worków w kolejce" % [queue.size(), max_queue]
-		_sort_buttons[0].text = "Segreguj 1"
-		_sort_buttons[0].disabled = free < 1 or trash < 1
-		_sort_buttons[1].disabled = free < 1 or trash < 1
-		var batch := mini(mini(free, trash), 10)
-		_sort_buttons[1].text = "Segreguj %d" % (batch if batch > 0 else 10)
-	else:
-		if trash < 1 and queue.is_empty():
-			_hand_sorting = false
-		_queue_text.text = "Segregacja ręczna: worek po worku" if _hand_sorting else "Segregacja ręczna"
-		_sort_buttons[0].text = "Przestań" if _hand_sorting else "Zacznij segregować"
-		_sort_buttons[0].disabled = not _hand_sorting and trash < 1
-		if _hand_sorting and queue.is_empty() and trash > 0 and not _sort_pending and not _refreshing:
-			_sort(1)
+	_queue_text.text = "Segregacja ręczna: worek po worku" if _hand_sorting else "Segregacja ręczna"
+	_sort_button.text = "Przestań" if _hand_sorting else "Zacznij segregować"
+	_sort_button.disabled = not _hand_sorting and trash < 1
+	if _hand_sorting and queue.is_empty() and trash > 0 and not _sort_pending and not _refreshing:
+		_sort(1)
 
 	if queue.is_empty():
 		_job_bar.value = 0
@@ -1060,10 +1056,8 @@ func _update_queue() -> void:
 	_job_text.text = "%d s" % ceili(left / 1000.0)
 
 
-func _on_sort_button(count: int) -> void:
-	if _has_machine():
-		_sort(count)
-	elif _hand_sorting:
+func _on_sort_button() -> void:
+	if _hand_sorting:
 		_stop_hand_sorting()
 	else:
 		_hand_sorting = true
@@ -1071,7 +1065,7 @@ func _on_sort_button(count: int) -> void:
 
 func _sort(count: int) -> void:
 	var queue: Array = _garage.get("queue", [])
-	count = mini(count, mini(_garage.get("maxQueue", 10) - queue.size(), _garage.get("trash", 0)))
+	count = mini(count, mini(_garage.get("maxQueue", 1) - queue.size(), _garage.get("trash", 0)))
 	if count < 1:
 		_show_error({"payload": {"code": "queue_full" if _garage.get("trash", 0) > 0 else "not_enough_items"}})
 		return
@@ -1086,8 +1080,7 @@ func _sort(count: int) -> void:
 		_show_error(reply)
 
 
-## Without the sorting machine walking away from the bin stops sorting; the bag in
-## progress goes back to the bin.
+## Walking away from the bin stops sorting by hand; the bag in progress goes back to the bin.
 func _stop_hand_sorting() -> void:
 	var was_sorting: bool = not _garage.get("queue", []).is_empty()
 	_hand_sorting = false

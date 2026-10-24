@@ -80,6 +80,8 @@ const ERRORS := {
 	"no_order": "Tego zamówienia już nie ma.",
 	"furnace_busy": "W piecu przetapia się inna ruda. Wyjmij ją najpierw.",
 	"furnace_full": "Tyle się nie zmieści w piecu.",
+	"sorter_full": "W sortowni zmieści się najwyżej 50 worków śmieci.",
+	"no_sorter": "Tej sortowni nie ma już w garażu.",
 	"not_smeltable": "Tego nie da się włożyć do pieca.",
 	"choose_recipe": "Najpierw wybierz, co ma powstawać.",
 	"machine_full": "Tyle się nie zmieści w maszynie.",

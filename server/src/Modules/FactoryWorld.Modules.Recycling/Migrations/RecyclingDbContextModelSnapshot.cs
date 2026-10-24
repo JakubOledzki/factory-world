@@ -79,6 +79,50 @@ namespace FactoryWorld.Modules.Recycling.Migrations
                     b.ToTable("garage_objects", "recycling");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.Recycling.Sorter", b =>
+                {
+                    b.Property<Guid>("ObjectId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<int>("Queued")
+                        .HasColumnType("integer")
+                        .HasColumnName("queued");
+
+                    b.Property<DateTimeOffset?>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.HasKey("ObjectId");
+
+                    b.ToTable("sorters", "recycling");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Recycling.SorterItem", b =>
+                {
+                    b.Property<Guid>("ObjectId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<string>("Item")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("item");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("integer")
+                        .HasColumnName("quantity");
+
+                    b.HasKey("ObjectId", "Item");
+
+                    b.ToTable("sorter_items", "recycling");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.Recycling.SortingJob", b =>
                 {
                     b.Property<long>("Id")
