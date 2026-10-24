@@ -208,5 +208,17 @@
  "splitter": {
   "anchorX": 32,
   "anchorY": 39
+ },
+ "generator": {
+  "anchorX": 64,
+  "anchorY": 80,
+  "wireX": 91,
+  "wireY": 55
+ },
+ "pole": {
+  "anchorX": 32,
+  "anchorY": 91,
+  "wireX": 32,
+  "wireY": 38
  }
 }

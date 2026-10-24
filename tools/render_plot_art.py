@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [logistics] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [power] [logistics] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -956,6 +956,69 @@ def render_mine(layout: dict):
     layout["mine"] = render_sprite("mine", w, h, target, mine)
 
 
+# --- Power ----------------------------------------------------------------------------------------
+
+def build_generator():
+    """A small steam generator: a riveted boiler lying on a brick firebox with a glowing door, a
+    chimney, a flywheel turning the dynamo at its side and a copper terminal for the pole's wire."""
+    brick = ra.plain("gen_brick", (0.3, 0.11, 0.06), 0.9, variation=0.35, scale=10, bump=0.5)
+    iron = ra.rusty_metal("gen_iron", (0.1, 0.1, 0.11), rust=0.35)
+    boiler = ra.rusty_metal("gen_boiler", (0.13, 0.2, 0.15), rust=0.3)
+    brass = ra.plain("gen_brass", (0.6, 0.42, 0.12), 0.35, 0.9, variation=0.15)
+    copper = ra.plain("gen_copper", (0.65, 0.28, 0.12), 0.35, 0.9, variation=0.15)
+    ra.box("firebox", (1.3, 0.9, 0.45), (0, 0, 0.225), brick, bevel=0.03)
+    ra.box("door", (0.3, 0.04, 0.24), (-0.3, -0.46, 0.22), iron, bevel=0.01)
+    ra.box("glow", (0.22, 0.03, 0.06), (-0.3, -0.48, 0.2), ra.emission("gen_ember", (1.0, 0.35, 0.06), 4.5))
+    ra.cylinder("boiler", 0.34, 1.2, (0, 0.02, 0.8), boiler, rotation=(0, math.radians(90), 0), verts=28)
+    for x in (-0.5, 0.0, 0.5):
+        ra.cylinder("band", 0.355, 0.05, (x, 0.02, 0.8), iron, rotation=(0, math.radians(90), 0), verts=28)
+    ra.cylinder("chimney", 0.09, 0.8, (-0.4, 0.15, 1.45), iron, verts=12)
+    ra.cylinder("chimney_cap", 0.13, 0.05, (-0.4, 0.15, 1.86), iron, verts=12)
+    ra.cylinder("dome", 0.12, 0.14, (0.15, 0.02, 1.18), brass, verts=16)
+    ra.cylinder("gauge", 0.06, 0.03, (0.35, -0.33, 0.95), brass, rotation=(math.radians(90), 0, 0), verts=16)
+    # The dynamo at the east end, driven by a spoked flywheel.
+    ra.cylinder("dynamo", 0.2, 0.32, (0.78, 0.0, 0.42), ra.rusty_metal("gen_dynamo", (0.25, 0.08, 0.05), rust=0.2),
+                rotation=(0, math.radians(90), 0), verts=20)
+    ra.cylinder("flywheel", 0.36, 0.06, (0.62, -0.32, 0.45), iron, rotation=(math.radians(90), 0, 0), verts=28)
+    ra.cylinder("hub", 0.07, 0.1, (0.62, -0.32, 0.45), brass, rotation=(math.radians(90), 0, 0), verts=12)
+    for k in range(4):
+        ra.box("spoke", (0.62, 0.03, 0.04), (0.62, -0.34, 0.45), iron, rotation=(0, k * math.pi / 4, 0))
+    ra.cylinder("terminal", 0.04, 0.22, (0.85, 0.2, 0.75), copper, verts=10)
+    ra.sphere("insulator", 0.05, (0.85, 0.2, 0.88), ra.plain("gen_porcelain", (0.75, 0.72, 0.65), 0.3), segments=10)
+
+
+POLE_TOP = 2.4
+
+
+def build_pole():
+    """A wooden power pole with a cross-arm and two porcelain insulators the wires hang from."""
+    timber = ra.wood("pole_timber", (0.2, 0.12, 0.06))
+    porcelain = ra.plain("pole_porcelain", (0.78, 0.75, 0.68), 0.25, variation=0.1)
+    ra.cylinder("pole", 0.08, POLE_TOP, (0, 0, POLE_TOP / 2), timber, verts=10)
+    ra.box("arm", (0.9, 0.09, 0.09), (0, 0, POLE_TOP - 0.18), timber, bevel=0.01)
+    for x in (-0.36, 0.36):
+        ra.cylinder("insulator", 0.045, 0.12, (x, 0, POLE_TOP - 0.07), porcelain, verts=10)
+    for x, a in ((0.18, 40), (-0.18, -40)):
+        ra.box("strut", (0.04, 0.04, 0.5), (x, 0, POLE_TOP - 0.38), timber, rotation=(0, math.radians(a), 0))
+    ra.box("plate", (0.12, 0.02, 0.16), (0, -0.09, 1.2), ra.plain("pole_plate", (0.75, 0.6, 0.05), 0.5))
+
+
+POWER = {
+    # name: (canvas width, height, camera target height, builder, where the wires meet it); each stands on one tile.
+    "generator": (128, 128, 0.7, build_generator, Vector((0.85, 0.2, 0.9))),
+    "pole": (64, 128, POLE_TOP / 2, build_pole, Vector((0, 0, POLE_TOP - 0.05))),
+}
+
+
+def render_power(layout: dict):
+    for name, (w, h, tz, build, wire) in POWER.items():
+        random.seed(zlib.crc32(name.encode()))
+        target = Vector((0, 0, tz))
+        layout[name] = render_sprite(name, w, h, target, crafted(build))
+        layout[name]["wireX"], layout[name]["wireY"] = anchor(w, h, target, wire)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"power_{name}.png")
+
+
 # --- Icons ------------------------------------------------------------------------------------------
 
 def icon_models():
@@ -1239,7 +1302,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "forestry", "mine", "crafting", "processing", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "forestry", "mine", "crafting", "processing", "power", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -1263,6 +1326,8 @@ if __name__ == "__main__":
         render_crafting(layout)
     if "processing" in args:
         render_processing(layout)
+    if "power" in args:
+        render_power(layout)
     if "logistics" in args or any(a in LOGISTICS for a in args):
         # Names of logistics sprites render just those.
         render_logistics(layout, [a for a in args if a in LOGISTICS])
