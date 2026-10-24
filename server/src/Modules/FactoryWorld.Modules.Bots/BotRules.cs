@@ -73,6 +73,21 @@ public static class BotRules
         _ => [Biomes.Forest],
     };
 
+    /// <summary>
+    /// What the bot puts up on a plot of a biome, in the order it gets to them: it crafts each piece
+    /// (once the technology allows) and places it near where it appears. Furnaces on a plot it smelts in
+    /// like in the garage; the rest is what a player's yard looks like to visitors.
+    /// </summary>
+    public static string[] Builds(BotTrade trade, int biome) => (trade, biome) switch
+    {
+        (BotTrade.Forester, Biomes.Forest) => [Items.Workbench, Items.WoodPile, Items.WoodPile, Items.WoodenChest],
+        (BotTrade.Miner, Biomes.Mountains) => [Items.Furnace, Items.Furnace, Items.Heap, Items.WoodenChest],
+        (BotTrade.Industrialist, Biomes.Mountains) => [Items.Furnace, Items.Furnace, Items.Anvil, Items.IronChest],
+        (BotTrade.Farmer, Biomes.Farmland) => [Items.Workbench, Items.Mill, Items.WoodenChest, Items.GrainSilo],
+        (_, Biomes.Forest) => [Items.WoodPile, Items.WoodenChest],
+        _ => [Items.WoodenChest],
+    };
+
     /// <summary>What the bot makes at the workbench, when it has the ingredients and the technology.</summary>
     public static string[] Products(BotTrade trade) => trade switch
     {
