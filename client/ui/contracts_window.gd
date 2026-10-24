@@ -242,6 +242,8 @@ func _new_form() -> Control:
 			picker.set_item_metadata(picker.item_count - 1, id)
 			if id == _new_item:
 				picker.select(picker.item_count - 1)
+	picker.add_theme_constant_override("icon_max_width", 24)
+	picker.get_popup().add_theme_constant_override("icon_max_width", 24)
 	picker.get_popup().max_size = Vector2i(0, 460)
 	picker.item_selected.connect(func(index: int) -> void: _new_item = picker.get_item_metadata(index))
 	row.add_child(picker)
