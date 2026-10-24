@@ -38,6 +38,9 @@ public interface ICharacterNames
 {
     /// <summary>Name by account id; accounts without a character are left out.</summary>
     Task<IReadOnlyDictionary<Guid, string>> NamesAsync(IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken);
+
+    /// <summary>Characters whose name starts with <paramref name="prefix"/> (any case), at most <paramref name="limit"/>, by account id.</summary>
+    Task<IReadOnlyDictionary<Guid, string>> FindAsync(string prefix, int limit, CancellationToken cancellationToken);
 }
 
 /// <summary>The character's tool slot: one tool (e.g. an axe) held in hand, outside the inventory.</summary>
@@ -73,6 +76,10 @@ public sealed record PlotObject(Guid Id, string Kind, int TileX, int TileY, int 
 public interface IPlotObjects
 {
     Task<IReadOnlyList<PlotObject>> ObjectsAsync(int x, int y, CancellationToken cancellationToken);
+
+    /// <summary>What every plot has built in and inserters can work with too (the railway station): one
+    /// object per tile it covers, all with the same id, owned by the plot's owner.</summary>
+    Task<IReadOnlyList<PlotObject>> FixturesAsync(int x, int y, CancellationToken cancellationToken);
 
     /// <summary>Fails with <c>not_owner</c> unless the player owns the plot.</summary>
     Task RequireOwnerAsync(Guid player, int x, int y, CancellationToken cancellationToken);
