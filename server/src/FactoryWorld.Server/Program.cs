@@ -1,6 +1,7 @@
 using Npgsql;
 using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Accounts;
+using FactoryWorld.Modules.Achievements;
 using FactoryWorld.Modules.Characters;
 using FactoryWorld.Modules.Contracts;
 using FactoryWorld.Modules.Crafting;
@@ -29,6 +30,7 @@ IGameModule[] modules =
     new CraftingModule(),
     new LogisticsModule(),
     new ContractsModule(),
+    new AchievementsModule(),
 ];
 
 foreach (var module in modules)

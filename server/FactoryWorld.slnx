@@ -5,6 +5,7 @@
   </Folder>
   <Folder Name="/src/Modules/">
     <Project Path="src/Modules/FactoryWorld.Modules.Accounts/FactoryWorld.Modules.Accounts.csproj" />
+    <Project Path="src/Modules/FactoryWorld.Modules.Achievements/FactoryWorld.Modules.Achievements.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Characters/FactoryWorld.Modules.Characters.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Contracts/FactoryWorld.Modules.Contracts.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Crafting/FactoryWorld.Modules.Crafting.csproj" />

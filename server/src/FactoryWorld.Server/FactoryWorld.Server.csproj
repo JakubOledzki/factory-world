@@ -13,6 +13,7 @@
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Crafting\FactoryWorld.Modules.Crafting.csproj" />
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Logistics\FactoryWorld.Modules.Logistics.csproj" />
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Contracts\FactoryWorld.Modules.Contracts.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Achievements\FactoryWorld.Modules.Achievements.csproj" />
   </ItemGroup>
 
   <ItemGroup>

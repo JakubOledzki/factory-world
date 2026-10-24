@@ -19,6 +19,10 @@ public sealed class ClientContext
     /// <summary>Per-connection state that a module keeps for itself, keyed by a name it owns.</summary>
     public Dictionary<string, object> Items { get; } = new();
 
+    /// <summary>Messages for the player that answer no request (e.g. an unlocked achievement),
+    /// sent right after the reply being handled.</summary>
+    public Queue<Envelope> Outbox { get; } = new();
+
     public Guid RequireAccount() =>
         AccountId ?? throw new GameException("not_logged_in", "Log in first.");
 }
