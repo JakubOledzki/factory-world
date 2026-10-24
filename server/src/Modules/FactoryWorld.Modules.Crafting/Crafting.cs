@@ -69,7 +69,8 @@ public sealed record CraftingState(
     IReadOnlyList<(string Item, int Quantity)> Done,
     XpGain? Xp);
 
-public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, TimeProvider time)
+public sealed class CraftingService(
+    GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
 {
     /// <summary>The queue as it is now, after handing out every order that is done.</summary>
     public Task<CraftingState> StateAsync(Guid owner, CancellationToken cancellationToken) =>
@@ -172,10 +173,11 @@ public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> place
     {
         // DELETE ... RETURNING hands each finished order to exactly one request, so an item is never given twice.
         await using var command = await db.CommandAsync(
-            "DELETE FROM crafting.jobs WHERE owner_id = @owner AND finishes_at <= @now RETURNING recipe", cancellationToken);
+            "DELETE FROM crafting.jobs WHERE owner_id = @owner AND finishes_at <= @now RETURNING recipe, finishes_at", cancellationToken);
         command.Parameters.AddWithValue("owner", owner);
         command.Parameters.AddWithValue("now", time.GetUtcNow());
         var recipes = new List<Recipe>();
+        var made = new List<ProductionEntry>();
         await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
         {
             while (await reader.ReadAsync(cancellationToken))
@@ -183,6 +185,9 @@ public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> place
                 if (Workshop.Find(reader.GetString(0)) is { } recipe)
                 {
                     recipes.Add(recipe);
+                    var at = reader.GetFieldValue<DateTimeOffset>(1);
+                    made.Add(ProductionEntry.Made(recipe.Id, recipe.Quantity, at));
+                    made.AddRange(recipe.Ingredients.Select(i => ProductionEntry.Used(i.Item, i.Quantity, at)));
                 }
             }
         }
@@ -192,6 +197,7 @@ public sealed class CraftingService(GameDb db, IEnumerable<IPlacedObjects> place
             return ([], null);
         }
 
+        await stats.RecordAsync(owner, made, cancellationToken);
         var done = recipes.GroupBy(r => r.Id).Select(g => (g.Key, g.Sum(r => r.Quantity))).ToList();
         foreach (var (item, quantity) in done)
         {
