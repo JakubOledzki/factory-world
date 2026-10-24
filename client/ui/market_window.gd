@@ -31,6 +31,9 @@ var _prices: Array = []
 var _overview: Array = []
 var _board := {}
 var _mine := {}
+## A request for the open tab is on its way; `_again` asks for one more once it is answered.
+var _loading := false
+var _again := false
 
 
 func _init() -> void:
@@ -106,8 +109,33 @@ func refresh() -> void:
 		await _reload()
 
 
-## Fetches what the open tab shows, then draws it.
+## Draws the open tab at once from what came last, then fetches it again and draws it anew.
+## One request at a time: clicking through tabs faster than the server answers only asks once
+## more for whatever is open when the answer comes, instead of piling up requests.
 func _reload() -> void:
+	if _tab == 0 or _has_cached():
+		_render()
+	if _tab == 0:
+		return
+	if _loading:
+		_again = true
+		return
+	_loading = true
+	var reply := await _fetch()
+	while _again:
+		_again = false
+		reply = await _fetch()
+	_loading = false
+	if reply["type"] == "error":
+		failed.emit(reply)
+		return
+	_render()
+
+
+## Asks the server for what the open tab shows and keeps it.
+func _fetch() -> Dictionary:
+	if _tab == 0:
+		return {"type": "ok"}
 	var reply: Dictionary
 	if _tab == 1 and _item != "":
 		reply = await Net.request("market.item", {"item": _item})
@@ -119,21 +147,23 @@ func _reload() -> void:
 			# Items that have offers first, the rest in the server's order.
 			var items: Array = reply["payload"]["items"]
 			_overview = items.filter(_has_offers) + items.filter(func(e: Dictionary) -> bool: return not _has_offers(e))
-	elif _tab == 2:
+	else:
 		reply = await Net.request("market.mine")
 		if reply["type"] == "market.mine":
 			_mine = reply["payload"]
-	else:
-		reply = {"type": "ok"}
-	if reply["type"] == "error":
-		failed.emit(reply)
-		return
-	_render()
+	return reply
+
+
+## Whether the open tab has something from an earlier answer to show while it loads.
+func _has_cached() -> bool:
+	match _tab:
+		1: return _board.get("item", "") == _item if _item != "" else not _overview.is_empty()
+		2: return not _mine.is_empty()
+	return true
 
 
 func _render() -> void:
-	for child in _page.get_children():
-		child.free()
+	UI.clear(_page)
 	_render_categories()
 	match _tab:
 		0: _render_trader()
