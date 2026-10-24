@@ -904,16 +904,49 @@ func _can_release(cell: Vector2i) -> bool:
 func _can_place(cell: Vector2i) -> bool:
 	if _placing == "":
 		return false
+	# The player steps off a big building's ground before it goes up (_place_big), so standing there is fine.
+	var big := FORESTERS.has(_placing)
 	for at in _footprint(_placing, cell):
-		if not _free_ground(at):
+		if not _free_ground(at, not big):
 			return false
 	return true
 
 
-func _free_ground(cell: Vector2i) -> bool:
+func _free_ground(cell: Vector2i, mind_player := true) -> bool:
 	var spawn: Dictionary = _plot.get("spawn", {})
 	return _tile(cell) == NONE and not _fields.has(cell) and not _trees.has(cell) and not _placed.has(cell) \
-		and not _animals.has(cell) and cell != Vector2i(spawn.get("x", -1), spawn.get("y", -1)) and Vector2i(_player.floor_pos.floor()) != cell
+		and not _animals.has(cell) and cell != Vector2i(spawn.get("x", -1), spawn.get("y", -1)) \
+		and (not mind_player or Vector2i(_player.floor_pos.floor()) != cell)
+
+
+## Whether the player stands on the ground an object of `kind` on `cell` would cover.
+func _in_footprint(kind: String, cell: Vector2i) -> bool:
+	return Vector2i(_player.floor_pos.floor()) in _footprint(kind, cell)
+
+
+## Puts up a 3 × 3 building: first walks to the nearest free tile just outside its ground, so the player
+## is never walled in by it, then places it.
+func _place_big(cell: Vector2i) -> void:
+	_stop_work()
+	var kind := _placing
+	if not _in_footprint(kind, cell) and _near(cell, REACH + FOOTPRINT):
+		_place_object(cell)
+		return
+	var reach := FOOTPRINT + 1
+	var best := Vector2i(-1, -1)
+	for dy in range(-reach, reach + 1):
+		for dx in range(-reach, reach + 1):
+			var at := cell + Vector2i(dx, dy)
+			if maxi(absi(dx), absi(dy)) != reach or _solid(at) or not _astar.region.has_point(at):
+				continue
+			if best.x < 0 or _player.floor_pos.distance_to(Vector2(at)) < _player.floor_pos.distance_to(Vector2(best)):
+				best = at
+	if best.x < 0:
+		_show_toast("Nie ma jak podejść do tego miejsca. Wybierz inne.", UI.ERROR)
+		return
+	_walk_to(best, func() -> void:
+		if _placing == kind and not _in_footprint(kind, cell):
+			_place_object(cell))
 
 
 ## The tiles an object of `kind` standing on `cell` covers: 3 × 3 for a forester's building, else just its own.
@@ -1130,7 +1163,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			_update_hover()
 			var cell := Vector2i((get_global_mouse_position() / TILE).floor())
 			if _placing != "":
-				if _can_place(cell):
+				if _can_place(cell) and FORESTERS.has(_placing):
+					_place_big(cell)
+				elif _can_place(cell):
 					_go_and(cell, _place_object, true)
 				else:
 					_show_toast("Tu nie można tego postawić. Wybierz wolne pole.", UI.ERROR)
@@ -1801,7 +1836,7 @@ func _count(item: String) -> int:
 
 
 func _place_object(cell: Vector2i) -> void:
-	if not _can_place(cell):
+	if not _can_place(cell) or _in_footprint(_placing, cell):
 		_show_toast("Tu nie można tego postawić.", UI.ERROR)
 		return
 	var kind := _placing
