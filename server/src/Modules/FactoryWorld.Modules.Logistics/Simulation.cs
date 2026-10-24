@@ -433,12 +433,18 @@ public sealed class PlotLogistics
                 continue;
             }
 
-            if (speed < 1 && c.Charge < 1)
+            if (speed < 1)
             {
-                // Short of power it gathers enough for one move over several ticks.
-                c.Charge = Math.Min(1, c.Charge + speed);
-                Changed.Add(inserter.Id);
-                if (c.Charge < 1)
+                // Short of power it gathers what one move takes over the ticks; one waiting for
+                // something to do keeps no more than that.
+                var charge = Math.Min(c.Charge, 1) + speed;
+                if (charge != c.Charge)
+                {
+                    c.Charge = charge;
+                    Changed.Add(inserter.Id);
+                }
+
+                if (charge < 1)
                 {
                     moved = true;
                     continue;
@@ -475,7 +481,7 @@ public sealed class PlotLogistics
 
             if (speed < 1)
             {
-                c.Charge = 0;
+                c.Charge -= 1;
             }
 
             Changed.Add(inserter.Id);

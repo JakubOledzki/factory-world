@@ -292,7 +292,7 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         throw new InvalidOperationException("No such plot.");
     }
 
-    /// <summary>A plot of the player's with <paramref name="length"/> free tiles in a row from (tileX, tileY) east.</summary>
+    /// <summary>A plot of the player's with <paramref name="length"/> free tiles in a row from (tileX, tileY) east, and the row under it free too.</summary>
     private async Task<(int X, int Y, int TileX, int TileY)> PlotWithFreeRowAsync(GameClient client, int length)
     {
         await using (var scope = factory.Services.CreateAsyncScope())
@@ -309,9 +309,9 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         var bytes = tiles.ToArray();
         for (var ty = 20; ty < PlotLayout.Size; ty++)
         {
-            for (var tx = 0; tx + length <= PlotLayout.Size; tx++)
+            for (var tx = 0; tx + Math.Max(length, 4) <= PlotLayout.Size; tx++)
             {
-                if (Enumerable.Range(tx, length).All(i => bytes[ty * PlotLayout.Size + i] == (byte)TileObject.None))
+                if (Enumerable.Range(tx, length).All(i => bytes[ty * PlotLayout.Size + i] == (byte)TileObject.None && bytes[(ty + 1) * PlotLayout.Size + i] == (byte)TileObject.None))
                 {
                     return (x, y, tx, ty);
                 }
@@ -319,6 +319,17 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         }
 
         throw new InvalidOperationException("No free row.");
+    }
+
+    /// <summary>Powers a row of up to five tiles from (tileX, tileY): a pole and a generator with coal in the row under it.</summary>
+    private async Task PowerAsync(GameClient client, int x, int y, int tileX, int tileY, int coal = 20)
+    {
+        await GiveAsync(client, Items.Pole, 1);
+        await GiveAsync(client, Items.Generator, 1);
+        await GiveAsync(client, Items.Coal, coal);
+        await PlaceAsync(client, x, y, Items.Pole, tileX + 2, tileY + 1);
+        var generator = await PlaceAsync(client, x, y, Items.Generator, tileX + 3, tileY + 1);
+        Assert.Equal("generator", (await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Coal, quantity = coal })).Type());
     }
 
     private static async Task<string> PlaceAsync(GameClient client, int x, int y, string kind, int tileX, int tileY, int rotation = East)
@@ -436,6 +447,7 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         var target = await PlaceAsync(client, x, y, Items.WoodenChest, tx + 4, ty);
         await client.SendAsync("storage.put", new { x, y, id = source, item = Items.IronOre, quantity = 10 });
         await client.SendAsync("storage.put", new { x, y, id = source, item = Items.Coal, quantity = 2 });
+        await PowerAsync(client, x, y, tx, ty);
 
         factory.Time.Advance(TimeSpan.FromHours(3));
         var logistics = await client.SendAsync("logistics.get", new { x, y });
@@ -474,6 +486,7 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         var chest = await PlaceAsync(client, x, y, Items.WoodenChest, tx + 4, ty);
         Assert.Equal("machine", (await client.SendAsync("machine.recipe", new { machine = mill, recipe = Items.Flour })).Type());
         await client.SendAsync("storage.put", new { x, y, id = silo, item = Items.Wheat, quantity = 20 });
+        await PowerAsync(client, x, y, tx, ty);
 
         factory.Time.Advance(TimeSpan.FromHours(1));
         var storages = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("storages")
@@ -495,6 +508,7 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         var inserter = await PlaceAsync(client, x, y, Items.Inserter, tx + 1, ty);
         var belt = await PlaceAsync(client, x, y, Items.Belt, tx + 2, ty);
         await client.SendAsync("storage.put", new { x, y, id = chest, item = Items.Stone, quantity = 3 });
+        await PowerAsync(client, x, y, tx, ty);
 
         factory.Time.Advance(TimeSpan.FromMinutes(1));
         var belts = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("belts");
