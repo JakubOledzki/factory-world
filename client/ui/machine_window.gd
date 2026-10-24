@@ -111,16 +111,14 @@ func _render() -> void:
 		return
 	for child in _recipes.get_children():
 		child.free()
-	for recipe: Dictionary in _state["recipes"]:
+	# Recipes still to be researched aren't shown at all.
+	for recipe: Dictionary in _state["recipes"].filter(func(r: Dictionary) -> bool: return r.get("locked") == null):
 		var chosen: bool = recipe["id"] == _state.get("recipe")
 		var b := UI.button(recipe["name"], _choose.bind(recipe["id"]), chosen)
 		b.icon = UI.item_texture(recipe["id"])
 		b.set_meta("item", recipe["id"])
 		b.add_theme_constant_override("icon_max_width", 24)
 		b.tooltip_text = _formula_text(recipe)
-		if recipe.get("locked") != null:
-			b.disabled = true
-			b.tooltip_text += "\nNajpierw zbadaj: %s (drzewko technologii przy stole warsztatowym)" % recipe["locked"]
 		_recipes.add_child(b)
 
 	var recipe := _recipe()

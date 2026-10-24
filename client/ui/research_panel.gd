@@ -92,16 +92,6 @@ func set_items(items: Array) -> void:
 		_render()
 
 
-## Shows the technology that unlocks `item` (a recipe or a machine), if any.
-func select_unlocking(item: String) -> void:
-	for technology: Dictionary in _state.get("technologies", []):
-		for unlock: Dictionary in technology["unlocks"]:
-			if unlock["id"] == item:
-				_selected = technology["id"]
-				_render()
-				return
-
-
 ## Asks the server for the tree; it hands out XP for finished research.
 func refresh() -> void:
 	_refreshing = true
