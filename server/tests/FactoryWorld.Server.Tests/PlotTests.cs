@@ -165,6 +165,42 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
     }
 
     [Fact]
+    public async Task A_chainsaw_from_the_trader_for_500_dollars_cuts_trees_70_percent_faster()
+    {
+        using var client = await PlayerAsync();
+        var forest = await BuyAsync(client, Biome.Forest);
+        var balance = await client.BalanceAsync();
+        Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.Chainsaw, quantity = 1 })).Type());
+        Assert.Equal(balance - 50_000, await client.BalanceAsync());
+        Assert.Equal(Items.Chainsaw, Tool((await client.SendAsync("character.equip", new { item = Items.Chainsaw })).Payload()));
+
+        var (plot, tiles) = await EnterAsync(client, forest);
+        Assert.Equal(5, plot.GetProperty("chopSeconds").GetDouble());
+        Assert.Equal(1.5, plot.GetProperty("sawSeconds").GetDouble(), 6);
+        Assert.Equal(TimeSpan.FromSeconds(1.5), HarvestRules.TimeFor(TileObject.Tree, Items.Chainsaw));
+
+        var (tx, ty) = Find(tiles, TileObject.Tree);
+        Assert.Equal("plot.harvested", (await client.SendAsync("plot.harvest", new { x = forest.X, y = forest.Y, tileX = tx, tileY = ty })).Type());
+        var (nx, ny) = Find((await EnterAsync(client, forest)).Tiles, TileObject.Tree);
+        factory.Time.Advance(HarvestRules.SawTime);
+        Assert.Equal("plot.harvested", (await client.SendAsync("plot.harvest", new { x = forest.X, y = forest.Y, tileX = nx, tileY = ny })).Type());
+        Assert.Equal(2, (await client.InventoryAsync())[Items.Wood]);
+
+        // With the axe back in hand a tree takes the full time again.
+        await client.SendAsync("character.equip", new { item = Items.Axe });
+        var (mx, my) = Find((await EnterAsync(client, forest)).Tiles, TileObject.Tree);
+        factory.Time.Advance(HarvestRules.SawTime);
+        Assert.Equal("too_fast", (await client.SendAsync("plot.harvest", new { x = forest.X, y = forest.Y, tileX = mx, tileY = my })).ErrorCode());
+
+        // A chainsaw is no good on rocks.
+        await client.SendAsync("character.equip", new { item = Items.Chainsaw });
+        var mountains = await BuyAsync(client, Biome.Mountains);
+        var (rx, ry) = Find((await EnterAsync(client, mountains)).Tiles, TileObject.Rock);
+        factory.Time.Advance(HarvestRules.ChopTime);
+        Assert.Equal("wrong_tool", (await client.SendAsync("plot.harvest", new { x = mountains.X, y = mountains.Y, tileX = rx, tileY = ry })).ErrorCode());
+    }
+
+    [Fact]
     public async Task Breaking_a_rock_with_a_pickaxe_gives_stone()
     {
         using var client = await PlayerAsync();

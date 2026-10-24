@@ -1,7 +1,7 @@
 extends Control
 ## The player's garage: the rendered room with furniture the player can move, and the
 ## character, who walks with WSAD or by clicking. Sorting opens at the trash bin, crafting at
-## the workbench and smelting at a furnace; the inventory, the market and the orders are windows opened
+## the workbench or an anvil and smelting at a furnace; the inventory, the market and the orders are windows opened
 ## from the toolbar.
 
 ## The garage is lit by one bulb, so the character is drawn darker than in the editor.
@@ -15,8 +15,9 @@ const GRID := 0.1
 const BIN := "furniture_trash_bin"
 const WORKBENCH := "furniture_workbench"
 const FURNACE := "furniture_furnace"
+const ANVIL := "furniture_anvil"
 ## What [E] does next to each piece of furniture that can be used.
-const USE := {BIN: "Segreguj", WORKBENCH: "Wytwarzaj", FURNACE: "Piec kamienny"}
+const USE := {BIN: "Segreguj", WORKBENCH: "Wytwarzaj", ANVIL: "Kuj narzędzia", FURNACE: "Piec kamienny"}
 
 ## Keyboard actions of this screen: name and keys.
 const ACTIONS := {
@@ -222,10 +223,10 @@ func _use(object: Furniture) -> void:
 	match object.kind:
 		BIN:
 			_sorting_window.show_window()
-		WORKBENCH:
+		WORKBENCH, ANVIL:
 			_using = object
 			_furnace_window.hide_window()
-			_crafting_window.open_at(object.id)
+			_crafting_window.open_at(object.id, object.kind)
 		FURNACE:
 			_using = object
 			_crafting_window.hide_window()
@@ -440,7 +441,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			pass
 		elif object.kind == BIN:
 			_sorting_window.toggle()
-		elif (object.kind == WORKBENCH and _crafting_window.visible or object.kind == FURNACE and _furnace_window.visible) and _using == object:
+		elif (object.kind in [WORKBENCH, ANVIL] and _crafting_window.visible or object.kind == FURNACE and _furnace_window.visible) and _using == object:
 			_crafting_window.hide_window()
 			_furnace_window.hide_window()
 		else:
@@ -960,7 +961,7 @@ func _update_use() -> void:
 
 ## Orders from the workbench are done: they are in the inventory now.
 func _on_crafted(done: Array, xp: Variant) -> void:
-	var bench: Furniture = _using if _using != null and is_instance_valid(_using) and _using.kind == WORKBENCH else _first(WORKBENCH)
+	var bench: Furniture = _using if _using != null and is_instance_valid(_using) and _using.kind in [WORKBENCH, ANVIL] else _first(WORKBENCH)
 	for i in done.size():
 		var item: Dictionary = done[i]
 		_float_text("+%d %s" % [int(item["quantity"]), item["name"]], UI.TEXT, i * 0.25, 0, bench)

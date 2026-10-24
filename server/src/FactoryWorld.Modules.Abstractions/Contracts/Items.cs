@@ -21,6 +21,7 @@ public static class Items
     public const string GasCylinder = "furniture_gas_cylinder";
     public const string SortingMachine = "furniture_sorting_machine";
     public const string Furnace = "furniture_furnace";
+    public const string Anvil = "furniture_anvil";
 
     // Upgraded furnaces: they stand on plots only and smelt faster, holding more.
     public const string BrickFurnace = "furniture_brick_furnace";
@@ -31,6 +32,7 @@ public static class Items
     public const string Shovel = "tool_shovel";
     public const string Pickaxe = "tool_pickaxe";
     public const string Hoe = "tool_hoe";
+    public const string Chainsaw = "tool_chainsaw";
 
     // Raw materials gathered on plots.
     public const string Wood = "wood";
@@ -120,12 +122,14 @@ public static class Items
         [GasCylinder] = "Butla gazowa",
         [SortingMachine] = "Automatyczna sortownia",
         [Furnace] = "Piec kamienny",
+        [Anvil] = "Kowadło",
         [BrickFurnace] = "Piec ceglany",
         [BlastFurnace] = "Piec hutniczy",
         [Axe] = "Siekiera",
         [Shovel] = "Łopata",
         [Pickaxe] = "Kilof",
         [Hoe] = "Motyka",
+        [Chainsaw] = "Piła spalinowa",
         [Wood] = "Drewno",
         [Stone] = "Kamień",
         [Sand] = "Piasek",
@@ -181,7 +185,7 @@ public static class Items
 
     public static bool Exists(string id) => Names.ContainsKey(id);
 
-    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe;
+    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw;
 
     /// <summary>Furnaces of every level: the stone one and its upgrades.</summary>
     public static bool IsFurnace(string id) => id is Furnace or BrickFurnace or BlastFurnace;

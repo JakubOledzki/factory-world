@@ -499,6 +499,7 @@ CRAFTING = {
     # so it reads at the plot's scale. name: (canvas width, height, camera target height, builder).
     "workbench": (144, 128, 0.6, crafted(lambda: ra.build_workbench(None, Vector((0, 0, 0))))),
     "furnace": (96, 112, 0.6, crafted(lambda: ra.build_furnace(None, Vector((0, 0, 0)), 1.4))),
+    "anvil": (96, 96, 0.5, crafted(lambda: ra.build_anvil(None, Vector((0, 0, 0)), 1.7))),
     # The upgraded furnaces stand on plots only; the inventory shows them as their sprites.
     "brick_furnace": (112, 144, 0.9, crafted(build_brick_furnace)),
     "blast_furnace": (112, 160, 1.0, crafted(build_blast_furnace)),
@@ -1203,6 +1204,21 @@ def icon_models():
         ra.box("edge", (0.03, 0.032, 0.2), (0.24, 0.085, 0.08), ra.plain("edge", (0.7, 0.7, 0.72), 0.2, 1.0, grime=0.1),
                rotation=(0, 0, math.radians(20)))
 
+    def chainsaw():
+        # Lying on its side: an orange motor housing, a black handle loop over it, and the long
+        # guide bar with its chain pointing to the right.
+        orange = ra.plain("saw_body", (0.75, 0.22, 0.02), 0.45, variation=0.15, grime=0.4)
+        black = ra.plain("saw_black", (0.03, 0.03, 0.035), 0.55, grime=0.3)
+        bar = ra.plain("saw_bar", (0.55, 0.56, 0.58), 0.3, 1.0, grime=0.3)
+        turn = (0, 0, math.radians(15))
+        ra.box("saw_body", (0.2, 0.13, 0.12), (-0.12, 0, 0.07), orange, bevel=0.025, rotation=turn)
+        ra.box("saw_cover", (0.1, 0.135, 0.06), (-0.17, -0.013, 0.12), black, bevel=0.015, rotation=turn)
+        ra.torus("saw_handle", 0.07, 0.014, (-0.1, 0.03, 0.17), black, rotation=(math.radians(90), 0, math.radians(15)))
+        ra.box("saw_grip", (0.08, 0.035, 0.035), (-0.27, -0.04, 0.07), black, bevel=0.012, rotation=turn)
+        ra.box("saw_bar", (0.36, 0.022, 0.065), (0.15, 0.072, 0.07), bar, bevel=0.025, rotation=turn)
+        ra.box("saw_chain", (0.37, 0.026, 0.012), (0.15, 0.072, 0.105), black, bevel=0.004, rotation=turn)
+        ra.box("saw_chain_low", (0.37, 0.026, 0.012), (0.15, 0.072, 0.035), black, bevel=0.004, rotation=turn)
+
     def shovel():
         ra.cylinder("handle", 0.02, 0.45, (-0.08, 0, 0.04), ra.wood("handle", (0.25, 0.15, 0.07)),
                     rotation=(0, math.radians(90), math.radians(-25)))
@@ -1435,6 +1451,7 @@ def icon_models():
         "item_vegetable_soup": bowl((0.6, 0.35, 0.08), [((0.75, 0.25, 0.02), 6), ((0.8, 0.7, 0.4), 6), ((0.2, 0.4, 0.1), 4)]),
         "item_bigos": bowl((0.3, 0.18, 0.06), [((0.65, 0.6, 0.3), 12), ((0.35, 0.12, 0.08), 6)]),
         "item_tool_axe": axe, "item_tool_shovel": shovel, "item_tool_pickaxe": pickaxe, "item_tool_hoe": hoe,
+        "item_tool_chainsaw": chainsaw,
         "item_wheat": wheat_sheaf, "item_carrot": carrots, "item_cabbage": cabbage_head, "item_corn": corn_cob,
         "item_potato": potatoes, "item_sunflower": sunflower_head,
         "item_wood": wood, "item_stone": stones((0.2, 0.19, 0.18)), "item_sand": sand, "item_coal": coal,
@@ -1502,6 +1519,7 @@ if __name__ == "__main__":
     if "mine" in args:
         render_mine(layout)
     if "crafting" in args or any(a in CRAFTING for a in args):
+        # Names of crafting sprites render just those.
         render_crafting(layout, [a for a in args if a in CRAFTING])
     if "processing" in args:
         render_processing(layout)

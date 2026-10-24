@@ -209,6 +209,10 @@
   "anchorX": 32,
   "anchorY": 39
  },
+ "anvil": {
+  "anchorX": 48,
+  "anchorY": 59
+ },
  "brick_furnace": {
   "anchorX": 56,
   "anchorY": 92

@@ -208,7 +208,15 @@ public static class HarvestRules
     /// <summary>Cutting down a tree takes longer than any other work.</summary>
     public static readonly TimeSpan ChopTime = TimeSpan.FromSeconds(5);
 
-    public static TimeSpan TimeFor(TileObject obj) => obj == TileObject.Tree ? ChopTime : Time;
+    /// <summary>A chainsaw cuts a tree 70% faster than an axe.</summary>
+    public static readonly TimeSpan SawTime = ChopTime * 0.3;
+
+    /// <summary>How long gathering an object takes with the tool in hand.</summary>
+    public static TimeSpan TimeFor(TileObject obj, string? tool = null) => obj switch
+    {
+        TileObject.Tree => tool == Items.Chainsaw ? SawTime : ChopTime,
+        _ => Time,
+    };
 
     public const int XpPerHarvest = 2;
 }
@@ -284,8 +292,7 @@ public sealed class PlotService(
 
             var obj = (TileObject)PlotLayout.Generate(x, y, biome)[tileY * PlotLayout.Size + tileX];
             var tool = PlotLayout.ToolFor(obj) ?? throw new GameException("nothing_here", "There is nothing to gather here.");
-            await RequireToolAsync(player, tool, cancellationToken);
-            pace(HarvestRules.TimeFor(obj));
+            pace(HarvestRules.TimeFor(obj, await RequireToolAsync(player, tool, cancellationToken)));
 
             await using (var insert = await db.CommandAsync(
                 "INSERT INTO world.plot_harvests (x, y, tile_x, tile_y) VALUES (@x, @y, @tx, @ty) ON CONFLICT DO NOTHING", cancellationToken))
@@ -323,8 +330,7 @@ public sealed class PlotService(
             throw new GameException("not_grown", "The tree has not grown yet.");
         }
 
-        await RequireToolAsync(player, Items.Axe, cancellationToken);
-        pace(HarvestRules.ChopTime);
+        pace(HarvestRules.TimeFor(TileObject.Tree, await RequireToolAsync(player, Items.Axe, cancellationToken)));
         await using (var delete = await db.CommandAsync(
             "DELETE FROM world.plot_trees WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty", cancellationToken))
         {
@@ -338,12 +344,15 @@ public sealed class PlotService(
         return await GiveAsync(player, TileObject.Tree, cancellationToken);
     }
 
-    public async Task RequireToolAsync(Guid player, string tool, CancellationToken cancellationToken)
+    /// <summary>The tool in the player's hand, if it does the work of <paramref name="tool"/>: a chainsaw does an axe's.</summary>
+    public async Task<string> RequireToolAsync(Guid player, string tool, CancellationToken cancellationToken)
     {
-        if (await equipment.ToolAsync(player, cancellationToken) != tool)
+        if (await equipment.ToolAsync(player, cancellationToken) is not { } held || (held != tool && !(tool == Items.Axe && held == Items.Chainsaw)))
         {
             throw new GameException("wrong_tool", $"You need {Items.Names[tool]} in your hand.");
         }
+
+        return held;
     }
 
     private async Task<Harvest> GiveAsync(Guid player, TileObject obj, CancellationToken cancellationToken)
@@ -457,6 +466,7 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             mineUnits = Mining.Units,
             mines = mines.Select(MineHandler.MineJson),
             chopSeconds = HarvestRules.ChopTime.TotalSeconds,
+            sawSeconds = HarvestRules.SawTime.TotalSeconds,
             treeGrowSeconds = Forestry.GrowTime(biome)?.TotalSeconds,
             trees = trees.Select(PlantTreeHandler.TreeJson),
             objects = objects.Select(PlaceOnPlotHandler.ObjectJson),

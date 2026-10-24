@@ -8,7 +8,7 @@ signal changed
 ## When the server refused, with its error reply.
 signal failed(reply: Dictionary)
 
-const TOOLS := ["tool_axe", "tool_shovel", "tool_pickaxe", "tool_hoe"]
+const TOOLS := ["tool_axe", "tool_chainsaw", "tool_shovel", "tool_pickaxe", "tool_hoe"]
 const UNEQUIP := 1000
 
 var _icon: TextureRect

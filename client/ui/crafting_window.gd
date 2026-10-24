@@ -1,6 +1,7 @@
 class_name CraftingWindow
 extends GameWindow
-## The workbench: pick a recipe, see what it takes, and press "Wytwórz". The ingredients go at
+## The workbench or the anvil: pick a recipe, see what it takes, and press "Wytwórz". Each shows
+## only its own recipes (the anvil forges the tools), but both share one queue. The ingredients go at
 ## once; the item is made after the recipe's time, one order after another, and lands in the
 ## inventory even when the player walks away. The window keeps an eye on the queue while closed,
 ## so the screen hears about finished orders. It covers most of the screen: recipes sorted into
@@ -17,8 +18,13 @@ signal pick_up_requested(id: String)
 ## Research finished: [{id, name}] and the XP gain (or null).
 signal researched(finished: Array, xp: Variant)
 
-## The workbench the window was opened at (its object id in the garage or on the plot).
+const WORKBENCH := "furniture_workbench"
+const ANVIL := "furniture_anvil"
+
+## The workbench or anvil the window was opened at (its object id in the garage or on the plot).
 var workbench := ""
+## What it is: WORKBENCH or ANVIL; it shows the recipes made there.
+var station := WORKBENCH
 ## Whether the window offers to put the workbench away (on a plot; the garage has its own menu).
 var can_pick_up := false
 
@@ -130,7 +136,8 @@ func _init() -> void:
 	side.add_child(job)
 	_queue.add_theme_constant_override("separation", 2)
 	side.add_child(_queue)
-	side.add_child(UI.label("Wytwarzanie trwa dalej, gdy odejdziesz od stołu. Gotowe przedmioty trafiają do ekwipunku.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	side.add_child(UI.label("Wytwarzanie trwa dalej, gdy odejdziesz. Stół i kowadło mają wspólną kolejkę; gotowe przedmioty trafiają do ekwipunku.",
+			UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	if not UI.touch():
 		side.add_child(UI.label("Przytrzymaj Ctrl i najedź myszą na przedmiot, aby zobaczyć jego opis.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	_pick_up_button = UI.button("Schowaj stół do ekwipunku", func() -> void: pick_up_requested.emit(workbench))
@@ -151,13 +158,30 @@ func _open_tab(tab: int) -> void:
 		_research.set_items(_items)
 
 
-## Opens the window at a workbench.
-func open_at(id: String) -> void:
+## Opens the window at a workbench or, with `kind` ANVIL, at an anvil.
+func open_at(id: String, kind := WORKBENCH) -> void:
 	workbench = id
+	if kind != station:
+		_selected = ""
+	station = kind
+	var anvil := kind == ANVIL
+	set_title("Kowadło" if anvil else "Stół warsztatowy")
+	_pick_up_button.text = "Schowaj kowadło do ekwipunku" if anvil else "Schowaj stół do ekwipunku"
 	_pick_up_button.visible = can_pick_up
+	# Research is done at the workbench; the anvil only forges.
+	for b in _tab_buttons:
+		b.visible = not anvil
+	if anvil:
+		_open_tab(0)
 	show_window()
 	refresh()
 	_research.refresh()
+
+
+## The recipes made where the window is open.
+func _station_recipes() -> Array:
+	return _state.get("recipes", []).filter(func(recipe: Dictionary) -> bool:
+		return recipe.get("station", WORKBENCH) == station)
 
 
 ## The screen calls this whenever the inventory changes.
@@ -186,8 +210,9 @@ func _apply(reply: Dictionary) -> void:
 		return
 	_state = reply["payload"]
 	_clock_offset = float(_state["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
-	if _selected == "" and not _state["recipes"].is_empty():
-		_selected = _state["recipes"][0]["id"]
+	var here := _station_recipes()
+	if not here.any(func(recipe: Dictionary) -> bool: return recipe["id"] == _selected) and not here.is_empty():
+		_selected = here[0]["id"]
 	var done: Array = _state.get("done", [])
 	if not done.is_empty():
 		finished.emit(done, _state.get("xp"))
@@ -226,7 +251,7 @@ func _render() -> void:
 		return
 	UI.clear(_recipes)
 	var query := _search.text.strip_edges().to_lower()
-	var found: Array = _state["recipes"].filter(func(recipe: Dictionary) -> bool:
+	var found: Array = _station_recipes().filter(func(recipe: Dictionary) -> bool:
 		return query == "" or recipe["name"].to_lower().contains(query))
 	_categories.show_counts(CategoryList.count(found.map(func(recipe: Dictionary) -> String: return recipe["id"])), _category, true)
 	var grids := {}
@@ -305,6 +330,8 @@ func _render() -> void:
 				_research.select_unlocking(selected["id"])))
 		if _selected == "nails":
 			_details.add_child(UI.label("Gwoździe kupisz też u handlarza na rynku.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		elif _selected.begins_with("tool_"):
+			_details.add_child(UI.label("Narzędzia kupisz też u handlarza na rynku po 100 $.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	var queue: Array = _state.get("queue", [])
 	var full := queue.size() >= int(_state.get("maxQueue", 5))
