@@ -9,8 +9,9 @@ namespace FactoryWorld.Modules.World;
 /// Things a player carries out of the inventory and puts on a free tile of their plot, e.g. a
 /// workbench or an anvil to craft at far from the garage, a furnace, a machine that processes crops (mill, oil
 /// press, pickling barrel, bakery, field kitchen), belts, inserters, chests, a generator and the
-/// poles that carry its power, or a computer to trade on the market from the plot. Each stands on one
-/// tile, turned by quarter turns like furniture in the garage.
+/// poles that carry its power, a computer to trade on the market from the plot, a forester's building
+/// that grows and cuts a forest around itself, or a sawmill. Each stands on one tile (a forester's
+/// building on 3 × 3, see <see cref="Footprints"/>), turned by quarter turns like furniture in the garage.
 /// </summary>
 public static class PlotObjects
 {
@@ -23,13 +24,22 @@ public static class PlotObjects
         Items.WoodenChest, Items.IronChest, Items.WoodPile, Items.Heap, Items.GrainSilo,
         Items.Generator, Items.Pole,
         Items.Computer,
+        Items.ForesterHut, Items.ForesterLodge, Items.ForestryStation,
+        Items.Sawmill, Items.ElectricSawmill, Items.IndustrialSawmill,
     };
 }
 
 public sealed record PlacedOnPlot(Guid Id, string Kind, int TileX, int TileY, int Rotation = 0);
 
+/// <summary>Told about every object put on a plot, in the same transaction, e.g. so a forester starts its work then.</summary>
+public interface IPlacedHook
+{
+    Task PlacedAsync(Guid owner, int x, int y, PlacedOnPlot placed, CancellationToken cancellationToken);
+}
+
 public sealed class PlotObjectService(
-    GameDb db, PlotService plots, IInventory inventory, IEnumerable<IMachineContents> machines, IEnumerable<IPlotAutomation> automation)
+    GameDb db, PlotService plots, IInventory inventory, IEnumerable<IMachineContents> machines, IEnumerable<IPlotAutomation> automation,
+    IEnumerable<IPlacedHook> placing)
     : IPlacedObjects
 {
     public async Task<IReadOnlyList<PlacedOnPlot>> ObjectsAsync(int x, int y, CancellationToken cancellationToken)
@@ -62,10 +72,18 @@ public sealed class PlotObjectService(
                 throw new GameException("bad_rotation", "Rotation is 0, 1, 2 or 3 quarter turns.");
             }
 
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
-            if ((tileX, tileY) == PlotLayout.Spawn || !await plots.FreeAsync(player, x, y, tileX, tileY, cancellationToken))
+            var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            foreach (var (tx, ty) in Footprints.Tiles(kind, tileX, tileY))
             {
-                throw new GameException("blocked", "Something stands here.");
+                if ((tx, ty) == PlotLayout.Spawn || !await plots.FreeAsync(player, x, y, tx, ty, cancellationToken))
+                {
+                    throw new GameException("blocked", Footprints.Reach(kind) > 0 ? "It needs 3 × 3 free tiles." : "Something stands here.");
+                }
+            }
+
+            if (Items.IsForester(kind) && Forestry.GrowTime(biome) is null)
+            {
+                throw new GameException("no_forestry", "Nothing grows on ice.");
             }
 
             await CatchUpAsync(x, y, cancellationToken);
@@ -88,6 +106,11 @@ public sealed class PlotObjectService(
             if (await insert.ExecuteNonQueryAsync(cancellationToken) == 0)
             {
                 throw new GameException("blocked", "Something stands here.");
+            }
+
+            foreach (var hook in placing)
+            {
+                await hook.PlacedAsync(player, x, y, placed, cancellationToken);
             }
 
             return placed;

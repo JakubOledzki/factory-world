@@ -25,11 +25,12 @@ public static class PowerRules
     /// <summary>Poles at most this many tiles apart are wired together.</summary>
     public const double WireReach = 7;
 
-    /// <summary>What a generator burns, and the energy (kJ) in one piece: coal lasts 200 s at full power, wood 50 s.</summary>
+    /// <summary>What a generator burns, and the energy (kJ) in one piece: coal lasts 200 s at full power, wood 50 s, a pellet 40 s.</summary>
     public static readonly IReadOnlyDictionary<string, double> Fuels = new Dictionary<string, double>
     {
         [Items.Coal] = 20_000,
         [Items.Wood] = 5_000,
+        [Items.WoodPellets] = 4_000,
     };
 
     /// <summary>Machines that run on power, and what they draw (kW).</summary>
@@ -40,6 +41,8 @@ public static class PowerRules
         [Items.ExpressInserter] = 12,
         [Items.Mill] = 30,
         [Items.OilPress] = 30,
+        [Items.ElectricSawmill] = 40,
+        [Items.IndustrialSawmill] = 80,
     };
 
     public static bool Covers(PlotObject pole, int tileX, int tileY) =>

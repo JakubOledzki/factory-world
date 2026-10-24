@@ -194,7 +194,8 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
 
         // Storages are this module's own; every other machine within an inserter's reach comes from its
         // module, and so does the plot's station, which inserters can load and unload too.
-        var reachable = objects.Concat(await plots.FixturesAsync(x, y, cancellationToken)).ToList();
+        // A forester's building covers 3 × 3 tiles, and an inserter next to any of them reaches it.
+        var reachable = objects.SelectMany(Footprints.Spread).Concat(await plots.FixturesAsync(x, y, cancellationToken)).ToList();
         var at = reachable.ToDictionary(o => (o.TileX, o.TileY));
         var ports = new Dictionary<Guid, IMachinePort>();
         var opened = new List<IMachinePort>();

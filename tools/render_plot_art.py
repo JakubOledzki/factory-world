@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [office] [power] [logistics] [<sprite>...] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [logistics] [<sprite>...] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -642,6 +642,314 @@ def render_processing(layout: dict):
         random.seed(zlib.crc32(name.encode()))
         layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build))
         # The inventory shows the machine as its sprite, cropped to a square icon.
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
+
+
+# --- Forestry industry -------------------------------------------------------------------------------
+# A forester's building covers 3 × 3 tiles (6 × 6 m) and is drawn once, on its middle tile, with its
+# door to the south; the sawmills stand on one tile like the mill.
+
+def log_wall(name, length, height, at, along_x, mat, cut, r=0.13):
+    """A wall of stacked round logs, their cut ends showing a little past the corners."""
+    for k in range(int(height / (2 * r * 0.9))):
+        z = at[2] + r + k * 2 * r * 0.9
+        rot = (0, math.radians(90), 0) if along_x else (math.radians(90), 0, 0)
+        ra.cylinder(name, r, length + 0.3, Vector((at[0], at[1], z)), mat, rotation=rot, verts=12)
+        for e in (-1, 1):
+            end = Vector((e * (length / 2 + 0.152), 0, 0)) if along_x else Vector((0, e * (length / 2 + 0.152), 0))
+            ra.cylinder(name + "_end", r - 0.015, 0.01, Vector((at[0], at[1], z)) + end, cut, rotation=rot, verts=12)
+
+
+def gable_roof(name, w, d, eave, ridge, mat, at=(0, 0)):
+    """A pitched roof along x over a w × d house, with overhangs."""
+    x, y = at
+    hw, hd = w / 2 + 0.25, d / 2 + 0.3
+    v = [(x - hw, y - hd, eave), (x + hw, y - hd, eave), (x + hw, y + hd, eave), (x - hw, y + hd, eave),
+         (x - hw, y, ridge), (x + hw, y, ridge)]
+    ra.mesh_from(name, v, [(0, 1, 5, 4), (3, 4, 5, 2), (0, 4, 3), (1, 2, 5), (0, 3, 2, 1)], mat)
+
+
+def gable_ends(name, w, d, eave, ridge, mat, at=(0, 0)):
+    x, y = at
+    for e in (-1, 1):
+        gx = x + e * w / 2
+        v = [(gx, y - d / 2, eave), (gx, y + d / 2, eave), (gx, y, ridge - 0.08)]
+        ra.mesh_from(name, v, [(0, 1, 2)], mat)
+
+
+def sapling_pots(at, count, needles, soil):
+    at = (*at, 0)[:3]
+    for i in range(count):
+        p = Vector(at) + Vector((i * 0.34, (i % 2) * 0.12, 0))
+        ra.cylinder("pot", 0.12, 0.18, p + Vector((0, 0, 0.09)), soil, verts=12)
+        for t in range(3):
+            ra.cylinder("pot_tree", 0.13 * (1 - t * 0.3), 0.18, p + Vector((0, 0, 0.26 + t * 0.12)), needles, radius2=0.01, verts=10)
+
+
+def chopping_block(at, bark_m, cut, steel, handle):
+    at = (*at, 0)[:3]
+    ra.cylinder("block", 0.26, 0.45, Vector(at) + Vector((0, 0, 0.225)), bark_m, verts=16)
+    ra.cylinder("block_top", 0.245, 0.01, Vector(at) + Vector((0, 0, 0.455)), cut, verts=16)
+    ra.cylinder("axe_handle", 0.025, 0.7, Vector(at) + Vector((0.12, 0, 0.72)), handle, rotation=(0, math.radians(35), 0), verts=8)
+    ra.box("axe_head", (0.2, 0.04, 0.12), Vector(at) + Vector((-0.06, 0, 0.47)), steel, rotation=(0, math.radians(35), 0))
+
+
+def log_stack(at, rows, length, r, bark_m, cut, along_x=True):
+    at = (*at, 0)[:3]
+    for row, count in enumerate(rows):
+        for i in range(count):
+            off = (i - (count - 1) / 2) * 2 * r
+            z = r + row * r * 1.75
+            p = Vector(at) + (Vector((0, off, z)) if along_x else Vector((off, 0, z)))
+            rot = (0, math.radians(90), 0) if along_x else (math.radians(90), 0, 0)
+            ra.cylinder("stack_log", r, length, p, bark_m, rotation=rot, verts=12)
+            for e in (-1, 1):
+                end = Vector((e * (length / 2 + 0.002), 0, 0)) if along_x else Vector((0, e * (length / 2 + 0.002), 0))
+                ra.cylinder("stack_end", r - 0.012, 0.01, p + end, cut, rotation=rot, verts=12)
+
+
+def build_forester_hut():
+    """The forester's hut: a log cabin with a shingle roof and a stone chimney, its door to the
+    south, a chopping block with an axe, a stack of logs and saplings in pots waiting to be planted."""
+    logs = bark()
+    cut = ra.wood("hut_cut", (0.36, 0.23, 0.11))
+    dark = ra.wood("hut_dark", (0.08, 0.045, 0.025))
+    shingles = ra.plain("hut_shingles", (0.12, 0.08, 0.05), 0.85, variation=0.35, scale=18, bump=0.6)
+    stone = rock("hut_stone", (0.2, 0.19, 0.17))
+    steel = ra.rusty_metal("hut_axe", (0.3, 0.3, 0.32), rust=0.25)
+    soil = soil_mat()
+    needles = foliage("hut_needles", (0.07, 0.17, 0.07), 0.3)
+    w, d, h = 3.2, 2.6, 1.9
+    ra.box("hut_floor", (w + 0.3, d + 0.3, 0.16), Vector((0, 0.3, 0.08)), stone, bevel=0.03)
+    for y in (-d / 2, d / 2):
+        log_wall("hut_wall", w, h, (0, 0.3 + y, 0.16), True, logs, cut)
+    for x in (-w / 2, w / 2):
+        log_wall("hut_wall", d, h, (x, 0.3, 0.16), False, logs, cut)
+    ra.box("hut_inside", (w, d, h), Vector((0, 0.3, 0.16 + h / 2)), dark)
+    gable_ends("hut_gable", w, d, 0.16 + h, 0.16 + h + 1.3, ra.wood("hut_boards", (0.18, 0.11, 0.05)), (0, 0.3))
+    gable_roof("hut_roof", w, d, 0.1 + h, 0.16 + h + 1.3, shingles, (0, 0.3))
+    ra.box("hut_door", (0.7, 0.06, 1.35), Vector((0.2, 0.3 - d / 2 - 0.14, 0.16 + 0.68)), dark, bevel=0.02)
+    glow = ra.emission("hut_window", (1.0, 0.65, 0.3), 1.6)
+    ra.box("hut_window", (0.5, 0.04, 0.42), Vector((-0.95, 0.3 - d / 2 - 0.14, 1.15)), glow)
+    ra.box("hut_frame", (0.62, 0.05, 0.08), Vector((-0.95, 0.3 - d / 2 - 0.15, 0.9)), dark)
+    ra.box("hut_chimney", (0.5, 0.5, 1.5), Vector((1.2, 0.9, 2.8)), stone, bevel=0.04)
+    ra.box("hut_step", (1.0, 0.4, 0.12), Vector((0.2, 0.3 - d / 2 - 0.35, 0.06)), stone, bevel=0.02)
+    chopping_block((-1.6, -1.9), logs, cut, steel, dark)
+    log_stack((1.95, -0.2), (4, 3, 2), 1.3, 0.13, logs, cut, along_x=False)
+    sapling_pots((-1.2, -2.5), 3, needles, soil)
+
+
+def build_forester_lodge():
+    """The forester's lodge: a bigger timber house on a stone plinth with green shutters, a porch
+    on posts over the door, a lean-to woodshed full of logs and rows of saplings."""
+    boards = ra.wood("lodge_boards", (0.22, 0.13, 0.06))
+    dark = ra.wood("lodge_dark", (0.08, 0.045, 0.025))
+    logs = bark()
+    cut = ra.wood("lodge_cut", (0.36, 0.23, 0.11))
+    stone = rock("lodge_stone", (0.21, 0.2, 0.18))
+    roof = ra.plain("lodge_roof", (0.2, 0.06, 0.04), 0.8, variation=0.3, scale=16, bump=0.5)
+    green = ra.plain("lodge_shutter", (0.06, 0.16, 0.07), 0.7, variation=0.2)
+    glow = ra.emission("lodge_window", (1.0, 0.65, 0.3), 1.6)
+    soil = soil_mat()
+    needles = foliage("lodge_needles", (0.07, 0.17, 0.07), 0.3)
+    w, d, h = 3.8, 3.0, 2.3
+    ra.box("lodge_plinth", (w + 0.2, d + 0.2, 0.5), Vector((-0.2, 0.4, 0.25)), stone, bevel=0.04)
+    ra.box("lodge_walls", (w, d, h), Vector((-0.2, 0.4, 0.5 + h / 2)), boards, bevel=0.02)
+    for x in (-w / 2, w / 2):
+        for y in (-d / 2, d / 2):
+            ra.box("lodge_corner", (0.14, 0.14, h), Vector((-0.2 + x, 0.4 + y, 0.5 + h / 2)), dark)
+    gable_roof("lodge_roof", w, d, 0.45 + h, 0.5 + h + 1.5, roof, (-0.2, 0.4))
+    front = 0.4 - d / 2 - 0.02
+    ra.box("lodge_door", (0.75, 0.05, 1.5), Vector((-0.2, front, 0.5 + 0.75)), dark, bevel=0.02)
+    for x in (-1.35, 0.95):
+        ra.box("lodge_window", (0.55, 0.04, 0.6), Vector((x, front, 1.65)), glow)
+        for e in (-1, 1):
+            ra.box("lodge_shutter", (0.26, 0.05, 0.66), Vector((x + e * 0.42, front - 0.01, 1.65)), green, bevel=0.01)
+    # The porch: a small roof on two posts and wide steps.
+    ra.box("lodge_steps", (1.5, 0.6, 0.25), Vector((-0.2, front - 0.3, 0.125)), stone, bevel=0.02)
+    ra.box("lodge_deck", (1.6, 0.9, 0.08), Vector((-0.2, front - 0.45, 0.46)), boards)
+    for x in (-0.95, 0.55):
+        ra.box("lodge_post", (0.12, 0.12, 1.75), Vector((x, front - 0.85, 1.35)), dark)
+    ra.box("lodge_porch_roof", (1.9, 1.1, 0.08), Vector((-0.2, front - 0.5, 2.3)), roof, rotation=(math.radians(-14), 0, 0))
+    # The woodshed against the east wall.
+    ra.box("shed_roof", (1.2, 2.6, 0.06), Vector((2.3, 0.4, 1.95)), roof, rotation=(0, math.radians(-12), 0))
+    for y in (-0.8, 1.6):
+        ra.box("shed_post", (0.1, 0.1, 1.85), Vector((2.75, y, 0.93)), dark)
+    log_stack((2.2, 0.4), (5, 4, 4, 3), 2.3, 0.13, logs, cut, along_x=False)
+    ra.box("lodge_chimney", (0.45, 0.45, 1.4), Vector((-1.4, 1.1, 3.6)), stone, bevel=0.03)
+    sapling_pots((-2.3, -2.3), 4, needles, soil)
+    sapling_pots((-2.15, -2.75), 4, needles, soil)
+    chopping_block((1.6, -2.0), logs, cut, ra.rusty_metal("lodge_axe", (0.3, 0.3, 0.32), rust=0.25), dark)
+
+
+def build_forestry_station():
+    """The forestry station: a two-storey office with a red roof, a timber lookout tower behind it,
+    a yard of stacked logs and a yellow log loader."""
+    plaster = ra.plain("station_plaster", (0.55, 0.5, 0.42), 0.85, variation=0.15, bump=0.3)
+    timber = ra.wood("station_timber", (0.2, 0.12, 0.06))
+    dark = ra.wood("station_dark", (0.08, 0.045, 0.025))
+    roof = ra.plain("station_roof", (0.3, 0.07, 0.04), 0.75, variation=0.3, scale=16, bump=0.5)
+    stone = rock("station_stone", (0.21, 0.2, 0.18))
+    glow = ra.emission("station_window", (1.0, 0.68, 0.32), 1.6)
+    green = ra.plain("station_green", (0.06, 0.16, 0.07), 0.7, variation=0.2)
+    yellow = ra.rusty_metal("station_loader", (0.7, 0.45, 0.03), rust=0.2)
+    steel = ra.rusty_metal("station_steel", (0.1, 0.1, 0.11), rust=0.35)
+    tyre = ra.plain("station_tyre", (0.03, 0.03, 0.03), 0.7)
+    logs = bark()
+    cut = ra.wood("station_cut", (0.36, 0.23, 0.11))
+    w, d, h = 3.4, 2.6, 3.0
+    cx, cy = -0.9, 0.6
+    ra.box("station_plinth", (w + 0.2, d + 0.2, 0.3), Vector((cx, cy, 0.15)), stone, bevel=0.03)
+    ra.box("station_walls", (w, d, h), Vector((cx, cy, 0.3 + h / 2)), plaster, bevel=0.02)
+    ra.box("station_band", (w + 0.04, d + 0.04, 0.12), Vector((cx, cy, 0.3 + h / 2)), timber)
+    gable_roof("station_roof", w, d, 0.25 + h, 0.3 + h + 1.4, roof, (cx, cy))
+    front = cy - d / 2 - 0.02
+    ra.box("station_door", (0.7, 0.05, 1.35), Vector((cx, front, 0.3 + 0.68)), dark, bevel=0.02)
+    for x in (cx - 1.1, cx + 1.1):
+        for z in (1.15, 2.6):
+            ra.box("station_window", (0.5, 0.04, 0.55), Vector((x, front, z)), glow)
+            for e in (-1, 1):
+                ra.box("station_shutter", (0.22, 0.05, 0.6), Vector((x + e * 0.37, front - 0.01, z)), green)
+    ra.box("station_window", (0.5, 0.04, 0.55), Vector((cx, front, 2.6)), glow)
+    ra.box("station_sign", (1.1, 0.05, 0.3), Vector((cx, front - 0.02, 1.95)), timber, bevel=0.01)
+    ra.box("station_step", (1.1, 0.45, 0.15), Vector((cx, front - 0.25, 0.075)), stone)
+    # The lookout tower: four legs braced crosswise, a cabin with a pyramid roof.
+    tx, ty, th = 1.55, 1.6, 5.2
+    for x in (-0.55, 0.55):
+        for y in (-0.55, 0.55):
+            ra.box("tower_leg", (0.14, 0.14, th), Vector((tx + x, ty + y, th / 2)), timber)
+    for z in (1.3, 2.6, 3.9):
+        for y in (-0.55, 0.55):
+            ra.box("tower_brace", (1.1, 0.06, 0.08), Vector((tx, ty + y, z)), timber)
+        for x in (-0.55, 0.55):
+            ra.box("tower_brace", (0.06, 1.1, 0.08), Vector((tx + x, ty, z)), timber)
+    ra.box("tower_cabin", (1.5, 1.5, 0.9), Vector((tx, ty, th + 0.45)), timber, bevel=0.02)
+    ra.box("tower_glass", (1.2, 1.54, 0.4), Vector((tx, ty, th + 0.55)), glow)
+    v = [(tx - 0.95, ty - 0.95, th + 0.9), (tx + 0.95, ty - 0.95, th + 0.9), (tx + 0.95, ty + 0.95, th + 0.9),
+         (tx - 0.95, ty + 0.95, th + 0.9), (tx, ty, th + 1.65)]
+    ra.mesh_from("tower_roof", v, [(0, 1, 4), (1, 2, 4), (2, 3, 4), (3, 0, 4)], roof)
+    # The log yard in front of the tower and the loader beside it.
+    log_stack((1.6, -0.35), (6, 5, 4), 2.4, 0.14, logs, cut)
+    ra.box("loader_body", (1.0, 0.75, 0.55), Vector((1.75, -2.05, 0.6)), yellow, bevel=0.04)
+    ra.box("loader_cab", (0.5, 0.6, 0.6), Vector((2.0, -2.05, 1.15)), yellow, bevel=0.03)
+    ra.box("loader_glass", (0.42, 0.62, 0.38), Vector((2.0, -2.05, 1.2)), ra.plain("loader_glass", (0.08, 0.12, 0.14), 0.15))
+    ra.box("loader_arm", (1.1, 0.12, 0.12), Vector((1.0, -2.05, 1.0)), yellow, rotation=(0, math.radians(-25), 0))
+    ra.box("loader_grab", (0.12, 0.6, 0.4), Vector((0.5, -2.05, 0.65)), steel)
+    for x in (1.4, 2.1):
+        for y in (-2.47, -1.63):
+            ra.cylinder("loader_wheel", 0.24, 0.16, Vector((x, y, 0.24)), tyre, rotation=(math.radians(90), 0, 0), verts=16)
+    sapling_pots((-2.5, -2.5), 4, foliage("station_needles", (0.07, 0.17, 0.07), 0.3), soil_mat())
+
+
+def build_sawmill():
+    """A sawmill by hand: a log on two sawhorses under a wooden frame saw, a stack of fresh planks
+    and a heap of sawdust."""
+    frame = ra.wood("saw_frame", (0.17, 0.1, 0.05))
+    fresh = ra.wood("saw_fresh", (0.5, 0.34, 0.17))
+    logs = bark()
+    cut = ra.wood("saw_cut", (0.36, 0.23, 0.11))
+    steel = ra.rusty_metal("saw_blade", (0.4, 0.4, 0.42), rust=0.2)
+    dust = ra.plain("sawdust", (0.55, 0.4, 0.2), 0.95, variation=0.2, bump=0.6)
+    for x in (-0.45, 0.45):
+        for y in (-0.15, 0.15):
+            ra.box("horse_leg", (0.06, 0.06, 0.7), Vector((x, y, 0.33)), frame, rotation=(math.radians(18 if y > 0 else -18), 0, 0))
+        ra.box("horse_beam", (0.08, 0.5, 0.08), Vector((x, 0, 0.66)), frame)
+    ra.cylinder("saw_log", 0.17, 1.5, Vector((0, 0, 0.86)), logs, rotation=(0, math.radians(90), 0), verts=16)
+    for x in (-0.751, 0.751):
+        ra.cylinder("saw_log_end", 0.155, 0.01, Vector((x, 0, 0.86)), cut, rotation=(0, math.radians(90), 0), verts=16)
+    # The frame saw stuck in the log.
+    ra.box("saw_blade", (0.02, 0.6, 0.08), Vector((0.15, 0, 1.0)), steel)
+    for y in (-0.3, 0.3):
+        ra.box("saw_arm", (0.05, 0.05, 0.6), Vector((0.15, y, 1.25)), frame)
+    ra.box("saw_top", (0.05, 0.64, 0.05), Vector((0.15, 0, 1.55)), frame)
+    for k in range(4):
+        ra.box("plank", (1.1, 0.24, 0.05), Vector((-0.1, -0.68 + (k % 2) * 0.02, 0.03 + k * 0.055)), fresh)
+    d = ra.sphere("sawdust", 0.22, Vector((0.25, -0.2, -0.02)), dust, scale=(1.2, 1, 0.4), segments=16)
+    ra.displace(d, 0.02, 0.2, 1)
+
+
+def build_electric_sawmill():
+    """The electric sawmill: a steel table with a big circular blade showing through its top, a blue
+    motor underneath, a log being fed in and boards coming out."""
+    steel = ra.rusty_metal("esaw_steel", (0.2, 0.2, 0.22), rust=0.25)
+    dark = ra.rusty_metal("esaw_dark", (0.06, 0.06, 0.07), rust=0.3)
+    blue = ra.rusty_metal("esaw_motor", (0.05, 0.12, 0.35), rust=0.15)
+    blade = ra.plain("esaw_blade", (0.7, 0.7, 0.72), 0.2, 1.0, grime=0.15)
+    fresh = ra.wood("esaw_fresh", (0.5, 0.34, 0.17))
+    logs = bark()
+    cut = ra.wood("esaw_cut", (0.36, 0.23, 0.11))
+    for x in (-0.6, 0.6):
+        for y in (-0.3, 0.3):
+            ra.box("esaw_leg", (0.07, 0.07, 0.7), Vector((x, y, 0.35)), dark)
+    ra.box("esaw_table", (1.5, 0.8, 0.08), Vector((0, 0, 0.74)), steel, bevel=0.01)
+    ra.cylinder("esaw_blade", 0.34, 0.02, Vector((0, 0, 0.78)), blade, rotation=(math.radians(90), 0, 0), verts=32)
+    ra.box("esaw_guard", (0.75, 0.1, 0.12), Vector((0, 0, 1.14)), ra.plain("esaw_guard", (0.75, 0.5, 0.04), 0.5))
+    ra.box("esaw_guard_arm", (0.06, 0.06, 0.4), Vector((0.35, 0.0, 0.96)), dark)
+    ra.cylinder("esaw_motor", 0.18, 0.4, Vector((0, 0.1, 0.35)), blue, rotation=(0, math.radians(90), 0), verts=20)
+    ra.box("esaw_box", (0.25, 0.08, 0.3), Vector((0.55, -0.43, 0.5)), blue, bevel=0.01)
+    ra.box("esaw_lamp", (0.06, 0.03, 0.06), Vector((0.55, -0.48, 0.58)), ra.emission("esaw_lamp", (0.2, 1.0, 0.3), 3.0))
+    ra.cylinder("esaw_log", 0.14, 0.7, Vector((-0.5, 0, 0.92)), logs, rotation=(0, math.radians(90), 0), verts=14)
+    ra.cylinder("esaw_log_end", 0.128, 0.01, Vector((-0.851, 0, 0.92)), cut, rotation=(0, math.radians(90), 0), verts=14)
+    for k in range(3):
+        ra.box("esaw_board", (0.5, 0.26, 0.04), Vector((0.5, 0.0, 0.8 + k * 0.045)), fresh)
+    for k in range(5):
+        ra.box("esaw_stack", (1.0, 0.24, 0.05), Vector((0.05, -0.75 + (k % 2) * 0.03, 0.03 + k * 0.055)), fresh)
+
+
+def build_industrial_sawmill():
+    """The industrial sawmill: a tall yellow band saw over a log carriage on rails, a control box
+    with a red light and a pile of sawn beams."""
+    yellow = ra.rusty_metal("isaw_yellow", (0.72, 0.46, 0.03), rust=0.2)
+    dark = ra.rusty_metal("isaw_dark", (0.06, 0.06, 0.07), rust=0.3)
+    steel = ra.rusty_metal("isaw_steel", (0.25, 0.25, 0.27), rust=0.25)
+    blade = ra.plain("isaw_blade", (0.7, 0.7, 0.72), 0.2, 1.0, grime=0.15)
+    fresh = ra.wood("isaw_fresh", (0.5, 0.34, 0.17))
+    logs = bark()
+    cut = ra.wood("isaw_cut", (0.36, 0.23, 0.11))
+    ra.box("isaw_base", (1.7, 1.2, 0.12), Vector((0, 0.1, 0.06)), ra.plain("isaw_concrete", (0.3, 0.3, 0.28), 0.9), bevel=0.02)
+    for y in (-0.15, 0.15):
+        ra.box("isaw_rail", (1.6, 0.05, 0.05), Vector((0, y, 0.15)), steel)
+    ra.box("isaw_carriage", (0.9, 0.42, 0.18), Vector((-0.3, 0, 0.27)), dark, bevel=0.02)
+    ra.cylinder("isaw_log", 0.18, 1.1, Vector((-0.3, 0, 0.55)), logs, rotation=(0, math.radians(90), 0), verts=16)
+    for x in (-0.851, 0.251):
+        ra.cylinder("isaw_log_end", 0.165, 0.01, Vector((x, 0, 0.55)), cut, rotation=(0, math.radians(90), 0), verts=16)
+    # The band saw: two wheels in a yellow housing on a column behind the line.
+    ra.box("isaw_column", (0.3, 0.3, 1.6), Vector((0.45, 0.45, 0.92)), yellow, bevel=0.03)
+    for z in (0.45, 1.55):
+        ra.cylinder("isaw_wheel", 0.3, 0.16, Vector((0.45, 0.12, z)), yellow, rotation=(math.radians(90), 0, 0), verts=24)
+        ra.cylinder("isaw_hub", 0.07, 0.18, Vector((0.45, 0.12, z)), dark, rotation=(math.radians(90), 0, 0), verts=12)
+    ra.box("isaw_band", (0.03, 0.03, 1.1), Vector((0.45, 0.0, 1.0)), blade)
+    ra.box("isaw_band_back", (0.03, 0.03, 1.1), Vector((0.75, 0.12, 1.0)), blade)
+    ra.box("isaw_box", (0.3, 0.2, 0.5), Vector((-0.65, 0.5, 0.45)), dark, bevel=0.02)
+    ra.box("isaw_light", (0.08, 0.03, 0.08), Vector((-0.65, 0.39, 0.6)), ra.emission("isaw_light", (1.0, 0.1, 0.05), 4.0))
+    ra.box("isaw_screen", (0.18, 0.03, 0.12), Vector((-0.65, 0.39, 0.42)), ra.emission("isaw_screen", (0.2, 0.8, 0.4), 1.5))
+    for row in range(3):
+        for k in range(3 - row):
+            ra.box("isaw_beam", (1.0, 0.16, 0.16), Vector((0.1, -0.62 + (k + row * 0.5) * 0.17 - 0.08, 0.2 + row * 0.16)), fresh, bevel=0.01)
+
+
+FORESTRY_INDUSTRY = {
+    # name: (canvas width, height, camera target height, builder). The forester's buildings cover
+    # 3 × 3 tiles; the sawmills one, like the mill.
+    "forester_hut": (240, 256, 1.6, build_forester_hut),
+    "forester_lodge": (240, 272, 1.9, build_forester_lodge),
+    "forestry_station": (240, 336, 2.9, build_forestry_station),
+    "sawmill": (112, 120, 0.6, build_sawmill),
+    "electric_sawmill": (112, 120, 0.6, build_electric_sawmill),
+    "industrial_sawmill": (112, 144, 0.85, build_industrial_sawmill),
+}
+
+
+FORESTERS = ("forester_hut", "forester_lodge", "forestry_station")
+
+
+def render_forestry_industry(layout: dict, only=()):
+    for name, (w, h, tz, build) in FORESTRY_INDUSTRY.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        # True scale keeps a tall building three tiles wide, the size of the ground it stands on.
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build), true_scale=name in FORESTERS)
         ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
 
 
@@ -1373,6 +1681,33 @@ def icon_models():
             cone = ra.cylinder("tier", 0.13 * (1 - t * 0.6), 0.14, (0, 0, 0.17 + t * 0.12), needles, radius2=0.01, verts=12)
             ra.displace(cone, 0.015, 0.4, 1)
 
+    def planks():
+        fresh = ra.wood("planks", (0.3, 0.19, 0.09))
+        for k in range(4):
+            ra.box("plank", (0.5, 0.12, 0.03), (0, (k % 2) * 0.02 - 0.06 + (k // 2) * 0.13, 0.016 + (k % 2) * 0.031), fresh,
+                   rotation=(0, 0, math.radians(15)))
+
+    def beams():
+        fresh = ra.wood("beams", (0.24, 0.15, 0.07))
+        for x, z in ((-0.07, 0.04), (0.07, 0.04), (0.0, 0.12)):
+            ra.box("beam", (0.5, 0.12, 0.08), (0, x, z), fresh, bevel=0.006, rotation=(0, 0, math.radians(15)))
+
+    def pellets():
+        mat = ra.plain("pellet", (0.2, 0.12, 0.05), 0.85, variation=0.25, bump=0.5)
+        for i in range(110):
+            a, r = random.uniform(0, math.tau), random.uniform(0, 1) ** 0.7 * 0.15
+            at = (math.cos(a) * r, math.sin(a) * r * 0.9, 0.012 + max(0.0, 0.12 - r * 0.55) * random.uniform(0.5, 1.0))
+            ra.cylinder("pellet", 0.012, 0.05, at, mat, verts=8,
+                        rotation=(random.uniform(0, 3), random.uniform(0, 3), random.uniform(0, 3)))
+
+    def plywood():
+        face = ra.wood("plywood", (0.34, 0.24, 0.12))
+        edge = ra.plain("plywood_edge", (0.22, 0.14, 0.06), 0.8, variation=0.3, scale=30)
+        for k in range(3):
+            at = (0.02 * k - 0.02, 0.015 * k, 0.014 + k * 0.03)
+            ra.box("ply_edge", (0.44, 0.34, 0.026), at, edge, rotation=(0, 0, math.radians(12 + k * 4)))
+            ra.box("ply_face", (0.444, 0.344, 0.004), (at[0], at[1], at[2] + 0.014), face, rotation=(0, 0, math.radians(12 + k * 4)))
+
     def ingots(color, roughness=0.3):
         def build():
             m = ra.plain("ingot", color, roughness, 1.0, variation=0.12, grime=0.35)
@@ -1502,6 +1837,7 @@ def icon_models():
         "item_potato": potatoes, "item_sunflower": sunflower_head,
         "item_wood": wood, "item_stone": stones((0.2, 0.19, 0.18)), "item_sand": sand, "item_coal": coal,
         "item_sapling": sapling,
+        "item_planks": planks, "item_beams": beams, "item_wood_pellets": pellets, "item_plywood": plywood,
         "item_iron_ore": stones((0.18, 0.09, 0.05), (0.4, 0.4, 0.42)),
         "item_copper_ore": stones((0.14, 0.13, 0.12), (0.75, 0.35, 0.12)),
         "item_tin_ore": stones((0.08, 0.06, 0.05), (0.62, 0.62, 0.58)),
@@ -1542,7 +1878,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "power", "office", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "office", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -1569,6 +1905,9 @@ if __name__ == "__main__":
         render_crafting(layout, [a for a in args if a in CRAFTING])
     if "processing" in args:
         render_processing(layout)
+    if "forestry_industry" in args or any(a in FORESTRY_INDUSTRY for a in args):
+        # Names of forestry industry sprites render just those.
+        render_forestry_industry(layout, [a for a in args if a in FORESTRY_INDUSTRY])
     if "office" in args:
         render_office(layout)
     if "power" in args:

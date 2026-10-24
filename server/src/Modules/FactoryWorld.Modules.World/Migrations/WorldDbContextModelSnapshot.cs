@@ -121,6 +121,42 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plot_fields", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotForesterRow", b =>
+                {
+                    b.Property<Guid>("ObjectId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<DateTimeOffset>("BusyUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("busy_until");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<int>("Wood")
+                        .HasColumnType("integer")
+                        .HasColumnName("wood");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("ObjectId");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("X", "Y");
+
+                    b.ToTable("plot_foresters", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.PlotHarvest", b =>
                 {
                     b.Property<int>("X")

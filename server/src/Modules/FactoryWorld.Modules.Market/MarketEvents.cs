@@ -46,7 +46,7 @@ public static class MarketEvents
     private static readonly string[] Machines =
     [
         Items.SortingMachine, Items.Workbench, Items.Anvil, Items.Mill, Items.OilPress, Items.PicklingBarrel, Items.Bakery, Items.Kitchen,
-        Items.Belt, Items.Inserter, Items.Splitter, Items.WoodenChest, Items.Computer,
+        Items.Belt, Items.Inserter, Items.Splitter, Items.WoodenChest, Items.Computer, Items.ForesterHut, Items.Sawmill,
     ];
 
     private static readonly IReadOnlyDictionary<string, int> Nothing = new Dictionary<string, int>();
@@ -71,11 +71,15 @@ public static class MarketEvents
             "Huty nie nadążają z zamówieniami. Ruda żelaza, sztabki i gwoździe są w cenie.",
             new Dictionary<string, int> { [Items.IronOre] = 50, [Items.IronIngot] = 60, [Items.Nails] = 40, [Items.IronChest] = 30 }, Nothing),
         new("building_boom", "Boom budowlany",
-            "Wszyscy budują. Drewno, kamień i piasek schodzą na pniu.",
-            new Dictionary<string, int> { [Items.Wood] = 50, [Items.Stone] = 50, [Items.Sand] = 80, [Items.WoodPile] = 30, [Items.Heap] = 30 }, Nothing),
+            "Wszyscy budują. Drewno, deski, belki, kamień i piasek schodzą na pniu.",
+            new Dictionary<string, int>
+            {
+                [Items.Wood] = 50, [Items.Planks] = 50, [Items.Beams] = 50, [Items.Plywood] = 30, [Items.Stone] = 50, [Items.Sand] = 80,
+                [Items.WoodPile] = 30, [Items.Heap] = 30,
+            }, Nothing),
         new("winter", "Sroga zima",
-            "Mróz trzyma od tygodnia. Węgiel i drewno na opał drożeją.",
-            new Dictionary<string, int> { [Items.Coal] = 80, [Items.Wood] = 30 }, Nothing),
+            "Mróz trzyma od tygodnia. Węgiel, drewno i pellet na opał drożeją.",
+            new Dictionary<string, int> { [Items.Coal] = 80, [Items.Wood] = 30, [Items.WoodPellets] = 50 }, Nothing),
         new("copper_rush", "Gorączka miedzi",
             "Elektrownie kupują kable. Handlarz płaci więcej za miedź, także ze złomu.",
             new Dictionary<string, int> { [Items.CopperOre] = 50, [Items.CopperIngot] = 50, [Items.WasteCopper] = 40 }, Nothing),

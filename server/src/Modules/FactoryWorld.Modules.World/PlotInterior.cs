@@ -232,6 +232,12 @@ public sealed class PlotService(
     public async Task<byte[]> TilesAsync(Guid player, int x, int y, CancellationToken cancellationToken)
     {
         var biome = await RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
+        return await TilesAsync(x, y, biome, cancellationToken);
+    }
+
+    /// <summary>The tiles of a plot of <paramref name="biome"/> as they are now, whoever asks.</summary>
+    public async Task<byte[]> TilesAsync(int x, int y, Biome biome, CancellationToken cancellationToken)
+    {
         var tiles = PlotLayout.Generate(x, y, biome);
         await using var command = await db.CommandAsync(
             "SELECT tile_x, tile_y FROM world.plot_harvests WHERE x = @x AND y = @y", cancellationToken);
@@ -251,7 +257,8 @@ public sealed class PlotService(
         return tiles;
     }
 
-    /// <summary>Whether nothing stands on a tile of the plot: no nature, field, planted tree, animal or placed object.</summary>
+    /// <summary>Whether nothing stands on a tile of the plot: no nature, field, planted tree, animal or placed object
+    /// (a forester's building covers the tiles around its own too).</summary>
     public async Task<bool> FreeAsync(Guid player, int x, int y, int tileX, int tileY, CancellationToken cancellationToken)
     {
         if (!PlotLayout.Inside(tileX, tileY) || (await TilesAsync(player, x, y, cancellationToken))[tileY * PlotLayout.Size + tileX] != (byte)TileObject.None)
@@ -265,11 +272,15 @@ public sealed class PlotService(
                 OR EXISTS (SELECT 1 FROM world.plot_trees WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty)
                 OR EXISTS (SELECT 1 FROM world.plot_animals WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty)
                 OR EXISTS (SELECT 1 FROM world.plot_objects WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty)
+                OR EXISTS (SELECT 1 FROM world.plot_objects WHERE x = @x AND y = @y AND kind = ANY(@large)
+                    AND abs(tile_x - @tx) <= 1 AND abs(tile_y - @ty) <= 1)
             """, cancellationToken);
         command.Parameters.AddWithValue("x", x);
         command.Parameters.AddWithValue("y", y);
         command.Parameters.AddWithValue("tx", tileX);
         command.Parameters.AddWithValue("ty", tileY);
+        // Objects that cover 3 × 3 tiles around their own.
+        command.Parameters.AddWithValue("large", Footprints.Large);
         return !(bool)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 

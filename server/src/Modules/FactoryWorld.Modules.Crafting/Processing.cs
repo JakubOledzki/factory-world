@@ -22,7 +22,8 @@ public sealed record ProcessingMachine(string Kind, bool Fired, IReadOnlyList<Pr
 /// <summary>
 /// Machines that turn crops into food, put on a plot like the furnace: a mill grinds grain into
 /// flour, an oil press squeezes sunflowers, a barrel pickles cabbage, and the fired bakery and
-/// field kitchen bake and cook from those. The mill and the oil press run on power from a
+/// field kitchen bake and cook from those; a sawmill saws wood into planks, beams and pellets. The mill, the
+/// oil press and the electric and industrial sawmills run on power from a
 /// generator, through poles; they keep their times (<see cref="MachineState.StartedAt"/>) in their
 /// own time, which stands still while they have no power. The player sets a recipe, then loads its ingredients
 /// (and fuel, where the machine burns it); the machine makes one batch after another while the
@@ -43,6 +44,7 @@ public static class Processing
     {
         [Items.Coal] = 4,
         [Items.Wood] = 1,
+        [Items.WoodPellets] = 2,
     };
 
     public static readonly IReadOnlyList<ProcessingMachine> Machines =
@@ -73,6 +75,28 @@ public static class Processing
             new(Items.Bigos, 2, TimeSpan.FromSeconds(25), [(Items.Sauerkraut, 2), (Items.Potato, 2)], 3),
             new(Items.ScrambledEggs, 2, TimeSpan.FromSeconds(15), [(Items.Egg, 3), (Items.SunflowerOil, 1)], 3),
         ]),
+        // Sawmills of three levels: the plain one saws by hand, the electric and the industrial one run on
+        // power, work faster and glue plywood from planks; the industrial one gets three planks from a log.
+        new(Items.Sawmill, false,
+        [
+            new(Items.Planks, 2, TimeSpan.FromSeconds(8), [(Items.Wood, 1)], 1),
+            new(Items.Beams, 1, TimeSpan.FromSeconds(10), [(Items.Wood, 2)], 2),
+            new(Items.WoodPellets, 3, TimeSpan.FromSeconds(8), [(Items.Wood, 2)], 1),
+        ]),
+        new(Items.ElectricSawmill, false,
+        [
+            new(Items.Planks, 2, TimeSpan.FromSeconds(4), [(Items.Wood, 1)], 1),
+            new(Items.Beams, 1, TimeSpan.FromSeconds(5), [(Items.Wood, 2)], 2),
+            new(Items.WoodPellets, 3, TimeSpan.FromSeconds(4), [(Items.Wood, 2)], 1),
+            new(Items.Plywood, 1, TimeSpan.FromSeconds(12), [(Items.Planks, 3)], 3),
+        ], Powered: true),
+        new(Items.IndustrialSawmill, false,
+        [
+            new(Items.Planks, 3, TimeSpan.FromSeconds(2), [(Items.Wood, 1)], 1),
+            new(Items.Beams, 1, TimeSpan.FromSeconds(2.5), [(Items.Wood, 2)], 2),
+            new(Items.WoodPellets, 4, TimeSpan.FromSeconds(2), [(Items.Wood, 2)], 1),
+            new(Items.Plywood, 1, TimeSpan.FromSeconds(5), [(Items.Planks, 3)], 3),
+        ], Powered: true),
     ];
 
     public static readonly IReadOnlyDictionary<string, ProcessingMachine> ByKind = Machines.ToDictionary(m => m.Kind);

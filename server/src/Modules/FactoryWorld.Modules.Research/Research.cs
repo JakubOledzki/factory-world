@@ -34,6 +34,9 @@ public static class TechTree
     public const string GrainStorage = "grain_storage";
     public const string Cooking = "cooking";
     public const string Confectionery = "confectionery";
+    public const string ForestryIndustry = "forestry_industry";
+    public const string Woodworking = "woodworking";
+    public const string IndustrialForestry = "industrial_forestry";
 
     public static readonly IReadOnlyList<Technology> Technologies =
     [
@@ -70,6 +73,15 @@ public static class TechTree
         new(Confectionery, "Cukiernictwo", "Piec piekarski piecze też ciasto marchewkowe.",
             [Baking, OilPressing], [(Items.Bread, 10), (Items.SunflowerOil, 10), (Items.Carrot, 30)], TimeSpan.FromMinutes(3), 60,
             [Items.CarrotCake]),
+        new(ForestryIndustry, "Gospodarka leśna", "Chata leśnika sama sadzi i ścina las wokół siebie, a tartak tnie drewno na deski, belki i pellet.",
+            [], [(Items.Sapling, 20), (Items.Wood, 50)], TimeSpan.FromSeconds(90), 30,
+            [Items.ForesterHut, Items.Sawmill, Items.Planks, Items.Beams, Items.WoodPellets]),
+        new(Woodworking, "Przemysł drzewny", "Leśniczówka ma większy las, który rośnie szybciej; tartak elektryczny tnie dwa razy szybciej i skleja sklejkę z desek.",
+            [ForestryIndustry, Automation], [(Items.Planks, 40), (Items.Beams, 20), (Items.IronIngot, 20)], TimeSpan.FromMinutes(3), 60,
+            [Items.ForesterLodge, Items.ElectricSawmill, Items.Plywood]),
+        new(IndustrialForestry, "Leśnictwo przemysłowe", "Nadleśnictwo prowadzi największy las, a tartak przemysłowy robi z kłody trzy deski.",
+            [Woodworking], [(Items.Plywood, 20), (Items.Beams, 40), (Items.CopperIngot, 20)], TimeSpan.FromMinutes(5), 100,
+            [Items.ForestryStation, Items.IndustrialSawmill]),
     ];
 
     public static readonly IReadOnlyDictionary<string, Technology> ById = Technologies.ToDictionary(t => t.Id);
