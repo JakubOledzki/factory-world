@@ -146,6 +146,8 @@ const DIRECTION_ARROWS := ["↓", "→", "↑", "←"]
 const LOGISTICS_POLL := 1000.0
 ## How often (ms) the station is asked for, to draw trains coming and going.
 const STATION_POLL := 4000.0
+## How often (ms) the player says where they stand and sees the others on the plot.
+const PRESENCE_POLL := 150.0
 ## Crops in the order of the art; the server sends their names and growing times.
 const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower"]
 ## A crop shows as a sprout until this much of its growing time is left, then half grown.
@@ -301,6 +303,10 @@ var _slots: InventoryGrid
 var _station_window: StationWindow
 ## Trains on the track, drawn from what the station knows.
 var _trains: PlotTrains
+## The other players on the plot.
+var _others: PlotPlayers
+var _next_presence_poll := 0.0
+var _polling_presence := false
 var _crafting_window: CraftingWindow
 var _furnace_window: FurnaceWindow
 var _storage_window: StorageWindow
@@ -337,6 +343,9 @@ func _ready() -> void:
 
 func _exit_tree() -> void:
 	RenderingServer.set_default_clear_color(UI.BACKGROUND)
+	# The others stop seeing the player at once instead of after the server's timeout.
+	if _ready_to_play and Net.is_open():
+		Net.send("plot.leave")
 
 
 # --- World ---------------------------------------------------------------------------
@@ -390,6 +399,14 @@ func _build_world() -> void:
 	add_child(_player.shadow)
 	move_child(_player.shadow, _marks.get_index())
 	_sorted.add_child(_player)
+	_others = PlotPlayers.new()
+	_others.tile = TILE
+	_others.player_scale = PLAYER_SCALE
+	_others.light = LIGHT
+	_others.shadows_parent = Node2D.new()
+	add_child(_others.shadows_parent)
+	move_child(_others.shadows_parent, _marks.get_index())
+	_sorted.add_child(_others)
 
 	add_child(_power)
 
@@ -541,6 +558,7 @@ func _apply_plot(plot: Dictionary) -> void:
 	_player.shadow.visible = true
 	_place_player(spawn)
 	_player.face(Vector2(0, -1))
+	_others.plot_size = _size
 	_camera.position = _player.position
 	_camera.reset_smoothing()
 	_update_chunks(true)
@@ -2529,6 +2547,28 @@ func _process(delta: float) -> void:
 	if _has_foresters() and Time.get_ticks_msec() >= _next_forestry_poll:
 		_poll_forestry()
 	_poll_station()
+	if Time.get_ticks_msec() >= _next_presence_poll:
+		_poll_presence()
+
+
+## Says where the player stands and shows the other players on the plot.
+func _poll_presence() -> void:
+	if _polling_presence:
+		return
+	_polling_presence = true
+	_next_presence_poll = Time.get_ticks_msec() + PRESENCE_POLL
+	var reply := await Net.request("plot.presence", {
+		"x": _at.x, "y": _at.y,
+		"posX": snappedf(_player.floor_pos.x, 0.01), "posY": snappedf(_player.floor_pos.y, 0.01),
+		"facing": _player.facing, "walking": _player.walking,
+	})
+	_polling_presence = false
+	if reply["type"] == "plot.presence":
+		_others.apply(reply["payload"].get("players", []))
+	elif reply["type"] == "error":
+		_others.clear()
+		# Not allowed here (any more), or the connection dropped: try again in a while.
+		_next_presence_poll = Time.get_ticks_msec() + 3000.0
 
 
 func _screen(world: Vector2) -> Vector2:
@@ -2680,6 +2720,7 @@ func _build_hud() -> void:
 	_minimap_dot.size = Vector2(5, 5)
 	_minimap_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_minimap.add_child(_minimap_dot)
+	_others.minimap = _minimap
 	_hud.add_child(map_panel)
 	map_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT, Control.PRESET_MODE_MINSIZE, 12)
 	map_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN

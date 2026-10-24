@@ -52,6 +52,16 @@ public interface ICharacterNames
     Task<IReadOnlyDictionary<Guid, string>> FindAsync(string prefix, int limit, CancellationToken cancellationToken);
 }
 
+/// <summary>How a character looks, e.g. to draw other players walking on the same plot.</summary>
+public interface ICharacterLooks
+{
+    /// <summary>Name and appearance (as the character editor saved it) by account id; accounts without a character are left out.</summary>
+    Task<IReadOnlyDictionary<Guid, CharacterLook>> LooksAsync(IReadOnlyCollection<Guid> accountIds, CancellationToken cancellationToken);
+}
+
+/// <summary>A character's name and appearance; the appearance is sent to clients as it is.</summary>
+public sealed record CharacterLook(string Name, object Appearance);
+
 /// <summary>Characters' experience as a whole, e.g. to keep the server's bots behind the real players.</summary>
 public interface ICharacterXp
 {

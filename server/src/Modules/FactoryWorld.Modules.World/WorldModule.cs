@@ -722,7 +722,10 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, AreaHandler>();
         services.AddSingleton<IMessageHandler, GetPlotHandler>();
         services.AddSingleton<IMessageHandler, BuyPlotHandler>();
+        services.AddSingleton<PlotPresence>();
         services.AddSingleton<IMessageHandler, EnterPlotHandler>();
+        services.AddSingleton<IMessageHandler, PresenceHandler>();
+        services.AddSingleton<IMessageHandler, LeavePlotHandler>();
         services.AddSingleton<IMessageHandler, HarvestHandler>();
         services.AddSingleton<IMessageHandler, GetStationHandler>();
         services.AddSingleton<IMessageHandler, LoadStationHandler>();
