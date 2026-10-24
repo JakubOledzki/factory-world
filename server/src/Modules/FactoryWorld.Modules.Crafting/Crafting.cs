@@ -61,6 +61,20 @@ public static class Workshop
         new(Items.Pickaxe, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 3), (Items.Wood, 2)], 5, Items.Anvil),
         new(Items.Hoe, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 2), (Items.Wood, 2)], 5, Items.Anvil),
         new(Items.Shears, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 2), (Items.Wood, 1)], 5, Items.Anvil),
+        new(Items.BronzePickaxe, 1, TimeSpan.FromSeconds(25), [(Items.BronzeIngot, 3), (Items.Wood, 2)], 8, Items.Anvil),
+        new(Items.SteelPickaxe, 1, TimeSpan.FromSeconds(30), [(Items.SteelIngot, 3), (Items.Wood, 2)], 12, Items.Anvil),
+        // The mountain industry.
+        new(Items.Drill, 1, TimeSpan.FromSeconds(60), [(Items.IronIngot, 30), (Items.CopperIngot, 15), (Items.Inserter, 2), (Items.Stone, 20)], 30),
+        new(Items.HeavyDrill, 1, TimeSpan.FromSeconds(120), [(Items.Drill, 1), (Items.SteelIngot, 20), (Items.BronzeIngot, 10), (Items.Quartz, 5)], 80),
+        new(Items.Quarry, 1, TimeSpan.FromSeconds(60), [(Items.Stone, 40), (Items.Wood, 20), (Items.IronIngot, 10), (Items.Nails, 10)], 20),
+        new(Items.Crusher, 1, TimeSpan.FromSeconds(60), [(Items.IronIngot, 25), (Items.Stone, 30), (Items.CopperIngot, 8)], 25),
+        new(Items.Stonemason, 1, TimeSpan.FromSeconds(45), [(Items.Stone, 30), (Items.IronIngot, 10), (Items.Wood, 10)], 15),
+        new(Items.Foundry, 1, TimeSpan.FromSeconds(90), [(Items.Stone, 40), (Items.Sand, 20), (Items.IronIngot, 20), (Items.CopperIngot, 10)], 35),
+        new(Items.WaterWheel, 1, TimeSpan.FromSeconds(60), [(Items.Wood, 30), (Items.IronIngot, 20), (Items.Nails, 10)], 25),
+        new(Items.HydroPlant, 1, TimeSpan.FromSeconds(180), [(Items.SteelIngot, 30), (Items.Bricks, 60), (Items.CopperIngot, 30), (Items.Quartz, 5)], 100),
+        new(Items.CableStation, 1, TimeSpan.FromSeconds(20), [(Items.SteelIngot, 4), (Items.CopperIngot, 4), (Items.IronIngot, 6)], 8),
+        new(Items.Dynamite, 3, TimeSpan.FromSeconds(15), [(Items.Sulfur, 2), (Items.Coal, 1), (Items.Sand, 1)], 4),
+        new(Items.MineSupport, 1, TimeSpan.FromSeconds(20), [(Items.SteelIngot, 2), (Items.Beams, 2)], 6),
     ];
 
     public static Recipe? Find(string id) => Recipes.FirstOrDefault(r => r.Id == id);

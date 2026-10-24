@@ -35,6 +35,10 @@ public static class Items
     public const string Chainsaw = "tool_chainsaw";
     public const string Shears = "tool_shears";
 
+    // Better pickaxes, forged at the anvil: they mine and break rocks faster than the iron one.
+    public const string BronzePickaxe = "tool_bronze_pickaxe";
+    public const string SteelPickaxe = "tool_steel_pickaxe";
+
     // Backpacks: worn by the character, each adds tiles to the inventory and slots to the tool bar.
     public const string SchoolBackpack = "backpack_school";
     public const string HikingBackpack = "backpack_hiking";
@@ -135,6 +139,39 @@ public static class Items
     public const string Beams = "beams";
     public const string WoodPellets = "wood_pellets";
     public const string Plywood = "plywood";
+
+    // Mountain industry: minerals some mountain plots have in their mines (a geological survey tells which),
+    // ore crushed for more ingots, alloys from the foundry, stonework, dynamite and props for deep mines.
+    public const string Sulfur = "sulfur";
+    public const string Salt = "salt";
+    public const string Marble = "marble";
+    public const string Quartz = "quartz";
+    public const string CrushedIronOre = "crushed_iron_ore";
+    public const string CrushedCopperOre = "crushed_copper_ore";
+    public const string CrushedTinOre = "crushed_tin_ore";
+    public const string BronzeIngot = "bronze_ingot";
+    public const string SteelIngot = "steel_ingot";
+    public const string StoneBlocks = "stone_blocks";
+    public const string MarbleSlabs = "marble_slabs";
+    public const string Bricks = "bricks";
+    public const string Dynamite = "dynamite";
+    public const string MineSupport = "mine_support";
+
+    // Mountain machines: a drill stands at a mine and digs it by itself, a quarry cuts stone, a crusher
+    // grinds stone and ore, a stonemason dresses stone and marble, a foundry casts alloys and fires bricks.
+    public const string Drill = "furniture_drill";
+    public const string HeavyDrill = "furniture_heavy_drill";
+    public const string Quarry = "furniture_quarry";
+    public const string Crusher = "furniture_crusher";
+    public const string Stonemason = "furniture_stonemason";
+    public const string Foundry = "furniture_foundry";
+
+    // Water power: a water wheel and a small hydro plant give power without fuel, by a river or the sea.
+    public const string WaterWheel = "power_water_wheel";
+    public const string HydroPlant = "power_hydro_plant";
+
+    // A cable car: stations facing the same way carry what a belt brings them over anything in between.
+    public const string CableStation = "logistics_cable_station";
 
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
@@ -238,11 +275,44 @@ public static class Items
         [Beams] = "Belki",
         [WoodPellets] = "Pellet drzewny",
         [Plywood] = "Sklejka",
+        [BronzePickaxe] = "Kilof z brązu",
+        [SteelPickaxe] = "Kilof stalowy",
+        [Sulfur] = "Siarka",
+        [Salt] = "Sól kamienna",
+        [Marble] = "Marmur",
+        [Quartz] = "Kwarc",
+        [CrushedIronOre] = "Kruszona ruda żelaza",
+        [CrushedCopperOre] = "Kruszona ruda miedzi",
+        [CrushedTinOre] = "Kruszona ruda cyny",
+        [BronzeIngot] = "Sztabka brązu",
+        [SteelIngot] = "Sztabka stali",
+        [StoneBlocks] = "Bloki kamienne",
+        [MarbleSlabs] = "Płyty marmurowe",
+        [Bricks] = "Cegły",
+        [Dynamite] = "Dynamit",
+        [MineSupport] = "Obudowa górnicza",
+        [Drill] = "Wiertło górnicze",
+        [HeavyDrill] = "Wiertło udarowe",
+        [Quarry] = "Kamieniołom",
+        [Crusher] = "Kruszarka",
+        [Stonemason] = "Warsztat kamieniarski",
+        [Foundry] = "Odlewnia",
+        [WaterWheel] = "Koło wodne",
+        [HydroPlant] = "Mała elektrownia wodna",
+        [CableStation] = "Stacja kolejki linowej",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
 
-    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw or Shears;
+    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw or Shears or BronzePickaxe or SteelPickaxe;
+
+    /// <summary>Pickaxes of every kind and how many times faster than the iron one each mines and breaks rocks.</summary>
+    public static readonly IReadOnlyDictionary<string, double> Pickaxes = new Dictionary<string, double>
+    {
+        [Pickaxe] = 1,
+        [BronzePickaxe] = 1.25,
+        [SteelPickaxe] = 1.5,
+    };
 
     public static bool IsBackpack(string id) => Backpacks.ContainsKey(id);
 
@@ -273,6 +343,12 @@ public static class Items
 
     /// <summary>Forester's buildings of every level: the hut and its upgrades.</summary>
     public static bool IsForester(string id) => id is ForesterHut or ForesterLodge or ForestryStation;
+
+    /// <summary>Drills of every level, which stand at a mine and dig it by themselves.</summary>
+    public static bool IsDrill(string id) => id is Drill or HeavyDrill;
+
+    /// <summary>What gives power without fuel: the water wheel and the hydro plant.</summary>
+    public static bool IsHydro(string id) => id is WaterWheel or HydroPlant;
 
     /// <summary>Belts of every level (not splitters).</summary>
     public static bool IsBelt(string id) => id is Belt or FastBelt or ExpressBelt;

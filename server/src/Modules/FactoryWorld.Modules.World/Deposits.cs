@@ -14,12 +14,38 @@ public enum DepositSize : short
     Large = 3,
 }
 
-public sealed record Survey(DepositSize Oil, DepositSize Gas);
+/// <summary>A mineral some mountain plots have in their rock, besides the ores. Sent to the client, so never renumber.</summary>
+public enum MineralKind : short
+{
+    None = 0,
+    Sulfur = 1,
+    Salt = 2,
+    Marble = 3,
+    Quartz = 4,
+}
+
+/// <summary>The mineral in a plot's rock and how much of it there is; it comes up with the ore from its mines.</summary>
+public sealed record Mineral(MineralKind Kind, DepositSize Size)
+{
+    public static readonly Mineral None = new(MineralKind.None, DepositSize.None);
+
+    /// <summary>The item it comes up as, or null for none.</summary>
+    public string? Item => Size == DepositSize.None ? null : Kind switch
+    {
+        MineralKind.Sulfur => Items.Sulfur,
+        MineralKind.Salt => Items.Salt,
+        MineralKind.Marble => Items.Marble,
+        MineralKind.Quartz => Items.Quartz,
+        _ => null,
+    };
+}
+
+public sealed record Survey(DepositSize Oil, DepositSize Gas, Mineral? Mineral = null);
 
 /// <summary>
-/// Oil and gas under the plots. Nobody sees them on the map: only the owner of a plot can order a
-/// geological survey, which reveals what lies under it. Deposits are fixed by the plot's position
-/// and only the server knows the formula.
+/// Oil and gas under the plots, and in the mountains a mineral in the rock (sulfur, salt, marble or
+/// quartz). Nobody sees them on the map: only the owner of a plot can order a geological survey, which
+/// reveals what lies under it. Deposits are fixed by the plot's position and only the server knows the formula.
 /// </summary>
 public static class Deposits
 {
@@ -42,10 +68,25 @@ public static class Deposits
         [Biome.Lakeshore] = (60, 80),
     };
 
+    /// <summary>Chance (per mille) of a mineral in the rock of a mountain plot; other plots have none.</summary>
+    public const int MineralChance = 700;
+
     public static Survey Under(int x, int y, Biome biome)
     {
         var (oil, gas) = Chance.GetValueOrDefault(biome);
-        return new Survey(Roll(x, y, 0x0111u, oil), Roll(x, y, 0x6a50u, gas));
+        return new Survey(Roll(x, y, 0x0111u, oil), Roll(x, y, 0x6a50u, gas), MineralIn(x, y, biome));
+    }
+
+    /// <summary>The mineral in the rock of a plot, whether or not it was surveyed.</summary>
+    public static Mineral MineralIn(int x, int y, Biome biome)
+    {
+        if (biome != Biome.Mountains || Roll(x, y, 0x3a17u, MineralChance) is var size && size == DepositSize.None)
+        {
+            return Mineral.None;
+        }
+
+        var kind = (MineralKind)(1 + Hash((uint)x * 0x2c1b3c6du ^ (uint)y * 0x297a2d39u ^ 0x51edu) % 4);
+        return new Mineral(kind, size);
     }
 
     private static DepositSize Roll(int x, int y, uint salt, int chance)
@@ -77,16 +118,18 @@ public static class Deposits
 
 public sealed record SurveyResult(Survey Survey, long BalanceCents);
 
-public sealed class SurveyService(GameDb db, PlotService plots, IWallet wallet, ICharacterProgress progress, TimeProvider time)
+public sealed class SurveyService(GameDb db, WorldMap map, PlotService plots, IWallet wallet, ICharacterProgress progress, TimeProvider time)
 {
-    /// <summary>The survey the plot's owner ordered, or null.</summary>
+    /// <summary>The survey the plot's owner ordered, or null. The mineral is worked out again, as it is fixed by the plot.</summary>
     public async Task<Survey?> FindAsync(int x, int y, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync("SELECT oil, gas FROM world.surveys WHERE x = @x AND y = @y", cancellationToken);
         command.Parameters.AddWithValue("x", x);
         command.Parameters.AddWithValue("y", y);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? new Survey((DepositSize)reader.GetInt16(0), (DepositSize)reader.GetInt16(1)) : null;
+        return await reader.ReadAsync(cancellationToken)
+            ? new Survey((DepositSize)reader.GetInt16(0), (DepositSize)reader.GetInt16(1), Deposits.MineralIn(x, y, map.BiomeAt(x, y)))
+            : null;
     }
 
     /// <summary>Pays for a geological survey of one of the player's plots; a plot is surveyed once.</summary>
@@ -133,5 +176,14 @@ public sealed class SurveyHandler(IServiceScopeFactory scopes) : IMessageHandler
         });
     }
 
-    public static object SurveyJson(Survey survey) => new { oil = (int)survey.Oil, gas = (int)survey.Gas };
+    public static object SurveyJson(Survey survey) => new
+    {
+        oil = (int)survey.Oil,
+        gas = (int)survey.Gas,
+        // The mineral in the rock (0 none, 1 sulfur, 2 salt, 3 marble, 4 quartz), how much (0-3) and what it comes up as.
+        mineral = (int)(survey.Mineral ?? Mineral.None).Kind,
+        mineralSize = (int)(survey.Mineral ?? Mineral.None).Size,
+        mineralItem = (survey.Mineral ?? Mineral.None).Item,
+        mineralName = (survey.Mineral ?? Mineral.None).Item is { } item ? Items.Names[item] : null,
+    };
 }

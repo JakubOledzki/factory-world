@@ -343,5 +343,45 @@
  "industrial_sawmill": {
   "anchorX": 56,
   "anchorY": 91
+ },
+ "drill": {
+  "anchorX": 56,
+  "anchorY": 96
+ },
+ "water_wheel": {
+  "anchorX": 64,
+  "anchorY": 89,
+  "wireX": 86,
+  "wireY": 67
+ },
+ "hydro_plant": {
+  "anchorX": 64,
+  "anchorY": 99,
+  "wireX": 77,
+  "wireY": 60
+ },
+ "heavy_drill": {
+  "anchorX": 56,
+  "anchorY": 114
+ },
+ "quarry": {
+  "anchorX": 56,
+  "anchorY": 74
+ },
+ "crusher": {
+  "anchorX": 56,
+  "anchorY": 85
+ },
+ "stonemason": {
+  "anchorX": 56,
+  "anchorY": 67
+ },
+ "foundry": {
+  "anchorX": 56,
+  "anchorY": 109
+ },
+ "cable_station": {
+  "anchorX": 40,
+  "anchorY": 106
  }
 }

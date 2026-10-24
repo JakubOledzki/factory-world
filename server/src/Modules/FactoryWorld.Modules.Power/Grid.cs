@@ -10,11 +10,20 @@ namespace FactoryWorld.Modules.Power;
 /// and is wired to every pole up to <see cref="WireReach"/> tiles away. Poles wired together make one
 /// network: its generators share the load of all the machines on it. Machines draw their power
 /// whenever they stand on a network, busy or not; with too little power they all work slower, and
-/// without any they stop.
+/// without any they stop. A water wheel and a hydro plant give their power all the time without fuel, on
+/// plots by a river, a lake or the sea; the generators of their network burn only for what they lack.
 /// </summary>
 public static class PowerRules
 {
     public const double GeneratorKw = 100;
+
+    /// <summary>What each water power plant gives (kW), before the biome's bonus.</summary>
+    public static readonly IReadOnlyDictionary<string, double> Hydro = new Dictionary<string, double>
+    {
+        [Items.WaterWheel] = 30,
+        [Items.HydroPlant] = 150,
+    };
+
 
     /// <summary>Pieces of fuel a generator holds.</summary>
     public const int MaxFuel = 50;
@@ -43,6 +52,9 @@ public static class PowerRules
         [Items.OilPress] = 30,
         [Items.ElectricSawmill] = 40,
         [Items.IndustrialSawmill] = 80,
+        [Items.Crusher] = 40,
+        [Items.Drill] = 40,
+        [Items.HeavyDrill] = 100,
     };
 
     public static bool Covers(PlotObject pole, int tileX, int tileY) =>
@@ -88,12 +100,13 @@ public static class PowerRules
         }
 
         var generators = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
+        var hydro = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
         var consumers = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
         var demand = new double[count];
         foreach (var o in all)
         {
             var isGenerator = o.Kind == Items.Generator;
-            if (!isGenerator && !Demand.ContainsKey(o.Kind))
+            if (!isGenerator && !Items.IsHydro(o.Kind) && !Demand.ContainsKey(o.Kind))
             {
                 continue;
             }
@@ -108,6 +121,10 @@ public static class PowerRules
             {
                 generators[component[pole]].Add(o.Id);
             }
+            else if (Items.IsHydro(o.Kind))
+            {
+                hydro[component[pole]].Add(o.Id);
+            }
             else
             {
                 consumers[component[pole]].Add(o.Id);
@@ -116,13 +133,18 @@ public static class PowerRules
         }
 
         return Enumerable.Range(0, count)
-            .Select(n => new Network(n, poles.Where((_, i) => component[i] == n).Select(p => p.Id).ToList(), generators[n], consumers[n], demand[n]))
+            .Select(n => new Network(n, poles.Where((_, i) => component[i] == n).Select(p => p.Id).ToList(), generators[n], consumers[n], demand[n], hydro[n]))
             .ToList();
     }
+
+    /// <summary>What a water power plant of <paramref name="kind"/> gives on a plot of <paramref name="biome"/> (kW); 0 where no water flows.</summary>
+    public static double HydroKw(string kind, int biome) => Hydro.GetValueOrDefault(kind) * WaterPower.Biomes.GetValueOrDefault(biome);
 }
 
 /// <param name="DemandKw">What all its machines draw together.</param>
-public sealed record Network(int Id, IReadOnlyList<Guid> Poles, IReadOnlyList<Guid> Generators, IReadOnlyList<Guid> Consumers, double DemandKw);
+/// <param name="Hydro">Water wheels and hydro plants on it, which give their power without fuel.</param>
+public sealed record Network(
+    int Id, IReadOnlyList<Guid> Poles, IReadOnlyList<Guid> Generators, IReadOnlyList<Guid> Consumers, double DemandKw, IReadOnlyList<Guid> Hydro);
 
 /// <param name="FuelItem">What lies by the fire, or null.</param>
 /// <param name="Fuel">Pieces of it not burning yet.</param>
@@ -186,10 +208,12 @@ public sealed class PowerGrid : IPowerGrid
     private readonly Func<GridData, DateTimeOffset, CancellationToken, Task> _save;
     private List<Segment>[] _timelines = [];
 
-    public PowerGrid(int x, int y, IReadOnlyList<PlotObject> objects, GridData data, DateTimeOffset settled, Func<GridData, DateTimeOffset, CancellationToken, Task> save)
+    public PowerGrid(
+        int x, int y, IReadOnlyList<PlotObject> objects, GridData data, DateTimeOffset settled, Func<GridData, DateTimeOffset, CancellationToken, Task> save, int biome = 0)
     {
         X = x;
         Y = y;
+        Biome = biome;
         _objects = objects;
         _save = save;
         Data = data;
@@ -197,7 +221,7 @@ public sealed class PowerGrid : IPowerGrid
         Networks = PowerRules.Networks(objects);
         foreach (var network in Networks)
         {
-            foreach (var id in network.Generators.Concat(network.Consumers))
+            foreach (var id in network.Generators.Concat(network.Consumers).Concat(network.Hydro))
             {
                 _networkOf[id] = network;
             }
@@ -209,6 +233,19 @@ public sealed class PowerGrid : IPowerGrid
     public int X { get; }
 
     public int Y { get; }
+
+    /// <summary>The plot's biome (as WorldMap numbers them), which decides what water power gives.</summary>
+    public int Biome { get; }
+
+    /// <summary>What a water power plant on the plot gives (kW), whether or not a pole reaches it.</summary>
+    public double HydroKw(Guid id) => _objects.FirstOrDefault(o => o.Id == id) is { } o ? PowerRules.HydroKw(o.Kind, Biome) : 0;
+
+    /// <summary>What all the water power of a network gives together (kW).</summary>
+    public double HydroKw(Network network) => network.Hydro.Sum(HydroKw);
+
+    /// <summary>What a network's power plants can give at <paramref name="at"/>: running generators and water power (kW).</summary>
+    public double SupplyKw(Network network, DateTimeOffset at) =>
+        network.Generators.Count(g => Generator(g, at).Running) * PowerRules.GeneratorKw + HydroKw(network);
 
     public IReadOnlyList<Network> Networks { get; }
 
@@ -238,11 +275,22 @@ public sealed class PowerGrid : IPowerGrid
         return Data.Generators.GetValueOrDefault(id) ?? GeneratorState.Empty;
     }
 
-    /// <summary>The power a generator gives at <paramref name="at"/> (kW).</summary>
-    public double Output(Guid id, DateTimeOffset at) =>
-        _networkOf.TryGetValue(id, out var network) && SegmentAt(network, at) is { } segment && segment.States.GetValueOrDefault(id)?.Running == true
-            ? segment.KwEach
-            : 0;
+    /// <summary>The power a generator gives at <paramref name="at"/> (kW); a water power plant gives its share of what its network draws.</summary>
+    public double Output(Guid id, DateTimeOffset at)
+    {
+        if (!_networkOf.TryGetValue(id, out var network))
+        {
+            return 0;
+        }
+
+        if (network.Hydro.Contains(id))
+        {
+            var water = HydroKw(network);
+            return water <= 0 ? 0 : HydroKw(id) * Math.Min(1, network.DemandKw / water);
+        }
+
+        return SegmentAt(network, at) is { } segment && segment.States.GetValueOrDefault(id)?.Running == true ? segment.KwEach : 0;
+    }
 
     /// <summary>When a generator burns its last fuel, or null if it never does on what it powers now.</summary>
     public DateTimeOffset? RunsOutAt(Guid id)
@@ -398,21 +446,25 @@ public sealed class PowerGrid : IPowerGrid
             var states = network.Generators.ToDictionary(g => g, g => Data.Generators.GetValueOrDefault(g) ?? GeneratorState.Empty);
             var timeline = new List<Segment>();
             var t = Settled;
+            // Water power covers what it can; the generators burn only for the rest.
+            var water = HydroKw(network);
+            var lacking = network.DemandKw - water;
             while (true)
             {
                 var running = states.Where(s => s.Value.Running).Select(s => s.Key).ToList();
-                if (network.DemandKw <= 0 || running.Count == 0)
+                if (lacking <= 0 || running.Count == 0)
                 {
-                    timeline.Add(new Segment(t, null, network.DemandKw <= 0 ? 1 : 0, 0, states));
+                    var speed = network.DemandKw <= 0 || lacking <= 0 ? 1 : water / network.DemandKw;
+                    timeline.Add(new Segment(t, null, speed, 0, states));
                     break;
                 }
 
                 var supply = running.Count * PowerRules.GeneratorKw;
-                var each = Math.Min(network.DemandKw, supply) / running.Count;
+                var each = Math.Min(lacking, supply) / running.Count;
                 var first = running.MinBy(g => states[g].Total)!;
                 var seconds = states[first].Total / each;
                 var end = t + TimeSpan.FromTicks(Math.Max(1, (long)Math.Ceiling(seconds * TimeSpan.TicksPerSecond)));
-                timeline.Add(new Segment(t, end, Math.Min(1, supply / network.DemandKw), each, states));
+                timeline.Add(new Segment(t, end, Math.Min(1, (supply + water) / network.DemandKw), each, states));
                 states = states.ToDictionary(s => s.Key, s =>
                     s.Key == first ? GeneratorState.Empty : s.Value.Running ? s.Value.Burn(each * seconds) : s.Value);
                 t = end;

@@ -22,7 +22,9 @@ public sealed record ProcessingMachine(string Kind, bool Fired, IReadOnlyList<Pr
 /// <summary>
 /// Machines that turn crops into food, put on a plot like the furnace: a mill grinds grain into
 /// flour, an oil press squeezes sunflowers, a barrel pickles cabbage, and the fired bakery and
-/// field kitchen bake and cook from those; a sawmill saws wood into planks, beams and pellets. The mill, the
+/// field kitchen bake and cook from those; a sawmill saws wood into planks, beams and pellets. In the
+/// mountains a quarry cuts stone, a crusher grinds stone and ore, a stonemason dresses stone and marble and a
+/// fired foundry casts bronze and steel and fires bricks. The mill, the crusher,
 /// oil press and the electric and industrial sawmills run on power from a
 /// generator, through poles; they keep their times (<see cref="MachineState.StartedAt"/>) in their
 /// own time, which stands still while they have no power. The player sets a recipe, then loads its ingredients
@@ -97,6 +99,31 @@ public static class Processing
             new(Items.WoodPellets, 4, TimeSpan.FromSeconds(2), [(Items.Wood, 2)], 1),
             new(Items.Plywood, 1, TimeSpan.FromSeconds(5), [(Items.Planks, 3)], 3),
         ], Powered: true),
+        // The mountain industry. A quarry cuts stone out of the mountain with nothing put in; it stands on mountain plots only.
+        new(Items.Quarry, false,
+        [
+            new(Items.Stone, 2, TimeSpan.FromSeconds(6), [], 1),
+        ]),
+        // A crusher grinds stone into sand and ore into crushed ore, three from two, which smelts into as many ingots.
+        new(Items.Crusher, false,
+        [
+            new(Items.Sand, 3, TimeSpan.FromSeconds(3), [(Items.Stone, 1)], 1),
+            new(Items.CrushedIronOre, 3, TimeSpan.FromSeconds(5), [(Items.IronOre, 2)], 2),
+            new(Items.CrushedCopperOre, 3, TimeSpan.FromSeconds(5), [(Items.CopperOre, 2)], 2),
+            new(Items.CrushedTinOre, 3, TimeSpan.FromSeconds(6), [(Items.TinOre, 2)], 3),
+        ], Powered: true),
+        new(Items.Stonemason, false,
+        [
+            new(Items.StoneBlocks, 1, TimeSpan.FromSeconds(8), [(Items.Stone, 3)], 2),
+            new(Items.MarbleSlabs, 2, TimeSpan.FromSeconds(10), [(Items.Marble, 1)], 3),
+        ]),
+        // A foundry casts bronze and steel and fires bricks, on coal or wood.
+        new(Items.Foundry, true,
+        [
+            new(Items.BronzeIngot, 4, TimeSpan.FromSeconds(12), [(Items.CopperIngot, 3), (Items.TinIngot, 1)], 4),
+            new(Items.SteelIngot, 1, TimeSpan.FromSeconds(15), [(Items.IronIngot, 2), (Items.Coal, 1)], 3),
+            new(Items.Bricks, 4, TimeSpan.FromSeconds(10), [(Items.Sand, 2), (Items.Stone, 2)], 2),
+        ]),
     ];
 
     public static readonly IReadOnlyDictionary<string, ProcessingMachine> ByKind = Machines.ToDictionary(m => m.Kind);
