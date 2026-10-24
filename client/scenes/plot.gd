@@ -25,6 +25,7 @@ const ACTIONS := {
 	"garage": [KEY_G],
 	"rotate": [KEY_R],
 	"stats": [KEY_L],
+	"achievements": [KEY_O],
 }
 
 const LAYOUT_FILE := "res://art/plot/layout.json"
@@ -235,6 +236,7 @@ var _company_window: CompanyWindow
 var _stats_window: StatsWindow
 var _machine_window: MachineWindow
 var _generator_window: GeneratorWindow
+var _achievements_window: AchievementsWindow
 var _clock_offset := 0.0
 var _next_station_poll := 0.0
 
@@ -987,8 +989,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("cancel"):
 		if _placing != "":
 			_stop_placing()
-		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _generator_window, _storage_window, _splitter_window, _stats_window, _company_window]:
+		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _achievements_window.visible \
+				or _using_window_open():
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _generator_window, _storage_window, _splitter_window, _stats_window, _company_window, _achievements_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -1028,6 +1031,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_company_window.toggle()
 	elif event.is_action_pressed("stats"):
 		_stats_window.toggle()
+	elif event.is_action_pressed("achievements"):
+		_achievements_window.toggle()
 	elif event.is_action_pressed("tool"):
 		_tool_slot.open()
 	elif event.is_action_pressed("plant"):
@@ -1931,6 +1936,7 @@ func _build_hud() -> void:
 	_update_plant_button()
 	bar.add_child(UI.button("Statystyki  [L]", func() -> void: _stats_window.toggle()))
 	bar.add_child(UI.button("Mapa świata  [N]", Game.open_world_map))
+	bar.add_child(UI.button("Osiągnięcia  [O]", func() -> void: _achievements_window.toggle()))
 	bar.add_child(UI.button("Garaż  [G]", Game.open_garage))
 	_hud.add_child(bar)
 	bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 10)
@@ -2200,6 +2206,9 @@ func _build_windows() -> void:
 	layer.add_child(_furnace_window)
 	layer.add_child(_machine_window)
 	layer.add_child(_generator_window)
+	_achievements_window = AchievementsWindow.new()
+	_achievements_window.failed.connect(_show_error)
+	layer.add_child(_achievements_window)
 
 
 func _reload_inventory() -> void:

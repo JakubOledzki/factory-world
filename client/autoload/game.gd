@@ -116,6 +116,7 @@ var plot := Vector2i(-1, -1)
 func _ready() -> void:
 	get_tree().root.theme = UI.theme()
 	add_child(ItemTooltip.new())
+	add_child(AchievementToast.new())
 	var config := ConfigFile.new()
 	if config.load(SESSION_FILE) == OK:
 		token = config.get_value("session", "token", "")
@@ -156,6 +157,7 @@ func enter_game() -> void:
 	var reply := await Net.request("character.get")
 	if reply["type"] == "character":
 		character = reply["payload"]
+		watch_achievements()
 		get_tree().change_scene_to_file(GARAGE_SCENE)
 	else:
 		character = {}
@@ -207,6 +209,13 @@ func _on_reconnected() -> void:
 	if reply["type"] != "auth.ok":
 		_save_token("")
 		get_tree().change_scene_to_file(LOGIN_SCENE)
+	elif not character.is_empty():
+		watch_achievements()
+
+
+## From now on the server tells this connection of every badge the player unlocks (AchievementToast).
+func watch_achievements() -> void:
+	Net.send("achievements.watch")
 
 
 func _save_token(value: String) -> void:

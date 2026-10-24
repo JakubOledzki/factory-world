@@ -34,6 +34,7 @@ const ACTIONS := {
 	"rotate": [KEY_R],
 	"world_map": [KEY_N],
 	"tool": [KEY_Q],
+	"achievements": [KEY_O],
 }
 
 var _garage := {}
@@ -90,6 +91,7 @@ var _sorting_window: GameWindow
 var _inventory_window: GameWindow
 var _market_window: MarketWindow
 var _contracts_window: ContractsWindow
+var _achievements_window: AchievementsWindow
 var _crafting_window: CraftingWindow
 var _company_window: CompanyWindow
 var _furnace_window: FurnaceWindow
@@ -428,7 +430,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _menu.visible:
 			_menu.visible = false
 		else:
-			for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _stats_window, _company_window]:
+			for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _stats_window, _company_window, _achievements_window]:
 				window.hide_window()
 	elif event.is_action_pressed("rotate") and _placing != "":
 		_turn_ghost(1)
@@ -453,6 +455,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_contracts_window.toggle()
 	elif event.is_action_pressed("company"):
 		_company_window.toggle()
+	elif event.is_action_pressed("achievements"):
+		_achievements_window.toggle()
 	elif event.is_action_pressed("world_map"):
 		Game.open_world_map()
 	elif event.is_action_pressed("tool"):
@@ -671,6 +675,7 @@ func _build_hud() -> void:
 	bar.add_child(UI.button("Zlecenia  [J]", func() -> void: _contracts_window.toggle()))
 	bar.add_child(UI.button("Spółka  [K]", func() -> void: _company_window.toggle()))
 	bar.add_child(UI.button("Statystyki  [L]", func() -> void: _stats_window.toggle()))
+	bar.add_child(UI.button("Osiągnięcia  [O]", func() -> void: _achievements_window.toggle()))
 	bar.add_child(UI.button("Mapa świata  [N]", Game.open_world_map))
 	bar.add_child(UI.button("Wyloguj", Game.logout))
 	add_child(bar)
@@ -736,7 +741,9 @@ func _build_windows() -> void:
 	_stats_window = StatsWindow.new()
 	_stats_window.position = Vector2(1280 - 640 - 12, 64)
 	_stats_window.failed.connect(_show_error)
-	for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _stats_window, _company_window]:
+	_achievements_window = AchievementsWindow.new()
+	_achievements_window.failed.connect(_show_error)
+	for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _stats_window, _company_window, _achievements_window]:
 		add_child(window)
 
 

@@ -18,6 +18,7 @@
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Contracts\FactoryWorld.Modules.Contracts.csproj" />
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Companies\FactoryWorld.Modules.Companies.csproj" />
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Research\FactoryWorld.Modules.Research.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Achievements\FactoryWorld.Modules.Achievements.csproj" />
   </ItemGroup>
 
   <ItemGroup>

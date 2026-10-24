@@ -147,6 +147,7 @@ public sealed class WalletModule : IGameModule
     {
         services.AddModuleDbContext<WalletDbContext>(WalletDbContext.Schema);
         services.AddScoped<IWallet, WalletService>();
+        services.AddScoped<IPlayerRanking, WalletRanking>();
         services.AddSingleton<IMessageHandler, GetWalletHandler>();
     }
 
