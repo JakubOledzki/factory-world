@@ -19,6 +19,7 @@ public static class Stats
     public const string Surveys = "surveys";
     public const string Sold = "sold";
     public const string Trades = "trades";
+    public const string Contracts = "contracts";
 
     /// <summary>Everything the player made by hand or with machines: gathered, mined, smelted, crafted, grown, processed.</summary>
     public const string Produced = "produced";
@@ -77,6 +78,8 @@ public static class Badges
 
         new("merchant", "Handel", "Kupiec", "Sprzedaj handlarzowi 100 przedmiotów.", Stats.Sold, 100),
         new("trader", "Handel", "Handlowiec", "Kup albo sprzedaj coś innym graczom 10 razy.", Stats.Trades, 10),
+        new("contractor", "Handel", "Solidny wykonawca", "Wykonaj 5 zleceń.", Stats.Contracts, 5),
+        new("supplier", "Handel", "Dostawca roku", "Wykonaj 50 zleceń.", Stats.Contracts, 50),
         new("wealthy", "Handel", "Dorobkiewicz", "Miej w portfelu 10 000 $.", Stats.Money, 10_000_00),
         new("millionaire", "Handel", "Milioner", "Miej w portfelu 1 000 000 $.", Stats.Money, 1_000_000_00),
 

@@ -138,6 +138,9 @@ public sealed class AchievementTests(ServerFactory factory) : IClassFixture<Serv
         var request = JsonSerializer.SerializeToElement(new { machine = Guid.NewGuid(), what = "input" }, Payload.Json);
         var inputs = JsonSerializer.SerializeToElement(new { taken = new[] { new { id = Items.Wheat, quantity = 5 } } }, Payload.Json);
         Assert.Empty(Tally.Count(new HandledMessage("machine.take", request, "machine", inputs)));
+
+        var delivered = JsonSerializer.SerializeToElement(new { balanceCents = 500, completed = true, rewardCents = 100, xp = (object?)null }, Payload.Json);
+        Assert.Equal(1, Tally.Count(new HandledMessage("contracts.deliver", null, "contracts.done", delivered))[Stats.Contracts]);
     }
 
     [Fact]

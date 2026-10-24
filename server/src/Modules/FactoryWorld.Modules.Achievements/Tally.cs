@@ -116,6 +116,9 @@ public static class Tally
             case "market.purchase" or "market.fill":
                 Add(counts, Stats.Trades, 1);
                 break;
+            case "contracts.deliver" when reply.TryGetProperty("completed", out var completed) && completed.ValueKind == JsonValueKind.True:
+                Add(counts, Stats.Contracts, 1);
+                break;
         }
 
         // Many replies show the level (after XP was gained) or the balance; keep the highest seen.
