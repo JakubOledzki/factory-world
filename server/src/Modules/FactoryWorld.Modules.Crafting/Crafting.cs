@@ -70,7 +70,7 @@ public sealed record CraftingState(
     XpGain? Xp);
 
 public sealed class CraftingService(
-    GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
+    GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, IProductionStats stats, ITechnologies technologies, TimeProvider time)
 {
     /// <summary>The queue as it is now, after handing out every order that is done.</summary>
     public Task<CraftingState> StateAsync(Guid owner, CancellationToken cancellationToken) =>
@@ -86,6 +86,7 @@ public sealed class CraftingService(
         {
             var recipe = Workshop.Find(recipeId) ?? throw new GameException("no_recipe", "There is no such recipe.");
             await Workshop.RequireAsync(places, owner, workbench, Items.Workbench, cancellationToken);
+            await technologies.RequireUnlockedAsync(owner, recipe.Id, cancellationToken);
             var (done, xp) = await CompleteDueAsync(owner, cancellationToken);
 
             // One order at a time per player, so two at once cannot both take the last queue slot.
@@ -235,7 +236,9 @@ public abstract class CraftingHandler(IServiceScopeFactory scopes) : IMessageHan
     public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
-        var state = await RunAsync(scope.ServiceProvider.GetRequiredService<CraftingService>(), client.RequireAccount(), payload, cancellationToken);
+        var owner = client.RequireAccount();
+        var state = await RunAsync(scope.ServiceProvider.GetRequiredService<CraftingService>(), owner, payload, cancellationToken);
+        var locked = await scope.ServiceProvider.GetRequiredService<ITechnologies>().LockedAsync(owner, cancellationToken);
         return new Reply("crafting", new
         {
             recipes = Workshop.Recipes.Select(r => new
@@ -246,6 +249,8 @@ public abstract class CraftingHandler(IServiceScopeFactory scopes) : IMessageHan
                 seconds = r.Time.TotalSeconds,
                 ingredients = r.Ingredients.Select(i => new { id = i.Item, name = Items.Names[i.Item], quantity = i.Quantity }),
                 xp = r.Xp,
+                // The technology still to research before the recipe can be ordered, or null.
+                locked = locked.GetValueOrDefault(r.Id),
             }),
             // Unix milliseconds: the client compares them with serverTime, not its own clock.
             queue = state.Queue.Select(j => new

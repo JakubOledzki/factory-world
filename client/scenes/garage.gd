@@ -718,6 +718,7 @@ func _build_windows() -> void:
 	_crafting_window.finished.connect(_on_crafted)
 	_crafting_window.inventory_changed.connect(_reload_inventory)
 	_crafting_window.failed.connect(_show_error)
+	_crafting_window.researched.connect(_on_researched)
 	_furnace_window = FurnaceWindow.new()
 	_furnace_window.position = Vector2(1280 - 400 - 12, 64)
 	_furnace_window.updated.connect(func(furnace: Dictionary) -> void: _furnaces[furnace["id"]] = furnace)
@@ -954,6 +955,12 @@ func _on_crafted(done: Array, xp: Variant) -> void:
 		_gain_xp(xp)
 	_show_toast("Gotowe: %s. Leży w ekwipunku." % ", ".join(done.map(func(item: Dictionary) -> String: return item["name"])))
 	_reload_inventory()
+
+
+func _on_researched(finished: Array, xp: Variant) -> void:
+	if xp != null:
+		_gain_xp(xp)
+	_show_toast("Zbadano: %s. Nowe przepisy czekają przy stole." % ", ".join(finished.map(func(t: Dictionary) -> String: return t["name"])), UI.GOOD)
 
 
 ## Something came out of the furnace (or went in): the inventory changed.
