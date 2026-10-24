@@ -19,6 +19,7 @@ const ACTIONS := {
 	"station": [KEY_T],
 	"tool": [KEY_Q],
 	"plant": [KEY_P],
+	"upgrade_mine": [KEY_U],
 	"cancel": [KEY_ESCAPE],
 	"world_map": [KEY_N],
 	"garage": [KEY_G],
@@ -72,6 +73,8 @@ const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalni
 ## PlotLogistics, flat on the ground.
 const PLACED_SPRITES := {
 	"furniture_workbench": "workbench", "furniture_furnace": "furnace",
+	"furniture_brick_furnace": "brick_furnace", "furniture_blast_furnace": "blast_furnace",
+	"logistics_fast_inserter": "inserter_fast", "logistics_express_inserter": "inserter_express",
 	"furniture_mill": "mill", "furniture_oil_press": "oil_press", "furniture_pickling_barrel": "pickling_barrel",
 	"furniture_bakery": "bakery", "furniture_kitchen": "kitchen", "logistics_inserter": "inserter", "logistics_splitter": "splitter",
 	"storage_wooden_chest": "wooden_chest", "storage_iron_chest": "iron_chest", "storage_wood_pile": "wood_pile",
@@ -82,8 +85,14 @@ const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_
 const BELT := "logistics_belt"
 const INSERTER := "logistics_inserter"
 const SPLITTER := "logistics_splitter"
+## Belts and inserters of every level: plain, fast and express.
+const BELTS := [BELT, "logistics_fast_belt", "logistics_express_belt"]
+const INSERTERS := [INSERTER, "logistics_fast_inserter", "logistics_express_inserter"]
+## Furnaces of every level, which open the furnace window.
+const FURNACES := ["furniture_furnace", "furniture_brick_furnace", "furniture_blast_furnace"]
 ## Belts, inserters and splitters: turned with R and laid one after another.
-const MACHINERY := [BELT, INSERTER, SPLITTER]
+const MACHINERY := [BELT, "logistics_fast_belt", "logistics_express_belt", INSERTER, "logistics_fast_inserter",
+	"logistics_express_inserter", SPLITTER]
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo"]
 ## Where a rotation faces, as players read it: 0 south, 1 east, 2 north, 3 west.
 const DIRECTIONS := ["na południe", "na wschód", "na północ", "na zachód"]
@@ -136,10 +145,17 @@ var _tree_grow_seconds := 0.0
 var _saplings := 0
 var _planting := false
 var _plant_button: Button
+## Shown while the player stands at a mine: opens the window where it is built up.
+var _mine_button: Button
+var _mine_window: GameWindow
+var _mine_box: VBoxContainer
+## The mine whose window is open, or -1.
+var _mine_open := -1
 ## Which crop or tree sprite each drawn field or planted tree shows, to swap it when it grows.
 var _stages := {}
 var _next_stage_check := 0.0
-## Mines of this plot by id: { x, y, width, height, units, refillAt, sprite }.
+## Mines of this plot by id: { x, y, width, height, units, refillAt, level, capacity, seconds,
+## refillSeconds, upgrade, sprite }; `upgrade` is the next level and its cost, or null.
 var _mines := {}
 var _mine_seconds := 5.0
 var _mine_units := 50
@@ -598,7 +614,7 @@ func _solid(cell: Vector2i) -> bool:
 
 
 func _is_belt(cell: Vector2i) -> bool:
-	return _placed.has(cell) and _placed[cell]["kind"] == BELT
+	return _placed.has(cell) and _placed[cell]["kind"] in BELTS
 
 
 ## Belts, inserters and splitters are turned and picked up from a menu; other placed objects open a window.
@@ -832,12 +848,12 @@ func _update_field_label(cell: Vector2i) -> void:
 func _placed_label(cell: Vector2i) -> String:
 	var object: Dictionary = _placed[cell]
 	var facing: String = DIRECTIONS[int(object.get("rotation", 0)) & 3]
-	if object["kind"] == BELT:
-		return "Taśmociąg %s: [R] obróć, kliknij, aby schować" % facing
-	if object["kind"] == INSERTER:
+	if object["kind"] in BELTS:
+		return "%s %s: [R] obróć, kliknij, aby schować" % [object["name"], facing]
+	if object["kind"] in INSERTERS:
 		var held := _logistics.held(cell)
 		var carrying := ", niesie: %s" % _item_name(held).to_lower() if held != "" else ""
-		return "Podajnik %s%s: [R] obróć, kliknij, aby schować" % [facing, carrying]
+		return "%s %s%s: [R] obróć, kliknij, aby schować" % [object["name"], facing, carrying]
 	if object["kind"] == SPLITTER:
 		var filter := _logistics.splitter(object["id"])
 		var sorting := "na zmianę w lewo i w prawo" if (filter["items"] as Array).is_empty() \
@@ -869,7 +885,8 @@ func _draw_marks() -> void:
 
 ## What is being placed, see-through on the tile under the mouse, with the way it will face.
 func _draw_ghost(cell: Vector2i) -> void:
-	var sprite: String = PlotLogistics.BELT_SPRITES[_place_rotation] if _placing == BELT else PLACED_SPRITES.get(_placing, "")
+	var sprite: String = PlotLogistics.BELT_SPRITES[_place_rotation] + PlotLogistics.tier_suffix(_placing) if _placing in BELTS \
+		else PLACED_SPRITES.get(_placing, "")
 	if sprite == "" or not _layout.has(sprite):
 		return
 	var texture: Texture2D = load("res://art/plot/%s.png" % sprite)
@@ -928,8 +945,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("cancel"):
 		if _placing != "":
 			_stop_placing()
-		elif _station_window.visible or _inventory_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _storage_window, _splitter_window]:
+		elif _station_window.visible or _inventory_window.visible or _mine_window.visible or _using_window_open():
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _storage_window,
+					_splitter_window, _mine_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -969,6 +987,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_tool_slot.open()
 	elif event.is_action_pressed("plant"):
 		_set_planting(not _planting)
+	elif event.is_action_pressed("upgrade_mine"):
+		_toggle_mine_window()
 	elif event.is_action_pressed("world_map"):
 		Game.open_world_map()
 	elif event.is_action_pressed("garage"):
@@ -1410,7 +1430,7 @@ func _use_placed(cell: Vector2i) -> void:
 	_using = cell
 	_station_window.hide_window()
 	_hide_placed_windows()
-	if object["kind"] == "furniture_furnace":
+	if object["kind"] in FURNACES:
 		_furnace_window.open_at(object["id"])
 	elif object["kind"] in MACHINES:
 		_machine_window.open_at(object["id"], object["name"])
@@ -1604,7 +1624,7 @@ func _nearest_mine() -> int:
 func _mine_left_units(id: int) -> int:
 	var mine: Dictionary = _mines[id]
 	if mine["refillAt"] != null and _server_now() >= float(mine["refillAt"]):
-		mine["units"] = _mine_units
+		mine["units"] = int(mine.get("capacity", _mine_units))
 		mine["refillAt"] = null
 	return int(mine["units"])
 
@@ -1618,7 +1638,8 @@ func _mine_refill_left(id: int) -> int:
 func _update_mine_label(id: int) -> void:
 	_field_label.visible = _menu_cell.x < 0
 	if _mine_left_units(id) > 0:
-		_field_label.text = "Kopalnia: %d/%d jednostek, kliknij, aby wydobywać kilofem" % [_mine_left_units(id), _mine_units]
+		_field_label.text = "Kopalnia (poziom %d): %d/%d jednostek, kliknij, aby wydobywać kilofem" % [
+			int(_mines[id].get("level", 1)), _mine_left_units(id), _mine_capacity(id)]
 	else:
 		var left := _mine_refill_left(id)
 		_field_label.text = "Kopalnia wyczerpana: odnowi się za %d:%02d" % [left / 60, left % 60]
@@ -1652,6 +1673,8 @@ func _go_to_mine(id: int) -> void:
 
 
 func _start_mining(id: int) -> void:
+	# A mine built up takes less time a load.
+	_mine_seconds = float(_mines[id].get("seconds", _mine_seconds))
 	var r := _mine_rect(id)
 	_start_work(Vector2i(int(r.get_center().x), int(r.end.y) - 1), "mine")
 	_work_mine = id
@@ -1666,8 +1689,7 @@ func _mine_request(id: int) -> void:
 	var result: Dictionary = reply["payload"]
 	_clock_offset = float(result["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
 	var state: Dictionary = result["mine"]
-	_mines[id]["units"] = state["units"]
-	_mines[id]["refillAt"] = state["refillAt"]
+	_set_mine_state(id, state)
 	var r := _mine_rect(id)
 	var at := Vector2(r.get_center().x, r.end.y - 1.0) * TILE
 	var items: Array = result["items"]
@@ -1689,6 +1711,92 @@ func _mine_request(id: int) -> void:
 		_show_toast("Kopalnia wyczerpana. Odnowi się za %d min." % roundi(_mine_refill_left(id) / 60.0), UI.MUTED)
 	elif _work.x < 0 and _path.is_empty() and _near_mine(id) and Game.tool().get("id", "") == "tool_pickaxe":
 		_start_mining(id)
+
+
+func _mine_capacity(id: int) -> int:
+	return int(_mines[id].get("capacity", _mine_units))
+
+
+## Takes what the server says of a mine, keeping its sprite.
+func _set_mine_state(id: int, state: Dictionary) -> void:
+	for key: String in state:
+		_mines[id][key] = state[key]
+	if _mine_open == id and _mine_window.visible:
+		_render_mine_window()
+
+
+## Opens or closes the window of the mine the player stands at, where it is built up.
+func _toggle_mine_window() -> void:
+	if _mine_window.visible:
+		_mine_window.hide_window()
+		return
+	var id := _nearest_mine()
+	if id < 0:
+		_show_toast("Podejdź do kopalni, aby ją rozbudować.", UI.MUTED)
+		return
+	_mine_open = id
+	_render_mine_window()
+	_mine_window.show_window()
+	_reload_inventory()
+
+
+## Seconds as players read them: 10, or 2,5 with a decimal comma.
+static func _decimal(value: float) -> String:
+	return "%d" % int(value) if is_equal_approx(value, roundf(value)) else ("%.1f" % value).replace(".", ",")
+
+
+func _mine_level_text(level: Dictionary) -> String:
+	return "%d jednostek, %s s na jednostkę, odnawia się po %s min" % [
+		int(level["capacity"]), _decimal(float(level["seconds"])), _decimal(float(level["refillSeconds"]) / 60.0)]
+
+
+func _render_mine_window() -> void:
+	if not _mines.has(_mine_open):
+		return
+	UI.clear(_mine_box)
+	var mine: Dictionary = _mines[_mine_open]
+	_mine_window.set_title("Kopalnia, poziom %d" % int(mine.get("level", 1)))
+	_mine_box.add_child(UI.label("Teraz: %s." % _mine_level_text(mine), UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true))
+	var next: Variant = mine.get("upgrade")
+	if next == null:
+		_mine_box.add_child(UI.label("Kopalnia jest rozbudowana do końca.", UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT, true))
+		return
+	_mine_box.add_child(HSeparator.new())
+	_mine_box.add_child(UI.label("Poziom %d: %s." % [int(next["level"]), _mine_level_text(next)], UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT, true))
+	_mine_box.add_child(UI.label("Potrzebne materiały:", UI.MUTED))
+	var enough := true
+	for cost: Dictionary in next["cost"]:
+		var owned := _count(cost["id"])
+		var need := int(cost["quantity"])
+		enough = enough and owned >= need
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		row.add_child(UI.item_icon(cost["id"], 26))
+		var name_label := UI.label(cost["name"])
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(name_label)
+		row.add_child(UI.label("%d/%d" % [need, owned], UI.GOOD if owned >= need else UI.ERROR, HORIZONTAL_ALIGNMENT_RIGHT))
+		_mine_box.add_child(row)
+	var button := UI.button("Rozbuduj do poziomu %d" % int(next["level"]), _upgrade_mine.bind(_mine_open), true)
+	button.disabled = not enough
+	if not enough:
+		button.tooltip_text = "Brakuje materiałów. Sztabki przetopisz w piecu, drewno zetniesz siekierą."
+	_mine_box.add_child(button)
+
+
+func _upgrade_mine(id: int) -> void:
+	var reply := await Net.request("plot.upgradeMine", {"x": _at.x, "y": _at.y, "mine": id})
+	if reply["type"] != "plot.mineUpgraded":
+		_show_error(reply)
+		return
+	var result: Dictionary = reply["payload"]
+	_set_mine_state(id, result["mine"])
+	Game.gain_xp(result["xp"])
+	_refresh_character()
+	_show_toast("Kopalnia rozbudowana do poziomu %d!" % int(result["mine"]["level"]), UI.GOLD)
+	if result["xp"].get("leveledUp", false):
+		_show_toast("Awans! Poziom %d" % int(result["xp"]["level"]), UI.GOLD)
+	_reload_inventory()
 
 
 # --- Station -------------------------------------------------------------------------------------
@@ -1737,6 +1845,10 @@ func _process(delta: float) -> void:
 	_update_stages()
 	if _station_window.visible and not _near_station():
 		_station_window.hide_window()
+	var at_mine := _nearest_mine()
+	_mine_button.visible = at_mine >= 0
+	if _mine_window.visible and at_mine != _mine_open:
+		_mine_window.hide_window()
 	if _using.x >= 0 and (not _placed.has(_using) or not _near(_using, REACH + 1.5)):
 		_hide_placed_windows()
 		_using = Vector2i(-1, -1)
@@ -1761,7 +1873,7 @@ func _update_prompt() -> void:
 		var cell := _nearest_work()
 		var mine := _nearest_mine()
 		if cell.x < 0 and mine >= 0:
-			text = "[E] Wydobywaj: kopalnia (%d/%d)" % [_mine_left_units(mine), _mine_units]
+			text = "[E] Wydobywaj: kopalnia (%d/%d)" % [_mine_left_units(mine), _mine_capacity(mine)]
 		elif cell.x >= 0:
 			if _fields.has(cell):
 				text = "[E] Zbierz: %s" % _crops[_fields[cell]["crop"]]["name"].to_lower()
@@ -1852,6 +1964,10 @@ func _build_hud() -> void:
 	_plant_button.tooltip_text = "Sadzonki kupisz na rynku w garażu. Z każdego ściętego drzewa jest szansa na nową."
 	bar.add_child(_plant_button)
 	_update_plant_button()
+	_mine_button = UI.button("Rozbuduj kopalnię  [U]", _toggle_mine_window)
+	_mine_button.tooltip_text = "Rozbudowana kopalnia daje więcej jednostek, szybciej i szybciej się odnawia."
+	_mine_button.visible = false
+	bar.add_child(_mine_button)
 	bar.add_child(UI.button("Mapa świata  [N]", Game.open_world_map))
 	bar.add_child(UI.button("Garaż  [G]", Game.open_garage))
 	_hud.add_child(bar)
@@ -2037,7 +2153,7 @@ func _build_windows() -> void:
 	_slots.hint = func(item: String) -> String:
 		if item == "sapling":
 			return "Kliknij, aby sadzić na działce"
-		if PLACED_SPRITES.has(item) or item == BELT:
+		if PLACED_SPRITES.has(item) or item in BELTS:
 			return "Kliknij, aby postawić na działce"
 		return "Kliknij, aby wziąć do ręki" if item in ToolSlot.TOOLS else ""
 	_slots.clicked.connect(func(item: String) -> void:
@@ -2046,7 +2162,7 @@ func _build_windows() -> void:
 		elif item == "sapling":
 			_inventory_window.hide_window()
 			_set_planting(true)
-		elif PLACED_SPRITES.has(item) or item == BELT:
+		elif PLACED_SPRITES.has(item) or item in BELTS:
 			_start_placing(item))
 	_slots.changed.connect(func(items: Array) -> void:
 		_items = items
@@ -2088,6 +2204,11 @@ func _build_windows() -> void:
 	_splitter_window.position = Vector2(1280 - 400 - 12, 64)
 	_splitter_window.applied.connect(_logistics.apply)
 	_splitter_window.failed.connect(_show_error)
+	_mine_window = GameWindow.new("Kopalnia", 400)
+	_mine_window.position = Vector2(1280 - 400 - 12, 64)
+	_mine_box = VBoxContainer.new()
+	_mine_box.add_theme_constant_override("separation", 6)
+	_mine_window.content.add_child(_mine_box)
 	_machine_window = MachineWindow.new()
 	_machine_window.position = Vector2(1280 - 420 - 12, 64)
 	_machine_window.inventory_changed.connect(_on_furnace_changed)
@@ -2101,6 +2222,7 @@ func _build_windows() -> void:
 	layer.add_child(_crafting_window)
 	layer.add_child(_furnace_window)
 	layer.add_child(_machine_window)
+	layer.add_child(_mine_window)
 
 
 func _reload_inventory() -> void:
@@ -2115,6 +2237,8 @@ func _reload_inventory() -> void:
 	_storage_window.set_items(_items)
 	_splitter_window.set_items(_items)
 	_machine_window.set_items(_items)
+	if _mine_window.visible:
+		_render_mine_window()
 	if _station_window.visible and not _station_state.is_empty():
 		_show_station()
 
