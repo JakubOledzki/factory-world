@@ -16,7 +16,7 @@ public static class NpcPrices
     /// <summary>What the NPC charges the player.</summary>
     public static readonly IReadOnlyDictionary<string, long> Sells = new Dictionary<string, long>
     {
-        [Items.Trash] = 200,
+        [Items.Trash] = 100,
         [Items.SortingMachine] = 100_000,
         [Items.Sapling] = 200,
         [Items.Nails] = 100,
