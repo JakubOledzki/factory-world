@@ -7,7 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FactoryWorld.Modules.Market;
 
 /// <summary>
-/// The NPC trader: always sells trash, saplings, nails, belts, inserters, wooden chests, machines, flour, oil and bread and always buys raw materials, at fixed prices (cents).
+/// The NPC trader: always sells trash, saplings, nails, belts, inserters, wooden chests, machines, flour, oil and bread and always buys raw materials.
+/// These are its usual prices (cents); <see cref="TraderPrices"/> moves them with the day's drift and the market's events.
 /// What it pays is the floor of the market: a quick sale gets it at once, players' listings usually pay more.
 /// </summary>
 public static class NpcPrices
@@ -15,7 +16,7 @@ public static class NpcPrices
     /// <summary>What the NPC charges the player.</summary>
     public static readonly IReadOnlyDictionary<string, long> Sells = new Dictionary<string, long>
     {
-        [Items.Trash] = 200,
+        [Items.Trash] = 100,
         [Items.SortingMachine] = 100_000,
         [Items.Sapling] = 200,
         [Items.Nails] = 100,
@@ -101,12 +102,12 @@ public static class NpcPrices
 
 public sealed record TradeRequest(string Item, int Quantity);
 
-public sealed class MarketService(GameDb db, IInventory inventory, IWallet wallet)
+public sealed class MarketService(GameDb db, IInventory inventory, IWallet wallet, TraderMarket trader)
 {
     /// <summary>The player buys from the NPC: money out, items in, both or neither.</summary>
     public Task<long> BuyAsync(Guid owner, string item, int quantity, CancellationToken cancellationToken)
     {
-        var price = Price(NpcPrices.Sells, item, quantity, "The trader doesn't sell this item.");
+        var price = Price(trader.Prices().Sells, item, quantity, "The trader doesn't sell this item.");
         return db.InTransactionAsync(async () =>
         {
             var balance = await wallet.DebitAsync(owner, price * quantity, $"buy {quantity} {item}", cancellationToken);
@@ -118,7 +119,7 @@ public sealed class MarketService(GameDb db, IInventory inventory, IWallet walle
     /// <summary>The player sells to the NPC: items out, money in, both or neither.</summary>
     public Task<long> SellAsync(Guid owner, string item, int quantity, CancellationToken cancellationToken)
     {
-        var price = Price(NpcPrices.Buys, item, quantity, "The trader doesn't buy this item.");
+        var price = Price(trader.Prices().Buys, item, quantity, "The trader doesn't buy this item.");
         return db.InTransactionAsync(async () =>
         {
             await inventory.RemoveAsync(owner, item, quantity, cancellationToken);
@@ -137,23 +138,50 @@ public sealed class MarketService(GameDb db, IInventory inventory, IWallet walle
     }
 }
 
-public sealed class PricesHandler : IMessageHandler
+/// <summary>The trader's prices now, how far they are from the usual ones, and its current and next event.</summary>
+public sealed class PricesHandler(TraderMarket trader) : IMessageHandler
 {
     public string Type => "market.prices";
 
-    public Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken) =>
-        Task.FromResult(new Reply("market.prices", new
+    public Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        var prices = trader.Prices();
+        return Task.FromResult(new Reply("market.prices", new
         {
             items = Items.Names.Keys
-                .Where(id => NpcPrices.Sells.ContainsKey(id) || NpcPrices.Buys.ContainsKey(id))
+                .Where(id => prices.Sells.ContainsKey(id) || prices.Buys.ContainsKey(id))
                 .Select(id => new
                 {
                     id,
                     name = Items.Names[id],
-                    buyCents = NpcPrices.Sells.TryGetValue(id, out var buy) ? buy : (long?)null,
-                    sellCents = NpcPrices.Buys.TryGetValue(id, out var sell) ? sell : (long?)null,
+                    buyCents = prices.Sells.TryGetValue(id, out var buy) ? buy : (long?)null,
+                    buyChange = prices.Sells.ContainsKey(id) ? TraderPrices.Change(buy, NpcPrices.Sells[id]) : (int?)null,
+                    sellCents = prices.Buys.TryGetValue(id, out var sell) ? sell : (long?)null,
+                    sellChange = prices.Buys.ContainsKey(id) ? TraderPrices.Change(sell, NpcPrices.Buys[id]) : (int?)null,
                 }),
+            @event = Describe(prices.Event),
+            next = Describe(trader.NextEvent()),
+            serverTime = trader.Now.ToUnixTimeMilliseconds(),
         }));
+    }
+
+    private static object? Describe(ScheduledEvent? scheduled) => scheduled is not { Event: var e } ? null : new
+    {
+        id = e.Id,
+        name = e.Name,
+        description = e.Description,
+        startsAtMs = scheduled.StartsAt.ToUnixTimeMilliseconds(),
+        endsAtMs = scheduled.EndsAt.ToUnixTimeMilliseconds(),
+        effects = e.Pays.Keys.Union(e.Charges.Keys)
+            .Where(Items.Names.ContainsKey)
+            .Select(item => new
+            {
+                item,
+                name = Items.Names[item],
+                sellChange = e.Pays.TryGetValue(item, out var pays) ? pays : (int?)null,
+                buyChange = e.Charges.TryGetValue(item, out var charges) ? charges : (int?)null,
+            }),
+    };
 }
 
 public abstract class TradeHandler(IServiceScopeFactory scopes) : IMessageHandler
@@ -196,6 +224,7 @@ public sealed class MarketModule : IGameModule
     public void RegisterServices(IServiceCollection services, IConfiguration configuration)
     {
         services.AddModuleDbContext<MarketDbContext>(MarketDbContext.Schema);
+        services.AddSingleton<TraderMarket>();
         services.AddScoped<MarketService>();
         services.AddScoped<PlayerMarketService>();
         services.AddSingleton<IMessageHandler, PricesHandler>();

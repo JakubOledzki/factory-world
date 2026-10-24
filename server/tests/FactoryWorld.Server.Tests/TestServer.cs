@@ -14,7 +14,7 @@ namespace FactoryWorld.Server.Tests;
 /// The real server on a fresh PostgreSQL database that is dropped afterwards.
 /// Point FW_TEST_DB at a server where the user may create databases (default: local docker-compose db).
 /// </summary>
-public sealed class ServerFactory : WebApplicationFactory<Program>
+public class ServerFactory : WebApplicationFactory<Program>
 {
     private readonly string _admin =
         Environment.GetEnvironmentVariable("FW_TEST_DB")
@@ -25,8 +25,12 @@ public sealed class ServerFactory : WebApplicationFactory<Program>
     /// <summary>The server's clock; tests move it forward instead of waiting.</summary>
     public FakeTimeProvider Time { get; } = new(DateTimeOffset.UtcNow);
 
+    /// <summary>Whether the trader's prices drift and its events run; off, tests can count on the usual prices.</summary>
+    protected virtual bool PriceChanges => false;
+
     protected override void ConfigureWebHost(IWebHostBuilder builder)
     {
+        builder.UseSetting("Market:PriceChanges", PriceChanges.ToString());
         builder.UseSetting("ConnectionStrings:Game",
             new NpgsqlConnectionStringBuilder(_admin) { Database = _database }.ConnectionString);
         builder.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(Time));

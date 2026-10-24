@@ -70,6 +70,15 @@ const ERRORS := {
 	"machine_full": "Tyle się nie zmieści w maszynie.",
 	"machine_busy": "Przy ogniu leży już inne paliwo. Wyjmij je najpierw.",
 	"not_processable": "Tego nie da się tu włożyć.",
+	"no_contract": "Tego zlecenia już nie ma.",
+	"own_contract": "To twoje własne zlecenie.",
+	"contract_taken": "Ktoś inny już realizuje to zlecenie.",
+	"contract_expired": "Termin tego zlecenia minął.",
+	"not_contractor": "Najpierw przyjmij to zlecenie.",
+	"too_many_contracts": "Możesz mieć najwyżej 10 otwartych zleceń.",
+	"too_many_taken": "Naraz możesz realizować najwyżej 5 zleceń innych graczy.",
+	"bad_reward": "Nagroda musi wynosić od 0,01 $ do 10 000 000 $.",
+	"bad_deadline": "Termin: od 1 do 168 godzin.",
 }
 
 var token := ""

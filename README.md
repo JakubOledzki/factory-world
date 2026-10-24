@@ -9,7 +9,7 @@ Projekt gry: [dokument projektowy](https://claude.ai/code/artifact/50d66faa-a0b4
 | --- | --- |
 | `client/` | Klient gry w Godot 4.5 (GDScript) |
 | `server/` | Serwer gry w C#/.NET 10, modularny monolit |
-| `server/src/Modules/` | Moduły gry: `Session` (powitanie, ping), `Accounts` (rejestracja, logowanie, sesje), `Characters` (postać, wygląd, poziom), `Inventory` (przedmioty), `Wallet` (pieniądze i historia operacji), `Market` (handlarz NPC, szybka sprzedaż, handel między graczami), `Recycling` (garaż, kosz na śmieci, segregacja), `World` (mapa Ziemi, działki 5 × 5 km, zakup działek), `Crafting` (stół warsztatowy, piec kamienny, maszyny przetwórcze: młyn, tłocznia oleju, beczka do kiszenia, piec piekarski, kuchnia polowa), `Logistics` (taśmociągi, rozdzielacze, podajniki, skrzynie, stosy, hałdy i silosy na działkach) |
+| `server/src/Modules/` | Moduły gry: `Session` (powitanie, ping), `Accounts` (rejestracja, logowanie, sesje), `Characters` (postać, wygląd, poziom), `Inventory` (przedmioty), `Wallet` (pieniądze i historia operacji), `Market` (handlarz NPC, szybka sprzedaż, handel między graczami, wydarzenia rynkowe i zmienne ceny), `Recycling` (garaż, kosz na śmieci, segregacja), `World` (mapa Ziemi, działki 5 × 5 km, zakup działek), `Crafting` (stół warsztatowy, piec kamienny, maszyny przetwórcze: młyn, tłocznia oleju, beczka do kiszenia, piec piekarski, kuchnia polowa), `Logistics` (taśmociągi, rozdzielacze, podajniki, skrzynie, stosy, hałdy i silosy na działkach), `Contracts` (zlecenia firm NPC i graczy z nagrodą i terminem) |
 | `docker-compose.yml` | PostgreSQL i serwer do lokalnego uruchomienia |
 | `tools/render_art.py` | Renderuje grafikę (pusty garaż, meble z cieniami, postać w 4 kierunkach z animacją chodu, ikony) w Blenderze do `client/art/`; modele są budowane w kodzie, a gra wyświetla gotowe obrazki 2D. Wymaga modułu `bpy` (instrukcja w pliku) |
 | `tools/generate_ui.py` | Rysuje tekstury interfejsu (panele, przyciski, paski) do `client/art/ui/` |
@@ -32,6 +32,15 @@ Testy serwera potrzebują PostgreSQL (`docker compose up db`), a potem: `cd serv
 Każdy przebieg tworzy własną bazę testową i usuwa ją na końcu. Inny serwer bazy wskażesz zmienną `FW_TEST_DB`.
 
 Wdrożenie na serwer Linux: [docs/deploy.md](docs/deploy.md).
+
+## Wydarzenia rynkowe
+
+Ceny handlarza nie stoją w miejscu. To, ile płaci za każdy przedmiot, co dzień zmierza do nowej wartości (najwyżej ±10% od zwykłej ceny) i zmienia się co godzinę.
+Do tego doba dzieli się na 4 części po 6 godzin, a w mniej więcej połowie z nich trwa wydarzenie: susza (zboże i warzywa drożeją), urodzaj, boom na stal,
+boom budowlany, sroga zima, gorączka miedzi, gorączka złota, akcja recyklingu, jarmark albo wyprzedaż maszyn. Handlarz pokazuje trwające wydarzenie
+i zapowiada następne, żeby można było zawczasu zrobić zapasy. Kalendarz wynika z samego czasu (`MarketEvents`), więc nic nie trzeba zapisywać,
+a każdy serwer liczy te same ceny. Handlarz zawsze płaci mniej, niż sam bierze za ten sam towar. Ustawienie `Market:PriceChanges=false` wyłącza zmiany
+(testy serwera korzystają z niego, żeby liczyć na zwykłe ceny).
 
 Adres serwera dla klienta ustawia się w Godot w *Project Settings → factory_world/server_url*.
 
@@ -71,7 +80,7 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `inventory.get` | | `inventory` `{ slots, items: [{ id, name, quantity, slot }] }`; `slot` to kafelek ekwipunku (0 … `slots` − 1), przedmiot bez kafelka dostaje pierwszy wolny |
 | `inventory.move` | `{ item, slot }` | `inventory`; przenosi przedmiot na kafelek `slot`, a przedmiot, który tam leżał, zamienia się z nim miejscami |
 | `wallet.get` | | `wallet` `{ balanceCents }` |
-| `market.prices` | | `market.prices` `{ items: [{ id, name, buyCents, sellCents }] }` |
+| `market.prices` | | `market.prices` `{ items: [{ id, name, buyCents, buyChange, sellCents, sellChange }], event, next, serverTime }`: ceny handlarza teraz i ich zmiana w procentach względem zwykłych; `event` to trwające wydarzenie rynkowe, `next` najbliższe następne (albo `null`), każde `{ id, name, description, startsAtMs, endsAtMs, effects: [{ item, name, sellChange, buyChange }] }` |
 | `market.buy` / `market.sell` | `{ item, quantity }` | `market.traded` `{ item, quantity, balanceCents }`; `market.sell` to szybka sprzedaż: handlarz płaci od razu najniższą cenę rynku (`sellCents`) |
 | `market.overview` | | `market.overview` `{ items: [{ id, name, quickSaleCents, lowestCents, listed, highestCents, wanted }] }`: każdy przedmiot z ceną szybkiej sprzedaży (albo `null`), najtańszym ogłoszeniem i najlepszym zleceniem kupna graczy |
 | `market.item` | `{ item }` | `market.item` `{ item, name, listings, orders }`, oferty `[{ id, quantity, priceCents, owner, mine }]`: ogłoszenia od najtańszego, zlecenia od najlepiej płacącego (po 50) |
@@ -119,6 +128,12 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `station.route` | `{ x, y, toX, toY, items, everyMinutes }` | `station`: kurs, czyli pociąg, który sam odjeżdża z tej stacji co `everyMinutes` (1, 5, 15 albo 60) minut, pierwszy od razu, i zabiera do 2000 sztuk towarów `items` (najwyżej 8 rodzajów; pusta lista to wszystko ze stacji); ze stacji odjeżdża najwyżej 5 kursów |
 | `station.unroute` | `{ x, y, id }` | `station`: kończy kurs; pociągi w drodze dojeżdżają |
 | `station.find` | `{ query }` | `station.found` `{ query, players: [{ name, plots: [{ x, y, biome }] }] }`: gracze z działkami, których nazwa zaczyna się od `query` (do 8), żeby wysłać im pociąg |
+| `contracts.get` | | `contracts` `{ serverTime, npc, nextNpcAt, board, taken, issued, finished, limits }`, zlecenia `[{ id, item, name, quantity, delivered, rewardCents, xp, deadline, npc, issuer, contractor, mine, delivering, state }]`: `npc` to zlecenia firm dla gracza, `nextNpcAt` chwila nadejścia następnego (albo `null`), `board` otwarte zlecenia innych graczy, `taken` przyjęte przez gracza, `issued` wystawione przez niego (otwarte i zamknięte w ciągu doby), `finished` wykonane przez niego w ciągu doby; `state` to `open`, `taken`, `done`, `expired`, `cancelled` albo `abandoned`. Przy okazji serwer rozlicza zlecenia po terminie |
+| `contracts.create` | `{ item, quantity, rewardCents, hours }` | `contracts.done` `{ balanceCents, completed, rewardCents, xp }`; wystawia zlecenie na tablicę, nagroda od razu schodzi z portfela i czeka w zleceniu |
+| `contracts.accept` | `{ id }` | `contracts.done`; przyjmuje zlecenie innego gracza, odtąd dostarcza je tylko ten gracz |
+| `contracts.deliver` | `{ id, quantity }` | `contracts.done`; oddaje sztuki z ekwipunku; ostatnia kończy zlecenie (`completed`), wypłaca nagrodę i XP |
+| `contracts.abandon` | `{ id }` | `contracts.done`; rezygnacja: dostarczone sztuki wracają, zlecenie gracza wraca na tablicę |
+| `contracts.cancel` | `{ id }` | `contracts.done`; odwołuje własne zlecenie, którego nikt jeszcze nie przyjął; nagroda wraca |
 
 Czasy w `garage` to milisekundy uniksowe według zegara serwera; `xp` to `{ xp, level, leveledUp }` albo `null`.
 Podłoga garażu to kratownica `room.width` × `room.depth` pól o boku `room.cellSize` metrów. Mebel zajmuje `width` × `depth` pól (po obrocie o 90° lub 270° na odwrót); `x`, `y` to jego lewe przednie pole. Meble nie mogą wystawać poza podłogę ani nachodzić na siebie.
@@ -139,6 +154,8 @@ Sadzonkę drzewa kupuje się na rynku (u handlarza za 2 $ albo od innych graczy)
 Na żyznych glebach motyka orze wolne pola (1,5 s pracy, 1 XP). Na zaoranym polu sieje się jedną z roślin: pszenica 5 min, marchew 7 min, kapusta 8 min, kukurydza 10 min, ziemniaki 15 min, słonecznik 20 min; dojrzałą roślinę zbiera się ręką, a pole zostaje zaorane. Pod każdą działką mogą leżeć złoża ropy i gazu (stałe dla danego miejsca, częstsze na tundrze, pustyni i wybrzeżu), ale nie widać ich na mapie: właściciel działki może zlecić badanie geologiczne za 5 000 $, a wynik widzi tylko on.
 
 Na własnej działce można układać linie produkcyjne. Taśmociąg (4 sztuki z 2 sztabek żelaza i drewna, u handlarza 5 $) przesuwa przedmioty dwoma torami w stronę, w którą jest obrócony, 1,25 pola na sekundę, i przekazuje je na taśmę, w którą celuje (nie czołowo). Taśma zasilana od tyłu albo tylko z jednego boku przenosi oba tory tak, jak są, więc taśmy skręcają; taśma dochodząca z boku do linii zasilanej od tyłu kładzie wszystko na bliższy tor. Po taśmach można chodzić. Rozdzielacz (2 taśmociągi, 4 sztabki żelaza i 2 sztabki miedzi, u handlarza 40 $) bierze przedmioty z taśmy za sobą i oddaje je na taśmy po lewej i prawej stronie, na zmianę; z ustawionym filtrem wybrane przedmioty idą na wybraną stronę, a cała reszta na drugą. Podajnik (2 sztabki żelaza, sztabka miedzi i 5 gwoździ, u handlarza 30 $) bierze po jednym przedmiocie z pola za sobą (z taśmy, z wyjścia pieca lub maszyny, z magazynu) i odkłada na pole przed sobą (na taśmę najpierw na dalszy tor); do pieca czy maszyny bierze tylko to, co ta przyjmie (rudę, węgiel, składniki ustawionego przepisu, opał), a z magazynu z mieszanym towarem bierze po kolei z każdego rodzaju. Jeden obrót ramienia trwa 1,6 s. Magazyny: skrzynia drewniana (8 miejsc po 100 sztuk), skrzynia żelazna (24 miejsca), stos drewna (400 drewna), hałda (1000 kamienia, piasku, węgla albo rudy jednego rodzaju) i silos zbożowy (2000 pszenicy, kukurydzy albo słonecznika). Wszystko to robi się przy stole warsztatowym, stawia klawiszem R obróconym w wybraną stronę, a podnosi z powrotem do ekwipunku z zawartością. Serwer liczy taśmy i podajniki w krokach po 0,2 s za cały czas od ostatniego spojrzenia na działkę, także pod nieobecność gracza; gdy nic się nie rusza, przeskakuje do chwili, w której piec albo maszyna skończy kolejną sztukę, a maszyneria zajęta bez końca (np. pętla taśm) pracuje najwyżej 30 minut na jedno spojrzenie. Nowe maszyny innych modułów włączają się w to, implementując `IMachinePorts`.
+
+Zlecenia (okno *Zlecenia*, klawisz J w garażu): każdy gracz ma naraz 3 zlecenia od firm NPC (np. huta, piekarnia, tartak), każde na inny towar, z nagrodą wyraźnie wyższą od ceny skupu, XP (10 plus 1 za każde 20 $ nagrody, najwyżej 300) i terminem od 4 do 24 godzin. Towar oddaje się z ekwipunku, także po trochu; nagroda przychodzi, gdy dotrze ostatnia sztuka. Po wykonaniu albo rezygnacji następne zlecenie firmy przychodzi po 5 minutach, a po minięciu terminu od razu. Gracze wystawiają zlecenia na tablicę dla innych (1–100 000 sztuk dowolnego przedmiotu, nagroda 0,01–10 000 000 $, termin 1–168 godzin): nagroda czeka w zleceniu, przyjmuje je jeden wykonawca i tylko on dostarcza; za wykonanie dostaje nagrodę i 5 XP, a zleceniodawca towar. Gdy termin minie, dostarczone sztuki wracają do wykonawcy, a nagroda do zleceniodawcy; wykonawca może też zrezygnować wcześniej (zlecenie wraca na tablicę), a zleceniodawca odwołać zlecenie, dopóki nikt go nie przyjął. Gracz wystawia najwyżej 10 zleceń i realizuje najwyżej 5 cudzych naraz.
 
 Wszystko poza `hello`, `ping`, `auth.*` i `character.options` wymaga zalogowania.
 
