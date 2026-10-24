@@ -184,6 +184,8 @@ public sealed class MarketTests(ServerFactory factory) : IClassFixture<ServerFac
     {
         using var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
+        // Its rewards for sorting and selling would add to the balance.
+        await client.SendAsync("tutorial.skip");
         await SortingMachine.InstallAsync(factory, client);
         await client.SendAsync("recycling.sort", new { count = 5 });
         factory.Time.Advance(TimeSpan.FromSeconds(50));
