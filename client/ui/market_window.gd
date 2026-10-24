@@ -2,6 +2,7 @@ class_name MarketWindow
 extends GameWindow
 ## The market: the NPC trader (sells trash, saplings and the sorting machine, quick sale at the floor
 ## price) and trading between players (listings, buy orders and the player's own offers).
+## The trader's prices change: a little from day to day, and a lot during events like a drought.
 ## It covers most of the screen: categories on the left and a search field filter every tab.
 
 ## A trade went through; the garage reloads the inventory and shows the new balance.
@@ -28,6 +29,11 @@ var _items: Array = []
 var _balance := 0
 ## From the server: NPC prices, every item with the best offers, one item's board, own offers.
 var _prices: Array = []
+## The trader's event now and the next one coming, or null; their times are the server's.
+var _event = null
+var _next = null
+## Server time minus this computer's, in milliseconds.
+var _clock_offset := 0
 var _overview: Array = []
 var _board := {}
 var _mine := {}
@@ -115,8 +121,6 @@ func refresh() -> void:
 func _reload() -> void:
 	if _tab == 0 or _has_cached():
 		_render()
-	if _tab == 0:
-		return
 	if _loading:
 		_again = true
 		return
@@ -134,10 +138,17 @@ func _reload() -> void:
 
 ## Asks the server for what the open tab shows and keeps it.
 func _fetch() -> Dictionary:
-	if _tab == 0:
-		return {"type": "ok"}
 	var reply: Dictionary
-	if _tab == 1 and _item != "":
+	if _tab == 0:
+		# Prices change with time, so the trader asks for them every time it opens.
+		reply = await Net.request("market.prices")
+		if reply["type"] == "market.prices":
+			var payload: Dictionary = reply["payload"]
+			_prices = payload["items"]
+			_event = payload.get("event")
+			_next = payload.get("next")
+			_clock_offset = int(payload["serverTime"]) - int(Time.get_unix_time_from_system() * 1000)
+	elif _tab == 1 and _item != "":
 		reply = await Net.request("market.item", {"item": _item})
 		if reply["type"] == "market.item":
 			_board = reply["payload"]
@@ -267,6 +278,7 @@ func _nothing(text: String) -> Label:
 # --- Trader ------------------------------------------------------------------------------
 
 func _render_trader() -> void:
+	_render_event()
 	_page.add_child(_heading("Handlarz sprzedaje"))
 	var sold := _prices.filter(func(price: Dictionary) -> bool: return price.get("buyCents") != null)
 	if _add_items(sold, "id", _trader_row) == 0:
@@ -283,7 +295,12 @@ func _render_trader() -> void:
 func _trader_row(price: Dictionary) -> Control:
 	var item: String = price["id"]
 	var cents := int(price["buyCents"])
-	var row := _item_row(item, price["name"], "cena %s" % UI.money(cents), UI.GOLD)
+	if price.get("locked") != null:
+		var locked := _item_row(item, price["name"], "cena %s  ·  najpierw zbadaj: %s" % [UI.money(cents), price["locked"]], UI.MUTED)
+		locked.modulate = Color(1, 1, 1, 0.6)
+		locked.tooltip_text = "Odblokujesz to w drzewku technologii przy stole warsztatowym (zakładka Badania). Od innych graczy możesz to kupić już teraz."
+		return locked
+	var row := _item_row(item, price["name"], "cena %s%s" % [UI.money(cents), _change(price.get("buyChange"))], UI.GOLD)
 	for amount: int in ([1] if item.begins_with("furniture_") else [1, 10]):
 		var b := UI.button("Kup %d" % amount, _send.bind("market.buy", {"item": item, "quantity": amount}, item, "market.traded"))
 		b.disabled = _balance < cents * amount
@@ -294,10 +311,52 @@ func _trader_row(price: Dictionary) -> Control:
 func _quick_sale_row(price: Dictionary) -> Control:
 	var item: String = price["id"]
 	var owned := _count(item)
-	var row := _item_row(item, "%s  ×%d" % [price["name"], owned], "skup %s" % UI.money(int(price["sellCents"])), UI.GOOD)
+	var row := _item_row(item, "%s  ×%d" % [price["name"], owned], "skup %s%s" % [UI.money(int(price["sellCents"])), _change(price.get("sellChange"))], UI.GOOD)
 	row.add_child(UI.button("Sprzedaj 1", _send.bind("market.sell", {"item": item, "quantity": 1}, item, "market.traded")))
 	row.add_child(UI.button("Wszystko", _send.bind("market.sell", {"item": item, "quantity": mini(owned, 1000)}, item, "market.traded")))
 	return row
+
+
+## What is going on at the market now, what it changes, and what comes next.
+func _render_event() -> void:
+	if _event != null:
+		_page.add_child(_heading("Wydarzenie: %s" % _event["name"]))
+		_page.add_child(UI.label("Jeszcze %s." % _duration(int(_event["endsAtMs"])), UI.MUTED))
+		_page.add_child(_note(_event["description"]))
+		var effects := []
+		for effect: Dictionary in _event["effects"]:
+			if effect.get("sellChange") != null:
+				effects.append("%s: skup %s" % [effect["name"], _percent(effect["sellChange"])])
+			if effect.get("buyChange") != null:
+				effects.append("%s: cena %s" % [effect["name"], _percent(effect["buyChange"])])
+		_page.add_child(_note(", ".join(effects) + "."))
+	else:
+		_page.add_child(_heading("Na rynku spokojnie"))
+		_page.add_child(_note("Ceny handlarza zmieniają się trochę z dnia na dzień. Co kilka godzin zdarza się wydarzenie, które mocno zmienia ceny niektórych towarów."))
+	if _next != null:
+		_page.add_child(_note("Następne wydarzenie: %s, za %s. %s" % [_next["name"], _duration(int(_next["startsAtMs"])), _next["description"]]))
+
+
+## How far a price is from the usual one, like "  (+12%)", or "" when it is the usual price.
+func _change(percent) -> String:
+	if percent == null or int(percent) == 0:
+		return ""
+	return "  (%s)" % _percent(percent)
+
+
+## A change in percent with its sign, like "+12%" or "-25%".
+func _percent(percent) -> String:
+	return "%s%d%%" % ["+" if int(percent) > 0 else "-", absi(int(percent))]
+
+
+## The time from now until `at_ms` on the server's clock, like "2 godz. 15 min".
+func _duration(at_ms: int) -> String:
+	var minutes := maxi(1, ceili((at_ms - _clock_offset - Time.get_unix_time_from_system() * 1000) / 60000.0))
+	if minutes < 60:
+		return "%d min" % minutes
+	if minutes % 60 == 0:
+		return "%d godz." % (minutes / 60)
+	return "%d godz. %d min" % [minutes / 60, minutes % 60]
 
 
 # --- Players ------------------------------------------------------------------------------

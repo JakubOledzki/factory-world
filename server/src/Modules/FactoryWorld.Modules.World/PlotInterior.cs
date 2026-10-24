@@ -215,7 +215,8 @@ public static class HarvestRules
 
 public sealed record Harvest(TileObject Object, IReadOnlyList<(string Item, int Quantity)> Items, XpGain Xp);
 
-public sealed class PlotService(GameDb db, WorldMap map, IInventory inventory, IEquipment equipment, ICharacterProgress progress, TimeProvider time)
+public sealed class PlotService(
+    GameDb db, WorldMap map, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
 {
     /// <summary>The tiles of a plot as they are now; only its owner may enter.</summary>
     public async Task<byte[]> TilesAsync(Guid player, int x, int y, CancellationToken cancellationToken)
@@ -352,6 +353,7 @@ public sealed class PlotService(GameDb db, WorldMap map, IInventory inventory, I
             await inventory.AddAsync(player, item, quantity, cancellationToken);
         }
 
+        await stats.RecordAsync(player, items.Select(i => ProductionEntry.Made(i.Item, i.Quantity, time.GetUtcNow())).ToList(), cancellationToken);
         var xp = await progress.AddXpAsync(player, HarvestRules.XpPerHarvest, cancellationToken);
         return new Harvest(obj, items, xp);
     }

@@ -244,6 +244,8 @@ public sealed class PowerTests(ServerFactory factory) : IClassFixture<ServerFact
 
         factory.Time.Advance(TimeSpan.FromMinutes(1));
         Assert.Equal(0, Flour((await client.SendAsync("machine.get", new { machine = mill })).Payload()));
+        var stall = Assert.Single((await client.SendAsync("stats.production", new { minutes = 10 })).Payload().GetProperty("stalls").EnumerateArray());
+        Assert.Equal("no_power", stall.GetProperty("reason").GetString());
 
         // One wood is 5 MJ: 166.7 s for a mill drawing 30 kW, 27 batches of 6 s.
         await PlaceAsync(client, x, y, Items.Pole, tx + 1, ty);
@@ -264,6 +266,13 @@ public sealed class PowerTests(ServerFactory factory) : IClassFixture<ServerFact
         var logistics = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("power").GetProperty("networks")[0];
         Assert.Equal(30, logistics.GetProperty("demandKw").GetDouble());
         Assert.Equal(0, logistics.GetProperty("supplyKw").GetDouble());
+
+        // The statistics count flour when it was made on the plot, not in the mill's own time, which is a minute
+        // behind: the first 10 sacks were made over an hour ago, the other 10 after them.
+        async Task<long> Produced(int minutes) => (await client.SendAsync("stats.production", new { minutes })).Payload().GetProperty("items")
+            .EnumerateArray().First(i => i.GetProperty("id").GetString() == Items.Flour).GetProperty("produced").GetInt64();
+        Assert.Equal(10, await Produced(60));
+        Assert.Equal(20, await Produced(1440));
     }
 
     [Fact]

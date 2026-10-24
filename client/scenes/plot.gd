@@ -23,6 +23,7 @@ const ACTIONS := {
 	"world_map": [KEY_N],
 	"garage": [KEY_G],
 	"rotate": [KEY_R],
+	"stats": [KEY_L],
 }
 
 const LAYOUT_FILE := "res://art/plot/layout.json"
@@ -225,6 +226,7 @@ var _crafting_window: CraftingWindow
 var _furnace_window: FurnaceWindow
 var _storage_window: StorageWindow
 var _splitter_window: SplitterWindow
+var _stats_window: StatsWindow
 var _machine_window: MachineWindow
 var _generator_window: GeneratorWindow
 var _station_box: VBoxContainer
@@ -983,8 +985,8 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("cancel"):
 		if _placing != "":
 			_stop_placing()
-		elif _station_window.visible or _inventory_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _generator_window, _storage_window, _splitter_window]:
+		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _using_window_open():
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _generator_window, _storage_window, _splitter_window, _stats_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -1020,6 +1022,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_reload_inventory()
 	elif event.is_action_pressed("station"):
 		_go_to_station()
+	elif event.is_action_pressed("stats"):
+		_stats_window.toggle()
 	elif event.is_action_pressed("tool"):
 		_tool_slot.open()
 	elif event.is_action_pressed("plant"):
@@ -1587,6 +1591,11 @@ func _on_crafted(done: Array, xp: Variant) -> void:
 	_reload_inventory()
 
 
+func _on_researched(finished: Array, xp: Variant) -> void:
+	_gain(xp, _player.position, 0.0)
+	_show_toast("Zbadano: %s. Nowe przepisy czekają przy stole." % ", ".join(finished.map(func(t: Dictionary) -> String: return t["name"])), UI.GOOD)
+
+
 func _on_furnace_changed(taken: Array, xp: Variant) -> void:
 	var at := _cell_centre(_using) if _using.x >= 0 else _player.position
 	for i in taken.size():
@@ -1915,6 +1924,7 @@ func _build_hud() -> void:
 	_plant_button.tooltip_text = "Sadzonki kupisz na rynku w garażu. Z każdego ściętego drzewa jest szansa na nową."
 	bar.add_child(_plant_button)
 	_update_plant_button()
+	bar.add_child(UI.button("Statystyki  [L]", func() -> void: _stats_window.toggle()))
 	bar.add_child(UI.button("Mapa świata  [N]", Game.open_world_map))
 	bar.add_child(UI.button("Garaż  [G]", Game.open_garage))
 	_hud.add_child(bar)
@@ -2133,6 +2143,7 @@ func _build_windows() -> void:
 	_crafting_window.finished.connect(_on_crafted)
 	_crafting_window.inventory_changed.connect(_reload_inventory)
 	_crafting_window.failed.connect(_show_error)
+	_crafting_window.researched.connect(_on_researched)
 	_crafting_window.pick_up_requested.connect(_pick_up_placed)
 	_furnace_window = FurnaceWindow.new()
 	_furnace_window.can_pick_up = true
@@ -2163,7 +2174,11 @@ func _build_windows() -> void:
 		_poll_logistics())
 	_generator_window.failed.connect(_show_error)
 	_generator_window.pick_up_requested.connect(_pick_up_placed)
+	_stats_window = StatsWindow.new()
+	_stats_window.position = Vector2(1280 - 640 - 12, 64)
+	_stats_window.failed.connect(_show_error)
 	var layer := _hud
+	layer.add_child(_stats_window)
 	layer.add_child(_inventory_window)
 	layer.add_child(_storage_window)
 	layer.add_child(_splitter_window)

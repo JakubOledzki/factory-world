@@ -165,3 +165,14 @@ public interface IPlotPower
     /// <summary>The clock of a machine on whatever plot it stands; one that has no power ever if it stands on none.</summary>
     Task<IPowerClock> ClockAsync(Guid id, CancellationToken cancellationToken);
 }
+
+/// <summary>The player's technology tree: research unlocks recipes, machines and what the trader sells.
+/// An item no technology covers is open to everyone from the start.</summary>
+public interface ITechnologies
+{
+    /// <summary>Every item the player cannot make or buy from the trader yet, with the name of the technology that unlocks it.</summary>
+    Task<IReadOnlyDictionary<string, string>> LockedAsync(Guid player, CancellationToken cancellationToken);
+
+    /// <summary>Fails with <c>locked</c> while the item is still to be researched.</summary>
+    Task RequireUnlockedAsync(Guid player, string item, CancellationToken cancellationToken);
+}

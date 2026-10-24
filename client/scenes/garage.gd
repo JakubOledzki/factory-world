@@ -1,7 +1,7 @@
 extends Control
 ## The player's garage: the rendered room with furniture the player can move, and the
 ## character, who walks with WSAD or by clicking. Sorting opens at the trash bin, crafting at
-## the workbench and smelting at a furnace; the inventory and the market are windows opened
+## the workbench and smelting at a furnace; the inventory, the market and the orders are windows opened
 ## from the toolbar.
 
 ## The garage is lit by one bulb, so the character is drawn darker than in the editor.
@@ -27,6 +27,8 @@ const ACTIONS := {
 	"interact": [KEY_E],
 	"inventory": [KEY_I],
 	"market": [KEY_M],
+	"stats": [KEY_L],
+	"contracts": [KEY_J],
 	"cancel": [KEY_ESCAPE],
 	"rotate": [KEY_R],
 	"world_map": [KEY_N],
@@ -86,8 +88,10 @@ var _tool_slot: ToolSlot
 var _sorting_window: GameWindow
 var _inventory_window: GameWindow
 var _market_window: MarketWindow
+var _contracts_window: ContractsWindow
 var _crafting_window: CraftingWindow
 var _furnace_window: FurnaceWindow
+var _stats_window: StatsWindow
 ## The piece of furniture whose window is open (workbench or furnace), to close it when the
 ## player walks away.
 var _using: Furniture
@@ -422,7 +426,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _menu.visible:
 			_menu.visible = false
 		else:
-			for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _crafting_window, _furnace_window]:
+			for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _stats_window]:
 				window.hide_window()
 	elif event.is_action_pressed("rotate") and _placing != "":
 		_turn_ghost(1)
@@ -441,6 +445,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		_inventory_window.toggle()
 	elif event.is_action_pressed("market"):
 		_market_window.toggle()
+	elif event.is_action_pressed("stats"):
+		_stats_window.toggle()
+	elif event.is_action_pressed("contracts"):
+		_contracts_window.toggle()
 	elif event.is_action_pressed("world_map"):
 		Game.open_world_map()
 	elif event.is_action_pressed("tool"):
@@ -656,6 +664,8 @@ func _build_hud() -> void:
 	bar.add_theme_constant_override("separation", 6)
 	bar.add_child(UI.button("Ekwipunek  [I]", func() -> void: _inventory_window.toggle()))
 	bar.add_child(UI.button("Rynek  [M]", func() -> void: _market_window.toggle()))
+	bar.add_child(UI.button("Zlecenia  [J]", func() -> void: _contracts_window.toggle()))
+	bar.add_child(UI.button("Statystyki  [L]", func() -> void: _stats_window.toggle()))
 	bar.add_child(UI.button("Mapa świata  [N]", Game.open_world_map))
 	bar.add_child(UI.button("Wyloguj", Game.logout))
 	add_child(bar)
@@ -700,17 +710,24 @@ func _build_windows() -> void:
 	_market_window.position = Vector2(1280 - 440 - 12, 64)
 	_market_window.traded.connect(_on_traded)
 	_market_window.failed.connect(_show_error)
+	_contracts_window = ContractsWindow.new()
+	_contracts_window.changed.connect(_on_contracts_changed)
+	_contracts_window.failed.connect(_show_error)
 	_crafting_window = CraftingWindow.new()
 	_crafting_window.position = Vector2(1280 - 400 - 12, 64)
 	_crafting_window.finished.connect(_on_crafted)
 	_crafting_window.inventory_changed.connect(_reload_inventory)
 	_crafting_window.failed.connect(_show_error)
+	_crafting_window.researched.connect(_on_researched)
 	_furnace_window = FurnaceWindow.new()
 	_furnace_window.position = Vector2(1280 - 400 - 12, 64)
 	_furnace_window.updated.connect(func(furnace: Dictionary) -> void: _furnaces[furnace["id"]] = furnace)
 	_furnace_window.inventory_changed.connect(_on_furnace_emptied)
 	_furnace_window.failed.connect(_show_error)
-	for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _crafting_window, _furnace_window]:
+	_stats_window = StatsWindow.new()
+	_stats_window.position = Vector2(1280 - 640 - 12, 64)
+	_stats_window.failed.connect(_show_error)
+	for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _stats_window]:
 		add_child(window)
 
 
@@ -831,6 +848,7 @@ func _apply_inventory(inventory: Dictionary) -> void:
 	_items = inventory["items"]
 	_slots.show_items(inventory)
 	_market_window.set_player(_items, _balance)
+	_contracts_window.set_player(_items, _balance)
 	_crafting_window.set_items(_items)
 	_furnace_window.set_items(_items)
 
@@ -845,6 +863,7 @@ func _set_balance(cents: int) -> void:
 	_balance = cents
 	_money.text = UI.money(cents)
 	_market_window.set_player(_items, _balance)
+	_contracts_window.set_player(_items, _balance)
 
 
 func _count(item: String) -> int:
@@ -936,6 +955,12 @@ func _on_crafted(done: Array, xp: Variant) -> void:
 		_gain_xp(xp)
 	_show_toast("Gotowe: %s. Leży w ekwipunku." % ", ".join(done.map(func(item: Dictionary) -> String: return item["name"])))
 	_reload_inventory()
+
+
+func _on_researched(finished: Array, xp: Variant) -> void:
+	if xp != null:
+		_gain_xp(xp)
+	_show_toast("Zbadano: %s. Nowe przepisy czekają przy stole." % ", ".join(finished.map(func(t: Dictionary) -> String: return t["name"])), UI.GOOD)
 
 
 ## Something came out of the furnace (or went in): the inventory changed.
@@ -1085,6 +1110,16 @@ func _on_traded(balance_cents: int, item: String) -> void:
 		var garage := await Net.request("garage.get")
 		if garage["type"] == "garage":
 			_apply_garage(garage["payload"])
+
+
+## After a delivery, a taken or a new order: new balance and inventory; a finished order pays and gives XP.
+func _on_contracts_changed(result: Dictionary) -> void:
+	_set_balance(int(result["balanceCents"]))
+	await _reload_inventory()
+	if result.get("completed", false):
+		_banner("Zlecenie wykonane! +%s" % UI.money(int(result["rewardCents"])))
+	if result.get("xp") != null:
+		_gain_xp(result["xp"])
 
 
 # --- Effects ---------------------------------------------------------------------------
