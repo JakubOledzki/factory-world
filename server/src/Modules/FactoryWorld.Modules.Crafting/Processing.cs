@@ -243,7 +243,8 @@ internal static class MachineRows
     }
 }
 
-public sealed class MachineService(GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, TimeProvider time)
+public sealed class MachineService(
+    GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, ITechnologies technologies, TimeProvider time)
 {
     public Task<MachineReply> StateAsync(Guid owner, Guid id, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -258,6 +259,7 @@ public sealed class MachineService(GameDb db, IEnumerable<IPlacedObjects> places
         {
             var (machine, state) = await OpenAsync(owner, id, cancellationToken);
             var recipe = machine.Recipe(recipeId) ?? throw new GameException("no_recipe", "This machine has no such recipe.");
+            await technologies.RequireUnlockedAsync(owner, recipe.Id, cancellationToken);
             var taken = new List<(string, int)>();
             XpGain? xp = null;
             if (state.Recipe != recipe.Id)
@@ -522,7 +524,9 @@ public abstract class MachineHandler(IServiceScopeFactory scopes) : IMessageHand
     public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
-        var reply = await RunAsync(scope.ServiceProvider.GetRequiredService<MachineService>(), client.RequireAccount(), payload, cancellationToken);
+        var owner = client.RequireAccount();
+        var reply = await RunAsync(scope.ServiceProvider.GetRequiredService<MachineService>(), owner, payload, cancellationToken);
+        var locked = await scope.ServiceProvider.GetRequiredService<ITechnologies>().LockedAsync(owner, cancellationToken);
         var machine = reply.Machine;
         var s = reply.State;
         var recipe = machine.Recipe(s.Recipe);
@@ -540,6 +544,7 @@ public abstract class MachineHandler(IServiceScopeFactory scopes) : IMessageHand
                 seconds = r.Time.TotalSeconds,
                 ingredients = r.Ingredients.Select(i => new { id = i.Item, name = Items.Names[i.Item], quantity = i.Quantity }),
                 xp = r.Xp,
+                locked = locked.GetValueOrDefault(r.Id),
             }),
             inputs = recipe?.Ingredients.Select((ingredient, i) => new
             {
