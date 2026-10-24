@@ -79,6 +79,7 @@ var plot := Vector2i(-1, -1)
 
 func _ready() -> void:
 	get_tree().root.theme = UI.theme()
+	add_child(ItemTooltip.new())
 	var config := ConfigFile.new()
 	if config.load(SESSION_FILE) == OK:
 		token = config.get_value("session", "token", "")

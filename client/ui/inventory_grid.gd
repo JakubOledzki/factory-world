@@ -113,10 +113,12 @@ class Tile extends PanelContainer:
 		_count.visible = not items.is_empty()
 		modulate = Color.WHITE
 		if items.is_empty():
+			remove_meta("item")
 			tooltip_text = ""
 			mouse_default_cursor_shape = Control.CURSOR_ARROW
 			return
 		_icon.texture = UI.item_texture(items["id"])
+		set_meta("item", items["id"])
 		_count.text = str(int(items["quantity"]))
 		tooltip_text = "%s: %d" % [items["name"], int(items["quantity"])]
 		var hint: String = _grid.hint.call(items["id"])

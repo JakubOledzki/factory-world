@@ -115,6 +115,7 @@ func _render() -> void:
 		var chosen: bool = recipe["id"] == _state.get("recipe")
 		var b := UI.button(recipe["name"], _choose.bind(recipe["id"]), chosen)
 		b.icon = UI.item_texture(recipe["id"])
+		b.set_meta("item", recipe["id"])
 		b.add_theme_constant_override("icon_max_width", 24)
 		b.tooltip_text = _formula_text(recipe)
 		_recipes.add_child(b)

@@ -10,32 +10,14 @@ signal failed(reply: Dictionary)
 
 const TABS := ["Handlarz", "Gracze", "Moje oferty"]
 const MAX_QUANTITY := 10000
-## Categories in the order they are shown: name, items, and id patterns for the rest, so a new
-## ore, tool, belt or decoration finds its place on its own. Listed items win over patterns.
-const CATEGORIES := [
-	["Rośliny i nasiona", ["sapling", "wheat", "carrot", "cabbage", "corn", "potato", "sunflower"], []],
-	["Drewno i kamień", ["wood", "stone", "sand"], []],
-	["Rudy i węgiel", ["coal"], ["*_ore"]],
-	["Sztabki i materiały", ["nails"], ["*_ingot"]],
-	["Jedzenie", ["flour", "corn_flour", "sunflower_oil", "sauerkraut", "bread", "corn_bread",
-			"carrot_cake", "fries", "vegetable_soup", "bigos"], []],
-	["Maszyny", ["furniture_workbench", "furniture_furnace", "furniture_sorting_machine", "furniture_mill",
-			"furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen"], []],
-	["Logistyka i magazyny", [], ["logistics_*", "storage_*"]],
-	["Narzędzia", [], ["tool_*"]],
-	["Wyposażenie", [], ["furniture_*"]],
-	["Odpady i złom", ["trash"], ["waste_*"]],
-	["Inne", [], ["*"]],
-]
-
 var _tab := 0
 var _tab_buttons: Array[Button] = []
 var _page := VBoxContainer.new()
 ## The item whose offers the "Gracze" tab shows, or "" for the list of all items.
 var _item := ""
-## The chosen category (index in CATEGORIES), or -1 for all; kept when switching tabs.
+## The chosen category (index in ItemInfo.CATEGORIES), or -1 for all; kept when switching tabs.
 var _category := -1
-var _category_list := VBoxContainer.new()
+var _categories := CategoryList.new()
 var _list := ScrollContainer.new()
 var _search := UI.line_edit("Szukaj przedmiotu…")
 ## Two columns of items when they fit; with the bigger letters on phones one.
@@ -61,9 +43,9 @@ func _init() -> void:
 		b.custom_minimum_size.x = 150
 		top.add_child(b)
 		_tab_buttons.append(b)
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(gap)
+	var hint := UI.label("" if UI.touch() else "Ctrl + mysz na przedmiocie: opis", UI.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
+	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(hint)
 	_search.custom_minimum_size.x = 260
 	_search.clear_button_enabled = true
 	_search.text_changed.connect(_on_search)
@@ -75,13 +57,8 @@ func _init() -> void:
 	body.add_theme_constant_override("separation", 10)
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(body)
-	var side := ScrollContainer.new()
-	side.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	side.custom_minimum_size.x = 270 if UI.touch() else 200
-	_category_list.add_theme_constant_override("separation", 3)
-	_category_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	side.add_child(_category_list)
-	body.add_child(side)
+	_categories.chosen.connect(_choose_category)
+	body.add_child(_categories)
 	body.add_child(VSeparator.new())
 	_list.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -170,44 +147,13 @@ func _render() -> void:
 
 # --- Categories ------------------------------------------------------------------------------
 
-## The index in CATEGORIES of the category an item belongs to.
-static func category_of(item: String) -> int:
-	for i in CATEGORIES.size():
-		if item in CATEGORIES[i][1]:
-			return i
-	for i in CATEGORIES.size():
-		for pattern: String in CATEGORIES[i][2]:
-			if item.match(pattern):
-				return i
-	return CATEGORIES.size() - 1
-
-
-## "Wszystko" and every category with how many of the open tab's items it holds; empty ones are
-## dimmed, "Inne" shows only when something falls into it.
+## Every category with how many of the open tab's items (matching the search) it holds.
 func _render_categories() -> void:
-	for child in _category_list.get_children():
-		child.free()
-	var counts := []
-	counts.resize(CATEGORIES.size())
-	counts.fill(0)
-	var total := 0
+	var items := []
 	for entry: Dictionary in _tab_entries():
 		if _matches_search(entry["name"]):
-			counts[category_of(entry["id"])] += 1
-			total += 1
-	_category_list.add_child(_category_button("Wszystko", total, -1))
-	for i in CATEGORIES.size():
-		if i == CATEGORIES.size() - 1 and counts[i] == 0 and _category != i:
-			continue
-		var b := _category_button(CATEGORIES[i][0], counts[i], i)
-		b.disabled = counts[i] == 0 and _category != i
-		_category_list.add_child(b)
-
-
-func _category_button(text: String, count: int, category: int) -> Button:
-	var b := UI.button("%s  (%d)" % [text, count], _choose_category.bind(category), category == _category)
-	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	return b
+			items.append(entry["id"])
+	_categories.show_counts(CategoryList.count(items), _category)
 
 
 func _choose_category(category: int) -> void:
@@ -256,18 +202,18 @@ func _tab_entries() -> Array:
 ## id. Returns how many rows were added.
 func _add_items(entries: Array, key: String, make_row: Callable, columns := _columns) -> int:
 	var groups := []
-	for i in CATEGORIES.size():
+	for i in ItemInfo.CATEGORIES.size():
 		groups.append([])
 	for entry: Dictionary in entries:
-		var category := category_of(entry[key])
+		var category := ItemInfo.category_of(entry[key])
 		if (_category == -1 or category == _category) and _matches_search(entry["name"]):
 			groups[category].append(entry)
 	var added := 0
-	for i in CATEGORIES.size():
+	for i in ItemInfo.CATEGORIES.size():
 		if groups[i].is_empty():
 			continue
 		if _category == -1:
-			_page.add_child(_category_heading(CATEGORIES[i][0]))
+			_page.add_child(_category_heading(ItemInfo.CATEGORIES[i][0]))
 		var grid := GridContainer.new()
 		grid.columns = columns
 		grid.add_theme_constant_override("h_separation", 18)

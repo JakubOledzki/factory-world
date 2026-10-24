@@ -175,7 +175,11 @@ static func label(text: String, color := TEXT, align := HORIZONTAL_ALIGNMENT_LEF
 
 ## The icon of an inventory item: furniture icons are named after the item, others "item_<id>".
 static func item_icon(item: String, size := 32) -> TextureRect:
-	return icon(item if item.begins_with("furniture_") else "item_" + item, size)
+	var rect := icon(item if item.begins_with("furniture_") else "item_" + item, size)
+	# For the card ItemTooltip shows with Ctrl held.
+	rect.set_meta("item", item)
+	rect.mouse_filter = Control.MOUSE_FILTER_PASS
+	return rect
 
 
 static func item_texture(item: String) -> Texture2D:
