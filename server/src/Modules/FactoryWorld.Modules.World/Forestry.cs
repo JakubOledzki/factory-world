@@ -7,7 +7,7 @@ namespace FactoryWorld.Modules.World;
 
 /// <summary>
 /// A sapling bought on the market is planted on a free tile of a plot and grows into a tree, which
-/// is cut with an axe like the trees that grew there by themselves: wood and, usually, a new sapling.
+/// is cut with an axe like the trees that grew there by themselves: wood and, now and then, a new sapling.
 /// </summary>
 public static class Forestry
 {
@@ -15,7 +15,7 @@ public static class Forestry
     public static readonly TimeSpan Grow = TimeSpan.FromMinutes(10);
 
     /// <summary>Chance (percent) that a cut tree drops a sapling.</summary>
-    public const int SaplingChance = 80;
+    public const int SaplingChance = 30;
 
     public const int XpPerPlanting = 1;
 

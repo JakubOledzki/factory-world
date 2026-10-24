@@ -174,7 +174,8 @@ public sealed class TutorialTests(ServerFactory factory) : IClassFixture<ServerF
         // A sapling on a free tile; the row next to it is kept for the line.
         tiles = await TilesAsync(client, forest);
         var (tx, ty) = FreeRow(tiles, 6);
-        await GiveAsync(client, Items.Sapling, 1);
+        // Chopping may not drop one, but the reward for it always has a sapling.
+        Assert.True((await client.InventoryAsync())[Items.Sapling] >= 1);
         Assert.Equal("plot.tree", (await client.SendAsync("plot.plantTree", new { x = forest.X, y = forest.Y, tileX = tx + 5, tileY = ty })).Type());
         Assert.Equal("research_logistics", await CurrentAsync(client));
 

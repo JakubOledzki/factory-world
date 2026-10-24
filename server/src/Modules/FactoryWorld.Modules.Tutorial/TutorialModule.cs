@@ -69,9 +69,11 @@ public static class TutorialRules
             seen => seen.ReplyType == "world.bought" || (seen.ReplyType == "world.info" && seen.Each("plots").Any()) ? 1 : 0),
         new("chop_trees", "Drwal",
             "Zetnij 20 drzew na swojej działce.",
-            "Weź siekierę do ręki i kliknij drzewo. Drewno przyda się do badań i magazynu, a sadzonki, które przy tym wypadają, za chwilę.",
+            "Weź siekierę do ręki i kliknij drzewo. Drewno przyda się do badań i magazynu, a sadzonki, które czasem przy tym wypadają, za chwilę.",
             20, 50_00, 20, ["plot.harvested"],
-            seen => seen.ReplyType == "plot.harvested" ? Quantity(seen.Each("items"), Items.Wood) : 0),
+            seen => seen.ReplyType == "plot.harvested" ? Quantity(seen.Each("items"), Items.Wood) : 0,
+            // Saplings drop only now and then, so the next task's one comes with the reward.
+            [(Items.Sapling, 1)]),
         new("plant_tree", "Leśnik",
             "Posadź sadzonkę drzewa na wolnym polu.",
             "Wybierz sadzonkę w ekwipunku [I] i kliknij wolne pole. Sadzonki kupisz też u handlarza za 2 $.",
