@@ -37,6 +37,15 @@ public sealed class MarketEventsTests(ChangingPricesFactory factory) : IClassFix
     }
 
     [Fact]
+    public void The_trader_sells_everything_it_buys_at_ten_times_the_price_unless_it_has_its_own()
+    {
+        Assert.Equal(10_000, NpcPrices.Sells[Items.IronIngot]);
+        Assert.Equal(NpcPrices.Buys[Items.Wood] * NpcPrices.Markup, NpcPrices.Sells[Items.Wood]);
+        Assert.Equal(300, NpcPrices.Sells[Items.Planks]);
+        Assert.All(NpcPrices.Buys.Keys, item => Assert.True(NpcPrices.Sells.ContainsKey(item), item));
+    }
+
+    [Fact]
     public void Making_something_from_what_the_trader_sells_never_pays_more_than_it_cost()
     {
         var recipes = Workshop.Recipes.Select(r => (r.Id, r.Quantity, r.Ingredients))
