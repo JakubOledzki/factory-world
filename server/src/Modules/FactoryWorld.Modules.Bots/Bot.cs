@@ -812,7 +812,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
 
         var wanted = plot.Biome switch
         {
-            Biomes.Mountains => new[] { Tiles.Rock, Tiles.Tree },
+            Biomes.Mountains => new[] { Tiles.Rock },
             Biomes.Desert => [Tiles.Dune, Tiles.Rock],
             _ => [Tiles.Tree, Tiles.Rock],
         };

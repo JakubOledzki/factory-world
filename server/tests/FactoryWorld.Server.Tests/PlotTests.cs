@@ -473,6 +473,21 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
     }
 
     [Fact]
+    public void No_trees_grow_wild_in_the_mountains()
+    {
+        for (var i = 0; i < 20; i++)
+        {
+            var (x, y) = (i * 37 % 6900, i * 13 % 2900);
+            var tiles = PlotLayout.Generate(x, y, Biome.Mountains);
+            Assert.DoesNotContain((byte)TileObject.Tree, tiles);
+            Assert.Contains((byte)TileObject.Rock, tiles);
+            Assert.Contains((byte)TileObject.Bush, tiles);
+        }
+
+        Assert.Contains((byte)TileObject.Tree, PlotLayout.Generate(10, 10, Biome.Forest));
+    }
+
+    [Fact]
     public void A_mining_plot_has_one_to_five_mines_always_in_the_same_places_and_other_plots_none()
     {
         var counts = new HashSet<int>();
