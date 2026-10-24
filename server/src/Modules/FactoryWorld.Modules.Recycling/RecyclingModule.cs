@@ -80,6 +80,7 @@ public static class GarageLayout
             [Items.GasCylinder] = (1, 1),
             [Items.SortingMachine] = (3, 2),
             [Items.Furnace] = (2, 2),
+            [Items.Anvil] = (2, 1),
         };
 
     /// <summary>How a new garage is furnished.</summary>

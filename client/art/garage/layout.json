@@ -179,6 +179,24 @@
     "anchorX": 62,
     "anchorY": 85
    }
+  ],
+  "furniture_anvil": [
+   {
+    "anchorX": 58,
+    "anchorY": 56
+   },
+   {
+    "anchorX": 33,
+    "anchorY": 71
+   },
+   {
+    "anchorX": 49,
+    "anchorY": 56
+   },
+   {
+    "anchorX": 33,
+    "anchorY": 78
+   }
   ]
  },
  "projection": {

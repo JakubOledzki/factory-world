@@ -143,6 +143,62 @@ public sealed class CraftingTests(ServerFactory factory) : IClassFixture<ServerF
     }
 
     [Fact]
+    public async Task The_trader_sells_tools_for_100_dollars_and_an_anvil_for_500_dollars()
+    {
+        using var client = await PlayerAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 100_000, "test", CancellationToken.None);
+        }
+
+        foreach (var tool in new[] { Items.Axe, Items.Shovel, Items.Pickaxe, Items.Hoe })
+        {
+            Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = tool, quantity = 1 })).Type());
+            Assert.Equal(1, Count(await client.InventoryAsync(), tool));
+        }
+
+        Assert.Equal(60_000, await client.BalanceAsync());
+        Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.Anvil, quantity = 1 })).Type());
+        Assert.Equal(10_000, await client.BalanceAsync());
+        Assert.Equal(1, Count(await client.InventoryAsync(), Items.Anvil));
+    }
+
+    [Fact]
+    public async Task An_anvil_made_at_the_workbench_forges_tools_and_only_tools()
+    {
+        using var client = await PlayerAsync();
+        var bench = await GarageObjectAsync(client, Items.Workbench);
+        await GiveAsync(client, Items.IronIngot, 30);
+        await GiveAsync(client, Items.Stone, 10);
+        await GiveAsync(client, Items.Wood, 10);
+
+        var recipes = (await client.SendAsync("crafting.get")).Payload().GetProperty("recipes").EnumerateArray()
+            .ToDictionary(r => r.GetProperty("id").GetString()!);
+        Assert.Equal(Items.Workbench, recipes[Items.Anvil].GetProperty("station").GetString());
+        Assert.Equal(Items.Anvil, recipes[Items.Hoe].GetProperty("station").GetString());
+
+        // Tools are forged at an anvil, not at the workbench.
+        Assert.Equal("no_object", (await client.SendAsync("crafting.craft", new { workbench = bench, recipe = Items.Axe })).ErrorCode());
+        Assert.Equal("crafting", (await client.SendAsync("crafting.craft", new { workbench = bench, recipe = Items.Anvil })).Type());
+        factory.Time.Advance(TimeSpan.FromSeconds(60));
+        await client.SendAsync("crafting.get");
+        Assert.Equal(1, Count(await client.InventoryAsync(), Items.Anvil));
+
+        Assert.Equal("garage", (await client.SendAsync("garage.place", new { kind = Items.Anvil, x = 7, y = 4 })).Type());
+        var anvil = await GarageObjectAsync(client, Items.Anvil);
+        Assert.Equal("no_object", (await client.SendAsync("crafting.craft", new { workbench = anvil, recipe = Items.Nails })).ErrorCode());
+        Assert.Equal("crafting", (await client.SendAsync("crafting.craft", new { workbench = anvil, recipe = Items.Axe })).Type());
+        Assert.Equal("crafting", (await client.SendAsync("crafting.craft", new { workbench = anvil, recipe = Items.Hoe })).Type());
+        factory.Time.Advance(TimeSpan.FromSeconds(40));
+        await client.SendAsync("crafting.get");
+        var inventory = await client.InventoryAsync();
+        Assert.Equal(1, Count(inventory, Items.Axe));
+        Assert.Equal(1, Count(inventory, Items.Hoe));
+        Assert.Equal(30 - 15 - 3 - 2, Count(inventory, Items.IronIngot));
+        Assert.Equal(6, Count(inventory, Items.Wood));
+    }
+
+    [Fact]
     public async Task Orders_are_made_one_after_another_and_a_cancelled_one_gives_its_ingredients_back()
     {
         using var client = await PlayerAsync();

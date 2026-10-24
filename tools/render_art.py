@@ -502,6 +502,7 @@ FURNITURE_AT = {
     # Not in the starter layout: rendered on free floor in the middle of the room.
     "furniture_sorting_machine": (3.75, 2.0),
     "furniture_furnace": (5.0, 2.5),
+    "furniture_anvil": (5.0, 2.25),
 }
 ROTATIONS = 4
 
@@ -816,8 +817,37 @@ def build_furnace(coll, at: Vector, size=1.0):
     box("furnace_flue", (0.14 * s, 0.14 * s, 0.02 * s), at + Vector((0.12 * s, 0.18 * s, (chimney_z + 0.35) * s)), dark, coll)
 
 
+def build_anvil(coll, at: Vector, size=1.0):
+    """A blacksmith's anvil on an oak stump: a dark steel body with a polished face, a horn to the
+    left and a heel to the right, and a hammer leaning on the stump."""
+    s = size
+    rnd = random.Random(7)
+    oak = wood("anvil_oak", (0.13, 0.075, 0.04))
+    rings = wood("anvil_rings", (0.3, 0.19, 0.1))
+    steel = rusty_metal("anvil_steel", (0.07, 0.07, 0.075), 0.15)
+    face = plain("anvil_face", (0.55, 0.56, 0.58), 0.25, 1.0, variation=0.1, grime=0.2)
+    stump = cylinder("anvil_stump", 0.23 * s, 0.42 * s, at + Vector((0, 0, 0.21 * s)), oak, coll, verts=20)
+    displace(stump, 0.012 * s, 0.2, 1)
+    cylinder("anvil_stump_top", 0.215 * s, 0.01 * s, at + Vector((0, 0, 0.42 * s)), rings, coll, verts=20)
+    box("anvil_foot", (0.34 * s, 0.22 * s, 0.06 * s), at + Vector((0, 0, 0.455 * s)), steel, coll, bevel=0.012 * s)
+    box("anvil_waist", (0.2 * s, 0.13 * s, 0.12 * s), at + Vector((0, 0, 0.545 * s)), steel, coll, bevel=0.01 * s)
+    box("anvil_body", (0.44 * s, 0.17 * s, 0.09 * s), at + Vector((0.02 * s, 0, 0.65 * s)), steel, coll, bevel=0.012 * s)
+    box("anvil_face", (0.42 * s, 0.15 * s, 0.012 * s), at + Vector((0.02 * s, 0, 0.7 * s)), face, coll, bevel=0.004 * s)
+    cylinder("anvil_horn", 0.075 * s, 0.24 * s, at + Vector((-0.31 * s, 0, 0.67 * s)), steel, coll,
+             rotation=(0, -math.pi / 2, 0), verts=20, radius2=0.008 * s)
+    box("anvil_heel", (0.08 * s, 0.12 * s, 0.07 * s), at + Vector((0.27 * s, 0, 0.66 * s)), steel, coll, bevel=0.01 * s)
+    # A hammer leaning on the stump, its head on the floor.
+    tilt = math.radians(68)
+    handle = wood("anvil_handle", (0.28, 0.17, 0.08))
+    hx, hy = 0.3 * s, -0.12 * s
+    cylinder("hammer_handle", 0.014 * s, 0.36 * s, at + Vector((hx - 0.03 * s, hy, 0.2 * s)), handle, coll,
+             rotation=(0, -(math.pi / 2 - tilt), rnd.uniform(-0.1, 0.1)), verts=10)
+    box("hammer_head", (0.06 * s, 0.05 * s, 0.13 * s), at + Vector((hx + 0.04 * s, hy, 0.04 * s)), steel, coll, bevel=0.008 * s)
+
+
 FURNITURE_BUILDERS = {
     "furniture_furnace": build_furnace,
+    "furniture_anvil": build_anvil,
     "furniture_sorting_machine": build_sorting_machine,
     "furniture_trash_bin": build_bin,
     "furniture_workbench": build_workbench,

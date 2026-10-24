@@ -21,12 +21,14 @@ public static class Items
     public const string GasCylinder = "furniture_gas_cylinder";
     public const string SortingMachine = "furniture_sorting_machine";
     public const string Furnace = "furniture_furnace";
+    public const string Anvil = "furniture_anvil";
 
     // Tools: one can be held in the character's tool slot.
     public const string Axe = "tool_axe";
     public const string Shovel = "tool_shovel";
     public const string Pickaxe = "tool_pickaxe";
     public const string Hoe = "tool_hoe";
+    public const string Chainsaw = "tool_chainsaw";
 
     // Raw materials gathered on plots.
     public const string Wood = "wood";
@@ -106,10 +108,12 @@ public static class Items
         [GasCylinder] = "Butla gazowa",
         [SortingMachine] = "Automatyczna sortownia",
         [Furnace] = "Piec kamienny",
+        [Anvil] = "Kowadło",
         [Axe] = "Siekiera",
         [Shovel] = "Łopata",
         [Pickaxe] = "Kilof",
         [Hoe] = "Motyka",
+        [Chainsaw] = "Piła spalinowa",
         [Wood] = "Drewno",
         [Stone] = "Kamień",
         [Sand] = "Piasek",
@@ -159,5 +163,5 @@ public static class Items
 
     public static bool Exists(string id) => Names.ContainsKey(id);
 
-    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe;
+    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw;
 }

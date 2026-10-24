@@ -64,15 +64,17 @@ const SPRITES := {
 const SOLID := [TREE, ROCK, DUNE, STATION, MINE]
 ## Objects that can be worked: their name, the tool and how the tool is named in "you need a ...".
 const WORK := {
-	TREE: {"name": "Drzewo", "tool": "tool_axe", "verb": "Zetnij", "need": "siekiery"},
+	TREE: {"name": "Drzewo", "tool": "tool_axe", "verb": "Zetnij", "need": "siekiery lub piły spalinowej"},
 	ROCK: {"name": "Skała", "tool": "tool_pickaxe", "verb": "Rozbij", "need": "kilofa"},
 	DUNE: {"name": "Wydma", "tool": "tool_shovel", "verb": "Kop", "need": "łopaty"},
 }
+## Tools that do another's work: a chainsaw cuts trees like an axe, only faster.
+const STANDS_IN := {"tool_chainsaw": "tool_axe"}
 const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalnia"}
 ## What a player can put on a plot from the inventory, and its sprite there; belts are drawn by
 ## PlotLogistics, flat on the ground.
 const PLACED_SPRITES := {
-	"furniture_workbench": "workbench", "furniture_furnace": "furnace",
+	"furniture_workbench": "workbench", "furniture_anvil": "anvil", "furniture_furnace": "furnace",
 	"furniture_mill": "mill", "furniture_oil_press": "oil_press", "furniture_pickling_barrel": "pickling_barrel",
 	"furniture_bakery": "bakery", "furniture_kitchen": "kitchen", "logistics_inserter": "inserter", "logistics_splitter": "splitter",
 	"storage_wooden_chest": "wooden_chest", "storage_iron_chest": "iron_chest", "storage_wood_pile": "wood_pile",
@@ -117,6 +119,7 @@ var _size := 250
 var _tiles := PackedByteArray()
 var _harvest_seconds := 1.5
 var _chop_seconds := 5.0
+var _saw_seconds := 1.5
 ## Seconds of work on the tile being worked.
 var _work_seconds := 1.5
 var _world_width := 6933
@@ -358,6 +361,7 @@ func _apply_plot(plot: Dictionary) -> void:
 	_size = plot["size"]
 	_harvest_seconds = plot["harvestSeconds"]
 	_chop_seconds = plot.get("chopSeconds", _harvest_seconds)
+	_saw_seconds = plot.get("sawSeconds", _chop_seconds)
 	_mine_seconds = plot.get("mineSeconds", _chop_seconds)
 	_mine_units = plot.get("mineUnits", _mine_units)
 	var grow: Variant = plot.get("treeGrowSeconds")
@@ -855,7 +859,7 @@ func _placed_label(cell: Vector2i) -> String:
 
 func _draw_marks() -> void:
 	if _hovered.x >= 0 and WORK.has(_work_kind(_hovered)) and not _fields.has(_hovered):
-		var ok: bool = Game.tool().get("id", "") == WORK[_work_kind(_hovered)]["tool"]
+		var ok := _holds(WORK[_work_kind(_hovered)]["tool"])
 		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8) if ok else Color(1.0, 0.42, 0.35, 0.8))
 	var ground := _ground_cell()
 	if _hovered.x >= 0 and _placed.has(_hovered):
@@ -1024,6 +1028,12 @@ func _nearest_work() -> Vector2i:
 	return best
 
 
+## Whether the tool in hand does the work of `tool`.
+func _holds(tool: String) -> bool:
+	var held: String = Game.tool().get("id", "")
+	return held == tool or STANDS_IN.get(held, "") == tool
+
+
 ## Walks up to a tree, rock or dune and works it with the tool in hand.
 func _work_on(cell: Vector2i) -> void:
 	var kind := _work_kind(cell)
@@ -1035,7 +1045,7 @@ func _work_on(cell: Vector2i) -> void:
 		_show_toast("%s: nie da się tego zebrać." % OBJECT_NAMES.get(kind, "To"), UI.MUTED)
 		return
 	var work: Dictionary = WORK[kind]
-	if Game.tool().get("id", "") != work["tool"]:
+	if not _holds(work["tool"]):
 		_show_toast("%s: potrzebujesz %s. Zmień narzędzie w slocie [Q]." % [work["name"], work["need"]], UI.ERROR)
 		return
 	_stop_work()
@@ -1052,8 +1062,10 @@ func _work_on(cell: Vector2i) -> void:
 func _start_work(cell: Vector2i, mode := "harvest") -> void:
 	_work = cell
 	_work_mode = mode
-	# Cutting a tree down takes longer than a swing at a rock or a dune.
-	_work_seconds = _chop_seconds if mode == "harvest" and _work_kind(cell) == TREE else _harvest_seconds
+	# Cutting a tree down takes longer than a swing at a rock or a dune, unless with a chainsaw.
+	_work_seconds = _harvest_seconds
+	if mode == "harvest" and _work_kind(cell) == TREE:
+		_work_seconds = _saw_seconds if Game.tool().get("id", "") == "tool_chainsaw" else _chop_seconds
 	if mode == "mine":
 		_work_seconds = _mine_seconds
 	_work_left = _work_seconds
@@ -1420,8 +1432,8 @@ func _use_placed(cell: Vector2i) -> void:
 		_machine_window.open_at(object["id"], object["name"])
 	elif object["kind"] in STORAGES:
 		_storage_window.open_at(_at, object["id"])
-	elif object["kind"] == "furniture_workbench":
-		_crafting_window.open_at(object["id"])
+	elif object["kind"] in ["furniture_workbench", "furniture_anvil"]:
+		_crafting_window.open_at(object["id"], object["kind"])
 
 
 func _using_window_open() -> bool:
@@ -1969,6 +1981,7 @@ func _on_tool_changed() -> void:
 func _update_hint() -> void:
 	var lines := {
 		"tool_axe": "Kliknij drzewo, aby je ściąć siekierą.",
+		"tool_chainsaw": "Kliknij drzewo, aby je ściąć piłą spalinową (o 70% szybciej niż siekierą).",
 		"tool_pickaxe": "Kliknij kopalnię, aby wydobywać rudy, albo skałę, aby ją rozbić kilofem." if not _mines.is_empty() else "Kliknij skałę, aby ją rozbić kilofem.",
 		"tool_shovel": "Kliknij wydmę, aby ją przekopać łopatą.",
 		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile else "Motyką orze się tylko żyzne gleby.",

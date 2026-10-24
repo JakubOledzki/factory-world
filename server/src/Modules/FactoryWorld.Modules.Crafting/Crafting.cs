@@ -5,13 +5,15 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace FactoryWorld.Modules.Crafting;
 
-/// <summary>Something made at a workbench: what it takes, how long, and what comes out.</summary>
+/// <summary>Something made at a workbench or an anvil: what it takes, how long, and what comes out.</summary>
 /// <param name="Id">The recipe's id, the same as the item it makes.</param>
-public sealed record Recipe(string Id, int Quantity, TimeSpan Time, IReadOnlyList<(string Item, int Quantity)> Ingredients, int Xp);
+/// <param name="Station">Where it is made: <see cref="Items.Workbench"/> or <see cref="Items.Anvil"/>.</param>
+public sealed record Recipe(
+    string Id, int Quantity, TimeSpan Time, IReadOnlyList<(string Item, int Quantity)> Ingredients, int Xp, string Station = Items.Workbench);
 
 /// <summary>
-/// At a workbench (the one in the garage or one put on a plot) the player picks a recipe and
-/// orders it. The ingredients are taken at once; the item is made after the recipe's time, one
+/// At a workbench (the one in the garage or one put on a plot) or an anvil, which forges the tools,
+/// the player picks a recipe and orders it. Both share one queue. The ingredients are taken at once; the item is made after the recipe's time, one
 /// order after another, and lands in the inventory even when the player has walked away.
 /// </summary>
 public static class Workshop
@@ -37,6 +39,11 @@ public static class Workshop
         new(Items.PicklingBarrel, 1, TimeSpan.FromSeconds(30), [(Items.Wood, 12), (Items.Nails, 5)], 10),
         new(Items.Bakery, 1, TimeSpan.FromSeconds(90), [(Items.Stone, 40), (Items.IronIngot, 3), (Items.Sand, 10)], 30),
         new(Items.Kitchen, 1, TimeSpan.FromSeconds(90), [(Items.Stone, 20), (Items.IronIngot, 5), (Items.CopperIngot, 2)], 30),
+        new(Items.Anvil, 1, TimeSpan.FromSeconds(60), [(Items.IronIngot, 15), (Items.Stone, 10)], 20),
+        new(Items.Axe, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 3), (Items.Wood, 2)], 5, Items.Anvil),
+        new(Items.Shovel, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 2), (Items.Wood, 2)], 5, Items.Anvil),
+        new(Items.Pickaxe, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 3), (Items.Wood, 2)], 5, Items.Anvil),
+        new(Items.Hoe, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 2), (Items.Wood, 2)], 5, Items.Anvil),
     ];
 
     public static Recipe? Find(string id) => Recipes.FirstOrDefault(r => r.Id == id);
@@ -80,12 +87,12 @@ public sealed class CraftingService(
             return new CraftingState(await QueueAsync(owner, cancellationToken), time.GetUtcNow(), done, xp);
         }, cancellationToken);
 
-    /// <summary>Orders a recipe at one of the player's workbenches: ingredients out now, the item later.</summary>
+    /// <summary>Orders a recipe at one of the player's workbenches or anvils: ingredients out now, the item later.</summary>
     public Task<CraftingState> CraftAsync(Guid owner, Guid workbench, string recipeId, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
             var recipe = Workshop.Find(recipeId) ?? throw new GameException("no_recipe", "There is no such recipe.");
-            await Workshop.RequireAsync(places, owner, workbench, Items.Workbench, cancellationToken);
+            await Workshop.RequireAsync(places, owner, workbench, recipe.Station, cancellationToken);
             await technologies.RequireUnlockedAsync(owner, recipe.Id, cancellationToken);
             var (done, xp) = await CompleteDueAsync(owner, cancellationToken);
 
@@ -251,6 +258,7 @@ public abstract class CraftingHandler(IServiceScopeFactory scopes) : IMessageHan
                 xp = r.Xp,
                 // The technology still to research before the recipe can be ordered, or null.
                 locked = locked.GetValueOrDefault(r.Id),
+                station = r.Station,
             }),
             // Unix milliseconds: the client compares them with serverTime, not its own clock.
             queue = state.Queue.Select(j => new
