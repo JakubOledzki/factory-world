@@ -237,7 +237,7 @@ public sealed class MarketTests(ServerFactory factory) : IClassFixture<ServerFac
         Assert.Equal("not_enough_money", (await client.SendAsync("market.buy", new { item = "trash", quantity = 1 })).ErrorCode());
         Assert.Equal("not_enough_items", (await client.SendAsync("market.sell", new { item = "waste_copper", quantity = 1 })).ErrorCode());
         Assert.Equal("not_traded", (await client.SendAsync("market.sell", new { item = "trash", quantity = 1 })).ErrorCode());
-        Assert.Equal("not_traded", (await client.SendAsync("market.buy", new { item = "waste_copper", quantity = 1 })).ErrorCode());
+        Assert.Equal("not_traded", (await client.SendAsync("market.buy", new { item = "furniture_shelf", quantity = 1 })).ErrorCode());
         Assert.Equal("bad_quantity", (await client.SendAsync("market.buy", new { item = "trash", quantity = 0 })).ErrorCode());
 
         Assert.Equal(0, await client.BalanceAsync());

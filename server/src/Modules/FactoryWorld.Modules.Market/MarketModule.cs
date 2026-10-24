@@ -8,13 +8,20 @@ namespace FactoryWorld.Modules.Market;
 
 /// <summary>
 /// The NPC trader: always sells trash, saplings, animals, nails, tools, an anvil, a chainsaw, belts, inserters, wooden chests, machines (a forester's hut and a sawmill among them), the computer, generators, poles, flour, oil, bread and planks and always buys raw materials.
+/// Everything else it buys it sells too, but dear: <see cref="Markup"/> times what it pays, so buying is a last resort and never pays to sell back.
 /// These are its usual prices (cents); <see cref="TraderPrices"/> moves them with the day's drift and the market's events.
 /// What it pays is the floor of the market: a quick sale gets it at once, players' listings usually pay more.
 /// </summary>
 public static class NpcPrices
 {
-    /// <summary>What the NPC charges the player.</summary>
-    public static readonly IReadOnlyDictionary<string, long> Sells = new Dictionary<string, long>
+    /// <summary>What the NPC charges for an item it has no price of its own for, in times what it pays for it.</summary>
+    public const int Markup = 10;
+
+    /// <summary>What the NPC charges the player: its own prices, then <see cref="Markup"/> times what it pays for the rest.</summary>
+    public static readonly IReadOnlyDictionary<string, long> Sells;
+
+    /// <summary>What the NPC charges for the things it stocks on purpose, at prices of their own.</summary>
+    private static readonly Dictionary<string, long> OwnSells = new()
     {
         [Items.Trash] = 100,
         [Items.SortingMachine] = 100_000,
@@ -141,6 +148,17 @@ public static class NpcPrices
         [Items.WoodPellets] = 100,
         [Items.Plywood] = 600,
     };
+
+    static NpcPrices()
+    {
+        var sells = new Dictionary<string, long>(OwnSells);
+        foreach (var (item, pays) in Buys)
+        {
+            sells.TryAdd(item, pays * Markup);
+        }
+
+        Sells = sells;
+    }
 
     public const int MaxQuantity = 1000;
 }
