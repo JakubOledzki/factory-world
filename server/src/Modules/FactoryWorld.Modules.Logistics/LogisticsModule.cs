@@ -58,11 +58,11 @@ public sealed class LogisticsDbContext(DbContextOptions<LogisticsDbContext> opti
     }
 }
 
-/// <summary>A plot's logistics just after being brought up to now.</summary>
+/// <summary>A plot's logistics just after being brought up to now, with the power grid that runs its inserters.</summary>
 public sealed record LogisticsState(
-    DateTimeOffset SimulatedAt, DateTimeOffset ServerTime, IReadOnlyList<PlotObject> Objects, IReadOnlyDictionary<Guid, Contents> Contents);
+    DateTimeOffset SimulatedAt, DateTimeOffset ServerTime, IReadOnlyList<PlotObject> Objects, IReadOnlyDictionary<Guid, Contents> Contents, IPowerGrid Power);
 
-public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<IMachinePorts> machines, IInventory inventory, TimeProvider time)
+public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<IMachinePorts> machines, IPlotPower power, IInventory inventory, TimeProvider time)
     : IPlotAutomation
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -77,14 +77,14 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
     public Task<LogisticsState> StateAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             return await RunAsync(x, y, cancellationToken);
         }, cancellationToken);
 
     /// <summary>Puts items from the inventory into a storage on the player's plot.</summary>
     public Task<(LogisticsState State, PlotObject Storage)> PutAsync(
         Guid player, int x, int y, Guid id, string item, int quantity, CancellationToken cancellationToken) =>
-        ChangeStorageAsync(player, x, y, id, async (kind, stacks) =>
+        ChangeStorageAsync(player, x, y, id, PlotRight.Work, async (kind, stacks) =>
         {
             if (quantity < 1)
             {
@@ -108,7 +108,7 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
     /// <summary>Takes items out of a storage into the inventory: <paramref name="quantity"/> of them, or all when 0.</summary>
     public Task<(LogisticsState State, PlotObject Storage)> TakeAsync(
         Guid player, int x, int y, Guid id, string item, int quantity, CancellationToken cancellationToken) =>
-        ChangeStorageAsync(player, x, y, id, async (_, stacks) =>
+        ChangeStorageAsync(player, x, y, id, PlotRight.Take, async (_, stacks) =>
         {
             if (quantity < 0)
             {
@@ -159,10 +159,10 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
         }, cancellationToken);
 
     private Task<(LogisticsState, PlotObject)> ChangeStorageAsync(
-        Guid player, int x, int y, Guid id, Func<StorageKind, List<ItemStack>, Task> change, CancellationToken cancellationToken) =>
+        Guid player, int x, int y, Guid id, PlotRight right, Func<StorageKind, List<ItemStack>, Task> change, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, right);
             var state = await RunAsync(x, y, cancellationToken);
             var storage = state.Objects.FirstOrDefault(o => o.Id == id);
             if (storage is null || Storages.Find(storage.Kind) is not { } kind)
@@ -190,9 +190,12 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
         var objects = await plots.ObjectsAsync(x, y, cancellationToken);
         var from = await SimulatedAtAsync(x, y, cancellationToken) ?? now;
         var contents = await ReadAsync(x, y, cancellationToken);
+        var grid = await power.OpenAsync(x, y, cancellationToken);
 
-        // Storages are this module's own; every other machine within an inserter's reach comes from its module.
-        var at = objects.ToDictionary(o => (o.TileX, o.TileY));
+        // Storages are this module's own; every other machine within an inserter's reach comes from its
+        // module, and so does the plot's station, which inserters can load and unload too.
+        var reachable = objects.Concat(await plots.FixturesAsync(x, y, cancellationToken)).ToList();
+        var at = reachable.ToDictionary(o => (o.TileX, o.TileY));
         var ports = new Dictionary<Guid, IMachinePort>();
         var opened = new List<IMachinePort>();
         var storageChanged = new HashSet<Guid>();
@@ -214,6 +217,12 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
                 continue;
             }
 
+            if (grid.Port(o.Id) is { } generator)
+            {
+                ports[o.Id] = generator;
+                continue;
+            }
+
             foreach (var module in machines)
             {
                 if (await module.OpenAsync(o.Owner, o.Id, o.Kind, cancellationToken) is { } port)
@@ -225,7 +234,7 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
             }
         }
 
-        var logistics = new PlotLogistics(objects, contents, ports);
+        var logistics = new PlotLogistics(reachable, contents, ports, grid);
         var simulated = logistics.Run(from, now);
         foreach (var id in logistics.Changed.Concat(storageChanged).Distinct())
         {
@@ -236,6 +245,8 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
         {
             await port.SaveAsync(cancellationToken);
         }
+
+        await grid.SaveAsync(cancellationToken);
 
         await using (var save = await db.CommandAsync(
             """
@@ -249,7 +260,7 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
             await save.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        return new LogisticsState(simulated, now, objects, contents);
+        return new LogisticsState(simulated, now, objects, contents, grid);
     }
 
     private async Task<DateTimeOffset?> SimulatedAtAsync(int x, int y, CancellationToken cancellationToken)
@@ -360,9 +371,18 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
             // What every item is called, for choosing a splitter's filter.
             names = state.Objects.Any(o => o.Kind == Items.Splitter) ? Items.Names : null,
             inserters = state.Objects.Where(o => o.Kind == Items.Inserter)
-                .Select(o => new { id = o.Id, hand = Of(o.Id).Hand, swing = Of(o.Id).Swing }),
+                .Select(o => new
+                {
+                    id = o.Id,
+                    hand = Of(o.Id).Hand,
+                    swing = Of(o.Id).Swing,
+                    // How fast it works on the power it has (0 stands still), and the power gathered for its next move.
+                    speed = state.Power.Clock(o.Id).Speed(state.SimulatedAt),
+                    charge = Of(o.Id).Charge,
+                }),
             storages = state.Objects.Where(o => Storages.Find(o.Kind) is not null)
                 .Select(o => StorageSummary(Storages.Find(o.Kind)!, o, Of(o.Id))),
+            power = state.Power.Summary(state.ServerTime),
         };
     }
 

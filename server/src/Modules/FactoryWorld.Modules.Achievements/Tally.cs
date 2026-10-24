@@ -4,6 +4,9 @@ using FactoryWorld.Modules.Abstractions.Contracts;
 
 namespace FactoryWorld.Modules.Achievements;
 
+/// <summary>A request that a handler answered without an error, as the player sent it and as it was answered.</summary>
+public sealed record HandledMessage(string Type, JsonElement? Request, string ReplyType, JsonElement Reply);
+
 /// <summary>
 /// Reads what a player did from the requests the server answered and their replies, as the protocol
 /// describes them, so the modules that run the game need not know about achievements.

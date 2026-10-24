@@ -44,6 +44,17 @@ public interface IMessageHandler
     Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// Sees every request a handler answered without an error, after the reply is ready and before it is
+/// sent, e.g. to follow a player's progress through the game. Modules register observers as
+/// <c>services.AddSingleton&lt;IMessageObserver, MyObserver&gt;()</c>. A failing observer is logged and
+/// never spoils the reply.
+/// </summary>
+public interface IMessageObserver
+{
+    Task ObserveAsync(Envelope request, Envelope reply, ClientContext client, CancellationToken cancellationToken);
+}
+
 /// <summary>A failure the client may show to the player, e.g. "not enough money".</summary>
 public sealed class GameException(string code, string message) : Exception(message)
 {

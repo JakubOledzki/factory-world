@@ -5,7 +5,9 @@ namespace FactoryWorld.Server;
 
 /// <summary>Routes each incoming envelope to the module handler registered for its type.</summary>
 public sealed class MessageDispatcher(
-    IEnumerable<IMessageHandler> handlers, IEnumerable<IMessageObserver> observers, ILogger<MessageDispatcher> logger)
+    IEnumerable<IMessageHandler> handlers,
+    IEnumerable<IMessageObserver> observers,
+    ILogger<MessageDispatcher> logger)
 {
     public static JsonSerializerOptions Json => Payload.Json;
 
@@ -44,9 +46,9 @@ public sealed class MessageDispatcher(
         try
         {
             var reply = await handler.HandleAsync(request.Payload, client, cancellationToken);
-            var payload = JsonSerializer.SerializeToElement(reply.Payload, Json);
-            await ObserveAsync(new HandledMessage(request.Type, request.Payload, reply.Type, payload), client, cancellationToken);
-            return new Envelope(reply.Type, request.Id, payload);
+            var envelope = new Envelope(reply.Type, request.Id, JsonSerializer.SerializeToElement(reply.Payload, Json));
+            await ObserveAsync(request, envelope, client, cancellationToken);
+            return envelope;
         }
         catch (GameException ex)
         {
@@ -59,18 +61,17 @@ public sealed class MessageDispatcher(
         }
     }
 
-    private async Task ObserveAsync(HandledMessage message, ClientContext client, CancellationToken cancellationToken)
+    private async Task ObserveAsync(Envelope request, Envelope reply, ClientContext client, CancellationToken cancellationToken)
     {
         foreach (var observer in _observers)
         {
             try
             {
-                await observer.OnHandledAsync(message, client, cancellationToken);
+                await observer.ObserveAsync(request, reply, client, cancellationToken);
             }
             catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                // The request itself succeeded; the player still gets its reply.
-                logger.LogError(ex, "Observer {Observer} failed on {Type}", observer.GetType().Name, message.Type);
+                logger.LogError(ex, "Observer {Observer} failed on {Type}", observer.GetType().Name, request.Type);
             }
         }
     }

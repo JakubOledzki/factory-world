@@ -10,14 +10,14 @@ public sealed class AchievementObserver(IServiceScopeFactory scopes) : IMessageO
 {
     public const string Watching = "achievements.watching";
 
-    public async Task OnHandledAsync(HandledMessage message, ClientContext client, CancellationToken cancellationToken)
+    public async Task ObserveAsync(Envelope request, Envelope reply, ClientContext client, CancellationToken cancellationToken)
     {
-        if (client.AccountId is not { } owner)
+        if (client.AccountId is not { } owner || reply.Payload is not { } payload)
         {
             return;
         }
 
-        var counts = Tally.Count(message);
+        var counts = Tally.Count(new HandledMessage(request.Type, request.Payload, reply.Type, payload));
         if (counts.Count == 0)
         {
             return;

@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [logistics] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [power] [logistics] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -851,6 +851,112 @@ def render_rail(layout: dict):
     print("sprite rail")
 
 
+# --- Trains ---------------------------------------------------------------------------------------
+
+def bogie(x, steel, wheel_mat):
+    """A two-axle bogie under a rail vehicle, centred at x on the track."""
+    ra.box("bogie", (2.4, 2.0, 0.4), (x, 0, 0.75), steel, bevel=0.03)
+    for dx in (-0.75, 0.75):
+        for y in (-0.72, 0.72):
+            ra.cylinder("wheel", 0.42, 0.14, (x + dx, y * 1.02, 0.45), wheel_mat, rotation=(math.radians(90), 0, 0), verts=20)
+        ra.cylinder("axle", 0.08, 1.7, (x + dx, 0, 0.45), steel, rotation=(math.radians(90), 0, 0), verts=10)
+
+
+def couplers(length, steel):
+    for side in (-1, 1):
+        ra.box("buffer_beam", (0.2, 2.6, 0.35), (side * (length / 2 + 0.05), 0, 1.0), steel)
+        for y in (-0.8, 0.8):
+            ra.cylinder("buffer", 0.16, 0.35, (side * (length / 2 + 0.3), y, 1.0), steel, rotation=(0, math.radians(90), 0), verts=12)
+
+
+def locomotive():
+    """A diesel shunting locomotive 9 m long on the track along x, its cab and lamps at the west
+    (left) end, where trains leave towards. Centred on the track at x = 0."""
+    paint = ra.plain("loco_paint", (0.55, 0.13, 0.04), 0.4, grime=0.55)
+    stripe = ra.plain("loco_stripe", (0.75, 0.6, 0.08), 0.5, grime=0.4)
+    steel = ra.rusty_metal("loco_steel", (0.1, 0.1, 0.11), rust=0.25)
+    wheel_mat = ra.rusty_metal("wheel", (0.2, 0.19, 0.18), rust=0.5)
+    glass = ra.emission("cab_glass", (1.0, 0.7, 0.35), 3.0)
+    lamp = ra.emission("headlamp", (1.0, 0.9, 0.7), 40.0)
+    roof = ra.plain("loco_roof", (0.09, 0.09, 0.1), 0.6)
+
+    ra.box("frame", (9, 2.7, 0.4), (0, 0, 1.15), steel, bevel=0.03)
+    ra.box("skirt", (9.1, 2.75, 0.18), (0, 0, 1.3), stripe)
+    for x in (-2.9, 2.9):
+        bogie(x, steel, wheel_mat)
+    couplers(9, steel)
+    # Cab at the west end, the long hood behind it.
+    ra.box("cab", (2.6, 2.7, 2.5), (-3.0, 0, 2.65), paint, bevel=0.06)
+    ra.box("cab_roof", (2.9, 2.9, 0.18), (-3.0, 0, 3.95), roof, bevel=0.04)
+    ra.box("hood", (5.6, 2.0, 2.0), (1.4, 0, 2.4), paint, bevel=0.08)
+    ra.box("hood_top", (5.2, 1.6, 0.12), (1.4, 0, 3.45), roof)
+    ra.box("hood_stripe", (5.62, 2.02, 0.16), (1.4, 0, 1.75), stripe)
+    for x in (0.2, 1.4, 2.6):
+        ra.cylinder("fan", 0.38, 0.08, (x, 0, 3.52), steel, verts=16)
+    ra.cylinder("exhaust", 0.12, 0.6, (-0.8, 0.3, 3.7), steel, verts=12)
+    for y in (-1.36, 1.36):
+        for x in (-3.6, -2.5):
+            ra.box("cab_window", (0.8, 0.04, 0.8), (x, y, 3.2), glass)
+    ra.box("front_window", (0.04, 2.1, 0.8), (-4.31, 0, 3.2), glass)
+    for y in (-0.8, 0.8):
+        ra.sphere("headlamp", 0.14, (-4.35, y, 1.75), lamp, segments=10)
+    ra.box("rail_guard", (0.1, 2.4, 0.08), (2.9, 0, 3.0), stripe)
+    ra.light("POINT", (-4.8, 0, 1.8), 60, (1.0, 0.85, 0.6), size=0.2)
+    return meshes()
+
+
+def wagon(cargo):
+    """A wagon 7 m long: a closed boxcar or an open one with crates. Centred on the track at x = 0."""
+    steel = ra.rusty_metal("wagon_steel", (0.1, 0.1, 0.11), rust=0.3)
+    wheel_mat = ra.rusty_metal("wheel", (0.2, 0.19, 0.18), rust=0.5)
+    ra.box("frame", (7, 2.6, 0.35), (0, 0, 1.1), steel, bevel=0.03)
+    for x in (-2.3, 2.3):
+        bogie(x, steel, wheel_mat)
+    couplers(7, steel)
+    if not cargo:
+        body = ra.corrugated("boxcar", (0.22, 0.07, 0.04), rust=0.45)
+        ra.box("body", (7, 2.8, 2.6), (0, 0, 2.6), body, bevel=0.04)
+        ra.box("roof", (7.1, 2.9, 0.2), (0, 0, 3.95), ra.plain("boxcar_roof", (0.12, 0.11, 0.1), 0.7), bevel=0.06)
+        ra.box("door", (2.2, 0.06, 2.3), (0, -1.42, 2.55), ra.corrugated("boxcar_door", (0.17, 0.055, 0.035), rust=0.5))
+        ra.box("door_rail", (4.6, 0.08, 0.08), (0, -1.45, 3.75), steel)
+        return meshes()
+    sides = ra.rusty_metal("gondola", (0.08, 0.16, 0.1), rust=0.4)
+    ra.box("floor", (7, 2.8, 0.2), (0, 0, 1.4), sides)
+    for y in (-1.35, 1.35):
+        ra.box("side", (7, 0.1, 1.2), (0, y, 2.0), sides, bevel=0.02)
+    for x in (-3.45, 3.45):
+        ra.box("end", (0.1, 2.8, 1.2), (x, 0, 2.0), sides, bevel=0.02)
+    for x in (-2.4, -1.2, 0, 1.2, 2.4):
+        ra.box("rib", (0.12, 2.9, 1.2), (x, 0, 2.0), steel)
+    crate = ra.wood("wagon_crate", (0.15, 0.1, 0.055))
+    sack = ra.plain("sack", (0.35, 0.3, 0.2), 0.9, grime=0.3)
+    for i, x in enumerate((-2.5, -1.3, -0.1, 1.1, 2.4)):
+        for j, y in enumerate((-0.6, 0.6)):
+            tall = 0.9 + random.random() * 0.4
+            if (i + j) % 3 == 2:
+                ra.sphere("sack", 0.5, (x, y, 1.9), sack, scale=(1.1, 0.9, 0.6), segments=12)
+            else:
+                ra.box("crate", (1.0, 1.0, tall), (x, y, 1.5 + tall / 2), crate, bevel=0.03,
+                       rotation=(0, 0, math.radians(random.uniform(-6, 6))))
+    return meshes()
+
+
+TRAINS = {
+    # name: (canvas width, height, builder)
+    "train_locomotive": (352, 224, locomotive),
+    "train_wagon": (288, 208, lambda: wagon(False)),
+    "train_wagon_open": (288, 208, lambda: wagon(True)),
+}
+
+
+def render_trains(layout: dict):
+    """Rail vehicles anchored on the middle of the track under their centre."""
+    for name, (w, h, build) in TRAINS.items():
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, 1.8)), build)
+        layout[name]["lengthPx"] = round((9.0 if name == "train_locomotive" else 7.0) * PPM)
+
+
 # --- Station --------------------------------------------------------------------------------------
 
 def station():
@@ -954,6 +1060,69 @@ def render_mine(layout: dict):
     target = Vector((0, 3.0, 2.2))
     random.seed(zlib.crc32(b"mine"))
     layout["mine"] = render_sprite("mine", w, h, target, mine)
+
+
+# --- Power ----------------------------------------------------------------------------------------
+
+def build_generator():
+    """A small steam generator: a riveted boiler lying on a brick firebox with a glowing door, a
+    chimney, a flywheel turning the dynamo at its side and a copper terminal for the pole's wire."""
+    brick = ra.plain("gen_brick", (0.3, 0.11, 0.06), 0.9, variation=0.35, scale=10, bump=0.5)
+    iron = ra.rusty_metal("gen_iron", (0.1, 0.1, 0.11), rust=0.35)
+    boiler = ra.rusty_metal("gen_boiler", (0.13, 0.2, 0.15), rust=0.3)
+    brass = ra.plain("gen_brass", (0.6, 0.42, 0.12), 0.35, 0.9, variation=0.15)
+    copper = ra.plain("gen_copper", (0.65, 0.28, 0.12), 0.35, 0.9, variation=0.15)
+    ra.box("firebox", (1.3, 0.9, 0.45), (0, 0, 0.225), brick, bevel=0.03)
+    ra.box("door", (0.3, 0.04, 0.24), (-0.3, -0.46, 0.22), iron, bevel=0.01)
+    ra.box("glow", (0.22, 0.03, 0.06), (-0.3, -0.48, 0.2), ra.emission("gen_ember", (1.0, 0.35, 0.06), 4.5))
+    ra.cylinder("boiler", 0.34, 1.2, (0, 0.02, 0.8), boiler, rotation=(0, math.radians(90), 0), verts=28)
+    for x in (-0.5, 0.0, 0.5):
+        ra.cylinder("band", 0.355, 0.05, (x, 0.02, 0.8), iron, rotation=(0, math.radians(90), 0), verts=28)
+    ra.cylinder("chimney", 0.09, 0.8, (-0.4, 0.15, 1.45), iron, verts=12)
+    ra.cylinder("chimney_cap", 0.13, 0.05, (-0.4, 0.15, 1.86), iron, verts=12)
+    ra.cylinder("dome", 0.12, 0.14, (0.15, 0.02, 1.18), brass, verts=16)
+    ra.cylinder("gauge", 0.06, 0.03, (0.35, -0.33, 0.95), brass, rotation=(math.radians(90), 0, 0), verts=16)
+    # The dynamo at the east end, driven by a spoked flywheel.
+    ra.cylinder("dynamo", 0.2, 0.32, (0.78, 0.0, 0.42), ra.rusty_metal("gen_dynamo", (0.25, 0.08, 0.05), rust=0.2),
+                rotation=(0, math.radians(90), 0), verts=20)
+    ra.cylinder("flywheel", 0.36, 0.06, (0.62, -0.32, 0.45), iron, rotation=(math.radians(90), 0, 0), verts=28)
+    ra.cylinder("hub", 0.07, 0.1, (0.62, -0.32, 0.45), brass, rotation=(math.radians(90), 0, 0), verts=12)
+    for k in range(4):
+        ra.box("spoke", (0.62, 0.03, 0.04), (0.62, -0.34, 0.45), iron, rotation=(0, k * math.pi / 4, 0))
+    ra.cylinder("terminal", 0.04, 0.22, (0.85, 0.2, 0.75), copper, verts=10)
+    ra.sphere("insulator", 0.05, (0.85, 0.2, 0.88), ra.plain("gen_porcelain", (0.75, 0.72, 0.65), 0.3), segments=10)
+
+
+POLE_TOP = 2.4
+
+
+def build_pole():
+    """A wooden power pole with a cross-arm and two porcelain insulators the wires hang from."""
+    timber = ra.wood("pole_timber", (0.2, 0.12, 0.06))
+    porcelain = ra.plain("pole_porcelain", (0.78, 0.75, 0.68), 0.25, variation=0.1)
+    ra.cylinder("pole", 0.08, POLE_TOP, (0, 0, POLE_TOP / 2), timber, verts=10)
+    ra.box("arm", (0.9, 0.09, 0.09), (0, 0, POLE_TOP - 0.18), timber, bevel=0.01)
+    for x in (-0.36, 0.36):
+        ra.cylinder("insulator", 0.045, 0.12, (x, 0, POLE_TOP - 0.07), porcelain, verts=10)
+    for x, a in ((0.18, 40), (-0.18, -40)):
+        ra.box("strut", (0.04, 0.04, 0.5), (x, 0, POLE_TOP - 0.38), timber, rotation=(0, math.radians(a), 0))
+    ra.box("plate", (0.12, 0.02, 0.16), (0, -0.09, 1.2), ra.plain("pole_plate", (0.75, 0.6, 0.05), 0.5))
+
+
+POWER = {
+    # name: (canvas width, height, camera target height, builder, where the wires meet it); each stands on one tile.
+    "generator": (128, 128, 0.7, build_generator, Vector((0.85, 0.2, 0.9))),
+    "pole": (64, 128, POLE_TOP / 2, build_pole, Vector((0, 0, POLE_TOP - 0.05))),
+}
+
+
+def render_power(layout: dict):
+    for name, (w, h, tz, build, wire) in POWER.items():
+        random.seed(zlib.crc32(name.encode()))
+        target = Vector((0, 0, tz))
+        layout[name] = render_sprite(name, w, h, target, crafted(build))
+        layout[name]["wireX"], layout[name]["wireY"] = anchor(w, h, target, wire)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"item_power_{name}.png")
 
 
 # --- Icons ------------------------------------------------------------------------------------------
@@ -1239,7 +1408,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "farming", "forestry", "mine", "crafting", "processing", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "power", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -1251,6 +1420,8 @@ if __name__ == "__main__":
         render_nature(layout)
     if "rail" in args:
         render_rail(layout)
+    if "trains" in args:
+        render_trains(layout)
     if "farming" in args:
         render_farming(layout)
     if "forestry" in args:
@@ -1263,6 +1434,8 @@ if __name__ == "__main__":
         render_crafting(layout)
     if "processing" in args:
         render_processing(layout)
+    if "power" in args:
+        render_power(layout)
     if "logistics" in args or any(a in LOGISTICS for a in args):
         # Names of logistics sprites render just those.
         render_logistics(layout, [a for a in args if a in LOGISTICS])

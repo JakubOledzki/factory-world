@@ -8,7 +8,8 @@ namespace FactoryWorld.Modules.World;
 /// <summary>
 /// Things a player carries out of the inventory and puts on a free tile of their plot, e.g. a
 /// workbench to craft at far from the garage, a furnace, a machine that processes crops (mill, oil
-/// press, pickling barrel, bakery, field kitchen), belts, inserters or chests. Each stands on one
+/// press, pickling barrel, bakery, field kitchen), belts, inserters, chests, or a generator and the
+/// poles that carry its power. Each stands on one
 /// tile, turned by quarter turns like furniture in the garage.
 /// </summary>
 public static class PlotObjects
@@ -20,6 +21,7 @@ public static class PlotObjects
         Items.Mill, Items.OilPress, Items.PicklingBarrel, Items.Bakery, Items.Kitchen,
         Items.Belt, Items.Inserter, Items.Splitter,
         Items.WoodenChest, Items.IronChest, Items.WoodPile, Items.Heap, Items.GrainSilo,
+        Items.Generator, Items.Pole,
     };
 }
 
@@ -103,14 +105,13 @@ public sealed class PlotObjectService(
             await CatchUpAsync(x, y, cancellationToken);
             await using var update = await db.CommandAsync(
                 """
-                UPDATE world.plot_objects SET rotation = @rotation WHERE id = @id AND x = @x AND y = @y AND owner_id = @owner
+                UPDATE world.plot_objects SET rotation = @rotation WHERE id = @id AND x = @x AND y = @y
                 RETURNING kind, tile_x, tile_y
                 """, cancellationToken);
             update.Parameters.AddWithValue("rotation", rotation);
             update.Parameters.AddWithValue("id", id);
             update.Parameters.AddWithValue("x", x);
             update.Parameters.AddWithValue("y", y);
-            update.Parameters.AddWithValue("owner", player);
             await using var reader = await update.ExecuteReaderAsync(cancellationToken);
             if (!await reader.ReadAsync(cancellationToken))
             {
@@ -120,20 +121,26 @@ public sealed class PlotObjectService(
             return new PlacedOnPlot(id, reader.GetString(0), reader.GetInt32(1), reader.GetInt32(2), rotation);
         }, cancellationToken);
 
-    /// <summary>Takes an object off the player's plot back into the inventory, with whatever it holds.</summary>
+    /// <summary>Takes an object off the player's plot back into the inventory, with whatever it holds. On a
+    /// company's plot a member who may build picks up what they put there; the plot's owner picks up anything.</summary>
     public Task PickUpAsync(Guid player, int x, int y, Guid id, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
+            var owner = (await plots.RightsAsync(player, x, y, cancellationToken)).Contains(PlotRight.Owner);
             await plots.RequireOwnerAsync(player, x, y, cancellationToken);
             await CatchUpAsync(x, y, cancellationToken);
             await using var delete = await db.CommandAsync(
-                "DELETE FROM world.plot_objects WHERE id = @id AND x = @x AND y = @y AND owner_id = @owner RETURNING kind", cancellationToken);
+                """
+                DELETE FROM world.plot_objects WHERE id = @id AND x = @x AND y = @y AND (owner_id = @player OR @owner)
+                RETURNING kind
+                """, cancellationToken);
             delete.Parameters.AddWithValue("id", id);
             delete.Parameters.AddWithValue("x", x);
             delete.Parameters.AddWithValue("y", y);
-            delete.Parameters.AddWithValue("owner", player);
+            delete.Parameters.AddWithValue("player", player);
+            delete.Parameters.AddWithValue("owner", owner);
             var kind = await delete.ExecuteScalarAsync(cancellationToken) as string
-                ?? throw new GameException("no_object", "There is no such object on this plot.");
+                ?? throw new GameException(owner ? "no_object" : "not_yours", "There is no such object of yours on this plot.");
             foreach (var machine in machines)
             {
                 await machine.ReleaseAsync(player, id, cancellationToken);
@@ -142,17 +149,24 @@ public sealed class PlotObjectService(
             await inventory.AddAsync(player, kind, 1, cancellationToken);
         }, cancellationToken);
 
+    /// <summary>Any object on a plot the player may work on: their own, or one of their company's.</summary>
     public async Task<string?> KindAsync(Guid owner, Guid id, CancellationToken cancellationToken)
     {
-        // A plot can change hands only by being bought, so the object is the player's while the plot is.
-        await using var command = await db.CommandAsync(
-            """
-            SELECT o.kind FROM world.plot_objects o JOIN world.plots p ON p.x = o.x AND p.y = o.y
-            WHERE o.id = @id AND o.owner_id = @owner AND p.owner_id = @owner
-            """, cancellationToken);
-        command.Parameters.AddWithValue("id", id);
-        command.Parameters.AddWithValue("owner", owner);
-        return await command.ExecuteScalarAsync(cancellationToken) as string;
+        int x, y;
+        string kind;
+        await using (var command = await db.CommandAsync("SELECT x, y, kind FROM world.plot_objects WHERE id = @id", cancellationToken))
+        {
+            command.Parameters.AddWithValue("id", id);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
+            {
+                return null;
+            }
+
+            (x, y, kind) = (reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2));
+        }
+
+        return (await plots.RightsAsync(owner, x, y, cancellationToken)).Contains(PlotRight.Work) ? kind : null;
     }
 
     private async Task CatchUpAsync(int x, int y, CancellationToken cancellationToken)
@@ -184,8 +198,27 @@ public sealed class PlotObjectsQuery(GameDb db, PlotService plots) : IPlotObject
         return objects;
     }
 
-    public Task RequireOwnerAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
-        plots.RequireOwnerAsync(player, x, y, cancellationToken);
+    public async Task<IReadOnlyList<PlotObject>> FixturesAsync(int x, int y, CancellationToken cancellationToken)
+    {
+        if (await StationStock.OwnerAsync(db, x, y, cancellationToken) is not { } owner)
+        {
+            return [];
+        }
+
+        var station = RailRules.StationId(x, y);
+        return RailRules.StationTiles().Select(t => new PlotObject(station, RailRules.StationKind, t.TileX, t.TileY, 0, owner)).ToList();
+    }
+
+    public Task RequireOwnerAsync(Guid player, int x, int y, CancellationToken cancellationToken, PlotRight right = PlotRight.Build) =>
+        plots.RequireOwnerAsync(player, x, y, cancellationToken, right);
+
+    public async Task<(int X, int Y)?> PlotOfAsync(Guid id, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync("SELECT x, y FROM world.plot_objects WHERE id = @id", cancellationToken);
+        command.Parameters.AddWithValue("id", id);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? (reader.GetInt32(0), reader.GetInt32(1)) : null;
+    }
 }
 
 public sealed record PlaceOnPlotRequest(int X, int Y, string Kind, int TileX, int TileY, int Rotation = 0);
