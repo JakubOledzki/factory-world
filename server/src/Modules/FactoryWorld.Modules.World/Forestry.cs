@@ -61,7 +61,7 @@ public sealed class ForestService(
     public Task<(PlantedTree Tree, XpGain Xp)> PlantAsync(Guid player, int x, int y, int tileX, int tileY, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             var grow = Forestry.GrowTime(biome) ?? throw new GameException("no_forestry", "Nothing grows on ice.");
             if (!await plots.FreeAsync(player, x, y, tileX, tileY, cancellationToken))
             {

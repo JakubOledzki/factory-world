@@ -216,12 +216,13 @@ public static class HarvestRules
 public sealed record Harvest(TileObject Object, IReadOnlyList<(string Item, int Quantity)> Items, XpGain Xp);
 
 public sealed class PlotService(
-    GameDb db, WorldMap map, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
+    GameDb db, WorldMap map, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats,
+    IEnumerable<ICompanyPlots> companies, TimeProvider time)
 {
-    /// <summary>The tiles of a plot as they are now; only its owner may enter.</summary>
+    /// <summary>The tiles of a plot as they are now; only its owner and members of its company may enter.</summary>
     public async Task<byte[]> TilesAsync(Guid player, int x, int y, CancellationToken cancellationToken)
     {
-        var biome = await RequireOwnerAsync(player, x, y, cancellationToken);
+        var biome = await RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
         var tiles = PlotLayout.Generate(x, y, biome);
         await using var command = await db.CommandAsync(
             "SELECT tile_x, tile_y FROM world.plot_harvests WHERE x = @x AND y = @y", cancellationToken);
@@ -270,7 +271,7 @@ public sealed class PlotService(
         Guid player, int x, int y, int tileX, int tileY, Action<TimeSpan> pace, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var biome = await RequireOwnerAsync(player, x, y, cancellationToken);
+            var biome = await RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             if (!PlotLayout.Inside(tileX, tileY))
             {
                 throw new GameException("nothing_here", "There is nothing to gather here.");
@@ -358,23 +359,53 @@ public sealed class PlotService(
         return new Harvest(obj, items, xp);
     }
 
-    public async Task<Biome> RequireOwnerAsync(Guid player, int x, int y, CancellationToken cancellationToken)
+    /// <summary>Fails with <c>not_owner</c> unless the player owns the plot, or may do <paramref name="right"/>
+    /// there as a member of the company the owner brought it into.</summary>
+    public async Task<Biome> RequireOwnerAsync(
+        Guid player, int x, int y, CancellationToken cancellationToken, PlotRight right = PlotRight.Build)
     {
-        if (!map.Contains(x, y))
-        {
-            throw new GameException("bad_plot", "There is no such plot.");
-        }
-
-        await using var command = await db.CommandAsync("SELECT owner_id FROM world.plots WHERE x = @x AND y = @y", cancellationToken);
-        command.Parameters.AddWithValue("x", x);
-        command.Parameters.AddWithValue("y", y);
-        if (await command.ExecuteScalarAsync(cancellationToken) is not Guid owner || owner != player)
+        if (!(await RightsAsync(player, x, y, cancellationToken)).Contains(right))
         {
             throw new GameException("not_owner", "This is not your plot.");
         }
 
         return map.BiomeAt(x, y);
     }
+
+    /// <summary>Everything for the owner; for anyone else what their role in the plot's company allows, if anything.</summary>
+    public async Task<IReadOnlySet<PlotRight>> RightsAsync(Guid player, int x, int y, CancellationToken cancellationToken)
+    {
+        if (!map.Contains(x, y))
+        {
+            throw new GameException("bad_plot", "There is no such plot.");
+        }
+
+        await using (var command = await db.CommandAsync("SELECT owner_id FROM world.plots WHERE x = @x AND y = @y", cancellationToken))
+        {
+            command.Parameters.AddWithValue("x", x);
+            command.Parameters.AddWithValue("y", y);
+            switch (await command.ExecuteScalarAsync(cancellationToken))
+            {
+                case Guid owner when owner == player:
+                    return AllRights;
+                case not Guid:
+                    return NoRights;
+            }
+        }
+
+        var rights = new HashSet<PlotRight>();
+        foreach (var company in companies)
+        {
+            rights.UnionWith(await company.RightsAsync(player, x, y, cancellationToken));
+        }
+
+        rights.Remove(PlotRight.Owner);
+        return rights;
+    }
+
+    private static readonly IReadOnlySet<PlotRight> AllRights = Enum.GetValues<PlotRight>().ToHashSet();
+
+    private static readonly IReadOnlySet<PlotRight> NoRights = new HashSet<PlotRight>();
 }
 
 public sealed record EnterRequest(int X, int Y);
@@ -398,6 +429,8 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
         var biome = map.BiomeAt(request.X, request.Y);
         var mines = await scope.ServiceProvider.GetRequiredService<MineService>().MinesAsync(request.X, request.Y, biome, cancellationToken);
         var objects = await scope.ServiceProvider.GetRequiredService<PlotObjectService>().ObjectsAsync(request.X, request.Y, cancellationToken);
+        var rights = await scope.ServiceProvider.GetRequiredService<PlotService>()
+            .RightsAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
 
         using var packed = new MemoryStream();
         using (var gzip = new GZipStream(packed, CompressionLevel.Optimal))
@@ -411,6 +444,7 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             x = request.X,
             y = request.Y,
             biome = (int)biome,
+            rights = rights.Order().Select(r => r.ToString().ToLowerInvariant()),
             size = PlotLayout.Size,
             tileMeters = PlotLayout.TileMeters,
             tiles = Convert.ToBase64String(packed.ToArray()),
