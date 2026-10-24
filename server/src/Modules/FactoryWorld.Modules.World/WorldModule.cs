@@ -312,14 +312,17 @@ public sealed record PlotOwner(Guid AccountId, string? Name);
 
 /// <param name="PriceCents">What the asking player would pay for it now; null when it cannot be bought.</param>
 /// <param name="Survey">What lies under the plot, shown only to its owner once they paid for a survey.</param>
-public sealed record PlotState(int X, int Y, Biome Biome, PlotOwner? Owner, long? PriceCents, Survey? Survey = null);
+/// <param name="Company">The company its owner brought it into, if any.</param>
+/// <param name="CanEnter">Whether the asking player may go onto it: its owner or a member of its company.</param>
+public sealed record PlotState(
+    int X, int Y, Biome Biome, PlotOwner? Owner, long? PriceCents, Survey? Survey = null, PlotCompany? Company = null, bool CanEnter = false);
 
 /// <param name="Tool">The tool that came with the plot, or null.</param>
 public sealed record Purchase(PlotState Plot, long BalanceCents, XpGain Xp, string? Tool);
 
 public sealed class WorldService(
     GameDb db, WorldMap map, IWallet wallet, ICharacterProgress progress, ICharacterNames names, IEquipment equipment, SurveyService surveys,
-    TimeProvider time)
+    IEnumerable<ICompanyPlots> companies, TimeProvider time)
 {
     /// <summary>Most owned plots one area request returns.</summary>
     public const int MaxAreaPlots = 5000;
@@ -347,6 +350,18 @@ public sealed class WorldService(
     }
 
     /// <summary>Owned plots inside a rectangle of the grid, with whose they are.</summary>
+    /// <summary>Plots other members brought into the player's company.</summary>
+    public async Task<IReadOnlyList<(int X, int Y, Biome Biome)>> SharedAsync(Guid player, CancellationToken cancellationToken)
+    {
+        var plots = new List<(int, int, Biome)>();
+        foreach (var registry in companies)
+        {
+            plots.AddRange((await registry.SharedWithAsync(player, cancellationToken)).Select(p => (p.X, p.Y, map.BiomeAt(p.X, p.Y))));
+        }
+
+        return plots;
+    }
+
     public async Task<IReadOnlyList<(int X, int Y, Guid Owner)>> AreaAsync(int x, int y, int width, int height, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync(
@@ -381,7 +396,13 @@ public sealed class WorldService(
             var name = (await names.NamesAsync([owner], cancellationToken)).GetValueOrDefault(owner);
             // Deposits stay secret from everyone but the owner who paid for the survey.
             var survey = owner == viewer ? await surveys.FindAsync(x, y, cancellationToken) : null;
-            return new PlotState(x, y, biome, new PlotOwner(owner, name), null, survey);
+            PlotCompany? company = null;
+            foreach (var registry in companies)
+            {
+                company ??= await registry.CompanyAsync(viewer, x, y, cancellationToken);
+            }
+
+            return new PlotState(x, y, biome, new PlotOwner(owner, name), null, survey, company, owner == viewer || company?.Member == true);
         }
 
         long? price = Biomes.All[biome].Buyable ? PlotPrices.For(await CountOwnedAsync(viewer, cancellationToken), biome) : null;
@@ -436,12 +457,25 @@ public sealed class WorldService(
             }
 
             var name = (await names.NamesAsync([owner], cancellationToken)).GetValueOrDefault(owner);
-            return new Purchase(new PlotState(x, y, biome, new PlotOwner(owner, name), null), balance, xp, tool);
+            return new Purchase(new PlotState(x, y, biome, new PlotOwner(owner, name), null, CanEnter: true), balance, xp, tool);
         }, cancellationToken);
     }
 
     private Biome BiomeAt(int x, int y) =>
         map.Contains(x, y) ? map.BiomeAt(x, y) : throw new GameException("bad_plot", "There is no such plot.");
+}
+
+/// <summary>Who owns a plot, for other modules (e.g. companies).</summary>
+public sealed class PlotRegistry(GameDb db) : IPlotRegistry
+{
+    public async Task<OwnedPlot?> FindAsync(int x, int y, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync("SELECT owner_id, biome FROM world.plots WHERE x = @x AND y = @y", cancellationToken);
+        command.Parameters.AddWithValue("x", x);
+        command.Parameters.AddWithValue("y", y);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? new OwnedPlot(x, y, reader.GetGuid(0), reader.GetInt16(1)) : null;
+    }
 }
 
 public sealed record PlotRequest(int X, int Y);
@@ -469,6 +503,8 @@ public abstract class WorldHandler(IServiceScopeFactory scopes) : IMessageHandle
         priceCents = plot.PriceCents,
         survey = plot.Survey is { } survey ? SurveyHandler.SurveyJson(survey) : null,
         surveyPriceCents = plot.Owner?.AccountId == player ? Deposits.SurveyPriceCents : (long?)null,
+        company = plot.Company is { } company ? new { name = company.Name, member = company.Member } : null,
+        canEnter = plot.CanEnter,
     };
 }
 
@@ -480,6 +516,7 @@ public sealed class InfoHandler(IServiceScopeFactory scopes, WorldMap map) : Wor
     protected override async Task<Reply> RunAsync(WorldService world, Guid player, JsonElement? payload, CancellationToken cancellationToken)
     {
         var mine = await world.OwnedAsync(player, cancellationToken);
+        var shared = await world.SharedAsync(player, cancellationToken);
         return new Reply("world.info", new
         {
             width = map.Width,
@@ -496,6 +533,7 @@ public sealed class InfoHandler(IServiceScopeFactory scopes, WorldMap map) : Wor
             priceTiersCents = PlotPrices.TierCents,
             nextBasePriceCents = PlotPrices.Base(mine.Count),
             plots = mine.Select(p => new { x = p.X, y = p.Y, biome = (int)p.Biome }),
+            sharedPlots = shared.Select(p => new { x = p.X, y = p.Y, biome = (int)p.Biome }),
         });
     }
 }
@@ -573,6 +611,7 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<PlotObjectService>();
         services.AddScoped<IPlacedObjects>(provider => provider.GetRequiredService<PlotObjectService>());
         services.AddScoped<IPlotObjects, PlotObjectsQuery>();
+        services.AddScoped<IPlotRegistry, PlotRegistry>();
         services.AddSingleton<IMessageHandler, InfoHandler>();
         services.AddSingleton<IMessageHandler, AreaHandler>();
         services.AddSingleton<IMessageHandler, GetPlotHandler>();

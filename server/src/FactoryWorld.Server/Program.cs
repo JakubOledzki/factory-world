@@ -3,6 +3,7 @@ using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Accounts;
 using FactoryWorld.Modules.Characters;
 using FactoryWorld.Modules.Contracts;
+using FactoryWorld.Modules.Companies;
 using FactoryWorld.Modules.Crafting;
 using FactoryWorld.Modules.Inventory;
 using FactoryWorld.Modules.Logistics;
@@ -36,6 +37,7 @@ IGameModule[] modules =
     new TutorialModule(),
     new StatisticsModule(),
     new ContractsModule(),
+    new CompaniesModule(),
     new ResearchModule(),
 ];
 

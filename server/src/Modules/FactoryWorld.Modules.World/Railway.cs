@@ -230,11 +230,11 @@ public sealed class StationService(
 {
     /// <summary>The station of one of the player's plots, after unloading every train that has arrived.</summary>
     public Task<StationState> StateAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
-        ChangeAsync(player, x, y, () => Task.CompletedTask, cancellationToken);
+        ChangeAsync(player, x, y, PlotRight.Work, () => Task.CompletedTask, cancellationToken);
 
     /// <summary>Moves items from the inventory into the station.</summary>
     public Task<StationState> LoadAsync(Guid player, int x, int y, string item, long quantity, CancellationToken cancellationToken) =>
-        ChangeAsync(player, x, y, async () =>
+        ChangeAsync(player, x, y, PlotRight.Work, async () =>
         {
             CheckQuantity(item, quantity);
             await inventory.RemoveAsync(player, item, quantity, cancellationToken);
@@ -243,7 +243,7 @@ public sealed class StationService(
 
     /// <summary>Moves items from the station into the inventory.</summary>
     public Task<StationState> UnloadAsync(Guid player, int x, int y, string item, long quantity, CancellationToken cancellationToken) =>
-        ChangeAsync(player, x, y, async () =>
+        ChangeAsync(player, x, y, PlotRight.Take, async () =>
         {
             CheckQuantity(item, quantity);
             await StationStock.ChangeAsync(db, x, y, item, -quantity, cancellationToken);
@@ -252,7 +252,7 @@ public sealed class StationService(
 
     /// <summary>Sends items from this station by train to the station of another owned plot.</summary>
     public Task<StationState> SendAsync(Guid player, int x, int y, int toX, int toY, string item, long quantity, CancellationToken cancellationToken) =>
-        ChangeAsync(player, x, y, async () =>
+        ChangeAsync(player, x, y, PlotRight.Take, async () =>
         {
             CheckQuantity(item, quantity);
             await CheckDestinationAsync(x, y, toX, toY, cancellationToken);
@@ -267,7 +267,7 @@ public sealed class StationService(
     public async Task<StationState> AddRouteAsync(
         Guid player, int x, int y, int toX, int toY, IReadOnlyList<string> items, int everyMinutes, CancellationToken cancellationToken)
     {
-        await ChangeAsync(player, x, y, async () =>
+        await ChangeAsync(player, x, y, PlotRight.Owner, async () =>
         {
             if (!RailRules.RouteMinutes.Contains(everyMinutes))
             {
@@ -312,7 +312,7 @@ public sealed class StationService(
 
     /// <summary>Stops a route; trains already on their way still arrive.</summary>
     public Task<StationState> RemoveRouteAsync(Guid player, int x, int y, long id, CancellationToken cancellationToken) =>
-        ChangeAsync(player, x, y, async () =>
+        ChangeAsync(player, x, y, PlotRight.Owner, async () =>
         {
             await using var delete = await db.CommandAsync(
                 "DELETE FROM world.train_routes WHERE id = @id AND from_x = @x AND from_y = @y", cancellationToken);
@@ -520,13 +520,14 @@ public sealed class StationService(
     /// are brought up to now, the station is locked, arrived trains unload, <paramref name="change"/>
     /// runs and the station is read back.
     /// </summary>
-    private async Task<StationState> ChangeAsync(Guid player, int x, int y, Func<Task> change, CancellationToken cancellationToken)
+    private async Task<StationState> ChangeAsync(
+        Guid player, int x, int y, PlotRight right, Func<Task> change, CancellationToken cancellationToken)
     {
-        await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+        await plots.RequireOwnerAsync(player, x, y, cancellationToken, right);
         await CatchUpRoutesAsync(x, y, cancellationToken);
         return await db.InTransactionAsync(async () =>
         {
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, right);
             await CatchUpPlotAsync(x, y, cancellationToken);
             await StationStock.LockAsync(db, x, y, cancellationToken);
             await DeliverAsync(x, y, cancellationToken);

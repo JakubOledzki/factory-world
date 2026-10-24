@@ -143,7 +143,7 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IInventory inven
     public Task<GeneratorReply> TakeAsync(Guid player, int x, int y, Guid id, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var grid = await GeneratorGridAsync(player, x, y, id, cancellationToken);
+            var grid = await GeneratorGridAsync(player, x, y, id, cancellationToken, PlotRight.Take);
             var taken = new List<(string, int)>();
             if (grid.Unfuel(id, time.GetUtcNow()) is { } fuel)
             {
@@ -174,11 +174,11 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IInventory inven
         await grid.SaveAsync(cancellationToken);
     }
 
-    /// <summary>The grid of the player's plot with the generator on it, after the plot's belts and
+    /// <summary>The grid of a plot the player may do <paramref name="right"/> on (owner or company member) with the generator on it, after the plot's belts and
     /// inserters (which may have fed it) are caught up.</summary>
-    private async Task<PowerGrid> GeneratorGridAsync(Guid player, int x, int y, Guid id, CancellationToken cancellationToken)
+    private async Task<PowerGrid> GeneratorGridAsync(Guid player, int x, int y, Guid id, CancellationToken cancellationToken, PlotRight right = PlotRight.Work)
     {
-        await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+        await plots.RequireOwnerAsync(player, x, y, cancellationToken, right);
         foreach (var machinery in services.GetServices<IPlotAutomation>())
         {
             if (!ReferenceEquals(machinery, this))
