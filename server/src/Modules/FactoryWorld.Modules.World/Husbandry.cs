@@ -182,7 +182,7 @@ public sealed class HusbandryService(
                 await clear.ExecuteNonQueryAsync(cancellationToken);
             }
 
-            await inventory.AddAsync(player, animal.Product, animal.Yield, cancellationToken);
+            await inventory.ReceiveAsync(player, animal.Product, animal.Yield, cancellationToken);
             await stats.RecordAsync(player, [ProductionEntry.Made(animal.Product, animal.Yield, time.GetUtcNow())], cancellationToken);
             var xp = await progress.AddXpAsync(player, animal.Xp, cancellationToken);
             return new AnimalChange(new PlotAnimal(tileX, tileY, kind, null), [(animal.Product, animal.Yield)], xp);

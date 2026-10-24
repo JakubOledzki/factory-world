@@ -24,6 +24,8 @@ const ERRORS := {
 	"character_exists": "To konto ma już postać.",
 	"no_character": "Najpierw stwórz postać.",
 	"not_enough_items": "Nie masz tylu przedmiotów.",
+	"inventory_full": "Ekwipunek pełny. Zrób miejsce albo załóż większy plecak (kupisz go u handlarza).",
+	"bad_slot": "Nie ma takiego miejsca.",
 	"not_enough_money": "Nie masz tyle pieniędzy.",
 	"queue_full": "Kolejka segregacji jest pełna.",
 	"bad_quantity": "Nieprawidłowa ilość.",
@@ -181,10 +183,37 @@ func enter_plot(at: Vector2i) -> void:
 	get_tree().change_scene_to_file(PLOT_SCENE)
 
 
-## The tool in the player's hand: {id, name}, or empty.
-func tool() -> Dictionary:
-	var held: Variant = character.get("tool")
-	return held if held is Dictionary else {}
+## The tool bar: one {id, name} or null per slot (one slot, two or three with a backpack on).
+func tool_slots() -> Array:
+	var slots: Variant = character.get("tools")
+	return slots if slots is Array and not slots.is_empty() else [null]
+
+
+## The tools in the tool bar, slot by slot, empty slots left out.
+func tools() -> Array[Dictionary]:
+	var held: Array[Dictionary] = []
+	for tool: Variant in tool_slots():
+		if tool is Dictionary:
+			held.append(tool)
+	return held
+
+
+## Whether this tool is in the tool bar.
+func holds(id: String) -> bool:
+	return tools().any(func(t: Dictionary) -> bool: return t["id"] == id)
+
+
+## The backpack worn: {id, name, extraSlots, toolSlots}, or empty.
+func backpack() -> Dictionary:
+	var worn: Variant = character.get("backpack")
+	return worn if worn is Dictionary else {}
+
+
+## Fetches the character again, e.g. after the server gave a tool.
+func reload_character() -> void:
+	var reply := await Net.request("character.get")
+	if reply["type"] == "character":
+		character = reply["payload"]
 
 
 ## Applies an XP gain from the server ({ xp, level }); level thresholds follow 200 × (L − 1)².

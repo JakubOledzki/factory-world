@@ -441,11 +441,7 @@ func _apply_plot(plot: Dictionary) -> void:
 	_tree_grow_seconds = float(grow) if grow != null else 0.0
 	var packed := Marshalls.base64_to_raw(plot["tiles"])
 	_tiles = packed.decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP)
-	if plot.get("tool") != null:
-		Game.character["tool"] = plot["tool"]
-	else:
-		Game.character["tool"] = null
-	_tool_slot.refresh()
+	_sync_tool_bar()
 	_fertile = plot.get("fertile", false)
 	for crop: Dictionary in plot.get("crops", []):
 		_crops[crop["id"]] = crop
@@ -883,7 +879,7 @@ func _ground_cell() -> Vector2i:
 
 ## Whether the hoe can turn this tile into a field.
 func _can_till(cell: Vector2i) -> bool:
-	return _placing == "" and _releasing == "" and _fertile and Game.tool().get("id", "") == "tool_hoe" and _tile(cell) == NONE \
+	return _placing == "" and _releasing == "" and _fertile and Game.holds("tool_hoe") and _tile(cell) == NONE \
 		and not _fields.has(cell) and not _placed.has(cell) and not _animals.has(cell)
 
 
@@ -1300,10 +1296,16 @@ func _nearest_work() -> Vector2i:
 	return best
 
 
-## Whether the tool in hand does the work of `tool`.
+## Whether a tool in the tool bar does the work of `tool`.
 func _holds(tool: String) -> bool:
-	var held: String = Game.tool().get("id", "")
-	return held == tool or STANDS_IN.get(held, "") == tool
+	return Game.tools().any(func(held: Dictionary) -> bool: return held["id"] == tool or STANDS_IN.get(held["id"], "") == tool)
+
+
+## The tool bar may have changed elsewhere (a tool that came with a plot): fetches it again.
+func _sync_tool_bar() -> void:
+	await Game.reload_character()
+	_tool_slot.refresh()
+	_update_hint()
 
 
 ## Walks up to a tree, rock or dune and works it with the tool in hand.
@@ -1337,7 +1339,7 @@ func _start_work(cell: Vector2i, mode := "harvest") -> void:
 	# Cutting a tree down takes longer than a swing at a rock or a dune, unless with a chainsaw.
 	_work_seconds = _harvest_seconds
 	if mode == "harvest" and _work_kind(cell) == TREE:
-		_work_seconds = _saw_seconds if Game.tool().get("id", "") == "tool_chainsaw" else _chop_seconds
+		_work_seconds = _saw_seconds if Game.holds("tool_chainsaw") else _chop_seconds
 	if mode == "mine":
 		_work_seconds = _mine_seconds
 	_work_left = _work_seconds
@@ -1751,7 +1753,7 @@ func _feed_animal(cell: Vector2i, feed: String) -> void:
 
 func _collect_animal(cell: Vector2i) -> void:
 	var info: Dictionary = _animal_kinds.get(_animals[cell]["kind"], {})
-	if info.get("tool") != null and Game.tool().get("id", "") != info["tool"]:
+	if info.get("tool") != null and not Game.holds(info["tool"]):
 		_show_toast("%s: potrzebujesz %s. Zmień narzędzie w slocie [Q]." % [_animals[cell]["name"], str(info.get("toolName", "")).to_lower()], UI.ERROR)
 		return
 	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
@@ -2225,7 +2227,7 @@ func _update_mine_label(id: int) -> void:
 
 ## Walks to the entrance of a mine and starts mining with the pickaxe.
 func _go_to_mine(id: int) -> void:
-	if Game.tool().get("id", "") != "tool_pickaxe":
+	if not Game.holds("tool_pickaxe"):
 		_show_toast("Kopalnia: potrzebujesz kilofa. Zmień narzędzie w slocie [Q].", UI.ERROR)
 		return
 	if _mine_left_units(id) <= 0:
@@ -2282,7 +2284,7 @@ func _mine_request(id: int) -> void:
 		_reload_inventory()
 	if int(state["units"]) <= 0:
 		_show_toast("Kopalnia wyczerpana. Odnowi się za %d min." % roundi(_mine_refill_left(id) / 60.0), UI.MUTED)
-	elif _work.x < 0 and _path.is_empty() and _near_mine(id) and Game.tool().get("id", "") == "tool_pickaxe":
+	elif _work.x < 0 and _path.is_empty() and _near_mine(id) and Game.holds("tool_pickaxe"):
 		_start_mining(id)
 
 
@@ -2517,7 +2519,7 @@ func _build_hud() -> void:
 	# The tool in hand, bottom left.
 	var tool_parts := UI.panel(2)
 	var tool_panel: PanelContainer = tool_parts[0]
-	var tool_label := UI.label("Narzędzie", UI.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
+	var tool_label := UI.label("Narzędzia i plecak", UI.MUTED, HORIZONTAL_ALIGNMENT_CENTER)
 	tool_label.add_theme_font_size_override("font_size", 12)
 	tool_parts[1].add_child(tool_label)
 	_tool_slot = ToolSlot.new()
@@ -2664,8 +2666,8 @@ func _refresh_character() -> void:
 
 
 func _on_tool_changed() -> void:
-	var held := Game.tool()
-	_show_toast("W ręku: %s" % held["name"] if not held.is_empty() else "Narzędzie schowane do ekwipunku.")
+	var names := Game.tools().map(func(t: Dictionary) -> String: return t["name"])
+	_show_toast("W ręku: %s" % ", ".join(names) if not names.is_empty() else "Narzędzia schowane do ekwipunku.")
 	_update_hint()
 	if _inventory_window.visible or _station_window.visible:
 		_reload_inventory()
@@ -2693,12 +2695,16 @@ func _update_hint() -> void:
 	if _releasing != "":
 		_hint.text = "Wypuszczanie: kliknij wolne pole, aby wypuścić: %s (masz %d). Esc kończy." % [_item_name(_releasing).to_lower(), _count(_releasing)]
 		return
-	var held: String = Game.tool().get("id", "")
-	if held == "" and _fertile:
+	var held := Game.tools().map(func(t: Dictionary) -> String: return t["id"])
+	# A chainsaw does an axe's work, faster, so the axe's line goes when both are held.
+	if "tool_chainsaw" in held:
+		held.erase("tool_axe")
+	if held.is_empty() and _fertile:
 		lines[""] = "Kliknij pole, aby zasiać lub zebrać plony. Do orania weź motykę [Q]."
-	if held == "" and _pasture and not _animals.is_empty():
+	if held.is_empty() and _pasture and not _animals.is_empty():
 		lines[""] = "Kliknij zwierzę, aby je nakarmić albo zebrać, co daje."
-	_hint.text = lines.get(held, "Bez narzędzia nic tu nie zbierzesz. Narzędzia dostajesz za zakup działki w lesie, na pustyni, w górach, na żyznych glebach lub na stepie.")
+	var parts := held.map(func(id: String) -> String: return lines.get(id, "")).filter(func(line: String) -> bool: return line != "")
+	_hint.text = " ".join(parts) if not parts.is_empty() else lines.get("", "Bez narzędzia nic tu nie zbierzesz. Narzędzia dostajesz za zakup działki w lesie, na pustyni, w górach, na żyznych glebach lub na stepie.")
 	_hint.text += "  ·  Stacja kolejowa [T] wysyła towary do innych fabryk."
 
 
@@ -2771,9 +2777,11 @@ func _build_windows() -> void:
 			return "Kliknij, aby wypuścić na działce"
 		if PLACED_SPRITES.has(item) or item in BELTS:
 			return "Kliknij, aby postawić na działce"
+		if item in ToolSlot.BACKPACKS:
+			return "Kliknij, aby założyć"
 		return "Kliknij, aby wziąć do ręki" if item in ToolSlot.TOOLS else ""
 	_slots.clicked.connect(func(item: String) -> void:
-		if item in ToolSlot.TOOLS:
+		if item in ToolSlot.TOOLS or item in ToolSlot.BACKPACKS:
 			_tool_slot.equip(item)
 		elif item == "sapling":
 			_inventory_window.hide_window()
