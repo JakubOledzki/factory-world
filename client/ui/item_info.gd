@@ -48,7 +48,7 @@ const ITEMS := {
 	"furniture_tyres": ["Opony", "Wyposażenie garażu.", "Są w garażu od początku."],
 	"furniture_pallet": ["Paleta", "Wyposażenie garażu.", "Jest w garażu od początku."],
 	"furniture_gas_cylinder": ["Butla gazowa", "Wyposażenie garażu.", "Jest w garażu od początku."],
-	"furniture_sorting_machine": ["Automatyczna sortownia", "Segreguje śmieci sama, także gdy cię nie ma.",
+	"furniture_sorting_machine": ["Automatyczna sortownia", "Osobna maszyna w garażu: włóż do niej do 50 worków śmieci, a posegreguje je sama, także gdy cię nie ma. Trzyma do 50 posegregowanych przedmiotów, które wyjmujesz ręcznie.",
 			"Kupisz u handlarza na rynku."],
 	"furniture_furnace": ["Piec kamienny", "Przetapia rudy na sztabki; pali węgiel.",
 			"Stół warsztatowy: 20 × kamień (45 s)."],

@@ -1,13 +1,15 @@
+using System.Text.Json;
 using FactoryWorld.Modules.Abstractions.Contracts;
 using FactoryWorld.Modules.Recycling;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FactoryWorld.Server.Tests;
 
-/// <summary>Puts a bought sorting machine in a player's garage, so sortings can queue up.</summary>
+/// <summary>Puts a bought sorting machine in a player's garage.</summary>
 public static class SortingMachine
 {
-    public static async Task InstallAsync(ServerFactory factory, GameClient client)
+    /// <summary>The machine's id.</summary>
+    public static async Task<string> InstallAsync(ServerFactory factory, GameClient client)
     {
         await using (var scope = factory.Services.CreateAsyncScope())
         {
@@ -15,7 +17,18 @@ public static class SortingMachine
         }
 
         Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.SortingMachine, quantity = 1 })).Type());
-        Assert.Equal("garage", (await client.SendAsync("garage.place", new { kind = Items.SortingMachine, x = 6, y = 3 })).Type());
+        var garage = await client.SendAsync("garage.place", new { kind = Items.SortingMachine, x = 6, y = 3 });
+        Assert.Equal("garage", garage.Type());
+        return garage.Payload().GetProperty("objects").EnumerateArray()
+            .Single(o => o.GetProperty("kind").GetString() == Items.SortingMachine).GetProperty("id").GetString()!;
+    }
+
+    /// <summary>Loads trash into the machine, lets it sort and takes everything out into the inventory.</summary>
+    public static async Task SortAsync(ServerFactory factory, GameClient client, string sorter, int count)
+    {
+        Assert.Equal("sorter", (await client.SendAsync("sorter.load", new { sorter, quantity = count })).Type());
+        factory.Time.Advance(RecyclingRules.SortTime * count);
+        Assert.Equal("sorter", (await client.SendAsync("sorter.take", new { sorter })).Type());
     }
 }
 
@@ -55,11 +68,10 @@ public sealed class GarageTests(ServerFactory factory) : IClassFixture<ServerFac
     {
         using var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
-        await SortingMachine.InstallAsync(factory, client);
 
-        var queued = await client.SendAsync("recycling.sort", new { count = 3 });
-        Assert.Equal(47, queued.Payload().GetProperty("trash").GetInt64());
-        Assert.Equal(3, queued.Payload().GetProperty("queue").GetArrayLength());
+        var queued = await client.SendAsync("recycling.sort", new { count = 1 });
+        Assert.Equal(49, queued.Payload().GetProperty("trash").GetInt64());
+        Assert.Equal(1, queued.Payload().GetProperty("queue").GetArrayLength());
 
         factory.Time.Advance(TimeSpan.FromSeconds(9));
         Assert.Equal(0, (await client.SendAsync("garage.get")).Payload().GetProperty("results").GetArrayLength());
@@ -68,16 +80,16 @@ public sealed class GarageTests(ServerFactory factory) : IClassFixture<ServerFac
         var first = await client.SendAsync("garage.get");
         Assert.Equal(1, first.Payload().GetProperty("results").GetArrayLength());
         Assert.Equal(5, first.Payload().GetProperty("xp").GetProperty("xp").GetInt64());
-        Assert.Equal(2, first.Payload().GetProperty("queue").GetArrayLength());
+        Assert.Equal(0, first.Payload().GetProperty("queue").GetArrayLength());
 
-        factory.Time.Advance(TimeSpan.FromSeconds(20));
-        var rest = await client.SendAsync("garage.get");
-        Assert.Equal(2, rest.Payload().GetProperty("results").GetArrayLength());
-        Assert.Equal(15, rest.Payload().GetProperty("xp").GetProperty("xp").GetInt64());
+        await client.SendAsync("recycling.sort", new { count = 1 });
+        factory.Time.Advance(TimeSpan.FromSeconds(10));
+        var second = await client.SendAsync("garage.get");
+        Assert.Equal(10, second.Payload().GetProperty("xp").GetProperty("xp").GetInt64());
 
         var inventory = await client.InventoryAsync();
-        Assert.Equal(3, Waste.Sum(w => inventory.GetValueOrDefault(w)));
-        Assert.Equal(47, inventory["trash"]);
+        Assert.Equal(2, Waste.Sum(w => inventory.GetValueOrDefault(w)));
+        Assert.Equal(48, inventory["trash"]);
     }
 
     [Fact]
@@ -116,29 +128,119 @@ public sealed class GarageTests(ServerFactory factory) : IClassFixture<ServerFac
     }
 
     [Fact]
-    public async Task The_sorting_machine_keeps_sorting_when_the_player_walks_away()
+    public async Task The_sorting_machine_does_not_sort_at_the_bin()
     {
         using var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
         await SortingMachine.InstallAsync(factory, client);
 
-        var queued = await client.SendAsync("recycling.sort", new { count = 5 });
-        Assert.Equal(10, queued.Payload().GetProperty("maxQueue").GetInt32());
+        var queued = await client.SendAsync("recycling.sort", new { count = 1 });
+        Assert.Equal(1, queued.Payload().GetProperty("maxQueue").GetInt32());
+        Assert.Equal("bad_quantity", (await client.SendAsync("recycling.sort", new { count = 5 })).ErrorCode());
         var stopped = await client.SendAsync("recycling.stop");
-        Assert.Equal(5, stopped.Payload().GetProperty("queue").GetArrayLength());
+        Assert.Equal(0, stopped.Payload().GetProperty("queue").GetArrayLength());
+        Assert.Equal(50, stopped.Payload().GetProperty("trash").GetInt64());
     }
 
     [Fact]
-    public async Task Queue_holds_at_most_10()
+    public async Task The_sorting_machine_sorts_its_own_queue_and_keeps_what_it_sorted()
     {
         using var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
-        await SortingMachine.InstallAsync(factory, client);
+        var sorter = await SortingMachine.InstallAsync(factory, client);
 
-        Assert.Equal("garage", (await client.SendAsync("recycling.sort", new { count = 10 })).Type());
-        Assert.Equal("queue_full", (await client.SendAsync("recycling.sort", new { count = 1 })).ErrorCode());
-        Assert.Equal("bad_quantity", (await client.SendAsync("recycling.sort", new { count = 11 })).ErrorCode());
-        Assert.Equal("bad_quantity", (await client.SendAsync("recycling.sort", new { count = 0 })).ErrorCode());
+        var loaded = (await client.SendAsync("sorter.load", new { sorter, quantity = 3 })).Payload();
+        Assert.Equal(3, loaded.GetProperty("queued").GetInt32());
+        Assert.Equal(50, loaded.GetProperty("maxQueue").GetInt32());
+        Assert.Equal(50, loaded.GetProperty("maxStored").GetInt32());
+        Assert.Equal(47, (await client.InventoryAsync())["trash"]);
+
+        factory.Time.Advance(TimeSpan.FromSeconds(25));
+        var state = (await client.SendAsync("sorter.get", new { sorter })).Payload();
+        Assert.Equal(1, state.GetProperty("queued").GetInt32());
+        Assert.Equal(2, state.GetProperty("storedCount").GetInt32());
+        // Nothing goes to the inventory, or to the bin's results, until it is taken out.
+        var before = await client.InventoryAsync();
+        Assert.Equal(0, Waste.Sum(w => before.GetValueOrDefault(w)));
+        Assert.Equal(0, (await client.SendAsync("garage.get")).Payload().GetProperty("results").GetArrayLength());
+
+        factory.Time.Advance(TimeSpan.FromSeconds(5));
+        var taken = (await client.SendAsync("sorter.take", new { sorter })).Payload();
+        Assert.Equal(0, taken.GetProperty("storedCount").GetInt32());
+        Assert.Equal(3, taken.GetProperty("taken").EnumerateArray().Sum(t => t.GetProperty("quantity").GetInt32()));
+        Assert.Equal(15, taken.GetProperty("xp").GetProperty("xp").GetInt64());
+        var inventory = await client.InventoryAsync();
+        Assert.Equal(3, Waste.Sum(w => inventory.GetValueOrDefault(w)));
+        Assert.Equal(47, inventory["trash"]);
+    }
+
+    [Fact]
+    public async Task The_sorting_machine_queues_at_most_50_trash()
+    {
+        using var client = await factory.ConnectAsync();
+        await client.RegisterWithCharacterAsync();
+        var sorter = await SortingMachine.InstallAsync(factory, client);
+
+        Assert.Equal("sorter", (await client.SendAsync("sorter.load", new { sorter, quantity = 40 })).Type());
+        Assert.Equal("sorter_full", (await client.SendAsync("sorter.load", new { sorter, quantity = 11 })).ErrorCode());
+        Assert.Equal("sorter", (await client.SendAsync("sorter.load", new { sorter, quantity = 10 })).Type());
+        Assert.Equal("bad_quantity", (await client.SendAsync("sorter.load", new { sorter, quantity = 0 })).ErrorCode());
+        Assert.Equal("sorter_full", (await client.SendAsync("sorter.load", new { sorter, quantity = 1 })).ErrorCode());
+
+        // Unsorted trash can be taken back.
+        var back = (await client.SendAsync("sorter.take", new { sorter, item = "trash" })).Payload();
+        Assert.Equal(0, back.GetProperty("queued").GetInt32());
+        Assert.Equal(50, (await client.InventoryAsync())["trash"]);
+    }
+
+    [Fact]
+    public async Task A_full_sorting_machine_stops_until_something_is_taken_out()
+    {
+        using var client = await factory.ConnectAsync();
+        await client.RegisterWithCharacterAsync();
+        var sorter = await SortingMachine.InstallAsync(factory, client);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IInventory>().AddAsync(client.AccountId, Items.Trash, 10, CancellationToken.None);
+        }
+
+        await client.SendAsync("sorter.load", new { sorter, quantity = 50 });
+        factory.Time.Advance(TimeSpan.FromSeconds(500));
+        var full = (await client.SendAsync("sorter.get", new { sorter })).Payload();
+        Assert.Equal(50, full.GetProperty("storedCount").GetInt32());
+        Assert.Equal(JsonValueKind.Null, full.GetProperty("startedAt").ValueKind);
+        await client.SendAsync("sorter.load", new { sorter, quantity = 10 });
+
+        // A full machine sorts nothing more however long it waits.
+        factory.Time.Advance(TimeSpan.FromHours(1));
+        Assert.Equal(10, (await client.SendAsync("sorter.get", new { sorter })).Payload().GetProperty("queued").GetInt32());
+
+        var item = full.GetProperty("stored")[0].GetProperty("id").GetString();
+        var taken = (await client.SendAsync("sorter.take", new { sorter, item })).Payload();
+        var room = 50 - taken.GetProperty("storedCount").GetInt32();
+        Assert.True(room > 0);
+        factory.Time.Advance(TimeSpan.FromSeconds(100));
+        var after = (await client.SendAsync("sorter.get", new { sorter })).Payload();
+        Assert.Equal(Math.Min(50, 50 - room + 10), after.GetProperty("storedCount").GetInt32());
+        Assert.Equal(Math.Max(0, 10 - room), after.GetProperty("queued").GetInt32());
+    }
+
+    [Fact]
+    public async Task Picking_up_the_sorting_machine_empties_it_into_the_inventory()
+    {
+        using var client = await factory.ConnectAsync();
+        await client.RegisterWithCharacterAsync();
+        var sorter = await SortingMachine.InstallAsync(factory, client);
+
+        await client.SendAsync("sorter.load", new { sorter, quantity = 5 });
+        factory.Time.Advance(TimeSpan.FromSeconds(20));
+        Assert.Equal("garage", (await client.SendAsync("garage.pickup", new { id = sorter })).Type());
+
+        var inventory = await client.InventoryAsync();
+        Assert.Equal(2, Waste.Sum(w => inventory.GetValueOrDefault(w)));
+        Assert.Equal(48, inventory["trash"]);
+        Assert.Equal(1, inventory[Items.SortingMachine]);
+        Assert.Equal("no_sorter", (await client.SendAsync("sorter.get", new { sorter })).ErrorCode());
     }
 
     [Fact]
@@ -146,17 +248,11 @@ public sealed class GarageTests(ServerFactory factory) : IClassFixture<ServerFac
     {
         using var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
-        await SortingMachine.InstallAsync(factory, client);
-        for (var i = 0; i < 5; i++)
-        {
-            await client.SendAsync("recycling.sort", new { count = 10 });
-            factory.Time.Advance(TimeSpan.FromSeconds(100));
-            await client.SendAsync("garage.get");
-        }
+        var sorter = await SortingMachine.InstallAsync(factory, client);
+        await SortingMachine.SortAsync(factory, client, sorter, 50);
 
-        var reply = await client.SendAsync("recycling.sort", new { count = 1 });
-
-        Assert.Equal("not_enough_items", reply.ErrorCode());
+        Assert.Equal("not_enough_items", (await client.SendAsync("recycling.sort", new { count = 1 })).ErrorCode());
+        Assert.Equal("not_enough_items", (await client.SendAsync("sorter.load", new { sorter, quantity = 1 })).ErrorCode());
     }
 
     [Fact]
@@ -186,10 +282,8 @@ public sealed class MarketTests(ServerFactory factory) : IClassFixture<ServerFac
         await client.RegisterWithCharacterAsync();
         // Its rewards for sorting and selling would add to the balance.
         await client.SendAsync("tutorial.skip");
-        await SortingMachine.InstallAsync(factory, client);
-        await client.SendAsync("recycling.sort", new { count = 5 });
-        factory.Time.Advance(TimeSpan.FromSeconds(50));
-        await client.SendAsync("garage.get");
+        var sorter = await SortingMachine.InstallAsync(factory, client);
+        await SortingMachine.SortAsync(factory, client, sorter, 5);
 
         long expected = 0;
         foreach (var (item, quantity) in (await client.InventoryAsync()).Where(i => i.Key != "trash"))
@@ -208,10 +302,8 @@ public sealed class MarketTests(ServerFactory factory) : IClassFixture<ServerFac
     {
         using var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
-        await SortingMachine.InstallAsync(factory, client);
-        await client.SendAsync("recycling.sort", new { count = 10 });
-        factory.Time.Advance(TimeSpan.FromSeconds(100));
-        await client.SendAsync("garage.get");
+        var sorter = await SortingMachine.InstallAsync(factory, client);
+        await SortingMachine.SortAsync(factory, client, sorter, 10);
         foreach (var (item, quantity) in (await client.InventoryAsync()).Where(i => i.Key != "trash"))
         {
             await client.SendAsync("market.sell", new { item, quantity });

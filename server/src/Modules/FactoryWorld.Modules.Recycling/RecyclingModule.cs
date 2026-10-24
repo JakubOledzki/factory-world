@@ -15,15 +15,10 @@ public static class RecyclingRules
 
     public static readonly TimeSpan SortTime = TimeSpan.FromSeconds(10);
 
-    /// <summary>Sortings a player can queue with the sorting machine in the garage; they keep running
-    /// while the player is away or offline.</summary>
-    public const int MaxQueue = 10;
-
-    /// <summary>By hand the player sorts one bag at a time, standing at the bin: the client asks for
-    /// the next bag while the player stays and stops the current one when they walk away.</summary>
+    /// <summary>At the bin the player sorts by hand, one bag at a time: the client asks for the next
+    /// bag while the player stays and stops the current one when they walk away. The automatic
+    /// sorting machine is a machine of its own (<see cref="SorterRules"/>) and does not sort at the bin.</summary>
     public const int MaxQueueByHand = 1;
-
-    public static int QueueLimit(bool machine) => machine ? MaxQueue : MaxQueueByHand;
 
     public const int XpPerSort = 5;
 
@@ -180,6 +175,23 @@ public sealed class RecyclingDbContext(DbContextOptions<RecyclingDbContext> opti
             e.Property(o => o.Rotation).HasColumnName("rotation");
             e.HasIndex(o => o.OwnerId);
         });
+        model.Entity<Sorter>(e =>
+        {
+            e.ToTable("sorters");
+            e.HasKey(s => s.ObjectId);
+            e.Property(s => s.ObjectId).HasColumnName("object_id");
+            e.Property(s => s.OwnerId).HasColumnName("owner_id");
+            e.Property(s => s.Queued).HasColumnName("queued");
+            e.Property(s => s.StartedAt).HasColumnName("started_at");
+        });
+        model.Entity<SorterItem>(e =>
+        {
+            e.ToTable("sorter_items");
+            e.HasKey(i => new { i.ObjectId, i.Item });
+            e.Property(i => i.ObjectId).HasColumnName("object_id");
+            e.Property(i => i.Item).HasColumnName("item").HasMaxLength(32);
+            e.Property(i => i.Quantity).HasColumnName("quantity");
+        });
         model.Entity<SortingJob>(e =>
         {
             e.ToTable("sorting_jobs");
@@ -217,9 +229,9 @@ public sealed class RecyclingService(
     public Task<GarageState> SortAsync(Guid owner, int count, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            if (count is < 1 or > RecyclingRules.MaxQueue)
+            if (count is < 1 or > RecyclingRules.MaxQueueByHand)
             {
-                throw new GameException("bad_quantity", $"You can sort 1-{RecyclingRules.MaxQueue} at once.");
+                throw new GameException("bad_quantity", $"By hand you sort {RecyclingRules.MaxQueueByHand} bag at a time.");
             }
 
             await EnsureGarageAsync(owner, cancellationToken);
@@ -234,11 +246,10 @@ public sealed class RecyclingService(
                 throw new GameException("no_bin", "Put the trash bin in the garage first.");
             }
 
-            var limit = RecyclingRules.QueueLimit(objects.Any(o => o.Kind == Items.SortingMachine));
             var queue = await QueueAsync(owner, cancellationToken);
-            if (queue.Count + count > limit)
+            if (queue.Count + count > RecyclingRules.MaxQueueByHand)
             {
-                throw new GameException("queue_full", $"At most {limit} sortings can wait in the queue.");
+                throw new GameException("queue_full", "A bag is being sorted already.");
             }
 
             await inventory.RemoveAsync(owner, Items.Trash, count, cancellationToken);
@@ -257,18 +268,17 @@ public sealed class RecyclingService(
             return await ReadStateAsync(owner, results, xp, cancellationToken);
         }, cancellationToken);
 
-    /// <summary>The player walked away from the bin: without the sorting machine, the bag being
-    /// sorted by hand is not finished and goes back into the inventory.</summary>
+    /// <summary>The player walked away from the bin: the bag being sorted by hand is not finished
+    /// and goes back into the inventory.</summary>
     public Task<GarageState> StopAsync(Guid owner, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
             await EnsureGarageAsync(owner, cancellationToken);
             var (results, xp) = await CompleteDueAsync(owner, cancellationToken);
             await LockGarageAsync(owner, cancellationToken);
-            if (!(await ObjectsAsync(owner, cancellationToken)).Any(o => o.Kind == Items.SortingMachine))
+            await using (var command = await db.CommandAsync(
+                "DELETE FROM recycling.sorting_jobs WHERE owner_id = @owner AND finishes_at > @now", cancellationToken))
             {
-                await using var command = await db.CommandAsync(
-                    "DELETE FROM recycling.sorting_jobs WHERE owner_id = @owner AND finishes_at > @now", cancellationToken);
                 command.Parameters.AddWithValue("owner", owner);
                 command.Parameters.AddWithValue("now", time.GetUtcNow());
                 var stopped = await command.ExecuteNonQueryAsync(cancellationToken);
@@ -491,7 +501,7 @@ public abstract class GarageHandler(IServiceScopeFactory scopes) : IMessageHandl
             queue = state.Queue.Select(t => t.ToUnixTimeMilliseconds()),
             serverTime = state.ServerTime.ToUnixTimeMilliseconds(),
             sortSeconds = RecyclingRules.SortTime.TotalSeconds,
-            maxQueue = RecyclingRules.QueueLimit(state.Objects.Any(o => o.Kind == Items.SortingMachine)),
+            maxQueue = RecyclingRules.MaxQueueByHand,
             results = state.Results.Select(id => new { id, name = Items.Names[id] }),
             xp = state.Xp is { } xp ? new { xp = xp.Xp, level = xp.Level, leveledUp = xp.LeveledUp } : null,
             room = new { width = GarageLayout.Width, depth = GarageLayout.Depth, cellSize = GarageLayout.CellSize },
@@ -548,7 +558,7 @@ public sealed class PickUpHandler(IServiceScopeFactory scopes) : GarageHandler(s
         recycling.PickUpAsync(owner, Payload.Read<PickUpRequest>(payload).Id, cancellationToken);
 }
 
-/// <summary>The garage with its furniture, trash bin and sorting. Owns the <c>recycling</c> schema.</summary>
+/// <summary>The garage with its furniture, trash bin, sorting by hand and the automatic sorting machine. Owns the <c>recycling</c> schema.</summary>
 public sealed class RecyclingModule : IGameModule
 {
     public string Name => "Recycling";
@@ -558,11 +568,16 @@ public sealed class RecyclingModule : IGameModule
         services.AddModuleDbContext<RecyclingDbContext>(RecyclingDbContext.Schema);
         services.AddScoped<RecyclingService>();
         services.AddScoped<IPlacedObjects, GarageObjects>();
+        services.AddScoped<SorterService>();
+        services.AddScoped<IMachineContents, SorterContents>();
         services.AddSingleton<IMessageHandler, GetGarageHandler>();
         services.AddSingleton<IMessageHandler, SortHandler>();
         services.AddSingleton<IMessageHandler, StopHandler>();
         services.AddSingleton<IMessageHandler, PlaceHandler>();
         services.AddSingleton<IMessageHandler, PickUpHandler>();
+        services.AddSingleton<IMessageHandler, GetSorterHandler>();
+        services.AddSingleton<IMessageHandler, LoadSorterHandler>();
+        services.AddSingleton<IMessageHandler, TakeSorterHandler>();
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>
