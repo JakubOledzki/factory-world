@@ -700,9 +700,8 @@ func _on_buy() -> void:
 	var text := "Kupiłeś działkę %d × %d!  +%d XP" % [plot.x, plot.y, gained]
 	if bought.get("tool") != null:
 		text += "  ·  Dostajesz: %s" % bought["tool"]["name"]
-		# The new tool goes into an empty hand, otherwise into the inventory.
-		if Game.tool().is_empty():
-			Game.character["tool"] = bought["tool"]
+		# The new tool goes into a free slot of the tool bar, otherwise into the inventory.
+		Game.reload_character()
 	if xp.get("leveledUp", false):
 		text += "  ·  Awans na poziom %d" % xp["level"]
 	_show_toast(text, UI.GOLD)

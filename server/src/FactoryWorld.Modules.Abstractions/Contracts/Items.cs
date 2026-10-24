@@ -27,13 +27,20 @@ public static class Items
     public const string BrickFurnace = "furniture_brick_furnace";
     public const string BlastFurnace = "furniture_blast_furnace";
 
-    // Tools: one can be held in the character's tool slot.
+    // Tools: held in the character's tool bar (one slot, more with a backpack).
     public const string Axe = "tool_axe";
     public const string Shovel = "tool_shovel";
     public const string Pickaxe = "tool_pickaxe";
     public const string Hoe = "tool_hoe";
     public const string Chainsaw = "tool_chainsaw";
     public const string Shears = "tool_shears";
+
+    // Backpacks: worn by the character, each adds tiles to the inventory and slots to the tool bar.
+    public const string SchoolBackpack = "backpack_school";
+    public const string HikingBackpack = "backpack_hiking";
+    public const string TrekkingBackpack = "backpack_trekking";
+    public const string ExpeditionBackpack = "backpack_expedition";
+    public const string TycoonBackpack = "backpack_tycoon";
 
     // Raw materials gathered on plots.
     public const string Wood = "wood";
@@ -157,6 +164,11 @@ public static class Items
         [Hoe] = "Motyka",
         [Chainsaw] = "Piła spalinowa",
         [Shears] = "Nożyce do strzyżenia",
+        [SchoolBackpack] = "Plecak szkolny",
+        [HikingBackpack] = "Plecak turystyczny",
+        [TrekkingBackpack] = "Plecak trekkingowy",
+        [ExpeditionBackpack] = "Plecak wyprawowy",
+        [TycoonBackpack] = "Plecak magnata",
         [Wood] = "Drewno",
         [Stone] = "Kamień",
         [Sand] = "Piasek",
@@ -232,6 +244,30 @@ public static class Items
 
     public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw or Shears;
 
+    public static bool IsBackpack(string id) => Backpacks.ContainsKey(id);
+
+    /// <summary>What each backpack gives while worn: extra inventory tiles and tool bar slots in all.</summary>
+    public static readonly IReadOnlyDictionary<string, Backpack> Backpacks = new Dictionary<string, Backpack>
+    {
+        [SchoolBackpack] = new(20, 2),
+        [HikingBackpack] = new(40, 2),
+        [TrekkingBackpack] = new(60, 2),
+        [ExpeditionBackpack] = new(80, 2),
+        [TycoonBackpack] = new(100, 3),
+    };
+
+    /// <summary>Inventory tiles without a backpack.</summary>
+    public const int InventorySlots = 20;
+
+    /// <summary>Tool bar slots without a backpack.</summary>
+    public const int ToolSlots = 1;
+
+    /// <summary>Inventory tiles with the most a backpack adds.</summary>
+    public static readonly int MaxInventorySlots = InventorySlots + Backpacks.Values.Max(b => b.ExtraSlots);
+
+    /// <summary>Tool bar slots with the most a backpack gives.</summary>
+    public static readonly int MaxToolSlots = Backpacks.Values.Max(b => b.ToolSlots);
+
     /// <summary>Furnaces of every level: the stone one and its upgrades.</summary>
     public static bool IsFurnace(string id) => id is Furnace or BrickFurnace or BlastFurnace;
 
@@ -244,3 +280,7 @@ public static class Items
     /// <summary>Inserters of every level.</summary>
     public static bool IsInserter(string id) => id is Inserter or FastInserter or ExpressInserter;
 }
+
+/// <param name="ExtraSlots">Inventory tiles the backpack adds.</param>
+/// <param name="ToolSlots">Tool bar slots in all while it is worn.</param>
+public sealed record Backpack(int ExtraSlots, int ToolSlots);

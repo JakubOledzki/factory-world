@@ -62,7 +62,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
     private long _xp;
     private long _reserved;
     private long _money;
-    private string? _tool;
+    private List<string> _tools = [];
     private int _mapWidth;
     private int _mapHeight;
     private long _nextPlotBaseCents;
@@ -331,7 +331,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             return;
         }
 
-        _tool = character.Payload.Get("tool")?.Text("id");
+        _tools = Tools(character.Payload);
         await GarageAsync(cancellationToken);
         await CraftingAsync(cancellationToken);
         await ParseResearchAsync(cancellationToken);
@@ -761,7 +761,11 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                     }
 
                     _plots.Add(new BotPlot(x, y, biome));
-                    _tool = bought.Payload.Get("tool")?.Text("id") ?? _tool;
+                    if (bought.Payload.Get("tool")?.Text("id") is { } given && _tools.Count == 0)
+                    {
+                        _tools = [given];
+                    }
+
                     _nextPlotBaseCents = 0;
                     _fresh = false;
                     logger.LogInformation("Bot {Bot} bought plot {X}:{Y}", Row.CharacterName, x, y);
@@ -804,11 +808,11 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         plot.Tiles = tiles.ToArray();
         plot.Size = (int)p.Long("size");
         plot.Spawn = ((int)(p.Get("spawn")?.Long("x") ?? 0), (int)(p.Get("spawn")?.Long("y") ?? 0));
-        _tool = p.Get("tool")?.Text("id");
+        _tools = Tools(p);
 
         var wanted = plot.Biome switch
         {
-            Biomes.Mountains => new[] { Tiles.Rock, Tiles.Tree },
+            Biomes.Mountains => new[] { Tiles.Rock },
             Biomes.Desert => [Tiles.Dune, Tiles.Rock],
             _ => [Tiles.Tree, Tiles.Rock],
         };
@@ -1114,7 +1118,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
     /// <summary>Gets the tool into the bot's hand: from the inventory, or bought from the trader.</summary>
     private async Task<bool> HoldAsync(string tool, CancellationToken cancellationToken)
     {
-        if (_tool == tool || tool == Items.Axe && _tool == Items.Chainsaw)
+        if (_tools.Contains(tool) || tool == Items.Axe && _tools.Contains(Items.Chainsaw))
         {
             return true;
         }
@@ -1138,10 +1142,14 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             return false;
         }
 
-        _tool = reply.Payload.Get("tool")?.Text("id");
+        _tools = Tools(reply.Payload);
         await InventoryAsync(cancellationToken);
-        return _tool == tool;
+        return _tools.Contains(tool);
     }
+
+    /// <summary>The tools in a character's (or a plot's) tool bar.</summary>
+    private static List<string> Tools(JsonElement payload) =>
+        payload.Each("tools").Where(t => t.ValueKind == JsonValueKind.Object).Select(t => t.Text("id")).OfType<string>().ToList();
 
     // ----- The market -----
 

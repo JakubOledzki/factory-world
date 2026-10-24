@@ -33,6 +33,10 @@ namespace FactoryWorld.Modules.Characters.Migrations
                     b.Property<Guid>("AccountId")
                         .HasColumnType("uuid");
 
+                    b.Property<string>("Backpack")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -47,6 +51,14 @@ namespace FactoryWorld.Modules.Characters.Migrations
                         .HasColumnType("character varying(16)");
 
                     b.Property<string>("Tool")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Tool2")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("Tool3")
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 

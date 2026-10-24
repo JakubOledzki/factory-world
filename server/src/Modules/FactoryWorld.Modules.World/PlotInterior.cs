@@ -49,7 +49,8 @@ public static class PlotLayout
         [Biome.Farmland] = [(TileObject.Tree, 25), (TileObject.Bush, 25), (TileObject.Rock, 4)],
         [Biome.Grassland] = [(TileObject.Tree, 15), (TileObject.Bush, 40), (TileObject.Rock, 10)],
         [Biome.Desert] = [(TileObject.Dune, 90), (TileObject.Rock, 18), (TileObject.Bush, 6)],
-        [Biome.Mountains] = [(TileObject.Rock, 260), (TileObject.Tree, 45), (TileObject.Bush, 10)],
+        // No trees grow in the mountains; the gap they left keeps every rock and bush where it stood.
+        [Biome.Mountains] = [(TileObject.Rock, 260), (TileObject.None, 45), (TileObject.Bush, 10)],
         [Biome.Tundra] = [(TileObject.Rock, 40), (TileObject.Bush, 35), (TileObject.Tree, 8)],
         [Biome.Ice] = [(TileObject.Rock, 25)],
         [Biome.City] = [],
@@ -357,15 +358,16 @@ public sealed class PlotService(
         return await GiveAsync(player, TileObject.Tree, cancellationToken);
     }
 
-    /// <summary>The tool in the player's hand, if it does the work of <paramref name="tool"/>: a chainsaw does an axe's.</summary>
+    /// <summary>The tool in the player's tool bar that does the work of <paramref name="tool"/>: a chainsaw does an axe's, and faster, so it goes first.</summary>
     public async Task<string> RequireToolAsync(Guid player, string tool, CancellationToken cancellationToken)
     {
-        if (await equipment.ToolAsync(player, cancellationToken) is not { } held || (held != tool && !(tool == Items.Axe && held == Items.Chainsaw)))
+        var held = await equipment.ToolsAsync(player, cancellationToken);
+        if (tool == Items.Axe && held.Contains(Items.Chainsaw))
         {
-            throw new GameException("wrong_tool", $"You need {Items.Names[tool]} in your hand.");
+            return Items.Chainsaw;
         }
 
-        return held;
+        return held.Contains(tool) ? tool : throw new GameException("wrong_tool", $"You need {Items.Names[tool]} in your hand.");
     }
 
     private async Task<Harvest> GiveAsync(Guid player, TileObject obj, CancellationToken cancellationToken)
@@ -373,7 +375,7 @@ public sealed class PlotService(
         var items = PlotLayout.Yield(obj, Random.Shared.Next(100));
         foreach (var (item, quantity) in items)
         {
-            await inventory.AddAsync(player, item, quantity, cancellationToken);
+            await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
         }
 
         await stats.RecordAsync(player, items.Select(i => ProductionEntry.Made(i.Item, i.Quantity, time.GetUtcNow())).ToList(), cancellationToken);
@@ -445,7 +447,7 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
         await using var scope = scopes.CreateAsyncScope();
         var tiles = await scope.ServiceProvider.GetRequiredService<PlotService>()
             .TilesAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
-        var tool = await scope.ServiceProvider.GetRequiredService<IEquipment>().ToolAsync(client.RequireAccount(), cancellationToken);
+        var tools = await scope.ServiceProvider.GetRequiredService<IEquipment>().ToolsAsync(client.RequireAccount(), cancellationToken);
         var fields = await scope.ServiceProvider.GetRequiredService<FarmService>().FieldsAsync(request.X, request.Y, cancellationToken);
         var trees = await scope.ServiceProvider.GetRequiredService<ForestService>().TreesAsync(request.X, request.Y, cancellationToken);
         var animals = await scope.ServiceProvider.GetRequiredService<HusbandryService>().AnimalsAsync(request.X, request.Y, cancellationToken);
@@ -474,7 +476,7 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             railRow = PlotLayout.RailRow,
             station = new { x = sx, y = sy, width = sw, height = sh },
             spawn = new { x = PlotLayout.Spawn.X, y = PlotLayout.Spawn.Y },
-            tool = tool is null ? null : new { id = tool, name = Items.Names[tool] },
+            tools = tools.Select(t => new { id = t, name = Items.Names[t] }),
             harvestSeconds = HarvestRules.Time.TotalSeconds,
             mineSeconds = Mining.Time.TotalSeconds,
             mineUnits = Mining.Units,

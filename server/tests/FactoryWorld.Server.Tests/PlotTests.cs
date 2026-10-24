@@ -75,8 +75,9 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         return (i % PlotLayout.Size, i / PlotLayout.Size);
     }
 
+    /// <summary>The tool in the first slot of the tool bar.</summary>
     private static string? Tool(JsonElement character) =>
-        character.GetProperty("tool").ValueKind == JsonValueKind.Null ? null : character.GetProperty("tool").GetProperty("id").GetString();
+        character.GetProperty("tools")[0] is { ValueKind: JsonValueKind.Object } tool ? tool.GetProperty("id").GetString() : null;
 
     [Fact]
     public async Task A_forest_comes_with_an_axe_in_hand_and_the_next_tool_goes_to_the_inventory()
@@ -469,6 +470,21 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         Assert.False((await EnterAsync(client, ice)).Plot.GetProperty("pasture").GetBoolean());
         Assert.Equal("no_pasture", (await client.SendAsync("plot.release", new { x = ice.X, y = ice.Y, tileX = tx, tileY = ty, item = Items.Sheep })).ErrorCode());
         Assert.Equal(1, (await client.InventoryAsync())[Items.Sheep]);
+    }
+
+    [Fact]
+    public void No_trees_grow_wild_in_the_mountains()
+    {
+        for (var i = 0; i < 20; i++)
+        {
+            var (x, y) = (i * 37 % 6900, i * 13 % 2900);
+            var tiles = PlotLayout.Generate(x, y, Biome.Mountains);
+            Assert.DoesNotContain((byte)TileObject.Tree, tiles);
+            Assert.Contains((byte)TileObject.Rock, tiles);
+            Assert.Contains((byte)TileObject.Bush, tiles);
+        }
+
+        Assert.Contains((byte)TileObject.Tree, PlotLayout.Generate(10, 10, Biome.Forest));
     }
 
     [Fact]

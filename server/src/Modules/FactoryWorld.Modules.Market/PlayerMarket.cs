@@ -136,7 +136,7 @@ public sealed class PlayerMarketService(GameDb db, IInventory inventory, IWallet
             var cents = request.Quantity * listing.PriceCents;
             var balance = await wallet.DebitAsync(buyer, cents, $"market buy {request.Quantity} {listing.ItemId}", cancellationToken);
             await wallet.CreditAsync(listing.OwnerId, cents, $"market sold {request.Quantity} {listing.ItemId}", cancellationToken);
-            await inventory.AddAsync(buyer, listing.ItemId, request.Quantity, cancellationToken);
+            await inventory.ReceiveAsync(buyer, listing.ItemId, request.Quantity, cancellationToken);
             return balance;
         }, cancellationToken);
 

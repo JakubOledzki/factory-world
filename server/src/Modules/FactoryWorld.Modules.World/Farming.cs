@@ -71,7 +71,7 @@ public sealed class FarmService(
                 throw new GameException("not_fertile", "Only fertile soil can be tilled.");
             }
 
-            if (await equipment.ToolAsync(player, cancellationToken) != Items.Hoe)
+            if (!(await equipment.ToolsAsync(player, cancellationToken)).Contains(Items.Hoe))
             {
                 throw new GameException("wrong_tool", "You need a hoe in your hand.");
             }
@@ -160,7 +160,7 @@ public sealed class FarmService(
                 await clear.ExecuteNonQueryAsync(cancellationToken);
             }
 
-            await inventory.AddAsync(player, crop, info.Yield, cancellationToken);
+            await inventory.ReceiveAsync(player, crop, info.Yield, cancellationToken);
             await stats.RecordAsync(player, [ProductionEntry.Made(crop, info.Yield, time.GetUtcNow())], cancellationToken);
             var xp = await progress.AddXpAsync(player, info.Xp, cancellationToken);
             return new FieldChange(new Field(tileX, tileY, null, null), [(crop, info.Yield)], xp);

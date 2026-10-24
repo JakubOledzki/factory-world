@@ -6,7 +6,13 @@ namespace FactoryWorld.Modules.Abstractions.Contracts;
 /// <summary>Items a player owns (owner = account id).</summary>
 public interface IInventory
 {
+    /// <summary>Adds items whether or not there is a free tile: for what comes back to the player
+    /// (a machine picked up, an offer cancelled) or arrives without them doing anything.</summary>
     Task AddAsync(Guid owner, string item, long quantity, CancellationToken cancellationToken);
+
+    /// <summary>Adds items the player takes (buys, gathers, takes out of something). Fails with
+    /// <c>inventory_full</c> when the item is not in the inventory yet and every tile is taken.</summary>
+    Task ReceiveAsync(Guid owner, string item, long quantity, CancellationToken cancellationToken);
 
     /// <summary>Fails with <c>not_enough_items</c> when the player has fewer.</summary>
     Task RemoveAsync(Guid owner, string item, long quantity, CancellationToken cancellationToken);
@@ -59,14 +65,21 @@ public interface ICharacterXp
     Task CapAsync(Guid accountId, long maxXp, CancellationToken cancellationToken);
 }
 
-/// <summary>The character's tool slot: one tool (e.g. an axe) held in hand, outside the inventory.</summary>
+/// <summary>The character's tool bar: tools (e.g. an axe) held in hand, outside the inventory.
+/// One slot, more with a backpack on.</summary>
 public interface IEquipment
 {
-    /// <summary>The tool in the slot, or null.</summary>
-    Task<string?> ToolAsync(Guid accountId, CancellationToken cancellationToken);
+    /// <summary>The tools in the tool bar, in slot order; empty slots left out.</summary>
+    Task<IReadOnlyList<string>> ToolsAsync(Guid accountId, CancellationToken cancellationToken);
 
-    /// <summary>Gives a new tool: into the slot when it is empty, otherwise into the inventory.</summary>
+    /// <summary>Gives a new tool: into a free slot of the tool bar, otherwise into the inventory.</summary>
     Task GiveToolAsync(Guid accountId, string tool, CancellationToken cancellationToken);
+}
+
+/// <summary>How many tiles a player's inventory has: <see cref="Items.InventorySlots"/>, more with a backpack on.</summary>
+public interface IInventorySize
+{
+    Task<int> SlotsAsync(Guid accountId, CancellationToken cancellationToken);
 }
 
 /// <summary>Things a player has put somewhere: furniture in the garage, objects on a plot.

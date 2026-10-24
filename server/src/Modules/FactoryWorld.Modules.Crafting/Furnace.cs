@@ -251,7 +251,7 @@ public sealed class FurnaceService(
             return (state, null);
         }
 
-        await inventory.AddAsync(owner, output, state.OutputQuantity, cancellationToken);
+        await inventory.ReceiveAsync(owner, output, state.OutputQuantity, cancellationToken);
         taken.Add((output, state.OutputQuantity));
         var xp = await progress.AddXpAsync(owner, state.OutputQuantity * Smelting.XpPerIngot, cancellationToken);
         return (state with { Output = null, OutputQuantity = 0 }, xp);

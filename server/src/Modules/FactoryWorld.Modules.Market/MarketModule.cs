@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FactoryWorld.Modules.Market;
 
 /// <summary>
-/// The NPC trader: always sells trash, saplings, animals, nails, tools, an anvil, a chainsaw, belts, inserters, wooden chests, machines (a forester's hut and a sawmill among them), the computer, generators, poles, flour, oil, bread and planks and always buys raw materials.
+/// The NPC trader: always sells trash, saplings, animals, nails, tools, backpacks, an anvil, a chainsaw, belts, inserters, wooden chests, machines (a forester's hut and a sawmill among them), the computer, generators, poles, flour, oil, bread and planks and always buys raw materials.
 /// Everything else it buys it sells too, but dear: <see cref="Markup"/> times what it pays, so buying is a last resort and never pays to sell back.
 /// These are its usual prices (cents); <see cref="TraderPrices"/> moves them with the day's drift and the market's events.
 /// What it pays is the floor of the market: a quick sale gets it at once, players' listings usually pay more.
@@ -35,6 +35,11 @@ public static class NpcPrices
         [Items.Hoe] = 10_000,
         [Items.Chainsaw] = 50_000,
         [Items.Shears] = 10_000,
+        [Items.SchoolBackpack] = 50_000,
+        [Items.HikingBackpack] = 500_000,
+        [Items.TrekkingBackpack] = 2_500_000,
+        [Items.ExpeditionBackpack] = 15_000_000,
+        [Items.TycoonBackpack] = 100_000_000,
         [Items.Chicken] = 5000,
         [Items.Sheep] = 20_000,
         [Items.Cow] = 50_000,
@@ -99,6 +104,11 @@ public static class NpcPrices
         [Items.Hoe] = 3500,
         [Items.Chainsaw] = 10_000,
         [Items.Shears] = 3200,
+        [Items.SchoolBackpack] = 10_000,
+        [Items.HikingBackpack] = 100_000,
+        [Items.TrekkingBackpack] = 500_000,
+        [Items.ExpeditionBackpack] = 3_000_000,
+        [Items.TycoonBackpack] = 20_000_000,
         [Items.Chicken] = 1000,
         [Items.Sheep] = 5000,
         [Items.Cow] = 12_000,
@@ -176,7 +186,16 @@ public sealed class MarketService(GameDb db, IInventory inventory, IWallet walle
             // Machines and logistics come from the trader only once researched.
             await technologies.RequireUnlockedAsync(owner, item, cancellationToken);
             var balance = await wallet.DebitAsync(owner, price * quantity, $"buy {quantity} {item}", cancellationToken);
-            await inventory.AddAsync(owner, item, quantity, cancellationToken);
+            // A backpack always fits: it is the way out of a full inventory.
+            if (Items.IsBackpack(item))
+            {
+                await inventory.AddAsync(owner, item, quantity, cancellationToken);
+            }
+            else
+            {
+                await inventory.ReceiveAsync(owner, item, quantity, cancellationToken);
+            }
+
             return balance;
         }, cancellationToken);
     }
