@@ -113,6 +113,8 @@ const ERRORS := {
 	"not_sellable": "Nikt w mieście tego nie kupi.",
 	"shop_full": "Sklep mieści najwyżej 8 rodzajów towaru.",
 	"hq_off_company": "Siedziba stoi tylko na działce wniesionej do twojej spółki.",
+	"bad_sapling": "To nie jest sadzonka.",
+	"no_bees": "Pszczoły nie latają na lodowcu ani w górach.",
 	"camel_sand": "Wielbłąd żyje tylko na pustyni i w oazie.",
 	"no_pasture": "Tu nie wypasiesz tego zwierzęcia: na pustyni żyją tylko wielbłądy, a na lodowcu nic.",
 	"already_surveyed": "Ta działka jest już zbadana.",

@@ -73,9 +73,27 @@ const METEORITE := 11
 const CREVASSE := 12
 const BRIDGE := 13
 const SNOWDRIFT := 14
+## Trees of other kinds than the pine (TREE, a palm in an oasis), and mushrooms on the floor of an old forest, picked by hand.
+const SPRUCE_TREE := 15
+const BIRCH_TREE := 16
+const OAK_TREE := 17
+const LINDEN_TREE := 18
+const MUSHROOMS := 19
+const TREES := [TREE, SPRUCE_TREE, BIRCH_TREE, OAK_TREE, LINDEN_TREE]
+## The tile each kind of planted tree grows into, by the server's id of its kind, and their names.
+const SPECIES_TILES := {"pine": TREE, "spruce": SPRUCE_TREE, "birch": BIRCH_TREE, "oak": OAK_TREE, "linden": LINDEN_TREE}
+const SPECIES_NAMES := {"pine": "Sosna", "spruce": "Świerk", "birch": "Brzoza", "oak": "Dąb", "linden": "Lipa"}
+## Saplings of every kind: the plain one grows a pine.
+const SAPLINGS := ["sapling", "sapling_spruce", "sapling_birch", "sapling_oak", "sapling_linden"]
+const INSECTICIDE := "insecticide"
 
 const SPRITES := {
-	TREE: ["tree_0", "tree_1", "tree_2", "tree_3", "tree_4"],
+	TREE: ["tree_0", "tree_1", "tree_2"],
+	SPRUCE_TREE: ["spruce_0", "spruce_1"],
+	BIRCH_TREE: ["birch_0", "birch_1"],
+	OAK_TREE: ["oak_0", "oak_1"],
+	LINDEN_TREE: ["linden_0", "linden_1"],
+	MUSHROOMS: ["mushrooms_0", "mushrooms_1"],
 	ROCK: ["rock_0", "rock_1", "rock_2"],
 	DUNE: ["dune_0", "dune_1"],
 	BUSH: ["bush_0", "bush_1"],
@@ -84,11 +102,16 @@ const SPRITES := {
 	METEORITE: ["meteorite_0"],
 	SNOWDRIFT: ["snowdrift_0", "snowdrift_1"],
 }
-const SOLID := [TREE, ROCK, DUNE, STATION, MINE, WATER, ICE_BLOCK, METEORITE, CREVASSE, SNOWDRIFT]
+const SOLID := [TREE, SPRUCE_TREE, BIRCH_TREE, OAK_TREE, LINDEN_TREE, ROCK, DUNE, STATION, MINE, WATER, ICE_BLOCK, METEORITE, CREVASSE, SNOWDRIFT]
 ## Objects that can be worked: their name, the tool ("" for bare hands) and how the tool is named in "you need a ...".
 const WORK := {
 	BUSH: {"name": "Krzak", "tool": "", "verb": "Wyrwij", "need": ""},
 	TREE: {"name": "Drzewo", "tool": "tool_axe", "verb": "Zetnij", "need": "siekiery lub piły spalinowej"},
+	SPRUCE_TREE: {"name": "Świerk", "tool": "tool_axe", "verb": "Zetnij", "need": "siekiery lub piły spalinowej"},
+	BIRCH_TREE: {"name": "Brzoza", "tool": "tool_axe", "verb": "Zetnij", "need": "siekiery lub piły spalinowej"},
+	OAK_TREE: {"name": "Dąb", "tool": "tool_axe", "verb": "Zetnij", "need": "siekiery lub piły spalinowej"},
+	LINDEN_TREE: {"name": "Lipa", "tool": "tool_axe", "verb": "Zetnij", "need": "siekiery lub piły spalinowej"},
+	MUSHROOMS: {"name": "Grzyby", "tool": "", "verb": "Zbierz", "need": ""},
 	ROCK: {"name": "Skała", "tool": "tool_pickaxe", "verb": "Rozbij", "need": "kilofa"},
 	DUNE: {"name": "Wydma", "tool": "tool_shovel", "verb": "Kop", "need": "łopaty"},
 	WATER: {"name": "Woda", "tool": "tool_fishing_rod", "verb": "Łów", "need": "wędki"},
@@ -143,6 +166,9 @@ const PLACED_SPRITES := {
 	"storage_high_bay": "high_bay", "furniture_city_sorter": "city_sorter", "furniture_freight_terminal": "freight_terminal",
 	"furniture_company_hq": "company_hq", "furniture_design_office": "design_office", "furniture_laboratory": "laboratory",
 	"furniture_service_workshop": "service_workshop",
+	"furniture_paper_mill": "paper_mill", "furniture_carpentry": "carpentry", "furniture_charcoal_kiln": "charcoal_kiln",
+	"furniture_tar_kiln": "tar_kiln", "furniture_beehive": "beehive", "furniture_fire_watchtower": "fire_watchtower",
+	"furniture_fire_station": "fire_station",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
@@ -158,7 +184,12 @@ const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_
 	"furniture_cement_kiln", "furniture_concrete_mixer", "furniture_ice_melter", "furniture_cold_store", "furniture_server_room",
 	"furniture_ice_core_drill", "furniture_polar_station", "furniture_ice_hotel", "furniture_viewpoint",
 	"furniture_assembly_hall", "furniture_multistorey_factory", "furniture_city_sorter", "furniture_design_office",
-	"furniture_laboratory", "furniture_service_workshop"]
+	"furniture_laboratory", "furniture_service_workshop", "furniture_paper_mill", "furniture_carpentry", "furniture_charcoal_kiln",
+	"furniture_tar_kiln"]
+## A beehive opens its own window; a fire watchtower and a fire station only stand guard over the forest.
+const BEEHIVE := "furniture_beehive"
+const WATCHTOWER := "furniture_fire_watchtower"
+const FIRE_STATION := "furniture_fire_station"
 ## Wells, which pump the oil or gas the survey found under the plot, and open the well window.
 const WELLS := ["furniture_pumpjack", "furniture_gas_well", "furniture_offshore_platform"]
 ## Asphalt road: walked over like a belt, and faster.
@@ -245,7 +276,7 @@ const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator"]
 ## Placed objects with nothing to open: a click shows the menu to pick them up.
 const MENU_ONLY := ["power_pole", "furniture_port", "furniture_lighthouse", "furniture_breakwater", ROAD, REED_FENCE,
 	"furniture_water_injector", "furniture_oil_separator", "furniture_dog_kennel", "furniture_snowmobile_garage", TRACK_FOUNDATION,
-	"furniture_freight_terminal", "furniture_company_hq"]
+	"furniture_freight_terminal", "furniture_company_hq", WATCHTOWER, FIRE_STATION]
 const POLE := "power_pole"
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo", "storage_tank",
 	"storage_high_bay"]
@@ -278,6 +309,8 @@ const MINIMAP_COLORS := {
 	RAIL: Color("#4a3a2e"), STATION: Color("#b5663a"), BUSH: Color("#3f6a30"), MINE: Color("#e0b040"),
 	WATER: Color("#2f6f9a"), FLOTSAM: Color("#e8d8a8"), ICE_BLOCK: Color("#9cc4dc"), METEORITE: Color("#3a2a22"),
 	CREVASSE: Color("#16324a"), BRIDGE: Color("#7a5532"), SNOWDRIFT: Color("#e4e8ee"),
+	SPRUCE_TREE: Color("#1f4a2a"), BIRCH_TREE: Color("#5a7a3a"), OAK_TREE: Color("#3a5a22"), LINDEN_TREE: Color("#4f6a2a"),
+	MUSHROOMS: Color("#a0603a"),
 }
 const FIELD_COLOR := Color("#6a4526")
 
@@ -301,8 +334,16 @@ var _ready_to_play := false
 var _fields := {}
 var _crops := {}
 var _fertile := false
-## Planted trees: Vector2i → readyAt (server milliseconds).
+## Planted trees: Vector2i → readyAt (server milliseconds), and their kinds (the server's ids) where not a pine.
 var _trees := {}
+var _tree_species := {}
+## The kinds of tree by sapling: { id, growSeconds, ... } as the server sends them.
+var _tree_kinds := {}
+## The sapling planting puts in, and how many of each kind the inventory holds.
+var _planting_sapling := "sapling"
+var _sapling_counts := {}
+## Trees planted by hand that the bark beetle is in today.
+var _infested := {}
 ## How long a sapling grows on this plot; 0 when nothing can be planted here.
 var _tree_grow_seconds := 0.0
 ## Saplings in the inventory, and whether a click on free ground plants one.
@@ -448,6 +489,7 @@ var _generator_window: GeneratorWindow
 var _drill_window: DrillWindow
 var _well_window: WellWindow
 var _shop_window: ShopWindow
+var _hive_window: HiveWindow
 var _city_window: CityWindow
 var _city_button: Button
 var _achievements_window: AchievementsWindow
@@ -639,6 +681,10 @@ func _apply_plot(plot: Dictionary) -> void:
 		_fields[Vector2i(field["tileX"], field["tileY"])] = {"crop": field["crop"], "readyAt": field["readyAt"]}
 	for tree: Dictionary in plot.get("trees", []):
 		_trees[Vector2i(tree["tileX"], tree["tileY"])] = tree["readyAt"]
+		_tree_species[Vector2i(tree["tileX"], tree["tileY"])] = tree.get("species", "pine")
+	for kind: Dictionary in plot.get("treeKinds", []):
+		_tree_kinds[kind["sapling"]] = kind
+	_apply_pests(plot.get("pests", {}))
 	for object: Dictionary in plot.get("objects", []):
 		_put_placed(object)
 	_logistics.set_objects(_placed)
@@ -851,10 +897,20 @@ func _crop_sprite(cell: Vector2i) -> String:
 
 func _tree_sprite(cell: Vector2i) -> String:
 	var left := _tree_left(cell)
+	var species: String = _tree_species.get(cell, "pine")
 	if left <= 0.0:
 		var h := (cell.x * 73856093) ^ (cell.y * 19349663)
-		return GROWN_TREES[absi(h) % GROWN_TREES.size()]
-	return "sapling" if left > _tree_grow_seconds * SAPLING_UNTIL else "tree_young"
+		var grown: Array = GROWN_TREES if species == "pine" else SPRITES[SPECIES_TILES.get(species, TREE)]
+		return grown[absi(h) % grown.size()]
+	return "sapling" if left > _grow_seconds(species) * SAPLING_UNTIL else "tree_young"
+
+
+## How long a tree of a kind grows on this plot.
+func _grow_seconds(species: String) -> float:
+	for kind: Dictionary in _tree_kinds.values():
+		if kind["id"] == species and kind.get("growSeconds") != null:
+			return float(kind["growSeconds"])
+	return _tree_grow_seconds
 
 
 ## Seconds until a planted tree can be cut (0 when it can).
@@ -868,7 +924,7 @@ func _tree_grown(cell: Vector2i) -> bool:
 
 ## What is worked on a tile: a grown planted tree counts as a tree.
 func _work_kind(cell: Vector2i) -> int:
-	return TREE if _tree_grown(cell) else _tile(cell)
+	return int(SPECIES_TILES.get(_tree_species.get(cell, "pine"), TREE)) if _tree_grown(cell) else _tile(cell)
 
 
 ## Seconds until the crop on a field is ripe (0 when it is).
@@ -1290,7 +1346,8 @@ func _update_field_label(cell: Vector2i) -> void:
 		_field_label.text = _animal_label(cell)
 	elif _trees.has(cell):
 		if _tree_grown(cell):
-			_field_label.text = "Drzewo: urosło, zetnij je siekierą"
+			_field_label.text = "%s: urosło, zetnij je siekierą%s" % [SPECIES_NAMES.get(_tree_species.get(cell, "pine"), "Drzewo"),
+				" · kornik! da tylko kłodę" if _infested.has(cell) else ""]
 		else:
 			var left := ceili(_tree_left(cell))
 			_field_label.text = "Sadzonka: urośnie za %d:%02d" % [left / 60, left % 60]
@@ -1672,7 +1729,7 @@ func _start_work(cell: Vector2i, mode := "harvest") -> void:
 	_work_mode = mode
 	# Cutting a tree down takes longer than a swing at a rock or a dune, unless with a chainsaw.
 	_work_seconds = _harvest_seconds
-	if mode == "harvest" and _work_kind(cell) == TREE:
+	if mode == "harvest" and _work_kind(cell) in TREES:
 		_work_seconds = _saw_seconds if Game.holds("tool_chainsaw") else _chop_seconds
 	if mode == "harvest" and _work_kind(cell) in [ROCK, ICE_BLOCK]:
 		_work_seconds = float(_plot.get("rockSeconds", _harvest_seconds)) / _pickaxe_speed()
@@ -1738,8 +1795,10 @@ func _harvest(cell: Vector2i) -> void:
 	for i in items.size():
 		var item: Dictionary = items[i]
 		_float_text("+%d %s" % [int(item["quantity"]), item["name"]], UI.TEXT, _cell_centre(cell), i * 0.25, item["id"])
-		if item["id"] == "sapling":
-			_set_saplings(_saplings + int(item["quantity"]))
+		if item["id"] in SAPLINGS:
+			_sapling_counts[item["id"]] = int(_sapling_counts.get(item["id"], 0)) + int(item["quantity"])
+			if item["id"] == _planting_sapling:
+				_set_saplings(_saplings + int(item["quantity"]))
 	var gained := int(result["xp"]["xp"]) - int(Game.character.get("xp", 0))
 	if gained > 0:
 		_float_text("+%d XP" % gained, UI.GOLD, _cell_centre(cell), items.size() * 0.25)
@@ -1779,7 +1838,7 @@ func _clear_tile(cell: Vector2i, kind: int) -> void:
 		_hovered = Vector2i(-1, -1)
 	_draw_cell(cell)
 	_set_minimap(cell, NONE)
-	_vanish(sprite_name, cell, kind == TREE)
+	_vanish(sprite_name, cell, kind in TREES)
 
 
 ## A copy of a sprite that falls over (a tree) or sinks into the ground, then disappears.
@@ -1930,6 +1989,48 @@ func _apply_field(reply: Dictionary) -> void:
 
 # --- Forestry -----------------------------------------------------------------------------------
 
+func _apply_pests(pests: Dictionary) -> void:
+	_infested = {}
+	for tile: Dictionary in pests.get("infested", []):
+		_infested[Vector2i(tile["tileX"], tile["tileY"])] = true
+
+
+## What happened in the forest while the player was away: a fire, the bark beetle in a monoculture.
+func _show_forest_news(plot: Dictionary) -> void:
+	var fire: Variant = plot.get("fire")
+	if fire is Dictionary:
+		var when := Time.get_datetime_string_from_unix_time(int(float(fire["at"]) / 1000.0), true).substr(5, 11).replace("T", " ")
+		if fire["stopped"]:
+			_show_toast("Strażnica ugasiła pożar lasu (%s), zanim się rozprzestrzenił." % when, UI.GOLD)
+		else:
+			_show_toast("Pożar lasu (%s)! Spłonęło %d drzew. Przecinki, wieża obserwacyjna i strażnica powstrzymają następny." % [when, int(fire["burnt"])], UI.ERROR)
+	var pests: Dictionary = plot.get("pests", {})
+	if pests.get("monoculture") != null and pests.get("sprayedUntil") == null:
+		_show_toast("Kornik! Twoje drzewa to monokultura (%s): dziś zżera %d z nich. Sadź różne gatunki albo opryskaj las środkiem na kornika." % [
+			SPECIES_NAMES.get(pests["monoculture"], "?").to_lower(), (pests.get("infested", []) as Array).size()], UI.ERROR)
+
+
+## The forest certificate, for the planting button's tooltip.
+func _certificate_note() -> String:
+	var certificate: Dictionary = _plot.get("certificate", {})
+	if certificate.is_empty():
+		return ""
+	if certificate["certified"]:
+		return "\nCertyfikat leśny: masz go, handlarz płaci za drewno, deski i belki o %d%% więcej." % int(certificate["bonusPercent"])
+	return "\nCertyfikat leśny: posadź w %d dni co najmniej %d drzew i nie mniej, niż ściąłeś (teraz %d posadzonych, %d ściętych), a drewno sprzedasz o %d%% drożej." % [
+		int(certificate["days"]), int(certificate["needed"]), int(certificate["planted"]), int(certificate["cut"]), int(certificate["bonusPercent"])]
+
+
+func _spray_forest() -> void:
+	var reply := await Net.request("forest.spray", {"x": _at.x, "y": _at.y})
+	if reply["type"] != "forest.pests":
+		_show_error(reply)
+		return
+	_apply_pests(reply["payload"])
+	_show_toast("Opryskane: kornik nie tknie twoich drzew przez 3 dni.", UI.GOLD)
+	_reload_inventory()
+
+
 ## Turns planting on or off: while on, a click on free ground plants a sapling from the inventory.
 func _set_planting(on: bool) -> void:
 	if on and _tree_grow_seconds <= 0.0:
@@ -1942,8 +2043,10 @@ func _set_planting(on: bool) -> void:
 	if on:
 		_stop_work()
 		_stop_releasing()
-		var minutes := _tree_grow_seconds / 60.0
-		_show_toast("Sadzenie: kliknij wolne pole. Drzewo urośnie tu w %s min." % str(snappedf(minutes, 0.1)).trim_suffix(".0").replace(".", ","))
+		var kind: Dictionary = _tree_kinds.get(_planting_sapling, {})
+		var minutes := _grow_seconds(kind.get("id", "pine")) / 60.0
+		_show_toast("Sadzenie: kliknij wolne pole. %s urośnie tu w %s min." % [SPECIES_NAMES.get(kind.get("id", "pine"), "Drzewo"),
+			str(snappedf(minutes, 0.1)).trim_suffix(".0").replace(".", ",")])
 	_update_plant_button()
 	_update_hint()
 
@@ -1961,24 +2064,32 @@ func _update_plant_button() -> void:
 		return
 	_plant_count.text = str(_saplings)
 	_plant_button.tooltip_text = ("Koniec sadzenia  [P]" if _planting else "Sadź drzewa  [P]") \
-		+ "\nSadzonek: %d. Kupisz je na rynku w garażu albo przy komputerze na działce. Z każdego ściętego drzewa jest szansa na nową." % _saplings
+		+ "\n%s: %d. Kupisz je na rynku w garażu albo przy komputerze na działce. Z każdego ściętego drzewa jest szansa na nową." % [_item_name(_planting_sapling), _saplings] \
+		+ "\nInny gatunek wybierzesz, klikając jego sadzonkę w ekwipunku." + _certificate_note()
 	_plant_button.modulate = Color(0.75, 1.0, 0.6) if _planting else Color.WHITE
 
 
 ## Saplings in the inventory, counted from an "inventory" reply.
 func _count_saplings(items: Array) -> void:
-	var count := 0
+	_sapling_counts = {}
 	for item: Dictionary in items:
-		if item["id"] == "sapling":
-			count += int(item["quantity"])
-	_set_saplings(count)
+		if item["id"] in SAPLINGS:
+			_sapling_counts[item["id"]] = int(_sapling_counts.get(item["id"], 0)) + int(item["quantity"])
+	# Out of the kind being planted, the next kind there is goes in.
+	if int(_sapling_counts.get(_planting_sapling, 0)) == 0:
+		for sapling: String in SAPLINGS:
+			if int(_sapling_counts.get(sapling, 0)) > 0:
+				_planting_sapling = sapling
+				break
+	_set_saplings(int(_sapling_counts.get(_planting_sapling, 0)))
 
 
 func _plant_tree(cell: Vector2i) -> void:
 	if not _can_plant(cell):
 		return
 	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
-	var reply := await Net.request("plot.plantTree", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y})
+	var sapling := _planting_sapling
+	var reply := await Net.request("plot.plantTree", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y, "sapling": sapling})
 	if reply["type"] != "plot.tree":
 		_show_error(reply)
 		return
@@ -1987,14 +2098,16 @@ func _plant_tree(cell: Vector2i) -> void:
 	var tree: Dictionary = result["tree"]
 	var at := Vector2i(tree["tileX"], tree["tileY"])
 	_trees[at] = tree["readyAt"]
+	_tree_species[at] = tree.get("species", "pine")
 	_draw_cell(at)
 	_set_minimap(at, NONE)
-	_float_text("−1 Sadzonka drzewa", UI.MUTED, _cell_centre(at), 0.0, "sapling")
+	_float_text("−1 %s" % _item_name(sapling), UI.MUTED, _cell_centre(at), 0.0, sapling)
 	var gained := int(result["xp"]["xp"]) - int(Game.character.get("xp", 0))
 	if gained > 0:
 		_float_text("+%d XP" % gained, UI.GOLD, _cell_centre(at), 0.25)
 	Game.gain_xp(result["xp"])
 	_refresh_character()
+	_sapling_counts[sapling] = maxi(int(_sapling_counts.get(sapling, 0)) - 1, 0)
 	_set_saplings(_saplings - 1)
 	if _saplings == 0:
 		_show_toast("To była ostatnia sadzonka.", UI.MUTED)
@@ -2264,6 +2377,13 @@ func _place_object(cell: Vector2i) -> void:
 		_show_toast("%s stoi na działce: w oknie stacji [T] wyślesz teraz towar saniami." % object["name"])
 	elif kind in TOURISM:
 		_show_toast("%s przyjmuje turystów. Utarg trafia prosto do portfela, a w noce z zorzą jest potrójny." % object["name"])
+	elif kind == WATCHTOWER:
+		_show_toast("%s stoi na działce: pożar lasu zobaczysz wcześnie, więc spłonie najwyżej %d pól wokół miejsca, gdzie wybuchł." % [object["name"],
+			int(_plot.get("fires", {}).get("watchtowerRadius", 4))])
+	elif kind == FIRE_STATION:
+		_show_toast("%s stoi na działce: drzewa do %d pól wokół niej nigdy nie spłoną." % [object["name"], int(_plot.get("fires", {}).get("stationReach", 12))])
+	elif kind == BEEHIVE:
+		_show_toast("%s stoi na działce: pszczoły same robią miód i wosk, szybciej przy kwitnących lipach. Kliknij go, aby wybrać miód." % object["name"])
 	elif kind == REED_FENCE:
 		_show_toast("%s stoi na działce: osłoni przed burzą piaskową panele 3 pola wokół i wykopane wydmy 4 pola wokół." % object["name"])
 	elif kind in WELLS:
@@ -2309,6 +2429,8 @@ func _use_placed(cell: Vector2i) -> void:
 		_well_window.open_at(_at, object["id"])
 	elif object["kind"] == SHOP:
 		_shop_window.open_at(object["id"])
+	elif object["kind"] == BEEHIVE:
+		_hive_window.open_at(object["id"])
 	elif object["kind"] in DRILLS:
 		_drill_window.open_at(_at, object["id"])
 	elif FORESTERS.has(object["kind"]):
@@ -2318,7 +2440,7 @@ func _use_placed(cell: Vector2i) -> void:
 func _using_window_open() -> bool:
 	return _crafting_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
 		or _splitter_window.visible or _generator_window.visible or _market_window.visible or _forester_window.visible \
-		or _drill_window.visible or _well_window.visible or _shop_window.visible
+		or _drill_window.visible or _well_window.visible or _shop_window.visible or _hive_window.visible
 
 
 func _hide_placed_windows() -> void:
@@ -2330,6 +2452,7 @@ func _hide_placed_windows() -> void:
 	_drill_window.hide_window()
 	_well_window.hide_window()
 	_shop_window.hide_window()
+	_hive_window.hide_window()
 	_storage_window.hide_window()
 	_splitter_window.hide_window()
 	_market_window.hide_window()
@@ -2493,6 +2616,7 @@ func _apply_forestry(forestry: Dictionary) -> void:
 		var felled := _trees.has(cell) and _tree_grown(cell) and float(tree["readyAt"]) > _server_now()
 		var sprite := _sprite_at(cell) if felled else ""
 		_trees[cell] = tree["readyAt"]
+		_tree_species[cell] = tree.get("species", "pine")
 		if _hovered == cell:
 			_hovered = Vector2i(-1, -1)
 		_draw_cell(cell)
@@ -2506,8 +2630,8 @@ func _apply_forestry(forestry: Dictionary) -> void:
 	# Trees that grew here by themselves, cut by a forester.
 	for tile: Dictionary in forestry.get("cleared", []):
 		var cell := Vector2i(tile["tileX"], tile["tileY"])
-		if _tile(cell) == TREE:
-			var wild := _variant(TREE, cell)
+		if _tile(cell) in TREES:
+			var wild := _variant(_tile(cell), cell)
 			_tiles[cell.y * _size + cell.x] = NONE
 			_astar.set_point_solid(cell, _placed.has(cell) and not _walkable(cell))
 			if _chunks.has(Vector2i(cell.x / CHUNK, cell.y / CHUNK)) and not _trees.has(cell):
@@ -3291,7 +3415,7 @@ func _update_hint() -> void:
 		_hint.text = "Stawianie: kliknij wolne pole, aby postawić %s. Esc anuluje." % _item_name(_placing).to_lower()
 		return
 	if _planting:
-		_hint.text = "Sadzenie: kliknij wolne pole, aby posadzić sadzonkę (masz %d). [P] lub Esc kończy." % _saplings
+		_hint.text = "Sadzenie: kliknij wolne pole, aby posadzić: %s (masz %d). [P] lub Esc kończy." % [_item_name(_planting_sapling).to_lower(), _saplings]
 		return
 	if _releasing != "":
 		_hint.text = "Wypuszczanie: kliknij wolne pole, aby wypuścić: %s (masz %d). Esc kończy." % [_item_name(_releasing).to_lower(), _count(_releasing)]
@@ -3372,8 +3496,10 @@ func _build_windows() -> void:
 	_inventory_window.position = Vector2(12, 150)
 	_slots = InventoryGrid.new()
 	_slots.hint = func(item: String) -> String:
-		if item == "sapling":
+		if item in SAPLINGS:
 			return "Kliknij, aby sadzić na działce"
+		if item == INSECTICIDE:
+			return "Kliknij, aby opryskać drzewa na działce przed kornikiem"
 		if ANIMAL_SPRITES.has(item):
 			return "Kliknij, aby wypuścić na działce"
 		if PLACED_SPRITES.has(item) or item in BELTS:
@@ -3384,9 +3510,13 @@ func _build_windows() -> void:
 	_slots.clicked.connect(func(item: String) -> void:
 		if item in ToolSlot.TOOLS or item in ToolSlot.BACKPACKS:
 			_tool_slot.equip(item)
-		elif item == "sapling":
+		elif item in SAPLINGS:
 			_inventory_window.hide_window()
+			_planting_sapling = item
+			_set_saplings(int(_sapling_counts.get(item, 0)))
 			_set_planting(true)
+		elif item == INSECTICIDE:
+			_spray_forest()
 		elif ANIMAL_SPRITES.has(item):
 			_start_releasing(item)
 		elif PLACED_SPRITES.has(item) or item in BELTS:
@@ -3467,6 +3597,11 @@ func _build_windows() -> void:
 	_shop_window.balance_changed.connect(_reload_balance)
 	_shop_window.failed.connect(_show_error)
 	_shop_window.pick_up_requested.connect(_pick_up_placed)
+	_hive_window = HiveWindow.new()
+	_hive_window.position = Vector2(1280 - 400 - 12, 64)
+	_hive_window.inventory_changed.connect(_reload_inventory)
+	_hive_window.failed.connect(_show_error)
+	_hive_window.pick_up_requested.connect(_pick_up_placed)
 	_city_window = CityWindow.new()
 	_city_window.position = Vector2(1280 - 520 - 12, 64)
 	_city_window.inventory_changed.connect(_reload_inventory)
@@ -3581,6 +3716,7 @@ func _load() -> void:
 	_set_balance(int(wallet["payload"]["balanceCents"]))
 	_market_window.set_prices(prices["payload"]["items"])
 	_apply_plot(plot["payload"])
+	_show_forest_news(plot["payload"])
 	_update_market_button()
 	_title.text = "Działka %d × %d" % [_at.x, _at.y]
 	_subtitle.text = "%s  ·  5 × 5 km" % _biome_names.get(int(plot["payload"]["biome"]), "?")

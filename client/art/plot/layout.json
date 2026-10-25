@@ -715,5 +715,73 @@
  "service_workshop": {
   "anchorX": 64,
   "anchorY": 75
+ },
+ "spruce_0": {
+  "anchorX": 112,
+  "anchorY": 226
+ },
+ "spruce_1": {
+  "anchorX": 112,
+  "anchorY": 203
+ },
+ "birch_0": {
+  "anchorX": 112,
+  "anchorY": 203
+ },
+ "birch_1": {
+  "anchorX": 112,
+  "anchorY": 190
+ },
+ "oak_0": {
+  "anchorX": 144,
+  "anchorY": 186
+ },
+ "oak_1": {
+  "anchorX": 144,
+  "anchorY": 173
+ },
+ "linden_0": {
+  "anchorX": 128,
+  "anchorY": 188
+ },
+ "linden_1": {
+  "anchorX": 128,
+  "anchorY": 176
+ },
+ "mushrooms_0": {
+  "anchorX": 48,
+  "anchorY": 43
+ },
+ "mushrooms_1": {
+  "anchorX": 48,
+  "anchorY": 43
+ },
+ "paper_mill": {
+  "anchorX": 72,
+  "anchorY": 108
+ },
+ "carpentry": {
+  "anchorX": 64,
+  "anchorY": 82
+ },
+ "charcoal_kiln": {
+  "anchorX": 64,
+  "anchorY": 73
+ },
+ "tar_kiln": {
+  "anchorX": 64,
+  "anchorY": 75
+ },
+ "beehive": {
+  "anchorX": 40,
+  "anchorY": 59
+ },
+ "fire_watchtower": {
+  "anchorX": 48,
+  "anchorY": 148
+ },
+ "fire_station": {
+  "anchorX": 72,
+  "anchorY": 108
  }
 }

@@ -3626,6 +3626,491 @@ def city_icon_models():
     }
 
 
+# --- Forest ----------------------------------------------------------------------------------------
+
+def spruce(height, width, color):
+    """A spruce: narrow and dark, with many drooping tiers down to the ground."""
+    ra.cylinder("trunk", 0.15, height * 0.3, (0, 0, height * 0.15), bark())
+    leaves = foliage("spruce_needles", color, 0.3)
+    tiers = 7
+    for i in range(tiers):
+        t = i / tiers
+        r = width * (1 - t * 0.85) / 2
+        z = height * (0.08 + t * 0.8)
+        cone = ra.cylinder("tier", r, height * 0.24, (0, 0, z + height * 0.1), leaves, radius2=0.02, verts=14)
+        ra.displace(cone, 0.08, 0.4, 2)
+    return meshes()
+
+
+def birch(height, width, color):
+    """A birch: a slender white trunk with black marks and a light, airy crown."""
+    white = ra.plain("birch_bark", (0.75, 0.73, 0.68), 0.6, variation=0.15, scale=20)
+    black = ra.plain("birch_mark", (0.04, 0.04, 0.04), 0.7)
+    ra.cylinder("trunk", 0.12, height * 0.7, (0, 0, height * 0.35), white)
+    for k in range(6):
+        ra.box("mark", (0.1, 0.02, 0.04), (0, -0.115, 0.4 + k * height * 0.1), black, rotation=(0, 0, random.uniform(-0.6, 0.6)))
+    leaves = foliage("birch_leaves", color, 0.4)
+    for _ in range(7):
+        off = Vector((random.uniform(-0.5, 0.5), random.uniform(-0.5, 0.5), random.uniform(-0.2, 0.5))) * width * 0.4
+        s = ra.sphere("crown", width * random.uniform(0.2, 0.27), Vector((0, 0, height * 0.72)) + off, leaves, scale=(1, 1, 1.3), segments=14)
+        ra.displace(s, 0.2, 0.3, 2)
+    return meshes()
+
+
+def oak(height, width, color):
+    """An oak: a thick, short trunk and a wide, heavy crown."""
+    ra.cylinder("trunk", 0.32, height * 0.45, (0, 0, height * 0.22), bark(), radius2=0.24)
+    for a in (0.6, 2.4, 4.2):
+        ra.cylinder("bough", 0.1, 1.2, (math.cos(a) * 0.4, math.sin(a) * 0.4, height * 0.5), bark(),
+                    rotation=(math.cos(a) * 0.7, math.sin(a) * 0.7, 0), verts=10)
+    leaves = foliage("oak_leaves", color, 0.4)
+    for _ in range(8):
+        off = Vector((random.uniform(-0.6, 0.6), random.uniform(-0.6, 0.6), random.uniform(-0.2, 0.3))) * width * 0.42
+        s = ra.sphere("crown", width * random.uniform(0.26, 0.32), Vector((0, 0, height * 0.68)) + off, leaves, scale=(1.1, 1.1, 0.8), segments=16)
+        ra.displace(s, 0.3, 0.35, 2)
+    return meshes()
+
+
+def linden(height, width, color):
+    """A linden in flower: a round, dense crown sprinkled with pale yellow blossom."""
+    ra.cylinder("trunk", 0.2, height * 0.5, (0, 0, height * 0.25), bark())
+    leaves = foliage("linden_leaves", color, 0.35)
+    blossom = ra.plain("linden_blossom", (0.85, 0.8, 0.35), 0.5, variation=0.2)
+    centre = Vector((0, 0, height * 0.66))
+    s = ra.sphere("crown", width * 0.48, centre, leaves, scale=(1, 1, 1.05), segments=20)
+    ra.displace(s, 0.3, 0.35, 2)
+    for _ in range(40):
+        a, b = random.uniform(0, math.tau), random.uniform(-0.2, 1.2)
+        d = Vector((math.cos(a) * math.cos(b), math.sin(a) * math.cos(b), math.sin(b))) * width * 0.5
+        ra.sphere("bloom", 0.07, centre + d, blossom, segments=6)
+    return meshes()
+
+
+def mushrooms(count, seed):
+    """Mushrooms on the forest floor: brown and red caps among moss."""
+    random.seed(seed)
+    moss = foliage("moss", (0.05, 0.1, 0.03), 0.4)
+    ra.sphere("moss", 0.5, (0, 0, -0.03), moss, scale=(1, 0.8, 0.12), segments=14)
+    stem = ra.plain("mush_stem", (0.8, 0.76, 0.65), 0.6)
+    caps = [ra.plain("mush_cap_brown", (0.32, 0.17, 0.06), 0.5, variation=0.25), ra.plain("mush_cap_red", (0.6, 0.06, 0.03), 0.4)]
+    for k in range(count):
+        a = k / count * math.tau + random.uniform(-0.3, 0.3)
+        r = random.uniform(0.1, 0.32)
+        h = random.uniform(0.12, 0.22)
+        x, y = math.cos(a) * r, math.sin(a) * r * 0.8
+        ra.cylinder("stem", 0.035, h, (x, y, h / 2), stem, verts=10)
+        ra.sphere("cap", random.uniform(0.08, 0.12), (x, y, h), caps[1 if k == 0 and seed % 2 else 0], scale=(1, 1, 0.55),
+                  segments=14, keep=lambda co: co.z >= -0.01)
+    return meshes()
+
+
+FOREST_NATURE = {
+    # name: (canvas width, height, camera target height, builder)
+    "spruce_0": (224, 320, 2.9, lambda: spruce(7.0, 2.4, (0.03, 0.08, 0.045))),
+    "spruce_1": (224, 288, 2.6, lambda: spruce(6.2, 2.2, (0.035, 0.09, 0.05))),
+    "birch_0": (224, 288, 2.6, lambda: birch(5.8, 2.4, (0.16, 0.24, 0.06))),
+    "birch_1": (224, 272, 2.4, lambda: birch(5.2, 2.2, (0.18, 0.26, 0.07))),
+    "oak_0": (288, 272, 2.2, lambda: oak(5.0, 3.6, (0.07, 0.12, 0.03))),
+    "oak_1": (288, 256, 2.0, lambda: oak(4.6, 3.3, (0.08, 0.13, 0.035))),
+    "linden_0": (256, 272, 2.3, lambda: linden(5.2, 3.0, (0.09, 0.16, 0.04))),
+    "linden_1": (256, 256, 2.1, lambda: linden(4.8, 2.8, (0.1, 0.17, 0.045))),
+    "mushrooms_0": (96, 80, 0.15, lambda: mushrooms(4, 1)),
+    "mushrooms_1": (96, 80, 0.15, lambda: mushrooms(3, 2)),
+}
+
+
+def forest_mats():
+    return {
+        "timber": ra.wood("fo_timber", (0.28, 0.17, 0.08)),
+        "dark_timber": ra.wood("fo_dark_timber", (0.14, 0.08, 0.04)),
+        "planks": ra.wood("fo_planks", (0.4, 0.27, 0.13)),
+        "roof": ra.plain("fo_roof", (0.18, 0.08, 0.05), 0.8, variation=0.2, scale=12, bump=0.4),
+        "shingle": ra.plain("fo_shingle", (0.12, 0.1, 0.08), 0.85, variation=0.25, scale=16, bump=0.5),
+        "brick": ra.plain("fo_brick", (0.36, 0.13, 0.07), 0.9, variation=0.35, scale=10, bump=0.5),
+        "red": ra.plain("fo_red", (0.55, 0.05, 0.03), 0.45, variation=0.1),
+        "white": ra.plain("fo_white", (0.78, 0.76, 0.7), 0.6),
+        "iron": ra.rusty_metal("fo_iron", (0.12, 0.12, 0.13), rust=0.3),
+        "earth": soil_mat(),
+        "paper": ra.plain("fo_paper", (0.82, 0.8, 0.74), 0.7, variation=0.05),
+        "honey": ra.plain("fo_honey", (0.75, 0.42, 0.04), 0.2, variation=0.1),
+        "window": ra.emission("fo_window", (1.0, 0.75, 0.4), 1.6),
+        "glass": ra.plain("fo_glass", (0.08, 0.12, 0.16), 0.1, 0.4),
+        "tar": ra.plain("fo_tar", (0.015, 0.012, 0.01), 0.15, variation=0.1),
+        "smoke": ra.plain("fo_smoke", (0.35, 0.34, 0.33), 0.9, variation=0.2),
+        "ember": ra.emission("fo_ember", (1.0, 0.35, 0.06), 4.0),
+    }
+
+
+def log_pile(at, count, mat, r=0.08, length=0.6):
+    x0, y0 = at
+    for k in range(count):
+        row = 0 if k < (count + 1) // 2 else 1
+        i = k if row == 0 else k - (count + 1) // 2
+        ra.cylinder("log", r, length, (x0 + (i - count / 4) * r * 2.1 + row * r, y0, r + row * r * 1.8), mat, rotation=(math.radians(90), 0, 0), verts=10)
+
+
+def build_paper_mill():
+    """A paper mill: a long brick hall with a tall chimney, a water tank, and rolls of paper waiting outside."""
+    m = forest_mats()
+    ra.box("pm_pad", (1.8, 1.5, 0.05), (0, 0, 0.025), ra.concrete_floor())
+    ra.box("pm_hall", (1.5, 0.9, 0.9), (0, 0.15, 0.5), m["brick"], bevel=0.02)
+    gable_roof("pm_roof", 1.5, 0.9, 0.95, 1.3, m["roof"], at=(0, 0.15))
+    for x in (-0.45, 0.0, 0.45):
+        ra.box("pm_window", (0.25, 0.02, 0.3), (x, -0.31, 0.55), m["window"])
+    ra.cylinder("pm_chimney", 0.11, 1.6, (0.6, 0.4, 1.25), m["brick"], verts=14)
+    ra.cylinder("pm_tank", 0.22, 0.6, (-0.7, 0.45, 0.35), m["iron"], verts=20)
+    for k in range(3):
+        ra.cylinder("pm_roll", 0.13, 0.35, (-0.45 + k * 0.3, -0.55, 0.13), m["paper"], rotation=(0, math.radians(90), 0), verts=20)
+
+
+def build_carpentry():
+    """A carpenter's shop: a timber shed open at the front, a bench with a chair being made, planks stacked at its side."""
+    m = forest_mats()
+    ra.box("cp_floor", (1.5, 1.2, 0.06), (0, 0, 0.03), m["planks"])
+    for x in (-0.65, 0.65):
+        for y in (-0.5, 0.5):
+            ra.box("cp_post", (0.08, 0.08, 1.0), (x, y, 0.53), m["timber"])
+    ra.box("cp_back", (1.38, 0.05, 0.95), (0, 0.5, 0.53), m["timber"])
+    gable_roof("cp_roof", 1.4, 1.1, 1.03, 1.4, m["shingle"])
+    ra.box("cp_bench", (0.8, 0.35, 0.05), (0, 0.2, 0.42), m["dark_timber"])
+    for x in (-0.35, 0.35):
+        ra.box("cp_leg", (0.05, 0.3, 0.38), (x, 0.2, 0.22), m["dark_timber"])
+    # A chair on the floor in front.
+    ra.box("cp_seat", (0.25, 0.25, 0.03), (0.3, -0.25, 0.25), m["planks"])
+    ra.box("cp_chair_back", (0.25, 0.03, 0.3), (0.3, -0.14, 0.4), m["planks"])
+    for dx in (-0.1, 0.1):
+        for dy in (-0.1, 0.1):
+            ra.box("cp_chair_leg", (0.03, 0.03, 0.24), (0.3 + dx, -0.25 + dy, 0.12), m["planks"])
+    for k in range(4):
+        ra.box("cp_stack", (0.2, 0.9, 0.04), (-0.85, 0, 0.05 + k * 0.05), m["planks"])
+
+
+def build_charcoal_kiln():
+    """A charcoal kiln: a mound of earth over stacked wood, smoking from its top, with logs and sacks of charcoal by it."""
+    m = forest_mats()
+    mound = ra.sphere("ck_mound", 0.7, (0, 0.1, 0.0), m["earth"], scale=(1, 1, 0.75), segments=24, keep=lambda co: co.z >= -0.01)
+    ra.displace(mound, 0.05, 0.3, 1)
+    ra.cylinder("ck_vent", 0.06, 0.06, (0, 0.1, 0.53), m["ember"], verts=10)
+    for k in range(3):
+        ra.sphere("ck_smoke", 0.12 + k * 0.05, (0.05 * k, 0.1, 0.65 + k * 0.22), m["smoke"], segments=10)
+    log_pile((-0.6, -0.5), 5, bark(), r=0.07, length=0.5)
+    for k in range(2):
+        ra.sphere("ck_sack", 0.13, (0.45 + k * 0.25, -0.55, 0.12), ra.plain("ck_burlap", (0.3, 0.24, 0.14), 0.9, bump=0.4),
+                  scale=(1, 0.8, 1), segments=12)
+
+
+def build_tar_kiln():
+    """A tar kiln: a squat brick oven with a fire under it, a pipe dripping into barrels of tar."""
+    m = forest_mats()
+    ra.box("tk_pad", (1.5, 1.3, 0.05), (0, 0, 0.025), ra.concrete_floor())
+    ra.cylinder("tk_oven", 0.5, 0.8, (0, 0.15, 0.45), m["brick"], radius2=0.38, verts=24)
+    ra.sphere("tk_dome", 0.38, (0, 0.15, 0.85), m["brick"], scale=(1, 1, 0.6), segments=18)
+    ra.box("tk_firedoor", (0.25, 0.04, 0.18), (0, -0.33, 0.2), m["iron"])
+    ra.box("tk_glow", (0.18, 0.03, 0.06), (0, -0.35, 0.18), m["ember"])
+    ra.cylinder("tk_pipe", 0.04, 0.6, (0.45, -0.1, 0.4), m["iron"], rotation=(0, math.radians(70), 0), verts=10)
+    for k in range(2):
+        ra.cylinder("tk_barrel", 0.15, 0.38, (0.6 + k * 0.08, -0.45 + k * 0.33, 0.2), m["dark_timber"], verts=18)
+        ra.cylinder("tk_tar", 0.13, 0.02, (0.6 + k * 0.08, -0.45 + k * 0.33, 0.39), m["tar"], verts=18)
+
+
+def build_beehive():
+    """A beehive: a stack of painted wooden boxes on a stand, a sloping lid, bees' landing board and a few bees about."""
+    m = forest_mats()
+    ra.box("bh_stand", (0.55, 0.5, 0.2), (0, 0, 0.1), m["dark_timber"])
+    colours = [(0.75, 0.6, 0.15), (0.2, 0.4, 0.55), (0.75, 0.6, 0.15)]
+    for k, c in enumerate(colours):
+        ra.box("bh_box", (0.5, 0.45, 0.2), (0, 0, 0.3 + k * 0.21), ra.plain(f"bh_paint{k}", c, 0.6, variation=0.2), bevel=0.01)
+    ra.box("bh_lid", (0.6, 0.55, 0.06), (0, 0, 0.96), m["roof"], rotation=(math.radians(6), 0, 0))
+    ra.box("bh_board", (0.3, 0.1, 0.02), (0, -0.27, 0.22), m["planks"])
+    bee = ra.plain("bh_bee", (0.6, 0.45, 0.02), 0.4)
+    for k in range(5):
+        ra.sphere("bh_bee", 0.02, (random.uniform(-0.3, 0.3), -0.35 - random.uniform(0, 0.2), 0.3 + random.uniform(0, 0.5)), bee, segments=6)
+
+
+def build_fire_watchtower():
+    """A fire watchtower: four tall timber legs braced across, a ladder, and a cabin with windows all round on top."""
+    m = forest_mats()
+    top = 2.6
+    for x in (-0.3, 0.3):
+        for y in (-0.3, 0.3):
+            ra.box("wt_leg", (0.07, 0.07, top), (x * (1 + 0.15), y * (1 + 0.15), top / 2), m["timber"])
+    for z in (0.7, 1.4, 2.1):
+        for along in (0, 1):
+            ra.box("wt_brace", (0.75 if along == 0 else 0.05, 0.05 if along == 0 else 0.75, 0.05), (0, 0, z), m["timber"])
+            ra.box("wt_brace2", (0.75 if along == 0 else 0.05, 0.05 if along == 0 else 0.75, 0.05),
+                   (0, 0.35 if along == 0 else 0, z) if along == 0 else (0.35, 0, z), m["timber"])
+    ra.box("wt_floor", (0.85, 0.85, 0.06), (0, 0, top), m["planks"])
+    ra.box("wt_cabin", (0.75, 0.75, 0.45), (0, 0, top + 0.25), m["planks"])
+    for side in ((0, -0.38), (0.38, 0), (0, 0.38), (-0.38, 0)):
+        ra.box("wt_window", (0.5 if side[1] else 0.02, 0.02 if side[1] else 0.5, 0.2), (side[0], side[1], top + 0.32), m["glass"])
+    gable_roof("wt_roof", 0.75, 0.75, top + 0.48, top + 0.75, m["shingle"])
+    for k in range(8):
+        ra.box("wt_rung", (0.25, 0.03, 0.03), (0, -0.5, 0.2 + k * 0.3), m["timber"])
+    ra.box("wt_flag", (0.15, 0.01, 0.1), (0.08, 0.0, top + 0.95), m["red"])
+    ra.cylinder("wt_pole", 0.01, 0.35, (0, 0, top + 0.85), m["iron"], verts=6)
+
+
+def build_fire_station():
+    """A forest fire station: a red brick depot with a big garage door, a fire engine peeking out and a hose-drying tower."""
+    m = forest_mats()
+    ra.box("fs_pad", (1.7, 1.5, 0.05), (0, 0, 0.025), ra.concrete_floor())
+    ra.box("fs_hall", (1.2, 1.0, 0.9), (-0.15, 0.15, 0.5), m["brick"], bevel=0.02)
+    gable_roof("fs_roof", 1.2, 1.0, 0.95, 1.25, m["roof"], at=(-0.15, 0.15))
+    ra.box("fs_door", (0.7, 0.02, 0.6), (-0.15, -0.36, 0.35), ra.corrugated("fs_roller", (0.55, 0.06, 0.04), 0.05))
+    ra.box("fs_engine", (0.55, 0.3, 0.28), (-0.15, -0.55, 0.2), m["red"], bevel=0.03)
+    ra.box("fs_cab_glass", (0.2, 0.31, 0.1), (0.05, -0.55, 0.32), m["glass"])
+    for x in (-0.33, 0.03):
+        ra.cylinder("fs_wheel", 0.07, 0.32, (x, -0.55, 0.07), ra.plain("fs_tyre", (0.02, 0.02, 0.02), 0.8), rotation=(math.radians(90), 0, 0), verts=14)
+    ra.box("fs_tower", (0.35, 0.35, 1.7), (0.6, 0.35, 0.9), m["brick"], bevel=0.01)
+    gable_roof("fs_tower_roof", 0.35, 0.35, 1.75, 1.95, m["roof"], at=(0.6, 0.35))
+    ra.box("fs_sign", (0.5, 0.02, 0.12), (-0.15, -0.36, 0.8), m["white"])
+
+
+FOREST = {
+    # name: (canvas width, height, camera target height, builder); each stands on one tile.
+    "paper_mill": (144, 176, 0.9, build_paper_mill),
+    "carpentry": (128, 136, 0.6, build_carpentry),
+    "charcoal_kiln": (128, 128, 0.4, build_charcoal_kiln),
+    "tar_kiln": (128, 128, 0.5, build_tar_kiln),
+    "beehive": (80, 96, 0.5, build_beehive),
+    "fire_watchtower": (96, 224, 1.6, build_fire_watchtower),
+    "fire_station": (144, 176, 0.9, build_fire_station),
+}
+
+
+def render_forest(layout: dict, only=()):
+    for name, (w, h, tz, build) in FOREST_NATURE.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), build)
+    for name, (w, h, tz, build) in FOREST.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build), true_scale=True)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
+
+
+def forest_icon_models():
+    """Icons of what the forest gives and what is made of it."""
+    def sapling_of(color, white=False):
+        def build():
+            ball = ra.sphere("ball", 0.13, (0, 0, 0.05), soil_mat(), scale=(1, 1, 0.75), segments=16)
+            ra.displace(ball, 0.015, 0.2, 1)
+            stem = ra.plain("ic_birch_stem", (0.8, 0.78, 0.72), 0.6) if white else bark()
+            ra.cylinder("stem", 0.014, 0.3, (0, 0, 0.2), stem, verts=6)
+            leaves = foliage("ic_sapling_leaves", color, 0.35)
+            for k in range(4):
+                a = k / 4 * math.tau
+                ra.sphere("leaf", 0.07, (math.cos(a) * 0.06, math.sin(a) * 0.06, 0.3 + (k % 2) * 0.05), leaves, scale=(1, 0.6, 0.4), segments=10)
+        return build
+
+    def spruce_sapling():
+        ball = ra.sphere("ball", 0.13, (0, 0, 0.05), soil_mat(), scale=(1, 1, 0.75), segments=16)
+        ra.displace(ball, 0.015, 0.2, 1)
+        needles = foliage("ic_spruce", (0.03, 0.09, 0.05), 0.3)
+        for i in range(4):
+            t = i / 4
+            ra.cylinder("tier", 0.11 * (1 - t * 0.7), 0.12, (0, 0, 0.15 + t * 0.1), needles, radius2=0.01, verts=12)
+
+    def logs(color):
+        def build():
+            bark_m = ra.plain("ic_oak_bark", (0.1, 0.07, 0.05), 0.9, variation=0.4, scale=30, bump=0.6)
+            cut = ra.wood("ic_oak_cut", color)
+            for x, z in ((-0.1, 0.07), (0.1, 0.07), (0.0, 0.2)):
+                ra.cylinder("log", 0.09, 0.45, (x, 0, z), bark_m, rotation=(math.radians(90), 0, 0))
+                for y in (-0.226, 0.226):
+                    ra.cylinder("end", 0.085, 0.005, (x, y, z), cut, rotation=(math.radians(90), 0, 0))
+        return build
+
+    def jar_of(color, lid=(0.65, 0.5, 0.1)):
+        def build():
+            glass = ra.plain("ic_jar_glass", (0.7, 0.75, 0.78), 0.05, variation=0.05, grime=0.1)
+            ra.cylinder("jar", 0.13, 0.28, (0, 0, 0.14), glass, verts=24)
+            ra.cylinder("fill", 0.12, 0.24, (0, 0, 0.13), ra.plain("ic_jar_fill", color, 0.2, variation=0.1), verts=24)
+            ra.cylinder("lid", 0.12, 0.05, (0, 0, 0.3), ra.plain("ic_jar_lid", lid, 0.4, 0.5), verts=24)
+        return build
+
+    def bottle_of(color):
+        def build():
+            glass = ra.plain("ic_bottle", color, 0.08, variation=0.05, grime=0.1)
+            ra.cylinder("bottle", 0.08, 0.28, (0, 0, 0.14), glass, verts=20)
+            ra.cylinder("shoulder", 0.08, 0.08, (0, 0, 0.32), glass, radius2=0.03, verts=20)
+            ra.cylinder("neck", 0.03, 0.08, (0, 0, 0.4), glass, verts=12)
+            ra.cylinder("cork", 0.032, 0.05, (0, 0, 0.46), ra.wood("ic_cork", (0.45, 0.32, 0.18)), verts=12)
+        return build
+
+    def bowl_of(color, bits):
+        def build():
+            ceramic = ra.plain("ic_bowl", (0.75, 0.72, 0.65), 0.3, variation=0.05)
+            ra.sphere("bowl", 0.22, (0, 0, 0.2), ceramic, scale=(1, 1, 0.75), segments=28, keep=lambda co: co.z <= 0.01)
+            ra.cylinder("soup", 0.2, 0.02, (0, 0, 0.19), ra.plain("ic_soup", color, 0.2, variation=0.1), verts=28)
+            m = ra.plain("ic_bit", bits, 0.6)
+            for _ in range(10):
+                a, r = random.random() * math.tau, random.uniform(0, 0.14)
+                ra.sphere("bit", 0.025, (math.cos(a) * r, math.sin(a) * r, 0.205), m, scale=(1.3, 1, 0.5), segments=8)
+        return build
+
+    def heap_of(color, size, count, flat=1.0):
+        def build():
+            m = ra.plain("ic_heap", color, 0.4, variation=0.3)
+            for i in range(count):
+                a, r = random.uniform(0, math.tau), random.uniform(0, 0.15)
+                ra.sphere("bit", size * random.uniform(0.8, 1.2), (math.cos(a) * r, math.sin(a) * r, size + (i % 3) * size * 0.8), m,
+                          scale=(1, 1, flat), segments=10)
+        return build
+
+    def mushroom_icon():
+        stem = ra.plain("ic_mush_stem", (0.8, 0.76, 0.65), 0.6)
+        cap = ra.plain("ic_mush_cap", (0.35, 0.18, 0.06), 0.5, variation=0.25)
+        for x, h, r in ((-0.08, 0.2, 0.12), (0.1, 0.14, 0.09)):
+            ra.cylinder("stem", 0.04, h, (x, 0, h / 2), stem, verts=12)
+            ra.sphere("cap", r, (x, 0, h), cap, scale=(1, 1, 0.55), segments=16, keep=lambda co: co.z >= -0.01)
+
+    def herbs():
+        leaves = foliage("ic_herbs", (0.12, 0.3, 0.08), 0.3)
+        string = ra.plain("ic_string", (0.6, 0.5, 0.3), 0.8)
+        for k in range(5):
+            ra.cylinder("stalk", 0.008, 0.35, (math.cos(k) * 0.03, 0, 0.18), leaves, rotation=(0, (k - 2) * 0.15, 0), verts=6)
+            ra.sphere("leaf", 0.05, ((k - 2) * 0.05, 0, 0.33), leaves, scale=(1, 0.5, 1.4), segments=8)
+        ra.cylinder("tie", 0.035, 0.03, (0, 0, 0.12), string, verts=10)
+
+    def paper_stack():
+        m = ra.plain("ic_paper", (0.85, 0.84, 0.8), 0.7, variation=0.04)
+        for k in range(6):
+            ra.box("sheet", (0.36, 0.28, 0.012), (random.uniform(-0.01, 0.01), 0, 0.01 + k * 0.014), m, rotation=(0, 0, random.uniform(-0.05, 0.05)))
+        ra.box("band", (0.04, 0.29, 0.1), (0, 0, 0.045), ra.plain("ic_band", (0.6, 0.1, 0.06), 0.6))
+
+    def cardboard():
+        m = ra.plain("ic_cardboard", (0.5, 0.35, 0.18), 0.85, variation=0.1, bump=0.2)
+        ra.box("box", (0.36, 0.28, 0.24), (0, 0, 0.12), m, bevel=0.01)
+        ra.box("tape", (0.37, 0.05, 0.005), (0, 0, 0.243), ra.plain("ic_tape", (0.75, 0.62, 0.35), 0.3))
+
+    def pulp():
+        ra.cylinder("tub", 0.17, 0.2, (0, 0, 0.1), ra.rusty_metal("ic_tub", (0.4, 0.42, 0.45), rust=0.1), verts=24)
+        mush = ra.sphere("pulp", 0.16, (0, 0, 0.19), ra.plain("ic_pulp", (0.7, 0.68, 0.6), 0.9, bump=0.5), scale=(1, 1, 0.4), segments=16)
+        ra.displace(mush, 0.02, 0.1, 1)
+
+    def chair():
+        m = ra.wood("ic_chair", (0.35, 0.2, 0.09))
+        ra.box("seat", (0.26, 0.26, 0.03), (0, 0, 0.22), m)
+        ra.box("back", (0.26, 0.03, 0.26), (0, 0.12, 0.37), m)
+        for dx in (-0.11, 0.11):
+            for dy in (-0.11, 0.11):
+                ra.box("leg", (0.03, 0.03, 0.22), (dx, dy, 0.11), m)
+
+    def table():
+        m = ra.wood("ic_table", (0.35, 0.2, 0.09))
+        ra.box("top", (0.42, 0.3, 0.03), (0, 0, 0.24), m, bevel=0.005)
+        for dx in (-0.18, 0.18):
+            for dy in (-0.12, 0.12):
+                ra.box("leg", (0.035, 0.035, 0.23), (dx, dy, 0.115), m)
+
+    def wardrobe():
+        m = ra.wood("ic_wardrobe", (0.3, 0.17, 0.08))
+        ra.box("body", (0.3, 0.18, 0.46), (0, 0, 0.23), m, bevel=0.01)
+        ra.box("split", (0.005, 0.185, 0.4), (0, 0, 0.24), ra.wood("ic_wardrobe_dark", (0.12, 0.07, 0.03)))
+        for x in (-0.03, 0.03):
+            ra.sphere("knob", 0.012, (x, -0.095, 0.25), ra.plain("ic_brass", (0.6, 0.42, 0.12), 0.35, 0.9), segments=8)
+
+    def dresser():
+        m = ra.wood("ic_dresser", (0.4, 0.25, 0.1))
+        ra.box("body", (0.42, 0.24, 0.3), (0, 0, 0.17), m, bevel=0.01)
+        for k in range(3):
+            ra.box("drawer", (0.38, 0.01, 0.07), (0, -0.122, 0.07 + k * 0.09), ra.wood("ic_drawer", (0.3, 0.18, 0.07)))
+            ra.sphere("knob", 0.012, (0, -0.13, 0.07 + k * 0.09), ra.plain("ic_brass2", (0.6, 0.42, 0.12), 0.35, 0.9), segments=8)
+        for dx in (-0.18, 0.18):
+            ra.box("foot", (0.04, 0.04, 0.03), (dx, 0, 0.015), m)
+
+    def charcoal():
+        m = ra.plain("ic_charcoal", (0.02, 0.018, 0.016), 0.5, variation=0.4, bump=0.9)
+        for k in range(5):
+            ra.box("chunk", (0.14, 0.07, 0.07), (random.uniform(-0.1, 0.1), random.uniform(-0.08, 0.08), 0.04 + (k % 2) * 0.06), m,
+                   bevel=0.01, rotation=(0, 0, random.uniform(0, 3)))
+
+    def wax():
+        m = ra.plain("ic_wax", (0.8, 0.65, 0.25), 0.4, variation=0.1)
+        ra.box("block", (0.3, 0.2, 0.12), (0, 0, 0.06), m, bevel=0.02)
+        for k in range(4):
+            ra.box("cell", (0.05, 0.05, 0.01), (-0.08 + k * 0.055, 0, 0.122), ra.plain("ic_wax_cell", (0.7, 0.5, 0.15), 0.4))
+
+    def candles():
+        m = ra.plain("ic_candle", (0.85, 0.78, 0.55), 0.4)
+        for x, h in ((-0.07, 0.34), (0.07, 0.26)):
+            ra.cylinder("candle", 0.04, h, (x, 0, h / 2), m, verts=14)
+            ra.sphere("flame", 0.02, (x, 0, h + 0.03), ra.emission("ic_flame", (1.0, 0.65, 0.2), 6.0), scale=(1, 1, 1.8), segments=8)
+
+    def gingerbread():
+        m = ra.plain("ic_ginger", (0.36, 0.18, 0.06), 0.7, variation=0.15, bump=0.2)
+        icing = ra.plain("ic_icing", (0.9, 0.88, 0.85), 0.4)
+        ra.cylinder("cookie", 0.15, 0.04, (0, 0, 0.02), m, verts=24)
+        ra.torus("icing", 0.12, 0.008, (0, 0, 0.042), icing)
+
+    def pierogi():
+        plate = ra.plain("ic_plate", (0.8, 0.78, 0.72), 0.3, variation=0.05)
+        ra.cylinder("plate", 0.24, 0.02, (0, 0, 0.01), plate, verts=28)
+        dough = ra.plain("ic_dough", (0.85, 0.78, 0.6), 0.6)
+        for k in range(4):
+            a = k / 4 * math.tau
+            ra.sphere("pieróg", 0.08, (math.cos(a) * 0.1, math.sin(a) * 0.1, 0.04), dough, scale=(1.3, 0.7, 0.45), segments=12)
+        ra.sphere("berries", 0.03, (0, 0, 0.05), ra.plain("ic_berry", (0.08, 0.05, 0.2), 0.3), segments=8)
+
+    def tea():
+        cup = ra.plain("ic_cup", (0.8, 0.78, 0.72), 0.3)
+        ra.cylinder("cup", 0.12, 0.16, (0, 0, 0.08), cup, radius2=0.1, verts=24)
+        ra.cylinder("tea", 0.11, 0.01, (0, 0, 0.155), ra.plain("ic_tea", (0.45, 0.3, 0.05), 0.1), verts=24)
+        ra.torus("handle", 0.05, 0.012, (0.13, 0, 0.09), cup, rotation=(math.radians(90), 0, 0))
+
+    def spray():
+        can = ra.plain("ic_spray", (0.15, 0.45, 0.15), 0.4, 0.3)
+        ra.cylinder("can", 0.08, 0.32, (0, 0, 0.16), can, verts=20)
+        ra.cylinder("top", 0.06, 0.05, (0, 0, 0.34), ra.plain("ic_spray_top", (0.85, 0.85, 0.82), 0.4), verts=16)
+        ra.box("label", (0.01, 0.12, 0.12), (-0.08, 0, 0.16), ra.plain("ic_spray_label", (0.8, 0.7, 0.1), 0.5))
+
+    def barrel_of(top):
+        def build():
+            m = ra.wood("ic_barrel", (0.2, 0.11, 0.05))
+            ra.cylinder("barrel", 0.15, 0.36, (0, 0, 0.18), m, verts=20)
+            for z in (0.06, 0.3):
+                ra.cylinder("hoop", 0.155, 0.02, (0, 0, z), ra.rusty_metal("ic_hoop", (0.15, 0.15, 0.16), rust=0.3), verts=20)
+            ra.cylinder("top", 0.14, 0.01, (0, 0, 0.36), ra.plain("ic_barrel_top", top, 0.1), verts=20)
+        return build
+
+    def rosin():
+        m = ra.plain("ic_rosin", (0.6, 0.3, 0.04), 0.15, variation=0.2)
+        for k in range(3):
+            s = ra.box("lump", (0.12, 0.1, 0.08), (-0.1 + k * 0.1, (k % 2) * 0.05, 0.05), m, bevel=0.02, rotation=(0, 0, k))
+            ra.displace(s, 0.01, 0.2, 1)
+
+    def resin():
+        m = ra.plain("ic_resin", (0.7, 0.4, 0.05), 0.1, variation=0.2)
+        ra.sphere("drop", 0.12, (0, 0, 0.12), m, scale=(1, 1, 1.2), segments=16)
+        ra.cylinder("tip", 0.1, 0.12, (0, 0, 0.25), m, radius2=0.01, verts=16)
+
+    return {
+        "item_sapling_spruce": spruce_sapling,
+        "item_sapling_birch": sapling_of((0.2, 0.32, 0.08), white=True),
+        "item_sapling_oak": sapling_of((0.1, 0.2, 0.05)),
+        "item_sapling_linden": sapling_of((0.14, 0.26, 0.06)),
+        "item_oak_wood": logs((0.42, 0.28, 0.12)),
+        "item_resin": resin, "item_pulp": pulp, "item_paper": paper_stack, "item_cardboard": cardboard,
+        "item_chair": chair, "item_table": table, "item_wardrobe": wardrobe, "item_oak_dresser": dresser,
+        "item_charcoal": charcoal, "item_mushrooms": mushroom_icon,
+        "item_berries": heap_of((0.08, 0.05, 0.22), 0.035, 18),
+        "item_herbs": herbs,
+        "item_mushroom_soup": bowl_of((0.45, 0.32, 0.18), (0.3, 0.17, 0.07)),
+        "item_berry_pierogi": pierogi,
+        "item_herbal_tea": tea,
+        "item_honey": jar_of((0.75, 0.42, 0.04)),
+        "item_wax": wax, "item_gingerbread": gingerbread, "item_candles": candles,
+        "item_tar": barrel_of((0.015, 0.012, 0.01)),
+        "item_turpentine": bottle_of((0.6, 0.55, 0.3)),
+        "item_rosin": rosin,
+        "item_insecticide": spray,
+    }
+
+
 # --- Power ----------------------------------------------------------------------------------------
 
 def build_generator():
@@ -4284,7 +4769,7 @@ def icon_models():
 
 def render_icons(only=()):
     ICONS.mkdir(parents=True, exist_ok=True)
-    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models(), **city_icon_models()}.items():
+    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models(), **city_icon_models(), **forest_icon_models()}.items():
         if only and name not in only:
             continue
         random.seed(zlib.crc32(name.encode()))
@@ -4296,7 +4781,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "office", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "office", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -4350,6 +4835,10 @@ if __name__ == "__main__":
     if "city" in args or any(a in CITY for a in args):
         # Names of city sprites render just those.
         render_city(layout, [a for a in args if a in CITY])
+    forest = {**FOREST_NATURE, **FOREST}
+    if "forest" in args or any(a in forest for a in args):
+        # Names of forest sprites render just those.
+        render_forest(layout, [a for a in args if a in forest])
     if "logistics" in args or any(a in LOGISTICS for a in args):
         # Names of logistics sprites render just those.
         render_logistics(layout, [a for a in args if a in LOGISTICS])
