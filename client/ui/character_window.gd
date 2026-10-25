@@ -2,14 +2,14 @@ class_name CharacterWindow
 extends GameWindow
 ## The player's character, opened from the portrait in the corner: the clothes worn on the head,
 ## body, legs and feet with the bonuses they give the industries, and a new look (face, hair,
-## colours) for a fee, what every fifth level adds to the same bonuses, and what the last updates
-## changed. Clothes are sewn in the tailor's workshop in town or bought.
+## colours) for a fee, what every fifth level adds to the same bonuses, what the last updates
+## changed, and the compendium of every item (CompendiumPage). Clothes are sewn in the tailor's workshop in town or bought.
 
 signal failed(reply: Dictionary)
 ## After paying for a new look, so the money shown follows.
 signal balance_changed
 
-const TABS := ["Ubrania", "Wygląd", "Poziomy", "Co nowego"]
+const TABS := ["Ubrania", "Wygląd", "Poziomy", "Co nowego", "Kompendium"]
 const SLOTS := ["head", "body", "legs", "feet"]
 const SLOT_NAMES := {"head": "Głowa", "body": "Tułów", "legs": "Nogi", "feet": "Stopy"}
 ## How each industry's bonus reads.
@@ -31,6 +31,10 @@ const EAT := 2000
 const CHANGELOG_FILE := "res://data/changelog.json"
 ## How many of the newest updates the "Co nowego" tab shows.
 const CHANGELOG_SIZE := 10
+const COMPENDIUM := 4
+## The window's width, and its width on the compendium, which needs room for three columns.
+const WIDTH := 720
+const COMPENDIUM_WIDTH := 1060
 
 var _tab := 0
 var _tab_buttons: Array[Button] = []
@@ -39,6 +43,7 @@ var _clothes_page := VBoxContainer.new()
 var _look_page := VBoxContainer.new()
 var _levels_page := VBoxContainer.new()
 var _news_page := VBoxContainer.new()
+var _compendium_page := CompendiumPage.new()
 var _level_summary := VBoxContainer.new()
 var _level_rows := VBoxContainer.new()
 var _level_heading := UI.label("", UI.GOLD)
@@ -56,14 +61,14 @@ var _eat: Button
 
 
 func _init() -> void:
-	super("Postać", 0 if UI.touch() else 720)
+	super("Postać", 0 if UI.touch() else WIDTH)
 	if UI.touch():
 		fill_margin = Vector2(24, 16)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 4)
 	for i in TABS.size():
 		var b := UI.button(TABS[i], _open_tab.bind(i))
-		b.custom_minimum_size.x = 120 if UI.touch() else 150
+		b.custom_minimum_size.x = 120 if UI.touch() else 135
 		top.add_child(b)
 		_tab_buttons.append(b)
 	content.add_child(top)
@@ -84,6 +89,7 @@ func _init() -> void:
 	pages.add_child(_look_page)
 	pages.add_child(_levels_page)
 	pages.add_child(_news_page)
+	pages.add_child(_compendium_page)
 	columns.add_child(pages)
 	_build_clothes()
 	_build_look()
@@ -113,8 +119,14 @@ func _open_tab(tab: int) -> void:
 	_look_page.visible = _tab == 1
 	_levels_page.visible = _tab == 2
 	_news_page.visible = _tab == 3
-	# The updates read better across the whole window.
-	_preview.visible = _tab != 3
+	_compendium_page.visible = _tab == COMPENDIUM
+	# The updates and the compendium read better across the whole window.
+	_preview.visible = _tab < 3
+	if not UI.touch():
+		custom_minimum_size.x = COMPENDIUM_WIDTH if _tab == COMPENDIUM else WIDTH
+		_fit.call_deferred()
+	if _tab == COMPENDIUM:
+		_compendium_page.refresh()
 	_refresh()
 
 

@@ -86,6 +86,8 @@ const ITEMS := {
 			"Stół warsztatowy: 15 × sztabka żelaza + 10 × kamień (60 s). Kupisz też u handlarza za 500 $."],
 	"furniture_research_table": ["Stół badawczy", "Tu badasz technologie z drzewka: odblokowują przepisy, maszyny i towary na rynku. Postawisz go w garażu albo na działce.",
 			"Jest w garażu od początku. Drugi kupisz u handlarza za 2000 $."],
+	"furniture_wardrobe": ["Szafa na ubrania", "Stoi w garażu: trzyma do 60 ubrań i 4 zapisane stroje, na które przebierasz się jednym kliknięciem.",
+			"Stół warsztatowy: 20 × drewno + 10 × gwoździe (40 s). Kupisz też u handlarza za 400 $."],
 	"furniture_shelf": ["Regał", "Wyposażenie garażu.", "Jest w garażu od początku."],
 	"furniture_barrel_blue": ["Niebieska beczka", "Wyposażenie garażu.", "Jest w garażu od początku."],
 	"furniture_barrel_red": ["Czerwona beczka", "Wyposażenie garażu.", "Jest w garażu od początku."],

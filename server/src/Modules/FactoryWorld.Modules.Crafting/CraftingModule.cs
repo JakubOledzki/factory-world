@@ -173,6 +173,7 @@ public sealed class CraftingModule : IGameModule
         services.AddScoped<IMachineContents, CanteenContents>();
         services.AddSingleton<IMessageHandler, GetCanteenHandler>();
         services.AddSingleton<IMessageHandler, LoadCanteenHandler>();
+        services.AddSingleton<IMessageHandler, GetCompendiumHandler>();
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>

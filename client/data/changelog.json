@@ -1,6 +1,15 @@
 [
 	{
 		"date": "2026-10-25",
+		"title": "Kompendium wiedzy",
+		"changes": [
+			"W oknie postaci (portret w rogu) jest nowa zakładka Kompendium: każdy przedmiot, maszyna i budynek w grze, podzielone na kategorie, z wyszukiwarką.",
+			"Przy każdym przedmiocie widać, do czego służy, skąd się bierze, w których maszynach i z czego się go wytwarza, do czego jeszcze się przydaje, czy jest opałem albo daniem dla stołówki, jakiego badania wymaga i ile płaci za niego handlarz.",
+			"Kliknięcie składnika albo maszyny w przepisie przenosi do jej opisu. Przepisy kompendium pochodzą prosto z gry, więc nowe przedmioty i przepisy pojawią się w nim same."
+		]
+	},
+	{
+		"date": "2026-10-25",
 		"title": "Kto jest w grze i jedno logowanie",
 		"changes": [
 			"Przy nazwie gracza świeci kropka: zielona, gdy jest teraz w grze, czerwona, gdy go nie ma. Widać ją w rankingach, w spółce, na rynku, w zleceniach, przy właścicielu działki na mapie, nad graczami na działce, w mieście, na stacji, w banku i na rynku skupu.",
