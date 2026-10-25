@@ -237,6 +237,38 @@ public static class Items
     public const string Tank = "storage_tank";
     public const string Road = "logistics_road";
 
+    // The desert: glass from sand, silicon and solar power, water drawn or made, sun-dried bricks and concrete,
+    // dates from an oasis, camels, and fossils the dunes give up now and then.
+    public const string Glass = "glass";
+    public const string WindowPane = "window_pane";
+    public const string GlassBottles = "glass_bottles";
+    public const string OpticalFiber = "optical_fiber";
+    public const string Silicon = "silicon";
+    public const string SiliconWafer = "silicon_wafer";
+    public const string Water = "water";
+    public const string Clay = "clay";
+    public const string AdobeBricks = "adobe_bricks";
+    public const string Cement = "cement";
+    public const string Concrete = "concrete";
+    public const string Dates = "dates";
+    public const string Mirror = "mirror";
+    public const string Ammonite = "ammonite";
+    public const string AncientCoin = "ancient_coin";
+    public const string DinosaurBone = "dinosaur_bone";
+
+    public const string Glassworks = "furniture_glassworks";
+    public const string ArcFurnace = "furniture_arc_furnace";
+    public const string WaterWell = "furniture_water_well";
+    public const string Desalinator = "furniture_desalinator";
+    public const string DryingYard = "furniture_drying_yard";
+    public const string CementKiln = "furniture_cement_kiln";
+    public const string ConcreteMixer = "furniture_concrete_mixer";
+    public const string ReedFence = "furniture_reed_fence";
+    public const string SolarPanel = "power_solar_panel";
+    public const string SolarTower = "power_solar_tower";
+    public const string Battery = "power_battery";
+    public const string Camel = "animal_camel";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -417,6 +449,34 @@ public static class Items
         [Pump] = "Pompa",
         [Tank] = "Zbiornik",
         [Road] = "Droga asfaltowa",
+        [Glass] = "Szkło",
+        [WindowPane] = "Szyba",
+        [GlassBottles] = "Butelki szklane",
+        [OpticalFiber] = "Światłowód",
+        [Silicon] = "Krzem",
+        [SiliconWafer] = "Płytka krzemowa",
+        [Water] = "Woda",
+        [Clay] = "Glina",
+        [AdobeBricks] = "Cegła suszona",
+        [Cement] = "Cement",
+        [Concrete] = "Beton",
+        [Dates] = "Daktyle",
+        [Mirror] = "Lustro",
+        [Ammonite] = "Amonit",
+        [AncientCoin] = "Starożytna moneta",
+        [DinosaurBone] = "Kość dinozaura",
+        [Glassworks] = "Huta szkła",
+        [ArcFurnace] = "Piec łukowy",
+        [WaterWell] = "Studnia głębinowa",
+        [Desalinator] = "Odsalarka",
+        [DryingYard] = "Suszarnia cegieł",
+        [CementKiln] = "Piec cementowy",
+        [ConcreteMixer] = "Betoniarka",
+        [ReedFence] = "Płot trzcinowy",
+        [SolarPanel] = "Panel słoneczny",
+        [SolarTower] = "Elektrownia słoneczna z lustrami",
+        [Battery] = "Akumulator",
+        [Camel] = "Wielbłąd",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
@@ -477,7 +537,7 @@ public static class Items
     public static bool IsInserter(string id) => id is Inserter or FastInserter or ExpressInserter or Pump;
 
     /// <summary>Fluids: they go only through pipes and pumps, never on belts or by inserters.</summary>
-    public static bool IsFluid(string id) => id is CrudeOil or NaturalGas or Gasoline or Diesel or Kerosene;
+    public static bool IsFluid(string id) => id is CrudeOil or NaturalGas or Gasoline or Diesel or Kerosene or Water;
 
     /// <summary>What carries fluids: a pipe instead of a belt, a pump instead of an inserter.</summary>
     public static bool CarriesFluids(string kind) => kind is Pipe or Pump;
@@ -487,6 +547,15 @@ public static class Items
 
     /// <summary>Generators that burn fuel: the steam generator, the gas power plant and the diesel generator.</summary>
     public static bool IsGenerator(string id) => id is Generator or GasPlant or DieselGenerator;
+
+    /// <summary>What turns sunlight into power: by day only, and less in a sandstorm.</summary>
+    public static bool IsSolar(string id) => id is SolarPanel or SolarTower;
+
+    /// <summary>What gives power without fuel: water power and the sun.</summary>
+    public static bool IsRenewable(string id) => IsHydro(id) || IsSolar(id);
+
+    /// <summary>Fossils the dunes give up now and then, a collection of three.</summary>
+    public static bool IsFossil(string id) => id is Ammonite or AncientCoin or DinosaurBone;
 }
 
 /// <param name="ExtraSlots">Inventory tiles the backpack adds.</param>

@@ -3,6 +3,8 @@ using System.Text.Json;
 using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Abstractions.Contracts;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
+using NpgsqlTypes;
 
 namespace FactoryWorld.Modules.World;
 
@@ -58,6 +60,8 @@ public static class PlotLayout
         [Biome.City] = [],
         [Biome.Coast] = [(TileObject.Tree, 50), (TileObject.Dune, 30), (TileObject.Rock, 15)],
         [Biome.Lakeshore] = [(TileObject.Tree, 90), (TileObject.Bush, 40), (TileObject.Rock, 10)],
+        // Date palms around the pond of an oasis, on sand.
+        [Biome.Oasis] = [(TileObject.Dune, 60), (TileObject.Tree, 45), (TileObject.Bush, 25), (TileObject.Rock, 8)],
     };
 
     public static bool Inside(int x, int y) => x >= 0 && y >= 0 && x < Size && y < Size;
@@ -164,7 +168,7 @@ public static class PlotLayout
     public static string? StarterTool(Biome biome) => biome switch
     {
         Biome.Forest => Items.Axe,
-        Biome.Desert => Items.Shovel,
+        Biome.Desert or Biome.Oasis => Items.Shovel,
         Biome.Mountains => Items.Pickaxe,
         Biome.Farmland => Items.Hoe,
         Biome.Grassland => Items.Shears,
@@ -172,11 +176,22 @@ public static class PlotLayout
         _ => null,
     };
 
-    /// <summary>What gathering an object gives, for a roll of 0-99.</summary>
-    public static IReadOnlyList<(string Item, int Quantity)> Yield(TileObject obj, int roll) => obj switch
+    /// <summary>Of dunes dug, this many in a hundred give clay too.</summary>
+    public const int ClayChance = 15;
+
+    /// <summary>Of dunes dug, this many in a thousand give up a fossil: an ammonite, an ancient coin or, rarest, a dinosaur bone.</summary>
+    public const int FossilPerMille = 20;
+
+    /// <summary>A reed fence keeps the sand of a sandstorm off dug dunes this many tiles from it each way.</summary>
+    public const int FenceShelter = 4;
+
+    /// <summary>What gathering an object on a plot of <paramref name="biome"/> gives, for a roll of 0-99 and a <paramref name="rare"/> one of 0-999:
+    /// a palm in an oasis gives dates, a dune on sand 30% more sand, and now and then clay or a fossil.</summary>
+    public static IReadOnlyList<(string Item, int Quantity)> Yield(TileObject obj, int roll, Biome biome = Biome.Ocean, int rare = 999) => obj switch
     {
+        TileObject.Tree when biome == Biome.Oasis => [(Items.Wood, 1), (Items.Dates, 2)],
         TileObject.Tree => roll < Forestry.SaplingChance ? [(Items.Wood, 1), (Items.Sapling, 1)] : [(Items.Wood, 1)],
-        TileObject.Dune => [(Items.Sand, 3)],
+        TileObject.Dune => [(Items.Sand, Oasis.Sandy((int)biome) ? 4 : 3), .. Dug(roll, rare)],
         TileObject.Rock => roll switch
         {
             < 5 => [(Items.Stone, 2), (Items.CopperOre, 1)],
@@ -186,6 +201,19 @@ public static class PlotLayout
         },
         _ => [],
     };
+
+    private static IEnumerable<(string, int)> Dug(int roll, int rare)
+    {
+        if (roll < ClayChance)
+        {
+            yield return (Items.Clay, 1);
+        }
+
+        if (rare < FossilPerMille)
+        {
+            yield return (rare < 10 ? Items.Ammonite : rare < 17 ? Items.AncientCoin : Items.DinosaurBone, 1);
+        }
+    }
 
     internal static uint Hash(uint seed, int x, int y)
     {
@@ -251,18 +279,35 @@ public sealed class PlotService(
     public async Task<byte[]> TilesAsync(int x, int y, Biome biome, CancellationToken cancellationToken)
     {
         var tiles = PlotLayout.Generate(x, y, biome);
+        // On sand the last sandstorm blew the dunes dug before it back, where nothing stands and no reed fence is near.
+        var storm = Oasis.Sandy((int)biome) ? SandWeather.LastEnded(time.GetUtcNow()) : null;
         await using (var command = await db.CommandAsync(
-            "SELECT tile_x, tile_y FROM world.plot_harvests WHERE x = @x AND y = @y", cancellationToken))
+            """
+            SELECT h.tile_x, h.tile_y, COALESCE(h.harvested_at < @storm
+                AND NOT EXISTS (SELECT 1 FROM world.plot_objects o WHERE o.x = h.x AND o.y = h.y
+                    AND ((o.tile_x = h.tile_x AND o.tile_y = h.tile_y)
+                        OR (o.kind = ANY(@large) AND abs(o.tile_x - h.tile_x) <= 1 AND abs(o.tile_y - h.tile_y) <= 1)
+                        OR (o.kind = @fence AND abs(o.tile_x - h.tile_x) <= @shelter AND abs(o.tile_y - h.tile_y) <= @shelter)))
+                AND NOT EXISTS (SELECT 1 FROM world.plot_fields f WHERE f.x = h.x AND f.y = h.y AND f.tile_x = h.tile_x AND f.tile_y = h.tile_y)
+                AND NOT EXISTS (SELECT 1 FROM world.plot_trees t WHERE t.x = h.x AND t.y = h.y AND t.tile_x = h.tile_x AND t.tile_y = h.tile_y)
+                AND NOT EXISTS (SELECT 1 FROM world.plot_animals a WHERE a.x = h.x AND a.y = h.y AND a.tile_x = h.tile_x AND a.tile_y = h.tile_y), false)
+            FROM world.plot_harvests h WHERE h.x = @x AND h.y = @y
+            """, cancellationToken))
         {
             command.Parameters.AddWithValue("x", x);
             command.Parameters.AddWithValue("y", y);
+            command.Parameters.Add(new NpgsqlParameter("storm", NpgsqlDbType.TimestampTz) { Value = (object?)storm ?? DBNull.Value });
+            command.Parameters.AddWithValue("large", Footprints.Large);
+            command.Parameters.AddWithValue("fence", Items.ReedFence);
+            command.Parameters.AddWithValue("shelter", PlotLayout.FenceShelter);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
                 // A rock broken before the mines came may have stood where a mine is now, and the
                 // lake or sea came over what had been gathered on the shore.
                 var at = reader.GetInt32(1) * PlotLayout.Size + reader.GetInt32(0);
-                if (tiles[at] is not ((byte)TileObject.Mine or (byte)TileObject.Water))
+                var regrown = reader.GetBoolean(2) && tiles[at] == (byte)TileObject.Dune;
+                if (tiles[at] is not ((byte)TileObject.Mine or (byte)TileObject.Water) && !regrown)
                 {
                     tiles[at] = (byte)TileObject.None;
                 }
@@ -325,7 +370,8 @@ public sealed class PlotService(
             }
 
             var obj = (TileObject)PlotLayout.Generate(x, y, biome)[tileY * PlotLayout.Size + tileX];
-            if ((await TilesAsync(x, y, biome, cancellationToken))[tileY * PlotLayout.Size + tileX] == (byte)TileObject.Flotsam)
+            var current = (TileObject)(await TilesAsync(x, y, biome, cancellationToken))[tileY * PlotLayout.Size + tileX];
+            if (current == TileObject.Flotsam)
             {
                 pace(HarvestRules.Time);
                 return await beach.GatherAsync(player, x, y, tileX, tileY, async items => await GiveAsync(player, TileObject.Flotsam, items, cancellationToken), cancellationToken);
@@ -339,25 +385,35 @@ public sealed class PlotService(
             pace(HarvestRules.TimeFor(obj, PlotLayout.ToolFor(obj) is { } tool ? await RequireToolAsync(player, tool, cancellationToken) : null, biome));
             if (obj == TileObject.Water)
             {
-                // The water is never fished out; a storm keeps everyone ashore but those on a breakwater.
-                await beach.RequireCalmAsync(x, y, cancellationToken);
+                // The water is never fished out; a storm at sea or on a lake keeps everyone ashore but those on a breakwater.
+                if (Coast.HasWater(biome))
+                {
+                    await beach.RequireCalmAsync(x, y, cancellationToken);
+                }
+
                 return await GiveAsync(player, obj, Coast.Catch(biome, Random.Shared.Next(100)), cancellationToken);
             }
 
             await using (var insert = await db.CommandAsync(
-                "INSERT INTO world.plot_harvests (x, y, tile_x, tile_y) VALUES (@x, @y, @tx, @ty) ON CONFLICT DO NOTHING", cancellationToken))
+                """
+                INSERT INTO world.plot_harvests (x, y, tile_x, tile_y, harvested_at) VALUES (@x, @y, @tx, @ty, @now)
+                ON CONFLICT (x, y, tile_x, tile_y) DO UPDATE SET harvested_at = @now WHERE @regrown
+                """, cancellationToken))
             {
                 insert.Parameters.AddWithValue("x", x);
                 insert.Parameters.AddWithValue("y", y);
                 insert.Parameters.AddWithValue("tx", tileX);
                 insert.Parameters.AddWithValue("ty", tileY);
+                insert.Parameters.AddWithValue("now", time.GetUtcNow());
+                // A dune the sandstorm blew back is dug again.
+                insert.Parameters.AddWithValue("regrown", obj == TileObject.Dune && current == TileObject.Dune);
                 if (await insert.ExecuteNonQueryAsync(cancellationToken) == 0)
                 {
                     throw new GameException("nothing_here", "This has already been gathered.");
                 }
             }
 
-            return await GiveAsync(player, obj, cancellationToken);
+            return await GiveAsync(player, obj, PlotLayout.Yield(obj, Random.Shared.Next(100), biome, Random.Shared.Next(1000)), cancellationToken);
         }, cancellationToken);
 
     /// <summary>When the tree planted on a tile is grown (locked until the transaction ends), or null when none is.</summary>

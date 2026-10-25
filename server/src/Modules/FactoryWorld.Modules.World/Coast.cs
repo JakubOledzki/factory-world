@@ -42,6 +42,7 @@ public static class Coast
         [Items.SaltPan] = Biome.Coast,
         [Items.TidalPlant] = Biome.Coast,
         [Items.OffshorePlatform] = Biome.Coast,
+        [Items.Desalinator] = Biome.Coast,
         [Items.FishFarm] = null,
         [Items.Shipyard] = null,
         [Items.Port] = null,
@@ -76,9 +77,9 @@ public static class Coast
                 }
             }
         }
-        else if (biome == Biome.Lakeshore)
+        else if (biome is Biome.Lakeshore or Biome.Oasis)
         {
-            var (cx, cy, rx, ry) = Lake(seed);
+            var (cx, cy, rx, ry) = biome == Biome.Oasis ? Pond(seed) : Lake(seed);
             for (var y = cy - ry * 2; y <= cy + ry * 2; y++)
             {
                 for (var x = cx - rx * 2; x <= cx + rx * 2; x++)
@@ -103,6 +104,10 @@ public static class Coast
             }
         }
     }
+
+    /// <summary>The pond of an oasis: smaller than a lake, in the middle of the plot.</summary>
+    public static (int X, int Y, int Rx, int Ry) Pond(uint seed) =>
+        (PlotLayout.Size / 2 - 15 + (int)(PlotLayout.Hash(seed, 31, 7) % 30), 110 + (int)(PlotLayout.Hash(seed, 7, 31) % 40), 16, 11);
 
     /// <summary>Whether a tile touches the water, corners included.</summary>
     public static bool NextToWater(byte[] tiles, int tileX, int tileY)

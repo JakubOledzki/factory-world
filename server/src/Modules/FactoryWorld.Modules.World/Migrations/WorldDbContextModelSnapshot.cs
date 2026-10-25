@@ -270,6 +270,12 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("tile_y");
 
+                    b.Property<DateTimeOffset>("HarvestedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("harvested_at")
+                        .HasDefaultValueSql("now()");
+
                     b.HasKey("X", "Y", "TileX", "TileY");
 
                     b.ToTable("plot_harvests", "world");

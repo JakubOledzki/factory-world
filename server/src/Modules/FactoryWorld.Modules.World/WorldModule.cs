@@ -33,6 +33,9 @@ public sealed class PlotHarvest
     public int TileX { get; set; }
 
     public int TileY { get; set; }
+
+    /// <summary>When it was gathered: on sand a dune dug before the last sandstorm has drifted back.</summary>
+    public DateTimeOffset HarvestedAt { get; set; }
 }
 
 /// <summary>A tilled tile of a fertile plot, with what grows on it.</summary>
@@ -302,6 +305,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(h => h.Y).HasColumnName("y");
             e.Property(h => h.TileX).HasColumnName("tile_x");
             e.Property(h => h.TileY).HasColumnName("tile_y");
+            e.Property(h => h.HarvestedAt).HasColumnName("harvested_at").HasDefaultValueSql("now()");
         });
         model.Entity<PlotField>(e =>
         {

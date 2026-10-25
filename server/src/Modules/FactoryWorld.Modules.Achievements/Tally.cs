@@ -33,6 +33,16 @@ public static class Tally
                         Add(counts, Stats.Wood, quantity);
                     }
 
+                    if (Items.IsFossil(item))
+                    {
+                        Add(counts, Stats.Fossils, quantity);
+                    }
+
+                    if (item == Items.DinosaurBone)
+                    {
+                        Add(counts, Stats.DinosaurBones, quantity);
+                    }
+
                     Add(counts, Stats.Produced, quantity);
                 }
 
@@ -77,10 +87,14 @@ public static class Tally
 
                 break;
             case "machine.take" when Text(message.Request, "what") == "output":
-                foreach (var (_, quantity) in Stacks(reply, "taken"))
+                foreach (var (item, quantity) in Stacks(reply, "taken"))
                 {
                     Add(counts, Stats.Processed, quantity);
                     Add(counts, Stats.Produced, quantity);
+                    if (item == Items.Glass)
+                    {
+                        Add(counts, Stats.Glass, quantity);
+                    }
                 }
 
                 break;

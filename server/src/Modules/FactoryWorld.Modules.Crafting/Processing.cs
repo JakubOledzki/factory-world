@@ -190,9 +190,78 @@ public static class Processing
             new(Items.Fertilizer, 3, TimeSpan.FromSeconds(10), [(Items.NaturalGas, 2)], 2),
             new(Items.Tyres, 1, TimeSpan.FromSeconds(20), [(Items.SyntheticRubber, 4), (Items.SteelIngot, 1)], 8),
         ], Powered: true),
+        // The desert: a fired glassworks melts sand into glass (30% faster on sand) and blows bottles from waste glass;
+        // an arc furnace on power makes silicon from quartz and cuts it into wafers for solar panels.
+        new(Items.Glassworks, true,
+        [
+            new(Items.Glass, 2, TimeSpan.FromSeconds(10), [(Items.Sand, 3)], 2),
+            new(Items.GlassBottles, 3, TimeSpan.FromSeconds(8), [(Items.WasteGlass, 2)], 2),
+            new(Items.WindowPane, 2, TimeSpan.FromSeconds(12), [(Items.Glass, 3), (Items.TinIngot, 1)], 4),
+            new(Items.Mirror, 1, TimeSpan.FromSeconds(12), [(Items.Glass, 2), (Items.SilverIngot, 1)], 5),
+            new(Items.OpticalFiber, 1, TimeSpan.FromSeconds(15), [(Items.Glass, 2), (Items.Plastic, 1)], 6),
+        ]),
+        new(Items.ArcFurnace, false,
+        [
+            new(Items.Silicon, 1, TimeSpan.FromSeconds(10), [(Items.Quartz, 2), (Items.Coal, 1)], 4),
+            new(Items.SiliconWafer, 2, TimeSpan.FromSeconds(8), [(Items.Silicon, 1)], 4),
+        ], Powered: true),
+        // Water: a deep well on power draws it out of the ground (half as fast in the desert, twice in an oasis);
+        // a desalinator on the sea coast makes it from the sea and leaves salt.
+        new(Items.WaterWell, false,
+        [
+            new(Items.Water, 1, TimeSpan.FromSeconds(3), [], 1),
+        ], Powered: true),
+        new(Items.Desalinator, false,
+        [
+            new(Items.Water, 2, TimeSpan.FromSeconds(4), [], 1),
+            new(Items.Salt, 1, TimeSpan.FromSeconds(8), [], 1),
+        ], Powered: true),
+        // Building: bricks dried in the sun from sand, clay and water; a fired kiln burns cement, a mixer on power makes concrete.
+        new(Items.DryingYard, false,
+        [
+            new(Items.AdobeBricks, 2, TimeSpan.FromSeconds(30), [(Items.Sand, 2), (Items.Clay, 1), (Items.Water, 1)], 2),
+        ]),
+        new(Items.CementKiln, true,
+        [
+            new(Items.Cement, 2, TimeSpan.FromSeconds(12), [(Items.Stone, 2), (Items.Clay, 1)], 3),
+        ]),
+        new(Items.ConcreteMixer, false,
+        [
+            new(Items.Concrete, 3, TimeSpan.FromSeconds(8), [(Items.Cement, 1), (Items.Sand, 2), (Items.Water, 1)], 3),
+        ], Powered: true),
     ];
 
     public static readonly IReadOnlyDictionary<string, ProcessingMachine> ByKind = Machines.ToDictionary(m => m.Kind);
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string, double), ProcessingMachine> Variants = new();
+
+    /// <summary>How much faster a machine of <paramref name="kind"/> works on a plot of <paramref name="biome"/>: a glassworks on sand,
+    /// a smokehouse and a cannery by the water, a deep well slower in the desert and faster in an oasis.</summary>
+    public static double Bonus(string kind, int biome) => kind switch
+    {
+        Items.Glassworks when Oasis.Sandy(biome) => 1.3,
+        Items.Smokehouse or Items.Cannery when biome is 10 or 11 => 1.15,
+        Items.WaterWell when biome == Oasis.Desert => 0.5,
+        Items.WaterWell when biome == Oasis.Biome => 2,
+        _ => 1,
+    };
+
+    /// <summary>The machine of <paramref name="kind"/> as it works on a plot of <paramref name="biome"/>: its recipes shorter by its <see cref="Bonus"/>.</summary>
+    public static ProcessingMachine? For(string kind, int biome)
+    {
+        if (!ByKind.TryGetValue(kind, out var machine))
+        {
+            return null;
+        }
+
+        var bonus = Bonus(kind, biome);
+        return bonus == 1 ? machine : Variants.GetOrAdd((kind, bonus), _ =>
+            machine with { Recipes = machine.Recipes.Select(r => r with { Time = r.Time / bonus }).ToList() });
+    }
+
+    /// <summary>The biome of the plot a machine stands on, or 0 when it stands on none.</summary>
+    public static async Task<int> BiomeOfAsync(IPlotObjects plots, IPlotRegistry registry, Guid id, CancellationToken cancellationToken) =>
+        await plots.PlotOfAsync(id, cancellationToken) is { } at ? (await registry.FindAsync(at.X, at.Y, cancellationToken))?.Biome ?? 0 : 0;
 
     /// <summary>The clock a machine works by: its own time on the power grid, the boats' time that stands still in a storm, or plain time.</summary>
     public static async Task<IPowerClock> ClockAsync(ProcessingMachine machine, IPlotPower power, Guid id, CancellationToken cancellationToken) =>
@@ -377,7 +446,7 @@ internal static class MachineRows
 
 public sealed class MachineService(
     GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, IProductionStats stats, ITechnologies technologies,
-    IPlotPower power, TimeProvider time)
+    IPlotPower power, IPlotObjects plots, IPlotRegistry registry, TimeProvider time)
 {
     public Task<MachineReply> StateAsync(Guid owner, Guid id, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -545,7 +614,7 @@ public sealed class MachineService(
         {
             if (await place.KindAsync(owner, id, cancellationToken) is { } kind)
             {
-                machine = Processing.ByKind.GetValueOrDefault(kind);
+                machine = Processing.For(kind, await Processing.BiomeOfAsync(plots, registry, id, cancellationToken));
                 break;
             }
         }
@@ -572,11 +641,11 @@ public sealed class MachineService(
 }
 
 /// <summary>Processing machines as inserters see them: ingredients of the chosen recipe and fuel go in, products come out.</summary>
-public sealed class ProcessingPorts(GameDb db, IProductionStats stats, IPlotPower power) : IMachinePorts
+public sealed class ProcessingPorts(GameDb db, IProductionStats stats, IPlotPower power, IPlotObjects plots, IPlotRegistry registry) : IMachinePorts
 {
     public async Task<IMachinePort?> OpenAsync(Guid owner, Guid id, string kind, CancellationToken cancellationToken)
     {
-        if (!Processing.ByKind.TryGetValue(kind, out var machine))
+        if (!Processing.ByKind.ContainsKey(kind) || Processing.For(kind, await Processing.BiomeOfAsync(plots, registry, id, cancellationToken)) is not { } machine)
         {
             return null;
         }

@@ -60,6 +60,12 @@ public static class TechTree
     public const string Roads = "roads";
     public const string OffshoreDrilling = "offshore_drilling";
     public const string EnhancedRecovery = "enhanced_recovery";
+    public const string Glassmaking = "glassmaking";
+    public const string SiliconWorks = "silicon";
+    public const string SolarPower = "solar_power";
+    public const string SolarTower = "solar_tower";
+    public const string WaterSupply = "water_supply";
+    public const string BuildingMaterials = "building_materials";
 
     public static readonly IReadOnlyList<Technology> Technologies =
     [
@@ -174,6 +180,24 @@ public static class TechTree
         new(EnhancedRecovery, "Wspomagane wydobycie", "Tłocznia wody wyciska ze złoża o połowę więcej ropy, a separator zbiera wycieki.",
             [OilExtraction], [(Items.CrudeOil, 80), (Items.SteelIngot, 20), (Items.Gasket, 10)], TimeSpan.FromMinutes(4), 100,
             [Items.WaterInjector, Items.OilSeparator]),
+        new(Glassmaking, "Hutnictwo szkła", "Huta szkła topi piasek na szkło (na piasku o 30% szybciej), dmucha butelki ze stłuczki i robi szyby i lustra.",
+            [], [(Items.Sand, 60), (Items.Stone, 20), (Items.Wood, 20)], TimeSpan.FromSeconds(90), 30,
+            [Items.Glassworks, Items.Glass, Items.GlassBottles, Items.WindowPane, Items.Mirror]),
+        new(SiliconWorks, "Krzem", "Piec łukowy na prąd robi krzem z kwarcu i tnie go na płytki, a huta szkła ciągnie światłowód.",
+            [Glassmaking, Metallurgy], [(Items.Quartz, 20), (Items.Coal, 20), (Items.CopperIngot, 20)], TimeSpan.FromMinutes(3), 80,
+            [Items.ArcFurnace, Items.Silicon, Items.SiliconWafer, Items.OpticalFiber]),
+        new(SolarPower, "Energia słoneczna", "Panele słoneczne dają prąd za dnia, akumulatory go przechowują, a płot trzcinowy chroni przed burzą piaskową.",
+            [SiliconWorks], [(Items.SiliconWafer, 10), (Items.Glass, 20), (Items.CopperIngot, 20)], TimeSpan.FromMinutes(4), 100,
+            [Items.SolarPanel, Items.Battery, Items.ReedFence]),
+        new(SolarTower, "Elektrownia słoneczna", "Wieża z lustrami na pustyni albo w oazie daje za dnia 600 kW.",
+            [SolarPower], [(Items.Mirror, 20), (Items.SteelIngot, 30), (Items.StoneBlocks, 20)], TimeSpan.FromMinutes(6), 150,
+            [Items.SolarTower]),
+        new(WaterSupply, "Wodociągi", "Studnia głębinowa pompuje wodę spod ziemi, a odsalarka na wybrzeżu robi ją z morza.",
+            [Automation], [(Items.IronIngot, 20), (Items.CopperIngot, 10), (Items.Stone, 30)], TimeSpan.FromMinutes(2), 50,
+            [Items.WaterWell, Items.Desalinator]),
+        new(BuildingMaterials, "Materiały budowlane", "Suszarnia robi cegłę z piasku, gliny i wody, piec cementowy cement, a betoniarka beton.",
+            [WaterSupply], [(Items.Clay, 20), (Items.Stone, 40), (Items.Sand, 40)], TimeSpan.FromMinutes(3), 60,
+            [Items.DryingYard, Items.CementKiln, Items.ConcreteMixer, Items.AdobeBricks, Items.Cement, Items.Concrete]),
     ];
 
     public static readonly IReadOnlyDictionary<string, Technology> ById = Technologies.ToDictionary(t => t.Id);

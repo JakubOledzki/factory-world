@@ -35,6 +35,8 @@ public static class PlotObjects
         Items.Pumpjack, Items.GasWell, Items.OffshorePlatform, Items.WaterInjector, Items.OilSeparator,
         Items.Distillery, Items.Refinery, Items.Cracker, Items.ChemicalPlant, Items.GasPlant, Items.DieselGenerator,
         Items.Pipe, Items.Pump, Items.Tank, Items.Road,
+        Items.Glassworks, Items.ArcFurnace, Items.WaterWell, Items.Desalinator, Items.DryingYard, Items.CementKiln, Items.ConcreteMixer,
+        Items.ReedFence, Items.SolarPanel, Items.SolarTower, Items.Battery,
     };
 
     /// <summary>Fails unless an object of <paramref name="kind"/> may stand on (tileX, tileY) of a plot of
@@ -60,6 +62,11 @@ public static class PlotObjects
         if (Items.IsHydro(kind) && kind != Items.TidalPlant && !WaterPower.Allowed((int)biome))
         {
             throw new GameException("no_water", "Water power needs a mountain stream, a lake or the sea.");
+        }
+
+        if (kind == Items.SolarTower && !Oasis.Sandy((int)biome))
+        {
+            throw new GameException("no_sand", "A solar tower with mirrors stands on a desert or in an oasis.");
         }
 
         Coast.RequireSite(kind, x, y, biome, tileX, tileY);

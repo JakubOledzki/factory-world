@@ -29,7 +29,7 @@ public static class Farming
     public static readonly IReadOnlyDictionary<string, Crop> ById = Crops.ToDictionary(c => c.Item);
 
     /// <summary>Only fertile soil can be tilled.</summary>
-    public static bool Fertile(Biome biome) => biome == Biome.Farmland;
+    public static bool Fertile(Biome biome) => biome is Biome.Farmland or Biome.Oasis;
 
     public const int XpPerTill = 1;
 

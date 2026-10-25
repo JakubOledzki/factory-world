@@ -106,6 +106,19 @@ public static class Workshop
         new(Items.GasPlant, 1, TimeSpan.FromSeconds(150), [(Items.SteelIngot, 25), (Items.CopperIngot, 20), (Items.Bricks, 20)], 70),
         new(Items.DieselGenerator, 1, TimeSpan.FromSeconds(90), [(Items.SteelIngot, 15), (Items.IronIngot, 10), (Items.CopperIngot, 10)], 40),
         new(Items.Road, 4, TimeSpan.FromSeconds(10), [(Items.Asphalt, 2), (Items.Stone, 2)], 2),
+        // The desert: glass and silicon, water, building materials and the sun's power.
+        new(Items.Glassworks, 1, TimeSpan.FromSeconds(60), [(Items.Bricks, 30), (Items.Stone, 20), (Items.IronIngot, 10)], 25),
+        new(Items.ArcFurnace, 1, TimeSpan.FromSeconds(150), [(Items.SteelIngot, 20), (Items.CopperIngot, 30), (Items.Bricks, 20)], 80),
+        new(Items.WaterWell, 1, TimeSpan.FromSeconds(60), [(Items.IronIngot, 15), (Items.Stone, 20), (Items.CopperIngot, 5)], 25),
+        new(Items.Desalinator, 1, TimeSpan.FromSeconds(90), [(Items.SteelIngot, 15), (Items.CopperIngot, 15), (Items.Glass, 10)], 40),
+        new(Items.DryingYard, 1, TimeSpan.FromSeconds(30), [(Items.Wood, 20), (Items.Planks, 10), (Items.Stone, 10)], 10),
+        new(Items.CementKiln, 1, TimeSpan.FromSeconds(60), [(Items.Stone, 40), (Items.Bricks, 20), (Items.IronIngot, 10)], 30),
+        new(Items.ConcreteMixer, 1, TimeSpan.FromSeconds(60), [(Items.IronIngot, 20), (Items.SteelIngot, 5), (Items.CopperIngot, 5)], 30),
+        new(Items.ReedFence, 4, TimeSpan.FromSeconds(10), [(Items.Planks, 2), (Items.Wood, 2)], 2),
+        new(Items.SolarPanel, 1, TimeSpan.FromSeconds(30), [(Items.Glass, 4), (Items.SiliconWafer, 2), (Items.CopperIngot, 2)], 15),
+        new(Items.SolarTower, 1, TimeSpan.FromSeconds(300),
+            [(Items.Mirror, 40), (Items.SteelIngot, 40), (Items.StoneBlocks, 30), (Items.CopperIngot, 20)], 200),
+        new(Items.Battery, 1, TimeSpan.FromSeconds(45), [(Items.IronIngot, 8), (Items.CopperIngot, 8), (Items.Sulfur, 4)], 20),
     ];
 
     public static Recipe? Find(string id) => Recipes.FirstOrDefault(r => r.Id == id);

@@ -90,7 +90,7 @@ public sealed class WorldTests(ServerFactory factory) : IClassFixture<ServerFact
 
         Assert.Equal(Map.Width, info.GetProperty("width").GetInt32());
         Assert.Equal(5, info.GetProperty("plotKm").GetInt32());
-        Assert.Equal(12, info.GetProperty("biomes").GetArrayLength());
+        Assert.Equal(13, info.GetProperty("biomes").GetArrayLength());
         Assert.Equal(1_000_00, info.GetProperty("nextBasePriceCents").GetInt64());
         Assert.Equal(0, info.GetProperty("plots").GetArrayLength());
     }

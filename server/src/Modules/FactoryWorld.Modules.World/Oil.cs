@@ -251,7 +251,7 @@ internal sealed class SteadyClock : IPowerClock
 }
 
 public sealed class OilService(
-    GameDb db, WorldMap map, PlotService plots, SurveyService surveys, IPlotObjects objects, IInventory inventory, ICharacterProgress progress,
+    GameDb db, PlotService plots, SurveyService surveys, IPlotObjects objects, IInventory inventory, ICharacterProgress progress,
     IProductionStats stats, IPlotPower power, TimeProvider time) : IPlacedHook, IPlotAutomation, IMachineContents, IMachinePorts, IMachineStatuses
 {
     /// <summary>Fails unless a well of <paramref name="kind"/> may go on the plot: it was surveyed, the deposit is

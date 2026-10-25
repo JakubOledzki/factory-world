@@ -67,6 +67,7 @@ public static class Deposits
         [Biome.City] = (50, 50),
         [Biome.Coast] = (200, 150),
         [Biome.Lakeshore] = (60, 80),
+        [Biome.Oasis] = (250, 200),
     };
 
     /// <summary>Chance (per mille) of a mineral in the rock of a mountain plot; other plots have none.</summary>

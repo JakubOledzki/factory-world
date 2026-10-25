@@ -20,6 +20,9 @@ public static class Stats
     public const string Sold = "sold";
     public const string Trades = "trades";
     public const string Contracts = "contracts";
+    public const string Fossils = "fossils";
+    public const string DinosaurBones = "dinosaur_bones";
+    public const string Glass = "glass";
 
     /// <summary>Everything the player made by hand or with machines: gathered, mined, smelted, crafted, grown, processed.</summary>
     public const string Produced = "produced";
@@ -75,6 +78,11 @@ public static class Badges
         new("landowner", "Ziemia", "Ziemianin", "Kup pierwszą działkę.", Stats.Plots, 1),
         new("land_baron", "Ziemia", "Magnat ziemski", "Kup 3 działki.", Stats.Plots, 3),
         new("geologist", "Ziemia", "Geolog", "Zleć badanie geologiczne działki.", Stats.Surveys, 1),
+
+        new("paleontologist", "Pustynia", "Paleontolog", "Wykop z wydmy pierwszą skamielinę.", Stats.Fossils, 1),
+        new("fossil_collection", "Pustynia", "Gabinet osobliwości", "Wykop z wydm 10 skamielin.", Stats.Fossils, 10),
+        new("dinosaur", "Pustynia", "Park jurajski", "Wykop kość dinozaura.", Stats.DinosaurBones, 1),
+        new("glassblower", "Pustynia", "Hutnik szkła", "Wyjmij z huty 100 sztuk szkła.", Stats.Glass, 100),
 
         new("merchant", "Handel", "Kupiec", "Sprzedaj handlarzowi 100 przedmiotów.", Stats.Sold, 100),
         new("trader", "Handel", "Handlowiec", "Kup albo sprzedaj coś innym graczom 10 razy.", Stats.Trades, 10),
