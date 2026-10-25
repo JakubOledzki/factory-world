@@ -27,6 +27,8 @@ public static class Stats
     public const string Meteorites = "meteorites";
     public const string Tourists = "tourists";
     public const string Bridges = "bridges";
+    public const string CityDeliveries = "city_deliveries";
+    public const string CityTrash = "city_trash";
 
     /// <summary>Everything the player made by hand or with machines: gathered, mined, smelted, crafted, grown, processed.</summary>
     public const string Produced = "produced";
@@ -36,8 +38,10 @@ public static class Stats
     // Kept as the highest value seen, not added up.
     public const string Level = "level";
     public const string Money = "money";
+    public const string ShopSold = "shop_sold";
+    public const string Mayor = "mayor";
 
-    public static bool IsHighest(string stat) => stat is Level or Money;
+    public static bool IsHighest(string stat) => stat is Level or Money or ShopSold or Mayor;
 }
 
 /// <param name="Goal">The badge is unlocked when <paramref name="Stat"/> reaches this.</param>
@@ -93,6 +97,12 @@ public static class Badges
         new("meteorite_collection", "Lodowiec", "Kamienie z nieba", "Rozbij 10 meteorytów.", Stats.Meteorites, 10),
         new("hotelier", "Lodowiec", "Hotelarz", "Odbierz od turystów 100 utargów.", Stats.Tourists, 100),
         new("bridge_builder", "Lodowiec", "Budowniczy mostów", "Połóż most nad szczeliną.", Stats.Bridges, 1),
+
+        new("townsfolk", "Miasto", "Dobry sąsiad", "Dostarcz miastu pierwszy towar, którego potrzebuje.", Stats.CityDeliveries, 1),
+        new("city_supplier", "Miasto", "Zaopatrzeniowiec", "Dostarcz miastom 1000 potrzebnych towarów.", Stats.CityDeliveries, 1000),
+        new("garbage_collector", "Miasto", "Śmieciarz", "Wywieź z miejskiego wysypiska 1000 śmieci.", Stats.CityTrash, 1000),
+        new("shopkeeper", "Miasto", "Sklepikarz", "Sprzedaj w jednym sklepie 100 towarów.", Stats.ShopSold, 100),
+        new("mayor", "Miasto", "Burmistrz", "Zostań wybrany na burmistrza.", Stats.Mayor, 1),
 
         new("merchant", "Handel", "Kupiec", "Sprzedaj handlarzowi 100 przedmiotów.", Stats.Sold, 100),
         new("trader", "Handel", "Handlowiec", "Kup albo sprzedaj coś innym graczom 10 razy.", Stats.Trades, 10),

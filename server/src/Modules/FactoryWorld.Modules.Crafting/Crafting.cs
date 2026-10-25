@@ -135,6 +135,18 @@ public static class Workshop
         new(Items.DogKennel, 1, TimeSpan.FromSeconds(60), [(Items.Planks, 30), (Items.Wool, 10), (Items.Nails, 10)], 25),
         new(Items.SnowmobileGarage, 1, TimeSpan.FromSeconds(120), [(Items.SteelIngot, 20), (Items.SyntheticRubber, 10), (Items.IronIngot, 20)], 60),
         new(Items.TrackFoundation, 1, TimeSpan.FromSeconds(60), [(Items.Concrete, 20), (Items.Beams, 10), (Items.SteelIngot, 10)], 30),
+        new(Items.AssemblyHall, 1, TimeSpan.FromSeconds(180), [(Items.SteelIngot, 40), (Items.Concrete, 30), (Items.CopperIngot, 20), (Items.Glass, 10)], 80),
+        new(Items.MultistoreyFactory, 1, TimeSpan.FromSeconds(300),
+            [(Items.AssemblyHall, 1), (Items.Concrete, 60), (Items.SteelIngot, 60), (Items.Blueprint, 2)], 150),
+        new(Items.Shop, 1, TimeSpan.FromSeconds(60), [(Items.Planks, 20), (Items.Glass, 10), (Items.Bricks, 20)], 25),
+        new(Items.HighBay, 1, TimeSpan.FromSeconds(90), [(Items.SteelIngot, 40), (Items.IronChest, 1), (Items.Concrete, 10)], 40),
+        new(Items.CitySorter, 1, TimeSpan.FromSeconds(90), [(Items.IronIngot, 30), (Items.SteelIngot, 10), (Items.CopperIngot, 10)], 40),
+        new(Items.FreightTerminal, 1, TimeSpan.FromSeconds(180), [(Items.Concrete, 40), (Items.SteelIngot, 30), (Items.Bricks, 40), (Items.Blueprint, 1)], 80),
+        new(Items.CompanyHq, 1, TimeSpan.FromSeconds(240),
+            [(Items.Concrete, 50), (Items.Glass, 30), (Items.SteelIngot, 30), (Items.MarbleSlabs, 20), (Items.Blueprint, 2)], 120),
+        new(Items.DesignOffice, 1, TimeSpan.FromSeconds(60), [(Items.Planks, 30), (Items.Glass, 10), (Items.Bricks, 20)], 30),
+        new(Items.Laboratory, 1, TimeSpan.FromSeconds(120), [(Items.Glass, 20), (Items.GlassBottles, 20), (Items.SteelIngot, 15), (Items.CopperIngot, 10)], 50),
+        new(Items.ServiceWorkshop, 1, TimeSpan.FromSeconds(60), [(Items.Bricks, 30), (Items.IronIngot, 20), (Items.SteelIngot, 10)], 30),
         new(Items.MeteoritePickaxe, 1, TimeSpan.FromSeconds(40), [(Items.MeteoricIron, 4), (Items.Iridium, 1), (Items.Wood, 2)], 20, Items.Anvil),
     ];
 

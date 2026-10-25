@@ -445,6 +445,25 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plot_wells", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.ServiceSaleRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Day")
+                        .HasColumnType("integer")
+                        .HasColumnName("day");
+
+                    b.Property<int>("Count")
+                        .HasColumnType("integer")
+                        .HasColumnName("count");
+
+                    b.HasKey("Id", "Day");
+
+                    b.ToTable("service_sales", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.ShipmentRow", b =>
                 {
                     b.Property<long>("Id")
@@ -497,6 +516,58 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("shipments", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.ShopItemRow", b =>
+                {
+                    b.Property<Guid>("ShopId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("shop_id");
+
+                    b.Property<string>("Item")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("item");
+
+                    b.Property<long>("PriceCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("price_cents");
+
+                    b.Property<long>("Quantity")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity");
+
+                    b.HasKey("ShopId", "Item");
+
+                    b.ToTable("shop_items", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.ShopRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<double>("Carry")
+                        .HasColumnType("double precision")
+                        .HasColumnName("carry");
+
+                    b.Property<DateTimeOffset>("SettledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("settled_at");
+
+                    b.Property<long>("SoldCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("sold_cents");
+
+                    b.Property<long>("SoldItems")
+                        .HasColumnType("bigint")
+                        .HasColumnName("sold_items");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("shops", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.StationItem", b =>
                 {
                     b.Property<int>("X")
@@ -546,6 +617,135 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.HasKey("X", "Y");
 
                     b.ToTable("surveys", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownContributionRow", b =>
+                {
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("player_id");
+
+                    b.Property<long>("DeliveredCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("delivered_cents");
+
+                    b.HasKey("TownX", "TownY", "PlayerId");
+
+                    b.ToTable("town_contributions", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownDeliveryRow", b =>
+                {
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<int>("Day")
+                        .HasColumnType("integer")
+                        .HasColumnName("day");
+
+                    b.Property<string>("Item")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("item");
+
+                    b.Property<long>("Quantity")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity");
+
+                    b.HasKey("TownX", "TownY", "Day", "Item");
+
+                    b.ToTable("town_deliveries", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownPolicyRow", b =>
+                {
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<int>("Week")
+                        .HasColumnType("integer")
+                        .HasColumnName("week");
+
+                    b.Property<string>("Bonus")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("bonus");
+
+                    b.Property<Guid?>("MayorId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("mayor_id");
+
+                    b.Property<int>("TaxPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("tax_percent");
+
+                    b.HasKey("TownX", "TownY", "Week");
+
+                    b.ToTable("town_policies", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownProgressRow", b =>
+                {
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<long>("DeliveredCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("delivered_cents");
+
+                    b.HasKey("TownX", "TownY");
+
+                    b.ToTable("town_progress", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownVoteRow", b =>
+                {
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<int>("Week")
+                        .HasColumnType("integer")
+                        .HasColumnName("week");
+
+                    b.Property<Guid>("VoterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("voter_id");
+
+                    b.Property<Guid>("CandidateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("candidate_id");
+
+                    b.HasKey("TownX", "TownY", "Week", "VoterId");
+
+                    b.ToTable("town_votes", "world");
                 });
 
             modelBuilder.Entity("FactoryWorld.Modules.World.TrainRouteRow", b =>

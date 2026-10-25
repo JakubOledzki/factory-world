@@ -138,6 +138,10 @@ public static class Tally
             case "station.send":
                 Add(counts, Stats.Trains, 1);
                 break;
+            case "city.deliver" or "city.trash" when reply.TryGetProperty("result", out var city) && city.ValueKind == JsonValueKind.Object
+                && city.TryGetProperty("quantity", out var moved) && moved.TryGetInt64(out var pieces):
+                Add(counts, message.Type == "city.deliver" ? Stats.CityDeliveries : Stats.CityTrash, pieces);
+                break;
             case "world.buy":
                 Add(counts, Stats.Plots, 1);
                 break;
@@ -168,6 +172,19 @@ public static class Tally
         else if (message.ReplyType == "character" && reply.TryGetProperty("level", out level) && level.TryGetInt64(out l))
         {
             counts[Stats.Level] = l;
+        }
+
+        // A town's hall shows whether the player is its mayor; a shop how much it sold in all.
+        if (message.ReplyType == "city" && reply.TryGetProperty("state", out var town) && town.ValueKind == JsonValueKind.Object
+            && town.TryGetProperty("hall", out var hall) && hall.ValueKind == JsonValueKind.Object
+            && hall.TryGetProperty("isMayor", out var isMayor) && isMayor.ValueKind == JsonValueKind.True)
+        {
+            counts[Stats.Mayor] = 1;
+        }
+
+        if (message.ReplyType == "shop" && reply.TryGetProperty("soldItems", out var shopSold) && shopSold.TryGetInt64(out var soldItems))
+        {
+            counts[Stats.ShopSold] = soldItems;
         }
 
         if (reply.TryGetProperty("balanceCents", out var balance) && balance.TryGetInt64(out var cents))

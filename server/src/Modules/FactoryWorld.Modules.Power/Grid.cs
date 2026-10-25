@@ -123,6 +123,12 @@ public static class PowerRules
         [Items.ConcreteMixer] = 30,
         [Items.ServerRoom] = 200,
         [Items.IceCoreDrill] = 40,
+        [Items.AssemblyHall] = 120,
+        [Items.MultistoreyFactory] = 300,
+        [Items.CitySorter] = 40,
+        [Items.DesignOffice] = 30,
+        [Items.Laboratory] = 60,
+        [Items.ServiceWorkshop] = 40,
     };
 
     public static bool Covers(PlotObject pole, int tileX, int tileY) =>

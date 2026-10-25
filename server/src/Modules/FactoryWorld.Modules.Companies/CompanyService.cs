@@ -22,6 +22,15 @@ public static partial class CompanyRules
     /// <summary>Most items, of all kinds together, the warehouse holds.</summary>
     public const long WarehouseCapacity = 50_000;
 
+    /// <summary>With a headquarters on one of its plots (a city building) a company takes more members and stores more.</summary>
+    public const int HqMaxMembers = 30;
+
+    public const long HqWarehouseCapacity = 150_000;
+
+    public static int MaxMembersFor(bool hq) => hq ? HqMaxMembers : MaxMembers;
+
+    public static long CapacityFor(bool hq) => hq ? HqWarehouseCapacity : WarehouseCapacity;
+
     /// <summary>How many of the latest log entries members see.</summary>
     public const int LogLength = 30;
 
@@ -74,14 +83,40 @@ public sealed record Invitation(Guid CompanyId, string CompanyName, int Members)
 
 public sealed record CompanyState(
     Guid Id, string Name, string Role, IReadOnlyList<Member> Members, IReadOnlyList<string> Invited, IReadOnlyList<CompanyPlot> Plots,
-    IReadOnlyDictionary<string, long> Warehouse, IReadOnlyList<LogEntry> Log);
+    IReadOnlyDictionary<string, long> Warehouse, IReadOnlyList<LogEntry> Log, bool Hq = false);
 
 /// <param name="Company">The player's company, or null when they are in none.</param>
 /// <param name="Invitations">Companies that invited the player.</param>
 public sealed record CompanyView(Guid Player, CompanyState? Company, IReadOnlyList<Invitation> Invitations);
 
-public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNames names, IPlotRegistry plots, TimeProvider time)
+public sealed class CompanyService(
+    GameDb db, IInventory inventory, ICharacterNames names, IPlotRegistry plots, IPlotObjects objects, TimeProvider time)
 {
+    /// <summary>Whether a headquarters stands on any of the company's plots.</summary>
+    public async Task<bool> HasHqAsync(Guid company, CancellationToken cancellationToken)
+    {
+        var at = new List<(int, int)>();
+        await using (var select = await db.CommandAsync("SELECT x, y FROM companies.plots WHERE company_id = @company", cancellationToken))
+        {
+            select.Parameters.AddWithValue("company", company);
+            await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                at.Add((reader.GetInt32(0), reader.GetInt32(1)));
+            }
+        }
+
+        foreach (var (x, y) in at)
+        {
+            if ((await objects.ObjectsAsync(x, y, cancellationToken)).Any(o => o.Kind == Items.CompanyHq))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public Task<CompanyView> ViewAsync(Guid player, CancellationToken cancellationToken) =>
         db.InTransactionAsync(() => ReadAsync(player, cancellationToken), cancellationToken);
 
@@ -132,9 +167,9 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
 
             if (await CountAsync("SELECT count(*) FROM companies.members WHERE company_id = @company", company, cancellationToken)
                 + await CountAsync("SELECT count(*) FROM companies.invites WHERE company_id = @company", company, cancellationToken)
-                >= CompanyRules.MaxMembers)
+                >= CompanyRules.MaxMembersFor(await HasHqAsync(company, cancellationToken)))
             {
-                throw new GameException("company_full", $"A company has at most {CompanyRules.MaxMembers} members.");
+                throw new GameException("company_full", "The company has as many members as it can take.");
             }
 
             await using (var insert = await db.CommandAsync(
@@ -317,9 +352,10 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
             await LockAsync(company, cancellationToken);
             var stored = await CountAsync(
                 "SELECT coalesce(sum(quantity), 0) FROM companies.warehouse WHERE company_id = @company", company, cancellationToken);
-            if (stored + quantity > CompanyRules.WarehouseCapacity)
+            var capacity = CompanyRules.CapacityFor(await HasHqAsync(company, cancellationToken));
+            if (stored + quantity > capacity)
             {
-                throw new GameException("warehouse_full", $"The warehouse holds {CompanyRules.WarehouseCapacity} items.");
+                throw new GameException("warehouse_full", $"The warehouse holds {capacity} items.");
             }
 
             await inventory.RemoveAsync(player, item!, quantity, cancellationToken);
@@ -352,9 +388,9 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
             throw new GameException("unknown_item", "Unknown item.");
         }
 
-        if (quantity is < 1 or > CompanyRules.WarehouseCapacity)
+        if (quantity is < 1 or > CompanyRules.HqWarehouseCapacity)
         {
-            throw new GameException("bad_quantity", $"Quantity must be 1-{CompanyRules.WarehouseCapacity}.");
+            throw new GameException("bad_quantity", $"Quantity must be 1-{CompanyRules.HqWarehouseCapacity}.");
         }
     }
 
@@ -634,7 +670,8 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
             invited.Select(NameOf).ToList(),
             plotStates,
             warehouse,
-            log.Select(l => new LogEntry(l.Item1, NameOf(l.Item2), l.Item3, l.Item4, l.Item5, l.Item6 is { } o ? NameOf(o) : null)).ToList()),
+            log.Select(l => new LogEntry(l.Item1, NameOf(l.Item2), l.Item3, l.Item4, l.Item5, l.Item6 is { } o ? NameOf(o) : null)).ToList(),
+            await HasHqAsync(company, cancellationToken)),
             []);
     }
 

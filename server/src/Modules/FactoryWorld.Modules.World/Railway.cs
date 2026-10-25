@@ -175,7 +175,7 @@ public sealed record TrainRoute(
 
 public sealed record StationState(
     int X, int Y, IReadOnlyDictionary<string, long> Items, IReadOnlyList<Shipment> Incoming, IReadOnlyList<Shipment> Outgoing,
-    IReadOnlyList<TrainRoute> Routes, DateTimeOffset Now);
+    IReadOnlyList<TrainRoute> Routes, DateTimeOffset Now, double FeeFactor = 1, int MaxRoutes = RailRules.MaxRoutes);
 
 /// <summary>A player found by name, with the plots their station stands on.</summary>
 public sealed record RailPartner(string Name, IReadOnlyList<(int X, int Y, Biome Biome)> Plots);
@@ -284,7 +284,7 @@ internal static class StationStock
 
 public sealed class StationService(
     GameDb db, WorldMap map, PlotService plots, IInventory inventory, IWallet wallet, ICharacterNames names,
-    IEnumerable<IPlotAutomation> automation, BeachService beach, TimeProvider time)
+    IEnumerable<IPlotAutomation> automation, BeachService beach, CityService cities, TimeProvider time)
 {
     /// <summary>The station of one of the player's plots, after unloading every train that has arrived.</summary>
     public Task<StationState> StateAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
@@ -317,7 +317,8 @@ public sealed class StationService(
             CheckQuantity(item, quantity);
             await CheckDestinationAsync(x, y, toX, toY, cancellationToken);
             var km = RailRules.DistanceKm(map, x, y, toX, toY);
-            var (fee, trip) = (RailRules.FeeCents(km, quantity), RailRules.TripTime(km));
+            // Rail in a city is cheaper, and cheaper still with a freight terminal or the mayor's rail bonus.
+            var (fee, trip) = ((long)Math.Ceiling(RailRules.FeeCents(km, quantity) * await cities.RailFactorAsync(x, y, cancellationToken)), RailRules.TripTime(km));
             if (bySea)
             {
                 if (!await beach.HasAsync(x, y, Items.Port, 0, cancellationToken) || !await beach.HasAsync(toX, toY, Items.Port, 0, cancellationToken))
@@ -418,9 +419,10 @@ public sealed class StationService(
             {
                 count.Parameters.AddWithValue("x", x);
                 count.Parameters.AddWithValue("y", y);
-                if ((long)(await count.ExecuteScalarAsync(cancellationToken))! >= RailRules.MaxRoutes)
+                var most = await cities.MaxRoutesAsync(x, y, cancellationToken);
+                if ((long)(await count.ExecuteScalarAsync(cancellationToken))! >= most)
                 {
-                    throw new GameException("too_many_routes", $"A station runs at most {RailRules.MaxRoutes} routes.");
+                    throw new GameException("too_many_routes", $"A station runs at most {most} routes.");
                 }
             }
 
@@ -615,7 +617,7 @@ public sealed class StationService(
             {
                 var km = RailRules.DistanceKm(map, x, y, toX, toY);
                 var quantity = cargo.Sum(c => c.Quantity);
-                var fee = RailRules.FeeCents(km, quantity);
+                var fee = (long)Math.Ceiling(RailRules.FeeCents(km, quantity) * await cities.RailFactorAsync(x, y, cancellationToken));
                 if (await wallet.BalanceAsync(owner, cancellationToken) < fee)
                 {
                     problem = "no_money";
@@ -798,7 +800,8 @@ public sealed class StationService(
         var outgoing = shipments.Where(s => s.Trip.FromX == x && s.Trip.FromY == y)
             .Select(s => s.Trip with { Receiver = Receiver(s.Trip.ToX, s.Trip.ToY) }).ToList();
         return new StationState(x, y, items, incoming, outgoing,
-            routes.Select(r => r with { Receiver = Receiver(r.ToX, r.ToY) }).ToList(), time.GetUtcNow());
+            routes.Select(r => r with { Receiver = Receiver(r.ToX, r.ToY) }).ToList(), time.GetUtcNow(),
+            await cities.RailFactorAsync(x, y, cancellationToken), await cities.MaxRoutesAsync(x, y, cancellationToken));
     }
 }
 
@@ -1003,7 +1006,9 @@ public abstract class StationHandler(IServiceScopeFactory scopes) : IMessageHand
                 minTripSeconds = RailRules.MinTrip.TotalSeconds,
                 routeCapacity = RailRules.RouteCapacity,
                 routeMinutes = RailRules.RouteMinutes,
-                maxRoutes = RailRules.MaxRoutes,
+                maxRoutes = state.MaxRoutes,
+                // What fees from this station are multiplied by: below 1 in a city.
+                feeFactor = state.FeeFactor,
                 maxRouteItems = RailRules.MaxRouteItems,
                 // With diesel in the station a train goes as a diesel locomotive: it burns a unit per 250 km begun and gets there sooner.
                 dieselTripFactor = DieselRules.TripFactor,

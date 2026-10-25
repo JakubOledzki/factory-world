@@ -265,10 +265,53 @@ public static class Processing
         [
             new(Items.Takings, 1, TimeSpan.FromSeconds(60), [], 1),
         ], Aurora: true),
+        // Cities: an assembly hall puts together what the other biomes make; a multi-storey factory does the same twice as fast on one tile.
+        new(Items.AssemblyHall, false, Assembly, Powered: true),
+        new(Items.MultistoreyFactory, false, Assembly.Select(r => r with { Time = r.Time / 2 }).ToList(), Powered: true),
+        // A municipal sorting plant sorts the town's rubbish.
+        new(Items.CitySorter, false,
+        [
+            new(Items.WastePaper, 2, TimeSpan.FromSeconds(8), [(Items.Trash, 4)], 1),
+            new(Items.WastePlastic, 2, TimeSpan.FromSeconds(8), [(Items.Trash, 6)], 1),
+            new(Items.WasteGlass, 2, TimeSpan.FromSeconds(8), [(Items.Trash, 6)], 1),
+            new(Items.WasteAluminium, 1, TimeSpan.FromSeconds(10), [(Items.Trash, 10)], 1),
+            new(Items.WasteCopper, 1, TimeSpan.FromSeconds(10), [(Items.Trash, 25)], 1),
+        ], Powered: true),
+        // Offices that also sell their services to other players (see the world's cities).
+        new(Items.DesignOffice, false,
+        [
+            new(Items.Blueprint, 1, TimeSpan.FromSeconds(40), [(Items.WastePaper, 2)], 3),
+        ], Powered: true),
+        new(Items.Laboratory, false,
+        [
+            new(Items.ResearchData, 1, TimeSpan.FromSeconds(60), [(Items.SiliconWafer, 2), (Items.GlassBottles, 4), (Items.Water, 2)], 5),
+        ], Powered: true),
+        new(Items.ServiceWorkshop, false,
+        [
+            new(Items.Gasket, 4, TimeSpan.FromSeconds(20), [(Items.SteelIngot, 1), (Items.SyntheticRubber, 1)], 3),
+        ], Powered: true),
     ];
+
+    /// <summary>What an assembly hall puts together.</summary>
+    private static List<ProcessingRecipe> Assembly =>
+    [
+        new(Items.CircuitBoard, 2, TimeSpan.FromSeconds(15), [(Items.CopperIngot, 1), (Items.Plastic, 1), (Items.SiliconWafer, 1)], 2),
+        new(Items.ElectricMotor, 1, TimeSpan.FromSeconds(20), [(Items.CopperIngot, 4), (Items.IronIngot, 2)], 2),
+        new(Items.Bicycle, 1, TimeSpan.FromSeconds(30), [(Items.SteelIngot, 3), (Items.SyntheticRubber, 2)], 4),
+        new(Items.Radio, 1, TimeSpan.FromSeconds(25), [(Items.CircuitBoard, 1), (Items.Plastic, 2), (Items.CopperIngot, 1)], 4),
+        new(Items.WashingMachine, 1, TimeSpan.FromSeconds(60), [(Items.SteelIngot, 4), (Items.ElectricMotor, 1), (Items.CircuitBoard, 1), (Items.Glass, 1)], 8),
+        new(Items.Car, 1, TimeSpan.FromSeconds(180),
+            [(Items.SteelIngot, 10), (Items.Tyres, 1), (Items.Glass, 4), (Items.ElectricMotor, 2), (Items.Radio, 1)], 30),
+    ];
+
+    /// <summary>How much faster every machine works in a city: industry and assembly +25%.</summary>
+    public const double CityBonus = 1.25;
 
     /// <summary>What one piece of takings a tourist pays, in cents.</summary>
     public const long TakingsCents = 500;
+
+    /// <summary>The biome number of a city.</summary>
+    public const int City = 9;
 
     /// <summary>Machines that cool themselves with a block of ice per batch off the glacier.</summary>
     private static bool Iced(string kind, int biome) => kind is Items.ColdStore or Items.ServerRoom && biome != Blizzard.Biome;
@@ -287,6 +330,7 @@ public static class Processing
         Items.WaterWell when biome == Oasis.Biome => 2,
         // The cold air of the glacier cools what runs hot.
         Items.Refinery or Items.Cracker or Items.ArcFurnace or Items.ChemicalPlant when biome == Blizzard.Biome => 1.2,
+        _ when biome == City => CityBonus,
         _ => 1,
     };
 

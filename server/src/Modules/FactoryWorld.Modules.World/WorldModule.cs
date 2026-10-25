@@ -489,6 +489,81 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.HasIndex(r => new { r.FromX, r.FromY });
             e.HasIndex(r => new { r.ToX, r.ToY });
         });
+        model.Entity<TownProgressRow>(e =>
+        {
+            e.ToTable("town_progress");
+            e.HasKey(t => new { t.TownX, t.TownY });
+            e.Property(t => t.TownX).HasColumnName("town_x");
+            e.Property(t => t.TownY).HasColumnName("town_y");
+            e.Property(t => t.DeliveredCents).HasColumnName("delivered_cents");
+        });
+        model.Entity<TownContributionRow>(e =>
+        {
+            e.ToTable("town_contributions");
+            e.HasKey(t => new { t.TownX, t.TownY, t.PlayerId });
+            e.Property(t => t.TownX).HasColumnName("town_x");
+            e.Property(t => t.TownY).HasColumnName("town_y");
+            e.Property(t => t.PlayerId).HasColumnName("player_id");
+            e.Property(t => t.DeliveredCents).HasColumnName("delivered_cents");
+        });
+        model.Entity<TownDeliveryRow>(e =>
+        {
+            e.ToTable("town_deliveries");
+            e.HasKey(t => new { t.TownX, t.TownY, t.Day, t.Item });
+            e.Property(t => t.TownX).HasColumnName("town_x");
+            e.Property(t => t.TownY).HasColumnName("town_y");
+            e.Property(t => t.Day).HasColumnName("day");
+            e.Property(t => t.Item).HasColumnName("item").HasMaxLength(64);
+            e.Property(t => t.Quantity).HasColumnName("quantity");
+        });
+        model.Entity<ShopRow>(e =>
+        {
+            e.ToTable("shops");
+            e.HasKey(s => s.Id);
+            e.Property(s => s.Id).HasColumnName("id");
+            e.Property(s => s.SettledAt).HasColumnName("settled_at");
+            e.Property(s => s.Carry).HasColumnName("carry");
+            e.Property(s => s.SoldCents).HasColumnName("sold_cents");
+            e.Property(s => s.SoldItems).HasColumnName("sold_items");
+        });
+        model.Entity<ShopItemRow>(e =>
+        {
+            e.ToTable("shop_items");
+            e.HasKey(s => new { s.ShopId, s.Item });
+            e.Property(s => s.ShopId).HasColumnName("shop_id");
+            e.Property(s => s.Item).HasColumnName("item").HasMaxLength(64);
+            e.Property(s => s.Quantity).HasColumnName("quantity");
+            e.Property(s => s.PriceCents).HasColumnName("price_cents");
+        });
+        model.Entity<ServiceSaleRow>(e =>
+        {
+            e.ToTable("service_sales");
+            e.HasKey(s => new { s.Id, s.Day });
+            e.Property(s => s.Id).HasColumnName("id");
+            e.Property(s => s.Day).HasColumnName("day");
+            e.Property(s => s.Count).HasColumnName("count");
+        });
+        model.Entity<TownVoteRow>(e =>
+        {
+            e.ToTable("town_votes");
+            e.HasKey(v => new { v.TownX, v.TownY, v.Week, v.VoterId });
+            e.Property(v => v.TownX).HasColumnName("town_x");
+            e.Property(v => v.TownY).HasColumnName("town_y");
+            e.Property(v => v.Week).HasColumnName("week");
+            e.Property(v => v.VoterId).HasColumnName("voter_id");
+            e.Property(v => v.CandidateId).HasColumnName("candidate_id");
+        });
+        model.Entity<TownPolicyRow>(e =>
+        {
+            e.ToTable("town_policies");
+            e.HasKey(p => new { p.TownX, p.TownY, p.Week });
+            e.Property(p => p.TownX).HasColumnName("town_x");
+            e.Property(p => p.TownY).HasColumnName("town_y");
+            e.Property(p => p.Week).HasColumnName("week");
+            e.Property(p => p.MayorId).HasColumnName("mayor_id");
+            e.Property(p => p.TaxPercent).HasColumnName("tax_percent");
+            e.Property(p => p.Bonus).HasColumnName("bonus").HasMaxLength(16);
+        });
     }
 }
 
@@ -506,7 +581,7 @@ public sealed record Purchase(PlotState Plot, long BalanceCents, XpGain Xp, stri
 
 public sealed class WorldService(
     GameDb db, WorldMap map, IWallet wallet, ICharacterProgress progress, ICharacterNames names, IEquipment equipment, SurveyService surveys,
-    IEnumerable<ICompanyPlots> companies, TimeProvider time)
+    IEnumerable<ICompanyPlots> companies, CityService cities, TimeProvider time)
 {
     /// <summary>Most owned plots one area request returns.</summary>
     public const int MaxAreaPlots = 5000;
@@ -589,7 +664,9 @@ public sealed class WorldService(
             return new PlotState(x, y, biome, new PlotOwner(owner, name), null, survey, company, owner == viewer || company?.Member == true);
         }
 
-        long? price = Biomes.All[biome].Buyable ? PlotPrices.For(await CountOwnedAsync(viewer, cancellationToken), biome) : null;
+        long? price = Biomes.All[biome].Buyable
+            ? (long)Math.Round(PlotPrices.For(await CountOwnedAsync(viewer, cancellationToken), biome) * await cities.PlotPriceFactorAsync(x, y, cancellationToken))
+            : null;
         return new PlotState(x, y, biome, null, price);
     }
 
@@ -611,7 +688,7 @@ public sealed class WorldService(
                 await lockOwner.ExecuteNonQueryAsync(cancellationToken);
             }
 
-            var price = PlotPrices.For(await CountOwnedAsync(owner, cancellationToken), biome);
+            var price = (long)Math.Round(PlotPrices.For(await CountOwnedAsync(owner, cancellationToken), biome) * await cities.PlotPriceFactorAsync(x, y, cancellationToken));
             await using (var insert = await db.CommandAsync(
                 """
                 INSERT INTO world.plots (x, y, owner_id, biome, price_cents, bought_at)
@@ -853,6 +930,18 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, PlaceOnPlotHandler>();
         services.AddSingleton<IMessageHandler, PickUpFromPlotHandler>();
         services.AddSingleton<IMessageHandler, RotateOnPlotHandler>();
+        services.AddSingleton(_ => Towns.Load());
+        services.AddScoped<CityService>();
+        services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<CityService>());
+        services.AddSingleton<IMessageHandler, GetCityHandler>();
+        services.AddSingleton<IMessageHandler, DeliverToCityHandler>();
+        services.AddSingleton<IMessageHandler, CityTrashHandler>();
+        services.AddSingleton<IMessageHandler, CityServiceHandler>();
+        services.AddSingleton<IMessageHandler, CityVoteHandler>();
+        services.AddSingleton<IMessageHandler, CityPolicyHandler>();
+        services.AddSingleton<IMessageHandler, GetShopHandler>();
+        services.AddSingleton<IMessageHandler, StockShopHandler>();
+        services.AddSingleton<IMessageHandler, TakeFromShopHandler>();
     }
 
     public async Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken)

@@ -256,3 +256,10 @@ public interface ITechnologies
     /// <summary>Fails with <c>locked</c> while the item is still to be researched.</summary>
     Task RequireUnlockedAsync(Guid player, string item, CancellationToken cancellationToken);
 }
+
+/// <summary>What the trader usually pays for items, before its events move the prices.</summary>
+public interface IMarketPrices
+{
+    /// <summary>The usual price the trader pays for one piece, in cents, or null when it buys none.</summary>
+    long? BuysCents(string item);
+}

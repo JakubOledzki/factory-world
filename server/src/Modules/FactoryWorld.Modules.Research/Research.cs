@@ -74,6 +74,14 @@ public static class TechTree
     public const string DataCenter = "data_center";
     public const string PolarTourism = "polar_tourism";
     public const string PolarTransport = "polar_transport";
+    public const string Assembly = "assembly";
+    public const string Appliances = "appliances";
+    public const string Commerce = "commerce";
+    public const string UrbanConstruction = "urban_construction";
+    public const string CityServices = "city_services";
+    public const string WasteManagement = "waste_management";
+    public const string FreightHub = "freight_hub";
+    public const string Headquarters = "headquarters";
 
     public static readonly IReadOnlyList<Technology> Technologies =
     [
@@ -230,6 +238,30 @@ public static class TechTree
         new(PolarTransport, "Transport polarny", "Psi zaprzęg i skuter śnieżny wiozą ładunki z lodowca bez torów, a fundament pozwala pociągom jeździć po lodzie pełną prędkością.",
             [], [(Items.Planks, 30), (Items.Wool, 10), (Items.IronIngot, 20)], TimeSpan.FromMinutes(2), 40,
             [Items.DogKennel, Items.SnowmobileGarage, Items.TrackFoundation]),
+        new(Assembly, "Montaż", "Hala montażowa na prąd składa płytki drukowane, silniki, rowery i radia z towarów innych biomów; w mieście o 25% szybciej.",
+            [Automation, Petrochemistry], [(Items.SteelIngot, 30), (Items.Plastic, 20), (Items.CopperIngot, 20)], TimeSpan.FromMinutes(4), 100,
+            [Items.AssemblyHall, Items.CircuitBoard, Items.ElectricMotor, Items.Bicycle, Items.Radio]),
+        new(Appliances, "AGD i motoryzacja", "Hala montażowa składa też pralki i samochody, najdroższe towary, na które czekają miasta.",
+            [Assembly, SiliconWorks], [(Items.CircuitBoard, 20), (Items.ElectricMotor, 10), (Items.SteelIngot, 40)], TimeSpan.FromMinutes(8), 200,
+            [Items.WashingMachine, Items.Car]),
+        new(Commerce, "Handel", "Sklep w mieście sprzedaje twoje towary mieszkańcom przez całą dobę, po cenach, które sam ustawisz.",
+            [], [(Items.Planks, 20), (Items.Bread, 20), (Items.Glass, 10)], TimeSpan.FromMinutes(2), 40,
+            [Items.Shop]),
+        new(UrbanConstruction, "Budownictwo miejskie", "Działka w mieście jest ciasna, więc buduje się w górę: magazyn wysokiego składowania i fabryka wielopiętrowa.",
+            [BuildingMaterials, Assembly], [(Items.Concrete, 40), (Items.SteelIngot, 30), (Items.Glass, 20)], TimeSpan.FromMinutes(6), 150,
+            [Items.HighBay, Items.MultistoreyFactory]),
+        new(CityServices, "Usługi", "Biuro projektowe, laboratorium i warsztat serwisowy pracują dla ciebie i sprzedają usługi innym graczom w mieście.",
+            [], [(Items.Glass, 20), (Items.Planks, 30), (Items.CopperIngot, 10)], TimeSpan.FromMinutes(3), 60,
+            [Items.DesignOffice, Items.Laboratory, Items.ServiceWorkshop, Items.Blueprint]),
+        new(WasteManagement, "Gospodarka odpadami", "Odbierasz śmieci z miasta za opłatę, a sortownia miejska na prąd rozdziela je na surowce wtórne.",
+            [Sorting], [(Items.IronIngot, 20), (Items.Trash, 50)], TimeSpan.FromMinutes(2), 40,
+            [Items.CitySorter]),
+        new(FreightHub, "Centrum logistyczne", "Dworzec towarowy w mieście obniża opłaty kolejowe działki o 25% i pozwala jej wysyłać 10 kursów zamiast 5.",
+            [Logistics, BuildingMaterials], [(Items.Concrete, 30), (Items.SteelIngot, 20), (Items.Bricks, 30)], TimeSpan.FromMinutes(4), 80,
+            [Items.FreightTerminal]),
+        new(Headquarters, "Siedziba spółki", "Siedziba w mieście pozwala spółce przyjąć 30 członków zamiast 20 i potraja jej wspólny magazyn.",
+            [CityServices], [(Items.Concrete, 40), (Items.MarbleSlabs, 20), (Items.Blueprint, 2)], TimeSpan.FromMinutes(5), 100,
+            [Items.CompanyHq]),
     ];
 
     public static readonly IReadOnlyDictionary<string, Technology> ById = Technologies.ToDictionary(t => t.Id);

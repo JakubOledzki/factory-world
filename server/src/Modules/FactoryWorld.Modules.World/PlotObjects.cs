@@ -39,6 +39,8 @@ public static class PlotObjects
         Items.ReedFence, Items.SolarPanel, Items.SolarTower, Items.Battery,
         Items.WindTurbine, Items.LargeWindTurbine, Items.Heater, Items.IceMelter, Items.ColdStore, Items.ServerRoom,
         Items.IceCoreDrill, Items.PolarStation, Items.IceHotel, Items.Viewpoint, Items.DogKennel, Items.SnowmobileGarage, Items.TrackFoundation,
+        Items.AssemblyHall, Items.MultistoreyFactory, Items.Shop, Items.HighBay, Items.CitySorter, Items.FreightTerminal, Items.CompanyHq,
+        Items.DesignOffice, Items.Laboratory, Items.ServiceWorkshop,
     };
 
     /// <summary>What stands on the glacier only, or on the glacier and the tundra.</summary>
@@ -94,6 +96,21 @@ public static class PlotObjects
             throw new GameException("has_foundation", "The track of this plot has its foundation already.");
         }
 
+        if (Items.IsCityOnly(kind) && biome != Biome.City)
+        {
+            throw new GameException("no_city", "It stands in a city only.");
+        }
+
+        if (biome == Biome.City && !Footprints.Tiles(kind, tileX, tileY).All(t => CityRules.InBuildArea(t.X, t.Y)))
+        {
+            throw new GameException("city_cramped", "In a city only the ground by the station can be built on.");
+        }
+
+        if (kind is Items.FreightTerminal or Items.CompanyHq && others.Any(o => o.Kind == kind))
+        {
+            throw new GameException("has_one", "A plot has room for one of these.");
+        }
+
         Coast.RequireSite(kind, x, y, biome, tileX, tileY);
     }
 }
@@ -108,7 +125,7 @@ public interface IPlacedHook
 
 public sealed class PlotObjectService(
     GameDb db, PlotService plots, IInventory inventory, IEnumerable<IMachineContents> machines, IEnumerable<IPlotAutomation> automation,
-    IEnumerable<IPlacedHook> placing, BeachService beach, OilService oil)
+    IEnumerable<IPlacedHook> placing, BeachService beach, OilService oil, IEnumerable<ICompanyPlots> companies)
     : IPlacedObjects
 {
     public async Task<IReadOnlyList<PlacedOnPlot>> ObjectsAsync(int x, int y, CancellationToken cancellationToken)
@@ -163,6 +180,20 @@ public sealed class PlotObjectService(
             }
 
             await oil.RequireSiteAsync(kind, x, y, await ObjectsAsync(x, y, cancellationToken), cancellationToken);
+            if (kind == Items.CompanyHq)
+            {
+                // A company's headquarters stands on a plot brought into the company.
+                PlotCompany? company = null;
+                foreach (var c in companies)
+                {
+                    company ??= await c.CompanyAsync(player, x, y, cancellationToken);
+                }
+
+                if (company is not { Member: true })
+                {
+                    throw new GameException("no_company", "Headquarters stand on a plot of your company.");
+                }
+            }
 
             await inventory.RemoveAsync(player, kind, 1, cancellationToken);
             var placed = new PlacedOnPlot(Guid.NewGuid(), kind, tileX, tileY, rotation);

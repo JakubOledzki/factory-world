@@ -297,6 +297,28 @@ public static class Items
     public const string SnowmobileGarage = "furniture_snowmobile_garage";
     public const string TrackFoundation = "furniture_track_foundation";
 
+    // Cities: an assembly hall puts goods of every biome together, the towns of the map want goods and grow on them,
+    // players keep shops, high-bay stores, multi-storey factories, municipal sorting, freight terminals, company
+    // headquarters and offices that sell their services, and a town hall where the town's players elect a mayor.
+    public const string Bicycle = "bicycle";
+    public const string CircuitBoard = "circuit_board";
+    public const string ElectricMotor = "electric_motor";
+    public const string Radio = "radio";
+    public const string WashingMachine = "washing_machine";
+    public const string Car = "car";
+    public const string Blueprint = "blueprint";
+
+    public const string AssemblyHall = "furniture_assembly_hall";
+    public const string MultistoreyFactory = "furniture_multistorey_factory";
+    public const string Shop = "furniture_shop";
+    public const string HighBay = "storage_high_bay";
+    public const string CitySorter = "furniture_city_sorter";
+    public const string FreightTerminal = "furniture_freight_terminal";
+    public const string CompanyHq = "furniture_company_hq";
+    public const string DesignOffice = "furniture_design_office";
+    public const string Laboratory = "furniture_laboratory";
+    public const string ServiceWorkshop = "furniture_service_workshop";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -529,6 +551,23 @@ public static class Items
         [DogKennel] = "Psiarnia z zaprzęgiem",
         [SnowmobileGarage] = "Garaż skuterów śnieżnych",
         [TrackFoundation] = "Fundament toru",
+        [Bicycle] = "Rower",
+        [CircuitBoard] = "Płytka drukowana",
+        [ElectricMotor] = "Silnik elektryczny",
+        [Radio] = "Radio",
+        [WashingMachine] = "Pralka",
+        [Car] = "Samochód",
+        [Blueprint] = "Plany budynku",
+        [AssemblyHall] = "Hala montażowa",
+        [MultistoreyFactory] = "Fabryka wielopiętrowa",
+        [Shop] = "Sklep",
+        [HighBay] = "Magazyn wysokiego składowania",
+        [CitySorter] = "Sortownia miejska",
+        [FreightTerminal] = "Dworzec towarowy",
+        [CompanyHq] = "Siedziba spółki",
+        [DesignOffice] = "Biuro projektowe",
+        [Laboratory] = "Laboratorium",
+        [ServiceWorkshop] = "Warsztat serwisowy",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
@@ -621,7 +660,14 @@ public static class Items
     {
         [ResearchData] = 60,
         [ComputingPower] = 15,
+        [Blueprint] = 120,
     };
+
+    /// <summary>What stands in a city only.</summary>
+    public static bool IsCityOnly(string id) => id is MultistoreyFactory or Shop or HighBay or FreightTerminal or CompanyHq or DesignOffice or Laboratory or ServiceWorkshop;
+
+    /// <summary>City offices that sell a service to any player who comes by, for their owner.</summary>
+    public static bool IsService(string id) => id is DesignOffice or Laboratory or ServiceWorkshop;
 
     /// <summary>Fossils the dunes give up now and then, a collection of three.</summary>
     public static bool IsFossil(string id) => id is Ammonite or AncientCoin or DinosaurBone;

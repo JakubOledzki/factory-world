@@ -650,6 +650,13 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
         var objects = await scope.ServiceProvider.GetRequiredService<PlotObjectService>().ObjectsAsync(request.X, request.Y, cancellationToken);
         var rights = await scope.ServiceProvider.GetRequiredService<PlotService>()
             .RightsAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
+        var cities = scope.ServiceProvider.GetRequiredService<CityService>();
+        object? city = null;
+        if (cities.TownOf(request.X, request.Y) is { } town)
+        {
+            var level = CityRules.Level(await cities.DeliveredAsync(town, cancellationToken));
+            city = new { name = town.Name, population = town.Population, level, levelName = CityRules.LevelNames[level] };
+        }
 
         using var packed = new MemoryStream();
         using (var gzip = new GZipStream(packed, CompressionLevel.Optimal))
@@ -670,6 +677,8 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             railRow = PlotLayout.RailRow,
             station = new { x = sx, y = sy, width = sw, height = sh },
             spawn = new { x = PlotLayout.Spawn.X, y = PlotLayout.Spawn.Y },
+            // The town a city plot belongs to, with its level; null elsewhere.
+            city,
             tools = tools.Select(t => new { id = t, name = Items.Names[t] }),
             harvestSeconds = HarvestRules.Time.TotalSeconds,
             // Rocks break and mines are worked this many percent faster here; better pickaxes are faster still.

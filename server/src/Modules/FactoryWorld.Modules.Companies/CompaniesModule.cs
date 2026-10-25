@@ -47,10 +47,12 @@ public abstract class CompanyHandler(IServiceScopeFactory scopes) : IMessageHand
                 plots = c.Plots.Count(p => p.OwnerId == m.AccountId),
             }),
             invited = c.Invited,
+            // A headquarters on one of its plots: more members and a bigger warehouse.
+            hq = c.Hq,
             plots = c.Plots.Select(p => new { x = p.X, y = p.Y, biome = p.Biome, owner = p.OwnerName, mine = p.OwnerId == view.Player }),
             warehouse = new
             {
-                capacity = CompanyRules.WarehouseCapacity,
+                capacity = CompanyRules.CapacityFor(c.Hq),
                 stored = c.Warehouse.Values.Sum(),
                 items = c.Warehouse.Select(i => new { id = i.Key, name = Items.Names.GetValueOrDefault(i.Key, i.Key), quantity = i.Value }),
             },
@@ -66,7 +68,7 @@ public abstract class CompanyHandler(IServiceScopeFactory scopes) : IMessageHand
             }),
         } : null,
         invitations = view.Invitations.Select(i => new { company = i.CompanyId, name = i.CompanyName, members = i.Members }),
-        maxMembers = CompanyRules.MaxMembers,
+        maxMembers = CompanyRules.MaxMembersFor(view.Company?.Hq == true),
         roles = Roles.All,
     };
 }

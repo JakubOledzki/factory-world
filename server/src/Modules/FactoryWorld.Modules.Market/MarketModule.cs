@@ -288,6 +288,24 @@ public static class NpcPrices
         [Items.DogKennel] = 12_000,
         [Items.SnowmobileGarage] = 70_000,
         [Items.TrackFoundation] = 30_000,
+        [Items.CircuitBoard] = 2600,
+        [Items.ElectricMotor] = 12_000,
+        [Items.Tyres] = 11_000,
+        [Items.Bicycle] = 19_000,
+        [Items.Radio] = 7500,
+        [Items.WashingMachine] = 40_000,
+        [Items.Car] = 150_000,
+        [Items.Blueprint] = 1500,
+        [Items.AssemblyHall] = 300_000,
+        [Items.MultistoreyFactory] = 800_000,
+        [Items.Shop] = 15_000,
+        [Items.HighBay] = 80_000,
+        [Items.CitySorter] = 60_000,
+        [Items.FreightTerminal] = 300_000,
+        [Items.CompanyHq] = 600_000,
+        [Items.DesignOffice] = 20_000,
+        [Items.Laboratory] = 60_000,
+        [Items.ServiceWorkshop] = 25_000,
     };
 
     static NpcPrices()
@@ -302,6 +320,12 @@ public static class NpcPrices
     }
 
     public const int MaxQuantity = 1000;
+}
+
+/// <summary>The trader's usual prices, for other modules (e.g. what towns pay for the goods they want).</summary>
+public sealed class MarketPrices : IMarketPrices
+{
+    public long? BuysCents(string item) => NpcPrices.Buys.TryGetValue(item, out var cents) ? cents : null;
 }
 
 public sealed record TradeRequest(string Item, int Quantity);
@@ -444,6 +468,7 @@ public sealed class MarketModule : IGameModule
     {
         services.AddModuleDbContext<MarketDbContext>(MarketDbContext.Schema);
         services.AddSingleton<TraderMarket>();
+        services.AddSingleton<IMarketPrices, MarketPrices>();
         services.AddScoped<MarketService>();
         services.AddScoped<PlayerMarketService>();
         services.AddSingleton<IMessageHandler, PricesHandler>();
