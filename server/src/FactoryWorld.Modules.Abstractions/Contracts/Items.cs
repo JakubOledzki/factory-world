@@ -319,6 +319,24 @@ public static class Items
     public const string Laboratory = "furniture_laboratory";
     public const string ServiceWorkshop = "furniture_service_workshop";
 
+    // Clothes: sewn at a tailor's in town and worn in four slots; each makes some industry's work go faster
+    // (or, for trade, makes the trader pay more), see Clothes.
+    public const string Tailor = "furniture_tailor";
+    public const string MinerHelmet = "clothes_miner_helmet";
+    public const string SouWester = "clothes_sou_wester";
+    public const string StrawHat = "clothes_straw_hat";
+    public const string Beanie = "clothes_beanie";
+    public const string FlannelJacket = "clothes_flannel_jacket";
+    public const string SmithApron = "clothes_smith_apron";
+    public const string Oilskin = "clothes_oilskin";
+    public const string SuitJacket = "clothes_suit_jacket";
+    public const string Overalls = "clothes_overalls";
+    public const string WorkTrousers = "clothes_work_trousers";
+    public const string SuitTrousers = "clothes_suit_trousers";
+    public const string RubberBoots = "clothes_rubber_boots";
+    public const string WorkBoots = "clothes_work_boots";
+    public const string DressShoes = "clothes_dress_shoes";
+
     // Forestry: trees of five kinds with their own saplings, what the forest floor gives, paper, furniture, charcoal,
     // resin and what is made of it, honey, and the fight against fires and the bark beetle.
     public const string SaplingSpruce = "sapling_spruce";
@@ -607,6 +625,21 @@ public static class Items
         [DesignOffice] = "Biuro projektowe",
         [Laboratory] = "Laboratorium",
         [ServiceWorkshop] = "Warsztat serwisowy",
+        [Tailor] = "Pracownia krawiecka",
+        [MinerHelmet] = "Kask górniczy z czołówką",
+        [SouWester] = "Kapelusz rybacki",
+        [StrawHat] = "Słomkowy kapelusz",
+        [Beanie] = "Czapka drwala",
+        [FlannelJacket] = "Kurtka flanelowa",
+        [SmithApron] = "Fartuch kowalski",
+        [Oilskin] = "Sztormiak",
+        [SuitJacket] = "Marynarka",
+        [Overalls] = "Ogrodniczki",
+        [WorkTrousers] = "Spodnie robocze",
+        [SuitTrousers] = "Spodnie od garnituru",
+        [RubberBoots] = "Kalosze",
+        [WorkBoots] = "Trapery",
+        [DressShoes] = "Półbuty",
         [SaplingSpruce] = "Sadzonka świerku",
         [SaplingBirch] = "Sadzonka brzozy",
         [SaplingOak] = "Sadzonka dębu",
@@ -738,7 +771,29 @@ public static class Items
     };
 
     /// <summary>What stands in a city only.</summary>
-    public static bool IsCityOnly(string id) => id is MultistoreyFactory or Shop or HighBay or FreightTerminal or CompanyHq or DesignOffice or Laboratory or ServiceWorkshop;
+    public static bool IsCityOnly(string id) => id is MultistoreyFactory or Shop or HighBay or FreightTerminal or CompanyHq or DesignOffice or Laboratory or ServiceWorkshop
+        or Tailor;
+
+    public static bool IsClothing(string id) => Clothes.ContainsKey(id);
+
+    /// <summary>Where each piece of clothing is worn and what it gives, in percent per industry (see <see cref="Industries"/>).</summary>
+    public static readonly IReadOnlyDictionary<string, Garment> Clothes = new Dictionary<string, Garment>
+    {
+        [MinerHelmet] = new(ClothingSlots.Head, new Dictionary<string, int> { [Industries.Mining] = 15 }),
+        [SouWester] = new(ClothingSlots.Head, new Dictionary<string, int> { [Industries.Fishing] = 15 }),
+        [StrawHat] = new(ClothingSlots.Head, new Dictionary<string, int> { [Industries.Farming] = 15 }),
+        [Beanie] = new(ClothingSlots.Head, new Dictionary<string, int> { [Industries.Forestry] = 10 }),
+        [FlannelJacket] = new(ClothingSlots.Body, new Dictionary<string, int> { [Industries.Forestry] = 20 }),
+        [SmithApron] = new(ClothingSlots.Body, new Dictionary<string, int> { [Industries.Crafting] = 20 }),
+        [Oilskin] = new(ClothingSlots.Body, new Dictionary<string, int> { [Industries.Fishing] = 20 }),
+        [SuitJacket] = new(ClothingSlots.Body, new Dictionary<string, int> { [Industries.Trade] = 4 }),
+        [Overalls] = new(ClothingSlots.Legs, new Dictionary<string, int> { [Industries.Farming] = 20 }),
+        [WorkTrousers] = new(ClothingSlots.Legs, new Dictionary<string, int> { [Industries.Mining] = 15, [Industries.Crafting] = 10 }),
+        [SuitTrousers] = new(ClothingSlots.Legs, new Dictionary<string, int> { [Industries.Trade] = 3 }),
+        [RubberBoots] = new(ClothingSlots.Feet, new Dictionary<string, int> { [Industries.Fishing] = 10, [Industries.Farming] = 10 }),
+        [WorkBoots] = new(ClothingSlots.Feet, new Dictionary<string, int> { [Industries.Forestry] = 10, [Industries.Mining] = 10 }),
+        [DressShoes] = new(ClothingSlots.Feet, new Dictionary<string, int> { [Industries.Trade] = 3 }),
+    };
 
     /// <summary>City offices that sell a service to any player who comes by, for their owner.</summary>
     public static bool IsService(string id) => id is DesignOffice or Laboratory or ServiceWorkshop;
@@ -759,3 +814,45 @@ public static class Items
 /// <param name="ExtraSlots">Inventory tiles the backpack adds.</param>
 /// <param name="ToolSlots">Tool bar slots in all while it is worn.</param>
 public sealed record Backpack(int ExtraSlots, int ToolSlots);
+
+/// <param name="Slot">One of <see cref="ClothingSlots.All"/>.</param>
+/// <param name="Bonuses">Percent per industry: work in it goes this much faster (trade: the trader pays this much more).</param>
+public sealed record Garment(string Slot, IReadOnlyDictionary<string, int> Bonuses);
+
+/// <summary>Where clothes are worn.</summary>
+public static class ClothingSlots
+{
+    public const string Head = "head";
+    public const string Body = "body";
+    public const string Legs = "legs";
+    public const string Feet = "feet";
+
+    public static readonly IReadOnlyList<string> All = [Head, Body, Legs, Feet];
+}
+
+/// <summary>The branches of work clothes help in.</summary>
+public static class Industries
+{
+    /// <summary>Cutting trees, pulling out bushes and picking mushrooms by hand.</summary>
+    public const string Forestry = "forestry";
+
+    /// <summary>Breaking rocks and ice, digging snow and working mines with a pickaxe.</summary>
+    public const string Mining = "mining";
+
+    /// <summary>Tilling, sowing and reaping with a hoe.</summary>
+    public const string Farming = "farming";
+
+    /// <summary>Fishing with a rod.</summary>
+    public const string Fishing = "fishing";
+
+    /// <summary>Orders at the workbench, the anvil, the shipyard and the tailor's.</summary>
+    public const string Crafting = "crafting";
+
+    /// <summary>Selling to the trader.</summary>
+    public const string Trade = "trade";
+
+    public static readonly IReadOnlyList<string> All = [Forestry, Mining, Farming, Fishing, Crafting, Trade];
+
+    /// <summary>How many times faster work goes with <paramref name="percent"/> from clothes.</summary>
+    public static double Speed(int percent) => 1 + percent / 100.0;
+}

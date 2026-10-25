@@ -123,6 +123,9 @@ public static class CityRules
         (Items.Cardboard, 1, 30), (Items.Chair, 1, 8), (Items.Table, 1, 5), (Items.Candles, 1, 15), (Items.Gingerbread, 1, 15), (Items.HerbalTea, 1, 20),
         (Items.Wardrobe, 2, 3), (Items.Turpentine, 2, 10),
         (Items.OakDresser, 3, 2),
+        // Clothes from the tailors.
+        (Items.Beanie, 1, 10), (Items.StrawHat, 1, 10), (Items.FlannelJacket, 2, 5), (Items.RubberBoots, 2, 5),
+        (Items.SuitJacket, 3, 3), (Items.DressShoes, 3, 4),
     ];
 
     /// <summary>A town pays this many times the trader's price for what it wants, and more at each level.</summary>

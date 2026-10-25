@@ -1,4 +1,5 @@
 using FactoryWorld.Modules.Abstractions;
+using FactoryWorld.Modules.Abstractions.Contracts;
 using Microsoft.EntityFrameworkCore;
 
 namespace FactoryWorld.Modules.Characters;
@@ -31,6 +32,24 @@ public sealed class Character
     /// <summary>The backpack worn, or null.</summary>
     public string? Backpack { get; set; }
 
+    /// <summary>The clothes worn in each of <see cref="ClothingSlots.All"/>, or null.</summary>
+    public string? ClothesHead { get; set; }
+
+    public string? ClothesBody { get; set; }
+
+    public string? ClothesLegs { get; set; }
+
+    public string? ClothesFeet { get; set; }
+
+    /// <summary>The clothes worn by slot, empty slots left out.</summary>
+    public IReadOnlyDictionary<string, string> Outfit => new Dictionary<string, string?>
+    {
+        [ClothingSlots.Head] = ClothesHead,
+        [ClothingSlots.Body] = ClothesBody,
+        [ClothingSlots.Legs] = ClothesLegs,
+        [ClothingSlots.Feet] = ClothesFeet,
+    }.Where(c => c.Value is not null).ToDictionary(c => c.Key, c => c.Value!);
+
     /// <summary>What is in each slot of the tool bar the character has now.</summary>
     public IReadOnlyList<string?> Tools => new[] { Tool, Tool2, Tool3 }[..Equipment.ToolSlots(Backpack)];
 
@@ -58,7 +77,12 @@ public sealed class CharactersDbContext(DbContextOptions<CharactersDbContext> op
             e.Property(c => c.Tool2).HasMaxLength(32);
             e.Property(c => c.Tool3).HasMaxLength(32);
             e.Property(c => c.Backpack).HasMaxLength(32);
+            e.Property(c => c.ClothesHead).HasMaxLength(32);
+            e.Property(c => c.ClothesBody).HasMaxLength(32);
+            e.Property(c => c.ClothesLegs).HasMaxLength(32);
+            e.Property(c => c.ClothesFeet).HasMaxLength(32);
             e.Ignore(c => c.Tools);
+            e.Ignore(c => c.Outfit);
             e.ComplexProperty(c => c.Appearance, a => a.ToJson());
         });
     }

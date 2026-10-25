@@ -40,7 +40,7 @@ public static class PlotObjects
         Items.WindTurbine, Items.LargeWindTurbine, Items.Heater, Items.IceMelter, Items.ColdStore, Items.ServerRoom,
         Items.IceCoreDrill, Items.PolarStation, Items.IceHotel, Items.Viewpoint, Items.DogKennel, Items.SnowmobileGarage, Items.TrackFoundation,
         Items.AssemblyHall, Items.MultistoreyFactory, Items.Shop, Items.HighBay, Items.CitySorter, Items.FreightTerminal, Items.CompanyHq,
-        Items.DesignOffice, Items.Laboratory, Items.ServiceWorkshop,
+        Items.DesignOffice, Items.Laboratory, Items.ServiceWorkshop, Items.Tailor,
         Items.PaperMill, Items.Carpentry, Items.CharcoalKiln, Items.TarKiln, Items.Beehive, Items.Watchtower, Items.FireStation,
     };
 

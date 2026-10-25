@@ -65,6 +65,10 @@ public sealed class FarmService(
         return fields;
     }
 
+    /// <summary>How many times faster the player's clothes make farm work and crops.</summary>
+    public Task<double> SpeedAsync(Guid player, CancellationToken cancellationToken) =>
+        plots.SpeedAsync(player, Industries.Farming, cancellationToken);
+
     /// <summary>Turns a free tile of a fertile plot into a field, with the hoe in hand.</summary>
     public Task<FieldChange> TillAsync(Guid player, int x, int y, int tileX, int tileY, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -119,8 +123,9 @@ public sealed class FarmService(
                 await stats.RecordAsync(player, [ProductionEntry.Used(Items.Fertilizer, 1, now)], cancellationToken);
             }
 
-            // A fertilised crop counts as sown so long ago that it is ripe in half its time.
-            var sown = fertilize ? now - Farming.ById[crop].Grow * (1 - 1 / Farming.FertilizerSpeed) : now;
+            // A fertilised crop counts as sown so long ago that it is ripe in half its time; a farmer's clothes take off more.
+            var speed = (fertilize ? Farming.FertilizerSpeed : 1) * await plots.SpeedAsync(player, Industries.Farming, cancellationToken);
+            var sown = now - Farming.ById[crop].Grow * (1 - 1 / speed);
             await using var update = await db.CommandAsync(
                 """
                 UPDATE world.plot_fields SET crop = @crop, planted_at = @now
@@ -233,8 +238,8 @@ public sealed class TillHandler(IServiceScopeFactory scopes, TimeProvider time) 
 
     protected override async Task<FieldChange> RunAsync(FarmService farm, ClientContext client, FieldRequest r, CancellationToken cancellationToken)
     {
-        // Tilling is a swing of a tool like chopping, with the same pace.
-        HarvestHandler.CheckPace(client, Time, HarvestRules.Time);
+        // Tilling is a swing of a tool like chopping, with the same pace, quicker in a farmer's clothes.
+        HarvestHandler.CheckPace(client, Time, HarvestRules.Time / await farm.SpeedAsync(client.RequireAccount(), cancellationToken));
         var change = await farm.TillAsync(client.RequireAccount(), r.X, r.Y, r.TileX, r.TileY, cancellationToken);
         HarvestHandler.Swung(client, Time);
         return change;

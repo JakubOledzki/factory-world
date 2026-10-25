@@ -37,6 +37,22 @@ namespace FactoryWorld.Modules.Characters.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("character varying(32)");
 
+                    b.Property<string>("ClothesBody")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ClothesFeet")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ClothesHead")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("ClothesLegs")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -68,6 +84,12 @@ namespace FactoryWorld.Modules.Characters.Migrations
                     b.ComplexProperty(typeof(Dictionary<string, object>), "Appearance", "FactoryWorld.Modules.Characters.Character.Appearance#Appearance", b1 =>
                         {
                             b1.IsRequired();
+
+                            b1.Property<int>("EyeColor");
+
+                            b1.Property<int>("FaceStyle");
+
+                            b1.Property<int>("FacialHair");
 
                             b1.Property<int>("HairColor");
 

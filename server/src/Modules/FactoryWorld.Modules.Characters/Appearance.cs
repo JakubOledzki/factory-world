@@ -1,6 +1,7 @@
 namespace FactoryWorld.Modules.Characters;
 
-/// <summary>What the player picked in the character editor; each value is an index into <see cref="AppearanceCatalog"/>.</summary>
+/// <summary>What the player picked in the character editor; each value is an index into <see cref="AppearanceCatalog"/>.
+/// The face, the eyes and the facial hair came later: a client that does not send them gets the first of each.</summary>
 public sealed record Appearance(
     int SkinTone,
     int HairStyle,
@@ -8,7 +9,10 @@ public sealed record Appearance(
     int ShirtStyle,
     int ShirtColor,
     int PantsColor,
-    int ShoesColor);
+    int ShoesColor,
+    int FaceStyle = 0,
+    int EyeColor = 0,
+    int FacialHair = 0);
 
 /// <summary>
 /// The options of the character editor. The client draws the character from these palettes,
@@ -26,6 +30,14 @@ public static class AppearanceCatalog
     /// <summary>0 = t-shirt, 1 = tank top, 2 = hoodie.</summary>
     public const int ShirtStyles = 3;
 
+    /// <summary>0 = even, 1 = strong, 2 = soft, 3 = weathered features.</summary>
+    public const int FaceStyles = 4;
+
+    public static readonly string[] EyeColors = ["#5a3a22", "#3d6f9e", "#4f7f45", "#8a7448", "#2f2a28", "#7d8b96"];
+
+    /// <summary>0 = none, 1 = moustache, 2 = goatee, 3 = full beard.</summary>
+    public const int FacialHairStyles = 4;
+
     public static readonly string[] ClothColors =
     [
         "#e8e4da", "#3a3a40", "#c0392b", "#e67e22", "#f1c40f", "#27ae60",
@@ -39,7 +51,10 @@ public static class AppearanceCatalog
         && InRange(a.ShirtStyle, ShirtStyles)
         && InRange(a.ShirtColor, ClothColors.Length)
         && InRange(a.PantsColor, ClothColors.Length)
-        && InRange(a.ShoesColor, ClothColors.Length);
+        && InRange(a.ShoesColor, ClothColors.Length)
+        && InRange(a.FaceStyle, FaceStyles)
+        && InRange(a.EyeColor, EyeColors.Length)
+        && InRange(a.FacialHair, FacialHairStyles);
 
     private static bool InRange(int value, int count) => value >= 0 && value < count;
 }
