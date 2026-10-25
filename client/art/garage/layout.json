@@ -215,6 +215,24 @@
     "anchorX": 56,
     "anchorY": 121
    }
+  ],
+  "furniture_wardrobe": [
+   {
+    "anchorX": 132,
+    "anchorY": 223
+   },
+   {
+    "anchorX": 79,
+    "anchorY": 189
+   },
+   {
+    "anchorX": 138,
+    "anchorY": 223
+   },
+   {
+    "anchorX": 79,
+    "anchorY": 189
+   }
   ]
  },
  "projection": {

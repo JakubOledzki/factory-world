@@ -25,7 +25,7 @@ const WARDROBE := "furniture_wardrobe"
 const USE := {BIN: "Segreguj", WORKBENCH: "Wytwarzaj", ANVIL: "Kuj narzędzia", RESEARCH: "Badania", FURNACE: "Piec kamienny", SORTER: "Sortownia",
 	SHELF: "Regał", PALLET: "Paleta dostaw", WARDROBE: "Szafa"}
 ## How much brighter each level of the lighting upgrade makes the room.
-const LIGHT_STEP := 0.09
+const LIGHT_STEP := 0.06
 
 ## Keyboard actions of this screen: name and keys.
 const ACTIONS := {

@@ -144,12 +144,15 @@ def marble():
     m = Mat("floor")
     n = m.noise(1.5, detail=8, roughness=0.7)
     wave = m.node("ShaderNodeTexWave", wave_type="BANDS", bands_direction="DIAGONAL")
-    wave.inputs["Scale"].default_value = 0.6
-    wave.inputs["Distortion"].default_value = 9.0
-    wave.inputs["Detail"].default_value = 6.0
+    wave.inputs["Scale"].default_value = 0.35
+    wave.inputs["Distortion"].default_value = 14.0
+    wave.inputs["Detail"].default_value = 8.0
     m.link(m.coord.outputs["Object"], wave.inputs["Vector"])
-    veins = m.ramp(wave.outputs["Fac"], [(0.0, (0.62, 0.61, 0.6)), (0.04, (1, 1, 1))]).outputs["Color"]
-    base = m.ramp(n.outputs["Fac"], [(0.3, (0.72, 0.71, 0.69)), (0.7, (0.86, 0.85, 0.83))]).outputs["Color"]
+    veins = m.ramp(wave.outputs["Fac"], [(0.0, (0.8, 0.79, 0.78)), (0.025, (1, 1, 1))]).outputs["Color"]
+    # The veins fade in and out, as in real stone.
+    fade = m.ramp(m.noise(0.6, detail=3).outputs["Fac"], [(0.4, (0, 0, 0)), (0.65, (1, 1, 1))]).outputs["Color"]
+    veins = m.mix(fade, veins, (1.0, 1.0, 1.0))
+    base = m.ramp(n.outputs["Fac"], [(0.3, (0.74, 0.73, 0.71)), (0.7, (0.86, 0.85, 0.83))]).outputs["Color"]
     col = m.mix(1.0, base, veins, "MULTIPLY")
     joints, fac = tiles(m, 1.2, 1.2, (1, 1, 1), (0.96, 0.96, 0.95), (0.4, 0.4, 0.4), 0.002)
     col = m.mix(1.0, col, joints, "MULTIPLY")
