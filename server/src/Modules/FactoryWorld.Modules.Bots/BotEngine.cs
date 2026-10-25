@@ -10,8 +10,8 @@ namespace FactoryWorld.Modules.Bots;
 /// Runs the roster: makes an account and a character for every bot that has none, and on each tick lets
 /// every bot in a session take one step. A bot plays in sessions of some minutes with hours of rest between
 /// them, like a player who drops in a few times a day. Before a tick the engine looks up the most XP any
-/// real player has; a bot never gets within <see cref="BotRules.XpMargin"/> of it and is cut back to it
-/// should it ever get over, so no bot ever shows a higher level than the best player.
+/// real player has; a bot plays on regardless, and after each step whatever it has over one XP below that
+/// is cut away, so no bot ever shows a higher level than the best player.
 /// </summary>
 public sealed class BotEngine(
     IServiceScopeFactory scopes,
@@ -60,7 +60,9 @@ public sealed class BotEngine(
 
                 if (!_bots.ContainsKey(profile.Name))
                 {
-                    _bots[profile.Name] = new Bot(profile, row, new BotClient(row.AccountId, _handlers, _observers, logger), logger);
+                    var account = row.AccountId;
+                    _bots[profile.Name] = new Bot(profile, row, new BotClient(account, _handlers, _observers, logger), logger,
+                        (cents, ct) => GrantAsync(account, cents, ct));
                 }
             }
         }
@@ -148,7 +150,7 @@ public sealed class BotEngine(
         string? action = null;
         try
         {
-            action = await bot.StepAsync(new BotWorld(now, cap, Random), cancellationToken);
+            action = await bot.StepAsync(new BotWorld(now, Random), cancellationToken);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -164,6 +166,12 @@ public sealed class BotEngine(
         }
 
         return action;
+    }
+
+    private async Task GrantAsync(Guid account, long cents, CancellationToken cancellationToken)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(account, cents, "bot allowance", cancellationToken);
     }
 
     private TimeSpan Jitter(TimeSpan span) => span * (0.5 + Random.NextDouble());
