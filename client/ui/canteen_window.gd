@@ -16,8 +16,6 @@ var canteen := ""
 var _state := {}
 var _items: Array = []
 var _clock_offset := 0.0
-var _refreshing := false
-var _next_poll := 0.0
 
 var _status: Label
 var _crews: Label
@@ -27,6 +25,7 @@ var _help: Label
 
 func _init() -> void:
 	super("Stołówka zakładowa", 400)
+	poll_every = POLL
 	_status = UI.label("", UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT, true)
 	content.add_child(_status)
 	_crews = UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
@@ -54,10 +53,7 @@ func open_at(id: String) -> void:
 func refresh() -> void:
 	if canteen == "":
 		return
-	_refreshing = true
-	_next_poll = Time.get_ticks_msec() + POLL
-	var reply := await Net.request("canteen.get", {"canteen": canteen})
-	_refreshing = false
+	var reply := await fetch("canteen.get", {"canteen": canteen})
 	_apply(reply)
 
 
@@ -137,8 +133,3 @@ func _count(item: String) -> int:
 func _duration(seconds: float) -> String:
 	var minutes := maxi(1, ceili(seconds / 60.0))
 	return "%d min" % minutes if minutes < 60 else "%d h %d min" % [minutes / 60, minutes % 60]
-
-
-func _process(_delta: float) -> void:
-	if visible and not _refreshing and Time.get_ticks_msec() >= _next_poll:
-		refresh()

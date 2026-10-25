@@ -20,8 +20,6 @@ var forester := ""
 var plot := Vector2i(-1, -1)
 
 var _state := {}
-var _refreshing := false
-var _next_poll := 0.0
 
 var _level: Label
 var _forest: Label
@@ -40,6 +38,7 @@ var _help: Label
 
 func _init() -> void:
 	super("Leśniczówka", 420)
+	poll_every = 3000.0
 	_level = UI.label("", UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT, true)
 	content.add_child(_level)
 	_forest = UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
@@ -98,10 +97,7 @@ func show_state(forestry: Dictionary) -> void:
 func refresh() -> void:
 	if forester == "":
 		return
-	_refreshing = true
-	_next_poll = Time.get_ticks_msec() + 3000.0
-	var reply := await Net.request("forestry.get", {"x": plot.x, "y": plot.y})
-	_refreshing = false
+	var reply := await fetch("forestry.get", {"x": plot.x, "y": plot.y})
 	_apply(reply)
 
 
@@ -216,10 +212,6 @@ func _minutes(seconds: float) -> String:
 func _number(value: float) -> String:
 	return str(snappedf(value, 0.1)).trim_suffix(".0").replace(".", ",")
 
-
-func _process(_delta: float) -> void:
-	if visible and not _refreshing and Time.get_ticks_msec() >= _next_poll:
-		refresh()
 
 
 func _take_wood() -> void:

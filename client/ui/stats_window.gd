@@ -20,8 +20,6 @@ const REASONS := {
 var _minutes := 10
 var _state := {}
 var _selected := ""
-var _next_poll := 0.0
-var _refreshing := false
 
 var _period_buttons := {}
 var _bottlenecks := VBoxContainer.new()
@@ -33,6 +31,7 @@ var _items := VBoxContainer.new()
 
 func _init() -> void:
 	super("Statystyki produkcji", 640)
+	poll_every = 5000.0
 	var periods := HBoxContainer.new()
 	periods.add_theme_constant_override("separation", 6)
 	for minutes: int in PERIODS:
@@ -74,20 +73,13 @@ func show_window() -> void:
 
 
 func refresh() -> void:
-	_refreshing = true
-	_next_poll = Time.get_ticks_msec() + 5000.0
-	var reply := await Net.request("stats.production", {"minutes": _minutes})
-	_refreshing = false
+	var reply := await fetch("stats.production", {"minutes": _minutes})
 	if reply["type"] != "stats.production":
 		failed.emit(reply)
 		return
 	_state = reply["payload"]
 	_render()
 
-
-func _process(_delta: float) -> void:
-	if visible and not _refreshing and Time.get_ticks_msec() >= _next_poll:
-		refresh()
 
 
 func _set_period(minutes: int) -> void:

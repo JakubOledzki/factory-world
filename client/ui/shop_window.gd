@@ -18,8 +18,6 @@ var _state := {}
 var _items: Array = []
 ## Item → what the trader pays for it, in cents.
 var _trader := {}
-var _refreshing := false
-var _next_poll := 0.0
 var _summary: Label
 var _shelves := VBoxContainer.new()
 var _picker: OptionButton
@@ -30,6 +28,7 @@ var _chance: Label
 
 func _init() -> void:
 	super("Sklep", 480)
+	poll_every = POLL
 	_summary = UI.label("", UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT, true)
 	content.add_child(_summary)
 	content.add_child(HSeparator.new())
@@ -77,10 +76,7 @@ func open_at(id: String) -> void:
 func refresh() -> void:
 	if shop == "":
 		return
-	_refreshing = true
-	_next_poll = Time.get_ticks_msec() + POLL
-	var reply := await Net.request("shop.get", {"id": shop})
-	_refreshing = false
+	var reply := await fetch("shop.get", {"id": shop})
 	_apply(reply)
 
 
@@ -191,8 +187,3 @@ func _spin(low: int, high: int, value: int) -> SpinBox:
 	spin.custom_minimum_size.x = 90
 	spin.select_all_on_focus = true
 	return spin
-
-
-func _process(_delta: float) -> void:
-	if visible and not _refreshing and Time.get_ticks_msec() >= _next_poll:
-		refresh()

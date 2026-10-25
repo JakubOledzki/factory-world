@@ -13,7 +13,16 @@ var content := VBoxContainer.new()
 ## and its content fills it (to put its own scrolling lists inside), instead of growing to fit.
 var fill_margin := Vector2.ZERO
 
+## Set by a window that shows something kept on the server (ms): while it is open, refresh() is called
+## again this often. Its refresh() asks with fetch(), so only one request is on the way at a time.
+var poll_every := 0.0:
+	set(value):
+		poll_every = value
+		set_process(visible and value > 0.0)
+
 var _dragging := false
+var _poll_at := 0.0
+var _poll_busy := false
 var _title: Label
 var _bar := HBoxContainer.new()
 var _scroll := ScrollContainer.new()
@@ -56,6 +65,10 @@ func _init(title: String, width: int) -> void:
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.add_child(content)
 	box.add_child(_scroll)
+	visibility_changed.connect(func() -> void:
+		# A hidden window that only polls has nothing to do each frame.
+		if poll_every > 0.0:
+			set_process(visible))
 
 
 func toggle() -> void:
@@ -128,3 +141,27 @@ func hide_filter_button() -> void:
 
 func set_title(title: String) -> void:
 	_title.text = title
+
+
+## Asks the server for what the window shows, for refresh(): the next ask comes poll_every from now.
+func fetch(type: String, payload: Dictionary = {}) -> Dictionary:
+	_poll_busy = true
+	_poll_at = Time.get_ticks_msec() + poll_every
+	var reply: Dictionary = await Net.request(type, payload)
+	_poll_busy = false
+	return reply
+
+
+## Asks the server again for what the window shows; windows with poll_every set implement it.
+func refresh() -> void:
+	pass
+
+
+## Whether the open window should ask again when it is time, e.g. not for a chest in the garage, which nothing fills.
+func _wants_poll() -> bool:
+	return true
+
+
+func _process(_delta: float) -> void:
+	if poll_every > 0.0 and visible and not _poll_busy and Time.get_ticks_msec() >= _poll_at and _wants_poll():
+		refresh()

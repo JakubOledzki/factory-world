@@ -18,8 +18,6 @@ var in_garage := false
 
 var _state := {}
 var _items: Array = []
-var _next_poll := 0.0
-var _refreshing := false
 
 var _fill: ProgressBar
 var _fill_label: Label
@@ -32,6 +30,7 @@ var _pick_up_button: Button
 
 func _init() -> void:
 	super("Magazyn", 420)
+	poll_every = 1000.0
 	_fill = ProgressBar.new()
 	_fill.show_percentage = false
 	_fill.custom_minimum_size.y = 10
@@ -83,10 +82,7 @@ func set_items(items: Array) -> void:
 func refresh() -> void:
 	if storage == "":
 		return
-	_refreshing = true
-	_next_poll = Time.get_ticks_msec() + 1000.0
-	var reply := await Net.request("garage.storage", {"id": storage}) if in_garage else await Net.request("storage.get", {"x": plot.x, "y": plot.y, "id": storage})
-	_refreshing = false
+	var reply := await fetch("garage.storage", {"id": storage}) if in_garage else await fetch("storage.get", {"x": plot.x, "y": plot.y, "id": storage})
 	_apply(reply)
 
 
@@ -98,10 +94,9 @@ func _apply(reply: Dictionary) -> void:
 	_render()
 
 
-func _process(_delta: float) -> void:
-	# Inserters may be filling or emptying it; nothing does in the garage.
-	if visible and not in_garage and not _refreshing and Time.get_ticks_msec() >= _next_poll:
-		refresh()
+## Inserters may be filling or emptying it; nothing does in the garage.
+func _wants_poll() -> bool:
+	return not in_garage
 
 
 ## How many more pieces of an item fit, as the server counts: each kind fills whole slots.
