@@ -152,6 +152,31 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
     }
 
     [Fact]
+    public async Task An_inserter_of_a_player_without_bigger_grippers_takes_items_off_a_belt()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty) = await PlotWithFreeRowAsync(client, 5);
+        await GiveAsync(client, Items.WoodenChest, 2);
+        await GiveAsync(client, Items.Inserter, 2);
+        await GiveAsync(client, Items.Belt, 1);
+        await GiveAsync(client, Items.Wood, 5);
+
+        // chest → inserter → belt → inserter → chest: the second one has to pick up from the belt.
+        var source = await PlaceAsync(client, x, y, Items.WoodenChest, tx, ty);
+        await PlaceAsync(client, x, y, Items.Inserter, tx + 1, ty);
+        await PlaceAsync(client, x, y, Items.Belt, tx + 2, ty);
+        await PlaceAsync(client, x, y, Items.Inserter, tx + 3, ty);
+        var target = await PlaceAsync(client, x, y, Items.WoodenChest, tx + 4, ty);
+        await client.SendAsync("storage.put", new { x, y, id = source, item = Items.Wood, quantity = 5 });
+        await PowerAsync(client, x, y, tx, ty);
+
+        factory.Time.Advance(TimeSpan.FromMinutes(5));
+        var logistics = await client.SendAsync("logistics.get", new { x, y });
+        var storages = logistics.Payload().GetProperty("storages").EnumerateArray().ToDictionary(s => s.GetProperty("id").GetString()!);
+        Assert.Equal(5, StoredIn(storages[target], Items.Wood));
+    }
+
+    [Fact]
     public void An_inserter_beside_a_belt_drops_on_the_far_lane_first()
     {
         // A belt going east; the inserter stands north of it (its left) and drops south onto it.

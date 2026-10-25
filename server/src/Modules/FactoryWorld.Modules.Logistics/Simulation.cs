@@ -454,7 +454,7 @@ public sealed class PlotLogistics
             var (dx, dy) = LogisticsRules.Facing(o.Rotation);
             var reach = LogisticsRules.Reach(o.Kind);
             var fluid = Items.CarriesFluids(o.Kind);
-            var inserter = new Inserter(o.Id, Contents(contents, o.Id), LogisticsRules.Swing(o.Kind), fluid, grips?.GetValueOrDefault(o.Id) ?? 1)
+            var inserter = new Inserter(o.Id, Contents(contents, o.Id), LogisticsRules.Swing(o.Kind), fluid, grips?.GetValueOrDefault(o.Id, 1) ?? 1)
             {
                 Clock = power?.Clock(o.Id),
             };
