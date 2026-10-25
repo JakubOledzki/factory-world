@@ -138,14 +138,15 @@ public sealed class PerfTests(ServerFactory factory, ITestOutputHelper output) :
             presence.Update(Guid.NewGuid(), i % 50 == 0 ? x : x + 1 + i % 7, y, 10, 10, "down", false);
         }
 
-        // FW_PERF_PROFILE=1: "logistics.get" over and over for a minute first, for a profiler to attach to (dotnet-trace ps).
-        if (Environment.GetEnvironmentVariable("FW_PERF_PROFILE") == "1")
+        // FW_PERF_PROFILE=logistics.get (or another request type): that request over and over for a minute first,
+        // for a profiler to attach to (dotnet-trace ps).
+        if (Environment.GetEnvironmentVariable("FW_PERF_PROFILE") is { Length: > 0 } profiled)
         {
             var until = Stopwatch.StartNew();
             while (until.Elapsed < TimeSpan.FromSeconds(60))
             {
                 factory.Time.Advance(TimeSpan.FromSeconds(1));
-                await Send("logistics.get", new { x, y });
+                await Send(profiled, new { x, y });
             }
         }
 
