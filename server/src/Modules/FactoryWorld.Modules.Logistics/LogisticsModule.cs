@@ -231,7 +231,7 @@ public sealed class LogisticsService(
         }, cancellationToken);
 
     /// <summary>Works out the plot's logistics from where they were left up to now, under a lock on the plot.</summary>
-    private async Task<LogisticsState> RunAsync(int x, int y, CancellationToken cancellationToken)
+    internal async Task<LogisticsState> RunAsync(int x, int y, CancellationToken cancellationToken)
     {
         await using (var lockPlot = await db.CommandAsync("SELECT pg_advisory_xact_lock(@key)", cancellationToken))
         {
@@ -373,7 +373,7 @@ public sealed class LogisticsService(
         WriteAsync(x, y, [(id, contents)], cancellationToken);
 
     /// <summary>Writes what belts, inserters and storages on the plot hold, all in one query.</summary>
-    private async Task WriteAsync(int x, int y, IReadOnlyList<(Guid Id, Contents Contents)> changed, CancellationToken cancellationToken)
+    internal async Task WriteAsync(int x, int y, IReadOnlyList<(Guid Id, Contents Contents)> changed, CancellationToken cancellationToken)
     {
         if (changed.Count == 0)
         {
@@ -620,6 +620,7 @@ public sealed class LogisticsModule : IGameModule
         services.AddScoped<LogisticsService>();
         services.AddScoped<IPlotAutomation>(provider => provider.GetRequiredService<LogisticsService>());
         services.AddScoped<IMachineContents, LogisticsContents>();
+        services.AddScoped<IFreightChests, FreightChests>();
         services.AddSingleton<IMessageHandler, GetLogisticsHandler>();
         services.AddSingleton<IMessageHandler, SetSplitterHandler>();
         services.AddSingleton<IMessageHandler, SetFilterHandler>();

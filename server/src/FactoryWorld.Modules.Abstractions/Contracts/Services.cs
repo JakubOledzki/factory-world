@@ -343,6 +343,21 @@ public interface IExportMarket
     Task ListAsync(Guid seller, string item, long quantity, long priceCents, CancellationToken cancellationToken);
 }
 
+/// <summary>The loading and receiving chests (<see cref="Items.IsLoadingChest"/>, <see cref="Items.IsReceivingChest"/>) on plots, for the
+/// freight trains between a player's plots. Each call brings the plot's machinery up to now and locks it until the transaction ends.</summary>
+public interface IFreightChests
+{
+    /// <summary>What the plot's loading chests hold together, by item.</summary>
+    Task<IReadOnlyDictionary<string, long>> LoadingAsync(int x, int y, CancellationToken cancellationToken);
+
+    /// <summary>Takes the goods out of the plot's loading chests, all or nothing; false, with nothing taken, when they hold fewer.</summary>
+    Task<bool> TakeAsync(int x, int y, IReadOnlyDictionary<string, long> goods, CancellationToken cancellationToken);
+
+    /// <summary>Puts what fits of the goods into the plot's receiving chests, those whose filter is set to the item first; returns what
+    /// did not fit (empty when everything did).</summary>
+    Task<IReadOnlyDictionary<string, long>> UnloadAsync(int x, int y, IReadOnlyDictionary<string, long> goods, CancellationToken cancellationToken);
+}
+
 /// <summary>The forest certificate: a player who planted at least as many trees as they cut over the last week, and
 /// enough of them, sells timber dearer.</summary>
 public interface IForestCertificate

@@ -1,6 +1,17 @@
 [
 	{
 		"date": "2026-10-25",
+		"title": "Pociągi między twoimi działkami",
+		"changes": [
+			"Nowe skrzynie: ładująca (pomarańczowa, strzałka w górę) i odbierająca (niebieska, strzałka w dół), każda w 4 rozmiarach: 800, 1600, 6400 i 16 000 sztuk. Odblokujesz je w gałęzi Logistyka: Transport kolejowy, Większe skrzynie kolejowe, Terminal przeładunkowy i Kontenerowy terminal kolejowy.",
+			"Kliknij stację kolejową na dowolnej działce: pierwsza zakładka, Trasy, pokazuje wszystkie twoje trasy między działkami. Tam też dodasz nową: skąd, dokąd, jakie towary i ile na jeden kurs; od razu widać odległość, czas jazdy i cenę kursu.",
+			"Pociąg trasy czeka, aż skrzynie ładujące na działce będą miały cały ładunek, płaci zwykłą opłatę kolejową i zawozi towar do skrzyń odbierających. Gdy nie ma w nich miejsca, czeka z resztą, a potem wraca po następny ładunek.",
+			"Na działce może stać kilka skrzyń ładujących i odbierających. Filtr skrzyni (przycisk na pasku okna) sprawia, że przyjmuje tylko wybrany przedmiot; pociąg najpierw rozładowuje się do skrzyń z filtrem na dany towar. Podajniki napełniają je i opróżniają jak zwykłe skrzynie.",
+			"Działki można nazywać: na mapie świata (przy swojej działce) albo w zakładce Trasy na stacji. Nazwę widać na mapie i w trasach."
+		]
+	},
+	{
+		"date": "2026-10-25",
 		"title": "Kompendium wiedzy",
 		"changes": [
 			"W oknie postaci (portret w rogu) jest nowa zakładka Kompendium: każdy przedmiot, maszyna i budynek w grze, podzielone na kategorie, z wyszukiwarką.",
