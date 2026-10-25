@@ -1,3 +1,4 @@
+using FactoryWorld.Modules.Abstractions.Contracts;
 using FactoryWorld.Modules.Characters;
 
 namespace FactoryWorld.Server.Tests;
@@ -26,7 +27,7 @@ public sealed class CharacterTests(ServerFactory factory) : IClassFixture<Server
         Assert.Equal(name, loaded.Payload().GetProperty("name").GetString());
         Assert.Equal(1, loaded.Payload().GetProperty("level").GetInt32());
         Assert.Equal(0, loaded.Payload().GetProperty("xp").GetInt64());
-        Assert.Equal(200, loaded.Payload().GetProperty("nextLevelXp").GetInt64());
+        Assert.Equal(204, loaded.Payload().GetProperty("nextLevelXp").GetInt64());
         Assert.Equal(3, loaded.Payload().GetProperty("appearance").GetProperty("hairStyle").GetInt32());
     }
 
@@ -111,14 +112,26 @@ public sealed class LevelingTests
 {
     [Theory]
     [InlineData(0, 1)]
-    [InlineData(199, 1)]
-    [InlineData(200, 2)]
-    [InlineData(799, 2)]
-    [InlineData(800, 3)]
-    [InlineData(16_200, 10)]
-    [InlineData(1_960_200, 100)]
+    [InlineData(-5, 1)]
+    [InlineData(203, 1)]
+    [InlineData(204, 2)]
+    [InlineData(831, 2)]
+    [InlineData(832, 3)]
+    [InlineData(19_116, 10)]
+    [InlineData(5_841_395, 99)]
+    [InlineData(5_841_396, 100)]
     [InlineData(99_999_999, 100)]
     public void Level_follows_the_xp_table(long xp, int level) => Assert.Equal(level, Leveling.LevelForXp(xp));
+
+    [Fact]
+    public void Level_bonuses_come_every_fifth_level_and_add_up()
+    {
+        Assert.Empty(LevelBonuses.For(4));
+        Assert.Equal(new Dictionary<string, int> { ["forestry"] = 5 }, LevelBonuses.For(5));
+        var top = LevelBonuses.For(Leveling.MaxLevel);
+        Assert.All(Industries.All.Where(i => i != Industries.Trade), i => Assert.Equal(15, top[i]));
+        Assert.Equal(5, top[Industries.Trade]);
+    }
 
     [Fact]
     public void Every_level_boundary_is_exact()

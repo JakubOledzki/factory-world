@@ -499,6 +499,7 @@ FURNITURE_AT = {
     "furniture_barrel_red": (7.75, 1.75),
     "furniture_tyres": (6.5, 1.0),
     "furniture_pallet": (1.5, 1.0),
+    "furniture_research_table": (1.25, 5.5),
     # Not in the starter layout: rendered on free floor in the middle of the room.
     "furniture_sorting_machine": (3.75, 2.0),
     "furniture_furnace": (5.0, 2.5),
@@ -845,9 +846,73 @@ def build_anvil(coll, at: Vector, size=1.0):
     box("hammer_head", (0.06 * s, 0.05 * s, 0.13 * s), at + Vector((hx + 0.04 * s, hy, 0.04 * s)), steel, coll, bevel=0.008 * s)
 
 
+def build_research_table(coll, at: Vector, size=1.0):
+    """A scientist's desk: a light oak top on dark legs with a drawer cabinet, a microscope, a rack
+    of test tubes and flasks glowing with coloured liquids, a stack of books, a blueprint spread out
+    and a desk lamp lighting it."""
+    s = size
+    top = wood("lab_top", (0.32, 0.2, 0.1))
+    dark = wood("lab_legs", (0.08, 0.05, 0.03))
+    steel = rusty_metal("lab_steel", (0.2, 0.21, 0.22), 0.1)
+    black = plain("lab_black", (0.03, 0.03, 0.035), 0.4)
+    glass = plain("lab_glass", (0.6, 0.75, 0.8), 0.1, variation=0.05, grime=0.1)
+    box("lab_top", (1.4 * s, 0.7 * s, 0.05 * s), at + Vector((0, 0, 0.8 * s)), top, coll, bevel=0.012 * s)
+    for x in (-0.64, 0.64):
+        for y in (-0.29, 0.29):
+            box("lab_leg", (0.06 * s, 0.06 * s, 0.78 * s), at + Vector((x * s, y * s, 0.39 * s)), dark, coll)
+    # A cabinet of drawers under the right end, with brass handles.
+    box("lab_cabinet", (0.42 * s, 0.6 * s, 0.68 * s), at + Vector((0.4 * s, 0, 0.42 * s)), dark, coll, bevel=0.01 * s)
+    brass = plain("lab_brass", (0.6, 0.42, 0.12), 0.3, 1.0, grime=0.2)
+    for z in (0.22, 0.44, 0.66):
+        box("lab_drawer", (0.38 * s, 0.01 * s, 0.19 * s), at + Vector((0.4 * s, -0.302 * s, z * s)), top, coll)
+        box("lab_handle", (0.1 * s, 0.02 * s, 0.02 * s), at + Vector((0.4 * s, -0.315 * s, z * s)), brass, coll)
+    z0 = 0.825 * s
+    # A blueprint spread out in the middle, a pencil on it.
+    box("lab_blueprint", (0.46 * s, 0.32 * s, 0.004 * s), at + Vector((-0.02 * s, -0.08 * s, z0)),
+        plain("lab_blueprint", (0.06, 0.18, 0.45), 0.8, variation=0.1, grime=0.1), coll, rotation=(0, 0, 0.08))
+    for k in range(4):
+        box("lab_line", (0.36 * s, 0.006 * s, 0.002 * s), at + Vector((-0.02 * s, (-0.18 + 0.06 * k) * s, z0 + 0.003 * s)),
+            plain("lab_ink", (0.75, 0.82, 0.9), 0.8, variation=0.05, grime=0.0), coll, rotation=(0, 0, 0.08))
+    cylinder("lab_pencil", 0.006 * s, 0.16 * s, at + Vector((0.08 * s, -0.16 * s, z0 + 0.008 * s)),
+             plain("lab_pencil", (0.8, 0.55, 0.05), 0.5), coll, rotation=(0, math.pi / 2, 0.6), verts=8)
+    # The microscope on the left: a foot, an arm, the tube and a stage.
+    mx, my = -0.5 * s, 0.12 * s
+    box("scope_foot", (0.16 * s, 0.2 * s, 0.03 * s), at + Vector((mx, my, z0 + 0.015 * s)), black, coll, bevel=0.008 * s)
+    box("scope_arm", (0.05 * s, 0.05 * s, 0.26 * s), at + Vector((mx, my + 0.07 * s, z0 + 0.15 * s)), black, coll, bevel=0.01 * s)
+    box("scope_stage", (0.12 * s, 0.11 * s, 0.015 * s), at + Vector((mx, my - 0.01 * s, z0 + 0.11 * s)), black, coll)
+    cylinder("scope_tube", 0.025 * s, 0.2 * s, at + Vector((mx, my - 0.02 * s, z0 + 0.25 * s)), steel, coll,
+             rotation=(math.radians(-20), 0, 0), verts=16)
+    cylinder("scope_eye", 0.018 * s, 0.06 * s, at + Vector((mx, my + 0.02 * s, z0 + 0.37 * s)), black, coll,
+             rotation=(math.radians(-20), 0, 0), verts=12)
+    # A rack of test tubes and two flasks, their liquids glowing through the glass.
+    rx, ry = -0.22 * s, 0.22 * s
+    box("tube_rack", (0.26 * s, 0.07 * s, 0.05 * s), at + Vector((rx, ry, z0 + 0.025 * s)), top, coll, bevel=0.005 * s)
+    for k, color in enumerate([(0.2, 1.0, 0.4), (1.0, 0.35, 0.1), (0.25, 0.6, 1.0), (0.95, 0.85, 0.2)]):
+        x = rx + (-0.09 + 0.06 * k) * s
+        cylinder("tube", 0.014 * s, 0.14 * s, at + Vector((x, ry, z0 + 0.08 * s)), glass, coll, verts=12)
+        cylinder("tube_liquid", 0.0155 * s, 0.07 * s, at + Vector((x, ry, z0 + 0.05 * s)), emission(f"tube_liquid{k}", color, 3.0), coll, verts=12)
+    for (fx, fy), color in (((0.05, 0.2), (0.3, 1.0, 0.7)), ((0.18, 0.16), (0.8, 0.3, 1.0))):
+        cylinder("flask", 0.06 * s, 0.1 * s, at + Vector((fx * s, fy * s, z0 + 0.05 * s)), glass, coll, verts=20, radius2=0.025 * s)
+        cylinder("flask_neck", 0.018 * s, 0.08 * s, at + Vector((fx * s, fy * s, z0 + 0.14 * s)), glass, coll, verts=12)
+        cylinder("flask_liquid", 0.062 * s, 0.05 * s, at + Vector((fx * s, fy * s, z0 + 0.026 * s)), emission(f"flask{fx}", color, 3.0), coll,
+                 verts=20, radius2=0.044 * s)
+    # A stack of books and the desk lamp at the back right.
+    for k, color in enumerate([(0.35, 0.05, 0.04), (0.05, 0.2, 0.1), (0.1, 0.1, 0.3)]):
+        box("book", (0.22 * s, 0.16 * s, 0.045 * s), at + Vector((0.42 * s, -0.08 * s, z0 + (0.023 + 0.046 * k) * s)),
+            plain(f"book{k}", color, 0.7), coll, bevel=0.004 * s, rotation=(0, 0, 0.12 * (k - 1)))
+    cylinder("lamp_foot", 0.06 * s, 0.02 * s, at + Vector((0.5 * s, 0.22 * s, z0 + 0.01 * s)), steel, coll, verts=16)
+    cylinder("lamp_arm", 0.01 * s, 0.32 * s, at + Vector((0.46 * s, 0.2 * s, z0 + 0.17 * s)), steel, coll,
+             rotation=(0, math.radians(-20), 0), verts=8)
+    cylinder("lamp_shade", 0.07 * s, 0.09 * s, at + Vector((0.38 * s, 0.17 * s, z0 + 0.32 * s)),
+             plain("lamp_shade", (0.08, 0.25, 0.12), 0.4), coll, verts=20, radius2=0.03 * s)
+    cylinder("lamp_bulb", 0.035 * s, 0.01 * s, at + Vector((0.38 * s, 0.17 * s, z0 + 0.27 * s)), emission("lamp_bulb", (1.0, 0.85, 0.55), 8.0), coll,
+             verts=16)
+
+
 FURNITURE_BUILDERS = {
     "furniture_furnace": build_furnace,
     "furniture_anvil": build_anvil,
+    "furniture_research_table": build_research_table,
     "furniture_sorting_machine": build_sorting_machine,
     "furniture_trash_bin": build_bin,
     "furniture_workbench": build_workbench,

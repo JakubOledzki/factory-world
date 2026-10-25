@@ -265,12 +265,14 @@ public sealed class InventorySize(GameDb db) : IInventorySize
     }
 }
 
-/// <summary>What the worn clothes give: the bonuses of each piece, added up per industry, and on top what the last meal gives while it lasts.</summary>
-public sealed class Outfit(Equipment equipment, TimeProvider time) : IOutfit
+/// <summary>What the worn clothes give, the bonuses of each piece added up per industry, with the level's on top
+/// (<see cref="LevelBonuses"/>) and what the last meal gives while it lasts.</summary>
+public sealed class Outfit(Equipment equipment, ICharacterXp xp, TimeProvider time) : IOutfit
 {
     public async Task<int> BonusAsync(Guid accountId, string industry, CancellationToken cancellationToken) =>
         Bonuses(await equipment.OutfitAsync(accountId, false, cancellationToken) ?? new Dictionary<string, string>())
             .GetValueOrDefault(industry)
+        + LevelBonuses.For(Leveling.LevelForXp(await xp.XpAsync(accountId, cancellationToken) ?? 0)).GetValueOrDefault(industry)
         + (await equipment.MealAsync(accountId, time.GetUtcNow(), cancellationToken) is { } meal ? Items.Meals[meal].Bonuses.GetValueOrDefault(industry) : 0);
 
     /// <summary>Percent per industry the clothes give together; industries they do not help left out.</summary>

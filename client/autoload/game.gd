@@ -8,6 +8,8 @@ const EDITOR_SCENE := "res://scenes/editor.tscn"
 const GARAGE_SCENE := "res://scenes/garage.tscn"
 const WORLD_MAP_SCENE := "res://scenes/world_map.tscn"
 const PLOT_SCENE := "res://scenes/plot.tscn"
+## The highest level a character reaches, as on the server.
+const MAX_LEVEL := 100
 
 ## Server error codes shown to the player in Polish.
 const ERRORS := {
@@ -184,7 +186,7 @@ const ERRORS := {
 	"too_many_taken": "Naraz możesz realizować najwyżej 5 zleceń innych graczy.",
 	"bad_reward": "Nagroda musi wynosić od 0,01 $ do 10 000 000 $.",
 	"bad_deadline": "Termin: od 1 do 168 godzin.",
-	"locked": "Najpierw odblokuj to w drzewku technologii (stół warsztatowy, zakładka Badania).",
+	"locked": "Najpierw odblokuj to w drzewku technologii (stół badawczy w garażu).",
 	"no_technology": "Nie ma takiej technologii.",
 	"already_researched": "Ta technologia jest już zbadana.",
 	"research_busy": "Trwa już inne badanie. Poczekaj albo je przerwij.",
@@ -324,13 +326,22 @@ func reload_character() -> void:
 		character = reply["payload"]
 
 
-## Applies an XP gain from the server ({ xp, level }); level thresholds follow 200 × (L − 1)².
+## Total XP to reach a level, as the server counts it: 200 × (L − 1)² + 4 × (L − 1)³.
+static func xp_for_level(level: int) -> int:
+	var n := level - 1
+	return 200 * n * n + 4 * n * n * n
+
+
+## Applies an XP gain from the server ({ xp, level }).
 func gain_xp(gain: Dictionary) -> void:
 	var level: int = gain["level"]
 	character["xp"] = gain["xp"]
 	character["level"] = level
-	character["levelXp"] = 200 * (level - 1) * (level - 1)
-	character["nextLevelXp"] = 200 * level * level
+	character["levelXp"] = xp_for_level(level)
+	character["nextLevelXp"] = xp_for_level(level + 1) if level < MAX_LEVEL else null
+	# A new level may bring a bonus (every fifth level), which the server adds to "bonuses".
+	if gain.get("leveledUp", false):
+		reload_character()
 
 
 func logout() -> void:

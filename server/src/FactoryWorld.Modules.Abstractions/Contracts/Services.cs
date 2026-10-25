@@ -86,10 +86,10 @@ public interface IEquipment
     Task GiveToolAsync(Guid accountId, string tool, CancellationToken cancellationToken);
 }
 
-/// <summary>The clothes a character wears, and what they help with.</summary>
+/// <summary>The clothes a character wears and the level it has reached, and what they help with.</summary>
 public interface IOutfit
 {
-    /// <summary>What the worn clothes give in an industry (<see cref="Industries"/>), in percent; 0 without any.</summary>
+    /// <summary>What the worn clothes and the level give in an industry (<see cref="Industries"/>), in percent; 0 without any.</summary>
     Task<int> BonusAsync(Guid accountId, string industry, CancellationToken cancellationToken);
 }
 

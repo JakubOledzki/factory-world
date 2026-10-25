@@ -5,8 +5,8 @@ extends GameWindow
 ## once; the item is made after the recipe's time, one order after another, and lands in the
 ## inventory even when the player walks away. The window keeps an eye on the queue while closed,
 ## so the screen hears about finished orders. It covers most of the screen: recipes sorted into
-## categories on the left, the chosen recipe and the queue on the right. The second tab is the
-## technology tree: recipes and machines that research unlocks show which technology they need.
+## categories on the left, the chosen recipe and the queue on the right. Research is done at the
+## research table (ResearchWindow); recipes still to be researched aren't shown here.
 
 ## Orders were finished: [{id, name, quantity}] and the XP gain (or null).
 signal finished(done: Array, xp: Variant)
@@ -15,8 +15,6 @@ signal inventory_changed
 signal failed(reply: Dictionary)
 ## The player asked to put this workbench back into the inventory (only where `can_pick_up`).
 signal pick_up_requested(id: String)
-## Research finished: [{id, name}] and the XP gain (or null).
-signal researched(finished: Array, xp: Variant)
 
 const WORKBENCH := "furniture_workbench"
 const ANVIL := "furniture_anvil"
@@ -53,9 +51,6 @@ var _job_bar: ProgressBar
 var _job_text: Label
 var _pick_up_button: Button
 var _body := HBoxContainer.new()
-var _research := ResearchPanel.new()
-var _heading_label: Label
-var _tab_buttons: Array[Button] = []
 
 
 func _init() -> void:
@@ -63,14 +58,9 @@ func _init() -> void:
 	fill_margin = Vector2(40, 24)
 	var top := HBoxContainer.new()
 	top.add_theme_constant_override("separation", 8)
-	for tab: String in ["Przepisy", "Badania"]:
-		var b := UI.button(tab, _open_tab.bind(_tab_buttons.size()))
-		b.custom_minimum_size.x = 150
-		top.add_child(b)
-		_tab_buttons.append(b)
-	_heading_label = _heading("Co chcesz wytworzyć?")
-	_heading_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(_heading_label)
+	var heading := _heading("Co chcesz wytworzyć?")
+	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(heading)
 	_search.custom_minimum_size.x = 260
 	_search.clear_button_enabled = true
 	_search.text_changed.connect(func(_text: String) -> void:
@@ -84,13 +74,6 @@ func _init() -> void:
 	body.add_theme_constant_override("separation", 10)
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(body)
-	_research.visible = false
-	_research.researched.connect(func(finished: Array, xp: Variant) -> void:
-		researched.emit(finished, xp)
-		refresh())
-	_research.inventory_changed.connect(inventory_changed.emit)
-	_research.failed.connect(failed.emit)
-	content.add_child(_research)
 	_categories.chosen.connect(func(category: int) -> void:
 		_category = category
 		_recipe_list.scroll_vertical = 0
@@ -147,19 +130,6 @@ func _init() -> void:
 	_pick_up_button = UI.button("Schowaj stół do ekwipunku", func() -> void: pick_up_requested.emit(workbench))
 	_pick_up_button.visible = false
 	side.add_child(_pick_up_button)
-	_open_tab(0)
-
-
-## 0 the recipes, 1 the technology tree.
-func _open_tab(tab: int) -> void:
-	for i in _tab_buttons.size():
-		_tab_buttons[i].theme_type_variation = "AccentButton" if i == tab else ""
-	_body.visible = tab == 0
-	_search.visible = tab == 0
-	_research.visible = tab == 1
-	_heading_label.text = "Co chcesz wytworzyć?" if tab == 0 else "Drzewko technologii"
-	if tab == 1:
-		_research.set_items(_items)
 
 
 ## Opens the window at a workbench or, with `kind` ANVIL, SHIPYARD or TAILOR, at an anvil, a shipyard or a tailor's.
@@ -168,18 +138,11 @@ func open_at(id: String, kind := WORKBENCH) -> void:
 	if kind != station:
 		_selected = ""
 	station = kind
-	var bench := kind == WORKBENCH
 	set_title(STATION_TITLES.get(kind, "Stół warsztatowy"))
 	_pick_up_button.text = STATION_PICK_UP.get(kind, "Schowaj stół do ekwipunku")
 	_pick_up_button.visible = can_pick_up
-	# Research is done at the workbench; the anvil only forges, the shipyard only builds boats, the tailor only sews.
-	for b in _tab_buttons:
-		b.visible = bench
-	if not bench:
-		_open_tab(0)
 	show_window()
 	refresh()
-	_research.refresh()
 
 
 ## The recipes made where the window is open; those still to be researched are left out.
@@ -191,7 +154,6 @@ func _station_recipes() -> Array:
 ## The screen calls this whenever the inventory changes.
 func set_items(items: Array) -> void:
 	_items = items
-	_research.set_items(items)
 	if visible:
 		_render()
 
@@ -203,9 +165,6 @@ func refresh() -> void:
 	var reply := await Net.request("crafting.get")
 	_refreshing = false
 	_apply(reply)
-	# Once, so research that ended while the game was closed is announced without opening the tree.
-	if not _research.loaded():
-		_research.refresh()
 
 
 func _apply(reply: Dictionary) -> void:
@@ -295,7 +254,7 @@ func _render() -> void:
 	if found.is_empty():
 		_recipes.add_child(UI.label("Żaden przepis nie pasuje do wyszukiwania.", UI.MUTED))
 	if station == WORKBENCH and _state.get("recipes", []).any(func(recipe: Dictionary) -> bool: return recipe.get("locked") != null):
-		_recipes.add_child(UI.label("Więcej przepisów odblokujesz w zakładce Badania.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		_recipes.add_child(UI.label("Więcej przepisów odblokujesz przy stole badawczym.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	UI.clear(_details)
 	var selected := _recipe(_selected)

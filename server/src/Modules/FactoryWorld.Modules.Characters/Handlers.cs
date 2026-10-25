@@ -48,8 +48,10 @@ internal static class CharacterView
                 name = Items.Names[o.Value],
                 bonuses = Items.Clothes[o.Value].Bonuses,
             }),
-            // Percent per industry from all the clothes worn.
-            bonuses = Outfit.Bonuses(c.Outfit),
+            // Percent per industry from all the clothes worn and the level.
+            bonuses = LevelBonuses.With(Outfit.Bonuses(c.Outfit), level),
+            levelBonuses = LevelBonuses.For(level),
+            levelRewards = LevelBonuses.All.Select(b => new { level = b.Level, industry = b.Industry, percent = b.Percent }),
             // What the last meal gives, while it lasts (Unix milliseconds).
             meal = meal is null ? null : new
             {

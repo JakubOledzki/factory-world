@@ -869,5 +869,9 @@
  "horse": {
   "anchorX": 56,
   "anchorY": 62
+ },
+ "research_table": {
+  "anchorX": 64,
+  "anchorY": 70
  }
 }

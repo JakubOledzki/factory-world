@@ -23,6 +23,9 @@ public static class Items
     public const string Furnace = "furniture_furnace";
     public const string Anvil = "furniture_anvil";
 
+    /// <summary>Where research is done; every garage has one from the start.</summary>
+    public const string ResearchTable = "furniture_research_table";
+
     // Upgraded furnaces: they stand on plots only and smelt faster, holding more.
     public const string BrickFurnace = "furniture_brick_furnace";
     public const string BlastFurnace = "furniture_blast_furnace";
@@ -492,6 +495,7 @@ public static class Items
         [SortingMachine] = "Automatyczna sortownia",
         [Furnace] = "Piec kamienny",
         [Anvil] = "Kowadło",
+        [ResearchTable] = "Stół badawczy",
         [BrickFurnace] = "Piec ceglany",
         [BlastFurnace] = "Piec hutniczy",
         [Axe] = "Siekiera",
