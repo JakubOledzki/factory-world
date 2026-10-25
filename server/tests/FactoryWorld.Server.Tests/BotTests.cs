@@ -216,3 +216,51 @@ public sealed class BotLimitTests(ServerFactory factory) : IClassFixture<ServerF
         });
     }
 }
+
+/// <summary>On a database of their own, so that only this player sells to the bots.</summary>
+public sealed class BotMarketTests(ServerFactory factory) : IClassFixture<ServerFactory>
+{
+    private BotEngine Engine => factory.Services.GetRequiredService<BotEngine>();
+
+    [Fact]
+    public async Task Bots_buy_from_players_and_list_their_own_goods_even_at_the_xp_cap()
+    {
+        Assert.Equal(30, BotRoster.All.Count);
+        await Engine.EnsureBotsAsync(CancellationToken.None);
+        using var player = await factory.ConnectAsync();
+        await player.RegisterWithCharacterAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IInventory>().AddAsync(player.AccountId, Items.Wood, 100, CancellationToken.None);
+        }
+
+        // Cheaper than the trader sells wood for, dearer than he buys it.
+        var wood = (await player.SendAsync("market.prices", null)).Payload().GetProperty("items").EnumerateArray()
+            .First(i => i.GetProperty("id").GetString() == Items.Wood);
+        var price = wood.GetProperty("sellCents").GetInt64() * 5 / 4;
+        Assert.True(price < wood.GetProperty("buyCents").GetInt64());
+        Assert.Equal("market.done", (await player.SendAsync("market.list", new { item = Items.Wood, quantity = 100, priceCents = price })).Type());
+
+        // The player has hardly any XP, so the bots are at their cap all along; they work and trade anyway.
+        for (var i = 0; i < 150; i++)
+        {
+            factory.Time.Advance(TimeSpan.FromSeconds(11));
+            foreach (var bot in Engine.Bots)
+            {
+                await Engine.StepAsync(bot.Profile.Name, CancellationToken.None);
+            }
+        }
+
+        var mine = (await player.SendAsync("market.mine", null)).Payload();
+        Assert.True(mine.GetProperty("listings")[0].GetProperty("done").GetInt64() > 0);
+
+        var listed = 0;
+        foreach (var bot in Engine.Bots)
+        {
+            var offers = (await bot.Client.SendAsync("market.mine", null, CancellationToken.None)).Payload;
+            listed += offers.GetProperty("listings").GetArrayLength();
+        }
+
+        Assert.True(listed >= BotRoster.All.Count / 2, $"{listed} listings");
+    }
+}
