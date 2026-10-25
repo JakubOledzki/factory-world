@@ -22,6 +22,9 @@ public sealed class Plot
 
     public DateTimeOffset BoughtAt { get; set; }
 
+    /// <summary>What its owner called it, or null.</summary>
+    public string? Name { get; set; }
+
     /// <summary>Whether anyone may come onto it to look around; otherwise only the owner and their company.</summary>
     public bool Public { get; set; }
 }
@@ -317,6 +320,55 @@ public sealed class TrainRouteRow
     public string? LastProblem { get; set; }
 }
 
+/// <summary>A freight route between two of a player's plots, with its one train (see <see cref="FreightRules"/>).</summary>
+public sealed class FreightRouteRow
+{
+    public long Id { get; set; }
+
+    public Guid OwnerId { get; set; }
+
+    public int FromX { get; set; }
+
+    public int FromY { get; set; }
+
+    public int ToX { get; set; }
+
+    public int ToY { get; set; }
+
+    /// <summary>What one train carries: <see cref="Quantities"/>[i] pieces of <see cref="Items"/>[i].</summary>
+    public string[] Items { get; set; } = [];
+
+    public long[] Quantities { get; set; } = [];
+
+    /// <summary>Where the train is: <c>loading</c>, <c>travelling</c>, <c>unloading</c> or <c>returning</c>.</summary>
+    public string State { get; set; } = "";
+
+    /// <summary>When the train is looked at next: it gets there, comes back, or checks the chests again.</summary>
+    public DateTimeOffset NextAt { get; set; }
+
+    /// <summary>The goods on the train, while it carries any.</summary>
+    public string[] CarriedItems { get; set; } = [];
+
+    public long[] CarriedQuantities { get; set; } = [];
+
+    /// <summary>What the loading chests held of each of <see cref="Items"/> when the waiting train last looked.</summary>
+    public long[] Stock { get; set; } = [];
+
+    public long Trips { get; set; }
+
+    public long Delivered { get; set; }
+
+    public long LastFeeCents { get; set; }
+
+    /// <summary>Why the train waits: <c>waiting</c>, <c>no_money</c> or <c>no_room</c>.</summary>
+    public string? LastProblem { get; set; }
+
+    /// <summary>The route was removed while the train carried goods: it ends once they are delivered.</summary>
+    public bool Stopping { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
 /// <summary>An export chest by a plot's station and when its train comes next.</summary>
 public sealed class ExportChestRow
 {
@@ -477,6 +529,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(p => p.Biome).HasColumnName("biome");
             e.Property(p => p.PriceCents).HasColumnName("price_cents");
             e.Property(p => p.BoughtAt).HasColumnName("bought_at");
+            e.Property(p => p.Name).HasColumnName("name").HasMaxLength(PlotNames.MaxLength);
             e.Property(p => p.Public).HasColumnName("public").HasDefaultValue(false);
             e.HasIndex(p => p.OwnerId);
         });
@@ -693,6 +746,32 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.HasIndex(r => r.NextDepartureAt);
             e.HasIndex(r => new { r.FromX, r.FromY });
             e.HasIndex(r => new { r.ToX, r.ToY });
+        });
+        model.Entity<FreightRouteRow>(e =>
+        {
+            e.ToTable("freight_routes");
+            e.HasKey(r => r.Id);
+            e.Property(r => r.Id).HasColumnName("id");
+            e.Property(r => r.OwnerId).HasColumnName("owner_id");
+            e.Property(r => r.FromX).HasColumnName("from_x");
+            e.Property(r => r.FromY).HasColumnName("from_y");
+            e.Property(r => r.ToX).HasColumnName("to_x");
+            e.Property(r => r.ToY).HasColumnName("to_y");
+            e.Property(r => r.Items).HasColumnName("items");
+            e.Property(r => r.Quantities).HasColumnName("quantities");
+            e.Property(r => r.State).HasColumnName("state").HasMaxLength(16);
+            e.Property(r => r.NextAt).HasColumnName("next_at");
+            e.Property(r => r.CarriedItems).HasColumnName("carried_items");
+            e.Property(r => r.CarriedQuantities).HasColumnName("carried_quantities");
+            e.Property(r => r.Stock).HasColumnName("stock");
+            e.Property(r => r.Trips).HasColumnName("trips");
+            e.Property(r => r.Delivered).HasColumnName("delivered");
+            e.Property(r => r.LastFeeCents).HasColumnName("last_fee_cents");
+            e.Property(r => r.LastProblem).HasColumnName("last_problem").HasMaxLength(32);
+            e.Property(r => r.Stopping).HasColumnName("stopping");
+            e.Property(r => r.CreatedAt).HasColumnName("created_at");
+            e.HasIndex(r => r.NextAt);
+            e.HasIndex(r => r.OwnerId);
         });
         model.Entity<ExportChestRow>(e =>
         {
@@ -942,10 +1021,11 @@ public sealed record PlotOwner(Guid AccountId, string? Name);
 /// <param name="Survey">What lies under the plot, shown only to its owner once they paid for a survey.</param>
 /// <param name="Company">The company its owner brought it into, if any.</param>
 /// <param name="CanEnter">Whether the asking player may go onto it: its owner, a member of its company, or anyone when it is public.</param>
+/// <param name="Name">What its owner called it, or null.</param>
 /// <param name="Public">Whether its owner lets anyone come onto it to look around.</param>
 public sealed record PlotState(
     int X, int Y, Biome Biome, PlotOwner? Owner, long? PriceCents, Survey? Survey = null, PlotCompany? Company = null, bool CanEnter = false,
-    bool Public = false);
+    string? Name = null, bool Public = false);
 
 /// <param name="Tool">The tool that came with the plot, or null.</param>
 public sealed record Purchase(PlotState Plot, long BalanceCents, XpGain Xp, string? Tool);
@@ -964,19 +1044,39 @@ public sealed class WorldService(
         return (long)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
-    public async Task<IReadOnlyList<(int X, int Y, Biome Biome)>> OwnedAsync(Guid owner, CancellationToken cancellationToken)
+    public async Task<IReadOnlyList<(int X, int Y, Biome Biome, string? Name)>> OwnedAsync(Guid owner, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync(
-            "SELECT x, y, biome FROM world.plots WHERE owner_id = @owner ORDER BY bought_at", cancellationToken);
+            "SELECT x, y, biome, name FROM world.plots WHERE owner_id = @owner ORDER BY bought_at", cancellationToken);
         command.Parameters.AddWithValue("owner", owner);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        var plots = new List<(int, int, Biome)>();
+        var plots = new List<(int, int, Biome, string?)>();
         while (await reader.ReadAsync(cancellationToken))
         {
-            plots.Add((reader.GetInt32(0), reader.GetInt32(1), (Biome)reader.GetInt16(2)));
+            plots.Add((reader.GetInt32(0), reader.GetInt32(1), (Biome)reader.GetInt16(2), reader.IsDBNull(3) ? null : reader.GetString(3)));
         }
 
         return plots;
+    }
+
+    /// <summary>Gives one of the player's plots a name, or takes it off with an empty one.</summary>
+    public async Task<PlotState> RenameAsync(Guid player, int x, int y, string? name, CancellationToken cancellationToken)
+    {
+        name = PlotNames.Clean(name);
+        await using (var update = await db.CommandAsync(
+            "UPDATE world.plots SET name = @name WHERE x = @x AND y = @y AND owner_id = @owner", cancellationToken))
+        {
+            update.Parameters.AddWithValue("x", x);
+            update.Parameters.AddWithValue("y", y);
+            update.Parameters.AddWithValue("owner", player);
+            update.Parameters.AddWithValue("name", (object?)name ?? DBNull.Value);
+            if (await update.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                throw new GameException("not_owner", "Only its owner names a plot.");
+            }
+        }
+
+        return await PlotAsync(player, x, y, cancellationToken);
     }
 
     /// <summary>Owned plots inside a rectangle of the grid, with whose they are.</summary>
@@ -1019,16 +1119,17 @@ public sealed class WorldService(
     {
         var biome = BiomeAt(x, y);
         Guid? found = null;
+        string? plotName = null;
         var open = false;
-        await using (var command = await db.CommandAsync("SELECT owner_id, public FROM world.plots WHERE x = @x AND y = @y", cancellationToken))
+        await using (var command = await db.CommandAsync("SELECT owner_id, name, public FROM world.plots WHERE x = @x AND y = @y", cancellationToken))
         {
             command.Parameters.AddWithValue("x", x);
             command.Parameters.AddWithValue("y", y);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             if (await reader.ReadAsync(cancellationToken))
             {
-                found = reader.GetGuid(0);
-                open = reader.GetBoolean(1);
+                (found, plotName) = (reader.GetGuid(0), reader.IsDBNull(1) ? null : reader.GetString(1));
+                open = reader.GetBoolean(2);
             }
         }
 
@@ -1043,7 +1144,7 @@ public sealed class WorldService(
                 company ??= await registry.CompanyAsync(viewer, x, y, cancellationToken);
             }
 
-            return new PlotState(x, y, biome, new PlotOwner(owner, name), null, survey, company, owner == viewer || company?.Member == true || open, open);
+            return new PlotState(x, y, biome, new PlotOwner(owner, name), null, survey, company, owner == viewer || company?.Member == true || open, plotName, open);
         }
 
         long? price = Biomes.All[biome].Buyable
@@ -1148,6 +1249,7 @@ public abstract class WorldHandler(IServiceScopeFactory scopes) : IMessageHandle
         surveyPriceCents = plot.Owner?.AccountId == player ? Deposits.SurveyPriceCents : (long?)null,
         company = plot.Company is { } company ? new { name = company.Name, member = company.Member } : null,
         canEnter = plot.CanEnter,
+        name = plot.Name,
         // Public: anyone may come to look around; private: only the owner and the members of its company.
         @public = plot.Public,
     };
@@ -1177,7 +1279,7 @@ public sealed class InfoHandler(IServiceScopeFactory scopes, WorldMap map) : Wor
             }),
             priceTiersCents = PlotPrices.TierCents,
             nextBasePriceCents = PlotPrices.Base(mine.Count),
-            plots = mine.Select(p => new { x = p.X, y = p.Y, biome = (int)p.Biome }),
+            plots = mine.Select(p => new { x = p.X, y = p.Y, biome = (int)p.Biome, name = p.Name }),
             sharedPlots = shared.Select(p => new { x = p.X, y = p.Y, biome = (int)p.Biome }),
         });
     }
@@ -1235,6 +1337,20 @@ public sealed class SetPlotPublicHandler(IServiceScopeFactory scopes) : IMessage
         await scope.ServiceProvider.GetRequiredService<PlotService>().SetPublicAsync(player, request.X, request.Y, request.Public, cancellationToken);
         var plot = await scope.ServiceProvider.GetRequiredService<WorldService>().PlotAsync(player, request.X, request.Y, cancellationToken);
         return new Reply("world.plot", WorldHandler.PlotJson(plot, player));
+    }
+}
+
+public sealed record RenamePlotRequest(int X, int Y, string? Name);
+
+/// <summary>The owner names a plot (an empty name takes it off); answers like "world.plot".</summary>
+public sealed class RenamePlotHandler(IServiceScopeFactory scopes) : WorldHandler(scopes)
+{
+    public override string Type => "world.rename";
+
+    protected override async Task<Reply> RunAsync(WorldService world, Guid player, JsonElement? payload, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<RenamePlotRequest>(payload);
+        return new Reply("world.plot", PlotJson(await world.RenameAsync(player, request.X, request.Y, request.Name, cancellationToken), player));
     }
 }
 
@@ -1307,6 +1423,11 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, AddRouteHandler>();
         services.AddSingleton<IMessageHandler, RemoveRouteHandler>();
         services.AddSingleton<IMessageHandler, FindPartnersHandler>();
+        services.AddScoped<FreightService>();
+        services.AddSingleton<IMessageHandler, GetFreightHandler>();
+        services.AddSingleton<IMessageHandler, AddFreightHandler>();
+        services.AddSingleton<IMessageHandler, RemoveFreightHandler>();
+        services.AddSingleton<IMessageHandler, RenamePlotHandler>();
         services.AddScoped<IMachinePorts, StationPorts>();
         services.AddSingleton(provider => new LandMasses(provider.GetRequiredService<WorldMap>()));
         services.AddScoped<ExportService>();

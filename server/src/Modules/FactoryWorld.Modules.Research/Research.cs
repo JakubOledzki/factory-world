@@ -110,6 +110,10 @@ public static class TechTree
     public const string FreightHub = "freight_hub";
     public const string ExportMarket = "export_market";
     public const string RailFerry = "rail_ferry";
+    public const string RailFreight = "rail_freight";
+    public const string RailFreight2 = "rail_freight_2";
+    public const string RailFreight3 = "rail_freight_3";
+    public const string RailFreight4 = "rail_freight_4";
     public const string Headquarters = "headquarters";
     public const string Tailoring = "tailoring";
     public const string Silviculture = "silviculture";
@@ -265,6 +269,19 @@ public static class TechTree
         new(Drones, "Drony transportowe", "Drony przenoszą przedmioty z portów bez filtra do portów, które mają ustawiony filtr na dany przedmiot, po całej działce, bez taśm.",
             [ExpressLogistics, LogisticsDepot, Assembly], [(Items.CircuitBoard, 20), (Items.ElectricMotor, 6), (Items.SteelIngot, 60)], TimeSpan.FromMinutes(10), 200,
             [Items.DronePort]),
+        new(RailFreight, "Transport kolejowy", "Skrzynia ładująca i odbierająca (800 sztuk): pociąg trasy między twoimi działkami czeka, aż skrzynie ładujące jednej działki będą miały cały towar, i zawozi go do skrzyń odbierających drugiej.",
+            [Storage, Automation], [(Items.IronChest, 2), (Items.IronIngot, 40), (Items.Nails, 30)], TimeSpan.FromMinutes(2), 50,
+            [Items.LoadingChest, Items.ReceivingChest]),
+        new(RailFreight2, "Większe skrzynie kolejowe", "Skrzynia ładująca i odbierająca II mieszczą po 1600 sztuk.",
+            [RailFreight, FastLogistics], [(Items.LoadingChest, 2), (Items.ReceivingChest, 2), (Items.IronIngot, 60)], TimeSpan.FromMinutes(4), 80,
+            [Items.LoadingChest2, Items.ReceivingChest2]),
+        new(RailFreight3, "Terminal przeładunkowy", "Skrzynia ładująca i odbierająca III mieszczą po 6400 sztuk.",
+            [RailFreight2, LogisticsDepot], [(Items.LoadingChest2, 2), (Items.ReceivingChest2, 2), (Items.SteelIngot, 40), (Items.Beams, 30)], TimeSpan.FromMinutes(6), 120,
+            [Items.LoadingChest3, Items.ReceivingChest3]),
+        new(RailFreight4, "Kontenerowy terminal kolejowy", "Skrzynia ładująca i odbierająca IV mieszczą po 16 000 sztuk.",
+            [RailFreight3, ExpressLogistics, Assembly], [(Items.LoadingChest3, 2), (Items.ReceivingChest3, 2), (Items.SteelIngot, 80), (Items.ElectricMotor, 8)],
+            TimeSpan.FromMinutes(10), 200,
+            [Items.LoadingChest4, Items.ReceivingChest4]),
         new(GrainStorage, "Silosy zbożowe", "Silos mieści 2000 pszenicy, kukurydzy albo słonecznika.",
             [Storage, Milling], [(Items.Wheat, 100), (Items.IronIngot, 20)], TimeSpan.FromMinutes(2), 40,
             [Items.GrainSilo]),
@@ -697,7 +714,7 @@ public static class TechTree
     [
         new("logistics", "Logistyka", Items.Belt,
             [Logistics, Automation, Storage, Sorting, FastLogistics, UndergroundBelts, LongInserters, BiggerGrippers, ExpressLogistics,
-             IndustrialGrippers, LogisticsDepot, CableTransport, ExpressCable, Drones, RailFerry, Assembling, FastAssembling, ExpressAssembling]),
+             IndustrialGrippers, LogisticsDepot, CableTransport, ExpressCable, Drones, RailFerry, RailFreight, RailFreight2, RailFreight3, RailFreight4, Assembling, FastAssembling, ExpressAssembling]),
         new("mining", "Górnictwo", Items.IronOre,
             [Stonemasonry, BrickFurnaces, Metallurgy, BlastFurnaces, MiningAutomation, Crushing, MechanizedQuarrying, ConeCrushing, Explosives,
              DeepMining, OpenPitMining, OreProcessing, MeteoriteTools]),

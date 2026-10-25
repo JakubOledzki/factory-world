@@ -187,6 +187,10 @@ const PLACED_SPRITES := {
 	"furniture_oxygen_converter": "oxygen_converter", "furniture_rolling_mill": "rolling_mill",
 	"furniture_control_center": "control_center", "furniture_continuous_caster": "continuous_caster",
 	"storage_automated_warehouse": "automated_warehouse", "furniture_steel_combine": "steel_combine",
+	"storage_loading_chest": "loading_chest", "storage_loading_chest_2": "loading_chest_2",
+	"storage_loading_chest_3": "loading_chest_3", "storage_loading_chest_4": "loading_chest_4",
+	"storage_receiving_chest": "receiving_chest", "storage_receiving_chest_2": "receiving_chest_2",
+	"storage_receiving_chest_3": "receiving_chest_3", "storage_receiving_chest_4": "receiving_chest_4",
 	"furniture_megafactory": "megafactory", "power_fusion_plant": "fusion_plant",
 	"furniture_canteen": "canteen", "furniture_slaughterhouse": "slaughterhouse", "furniture_dairy": "dairy",
 	"furniture_potato_distillery": "potato_distillery", "furniture_biogas_plant": "biogas_plant", "furniture_stable": "stable",
@@ -338,7 +342,9 @@ const MENU_ONLY := ["power_pole", "furniture_port", "furniture_lighthouse", "fur
 	"furniture_freight_terminal", "furniture_company_hq", WATCHTOWER, FIRE_STATION, CONTROL_CENTER]
 const POLE := "power_pole"
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo", "storage_tank",
-	"storage_high_bay", "storage_automated_warehouse", "storage_logistics_depot", DRONE_PORT]
+	"storage_high_bay", "storage_automated_warehouse", "storage_logistics_depot", DRONE_PORT,
+	"storage_loading_chest", "storage_loading_chest_2", "storage_loading_chest_3", "storage_loading_chest_4",
+	"storage_receiving_chest", "storage_receiving_chest_2", "storage_receiving_chest_3", "storage_receiving_chest_4"]
 ## Where a rotation faces, as players read it: 0 south, 1 east, 2 north, 3 west.
 const DIRECTIONS := ["na południe", "na wschód", "na północ", "na zachód"]
 const DIRECTION_ARROWS := ["↓", "→", "↑", "←"]

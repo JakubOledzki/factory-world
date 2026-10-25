@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [tree] [assemblers] [machine_levels] [logistics] [husbandry] [export] [banks] [<sprite>...] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [tree] [assemblers] [machine_levels] [logistics] [husbandry] [export] [freight] [banks] [<sprite>...] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -6709,6 +6709,64 @@ def render_export(layout: dict, only=()):
         ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
 
 
+# --- Freight between plots ------------------------------------------------------------------------
+
+def build_freight_chest(receiving: bool, tier: int):
+    """A freight chest for the trains between plots: orange with an arrow up for loading, blue with an arrow down for
+    receiving. Each size is bigger: the first of riveted steel with one yellow band, then two bands and dark corners,
+    then a ribbed container box, and the last a big container with twist-lock corners and a lit lamp of its colour."""
+    s = (0.82, 0.9, 0.98, 1.06)[tier - 1]
+    colour = (0.06, 0.2, 0.5) if receiving else (0.6, 0.26, 0.04)
+    body = ra.rusty_metal(f"fc_body_{receiving}", colour, 0.15)
+    dark = ra.rusty_metal("fc_frame", (0.08, 0.08, 0.09), 0.3)
+    yellow = ra.plain("fc_yellow", (0.7, 0.5, 0.05), 0.5, variation=0.1, grime=0.3)
+    white = ra.plain("fc_white", (0.82, 0.82, 0.8), 0.5)
+    w, d, h = 1.3 * s, 0.95 * s, (0.7 + 0.05 * tier) * s
+    ra.box("fc_body", (w, d, h), (0, 0, h / 2), body, bevel=0.03)
+    ra.box("fc_rim", (w + 0.05, d + 0.05, 0.08), (0, 0, h + 0.04), dark, bevel=0.02)
+    ra.box("fc_lid", (w - 0.04, d - 0.04, 0.04), (0, 0, h + 0.09), body, bevel=0.01)
+    for k in range(min(tier, 2)):
+        ra.box("fc_band", (w + 0.01, d + 0.01, 0.08), (0, 0, h - 0.18 - 0.14 * k), yellow)
+    if tier >= 2:
+        for x in (-w / 2, w / 2):
+            for y in (-d / 2, d / 2):
+                ra.box("fc_corner", (0.09, 0.09, h + 0.04), (x, y, (h + 0.04) / 2), dark, bevel=0.01)
+    if tier >= 3:
+        # Ribs of a container along the sides.
+        for k in range(7):
+            x = -w / 2 + w * (k + 0.5) / 7
+            ra.box("fc_rib", (0.03, d + 0.03, h * 0.8), (x, 0, h * 0.45), body)
+    if tier >= 4:
+        for x in (-w / 2, w / 2):
+            for y in (-d / 2, d / 2):
+                ra.box("fc_lock", (0.14, 0.14, 0.08), (x, y, h + 0.08), yellow, bevel=0.01)
+        lamp = ra.emission(f"fc_lamp_{receiving}", (0.3, 0.6, 1.0) if receiving else (1.0, 0.5, 0.1), 4.0)
+        ra.cylinder("fc_lamp", 0.06, 0.08, (w / 2 - 0.15, -d / 2 + 0.15, h + 0.14), lamp, verts=12)
+    # A white arrow painted on the lid, seen from above: north (up) for loading onto the train, south (down) for receiving from it.
+    sign = -1 if receiving else 1
+    top = h + 0.115
+    ra.box("fc_arrow", (0.08 * s, 0.3 * s, 0.01), (0, -0.04 * sign * s, top), white)
+    for side in (-1, 1):
+        ra.box("fc_head", (0.22 * s, 0.08 * s, 0.01), (side * 0.07 * s, 0.1 * sign * s, top), white,
+               rotation=(0, 0, math.radians(-side * sign * 40)))
+
+
+FREIGHT = {
+    # name: (canvas width, height, receiving, tier)
+    **{f"loading_chest{'' if t == 1 else f'_{t}'}": (80, 80, False, t) for t in range(1, 5)},
+    **{f"receiving_chest{'' if t == 1 else f'_{t}'}": (80, 80, True, t) for t in range(1, 5)},
+}
+
+
+def render_freight(layout: dict, only=()):
+    for name, (w, h, receiving, tier) in FREIGHT.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, 0.3)), crafted(lambda: build_freight_chest(receiving, tier)), true_scale=True)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"item_storage_{name}.png")
+
+
 def build_bank():
     """A bank on 5 × 5 tiles: a marble temple of money on a plinth of broad steps, a portico of six columns under a stepped
     pediment with the lit gold name, a green copper dome on a drum behind, tall lit windows down the sides, bronze doors,
@@ -6808,7 +6866,7 @@ def render_banks(layout: dict, only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "assemblers", "machine_levels", "office", "logistics", "husbandry", "export", "banks", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "assemblers", "machine_levels", "office", "logistics", "husbandry", "export", "freight", "banks", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -6885,6 +6943,9 @@ if __name__ == "__main__":
     if "export" in args or any(a in EXPORT for a in args):
         # Names of export sprites render just those.
         render_export(layout, [a for a in args if a in EXPORT])
+    if "freight" in args or any(a in FREIGHT for a in args):
+        # Names of the freight chests render just those.
+        render_freight(layout, [a for a in args if a in FREIGHT])
     if "banks" in args or any(a in BANKS for a in args):
         # Names of bank sprites render just those.
         render_banks(layout, [a for a in args if a in BANKS])

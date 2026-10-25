@@ -961,5 +961,37 @@
  "ore_processing_plant": {
   "anchorX": 176,
   "anchorY": 204
+ },
+ "loading_chest": {
+  "anchorX": 40,
+  "anchorY": 47
+ },
+ "loading_chest_2": {
+  "anchorX": 40,
+  "anchorY": 47
+ },
+ "loading_chest_3": {
+  "anchorX": 40,
+  "anchorY": 47
+ },
+ "loading_chest_4": {
+  "anchorX": 40,
+  "anchorY": 47
+ },
+ "receiving_chest": {
+  "anchorX": 40,
+  "anchorY": 47
+ },
+ "receiving_chest_2": {
+  "anchorX": 40,
+  "anchorY": 47
+ },
+ "receiving_chest_3": {
+  "anchorX": 40,
+  "anchorY": 47
+ },
+ "receiving_chest_4": {
+  "anchorX": 40,
+  "anchorY": 47
  }
 }
