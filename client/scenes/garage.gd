@@ -233,13 +233,17 @@ func _show_room(levels: Dictionary) -> void:
 		_floor.texture = load("res://art/garage/rooms/floor_%d.jpg" % floor_level)
 	if _room_levels.is_empty() or int(_room_levels.get("walls", -1)) != walls_level:
 		_walls.texture = load("res://art/garage/rooms/walls_%d.png" % walls_level)
+	var shelves := int(levels.get("shelves", 0))
+	for object: Furniture in _objects.values():
+		if object.kind == SHELF:
+			object.set_look("%s_l%d" % [SHELF, shelves] if shelves > 0 else "")
 	var light := 1.0 + LIGHT_STEP * int(levels.get("lighting", 0))
 	var room := Color(light, light, light * 0.98)
 	_floor.modulate = room
 	_walls.modulate = room
 	_shadows.modulate = Color(1, 1, 1, 1.0 / light)
 	_sorted.modulate = Color(minf(light, 1.25), minf(light, 1.25), minf(light, 1.25))
-	_room_levels = {"floor": floor_level, "walls": walls_level, "lighting": int(levels.get("lighting", 0))}
+	_room_levels = {"floor": floor_level, "walls": walls_level, "lighting": int(levels.get("lighting", 0)), "shelves": shelves}
 
 
 func _seconds(value: float) -> String:
@@ -611,6 +615,8 @@ func _start_placing(kind: String, steps := 0) -> void:
 	_menu.visible = false
 	_path = PackedVector2Array()
 	_ghost = Furniture.new(kind, _furniture_info.get(kind, {}), _cell_size)
+	if kind == SHELF and int(_room_levels.get("shelves", 0)) > 0:
+		_ghost.look = "%s_l%d" % [SHELF, int(_room_levels["shelves"])]
 	_ghost_rotation = steps
 	_ghost.place(Vector2i.ZERO, steps)
 	_ghost.z_index = 2  # Over everything, so it shows even behind tall furniture.

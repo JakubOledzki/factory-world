@@ -64,7 +64,7 @@
     "anchorY": 193
    },
    {
-    "anchorX": 168,
+    "anchorX": 167,
     "anchorY": 204
    },
    {
@@ -232,6 +232,96 @@
    {
     "anchorX": 79,
     "anchorY": 189
+   }
+  ],
+  "furniture_shelf_l1": [
+   {
+    "anchorX": 163,
+    "anchorY": 205
+   },
+   {
+    "anchorX": 71,
+    "anchorY": 193
+   },
+   {
+    "anchorX": 163,
+    "anchorY": 205
+   },
+   {
+    "anchorX": 71,
+    "anchorY": 193
+   }
+  ],
+  "furniture_shelf_l2": [
+   {
+    "anchorX": 163,
+    "anchorY": 205
+   },
+   {
+    "anchorX": 70,
+    "anchorY": 193
+   },
+   {
+    "anchorX": 163,
+    "anchorY": 205
+   },
+   {
+    "anchorX": 70,
+    "anchorY": 193
+   }
+  ],
+  "furniture_shelf_l3": [
+   {
+    "anchorX": 163,
+    "anchorY": 205
+   },
+   {
+    "anchorX": 70,
+    "anchorY": 193
+   },
+   {
+    "anchorX": 163,
+    "anchorY": 205
+   },
+   {
+    "anchorX": 70,
+    "anchorY": 193
+   }
+  ],
+  "furniture_shelf_l4": [
+   {
+    "anchorX": 163,
+    "anchorY": 205
+   },
+   {
+    "anchorX": 70,
+    "anchorY": 193
+   },
+   {
+    "anchorX": 163,
+    "anchorY": 205
+   },
+   {
+    "anchorX": 70,
+    "anchorY": 193
+   }
+  ],
+  "furniture_shelf_l5": [
+   {
+    "anchorX": 163,
+    "anchorY": 205
+   },
+   {
+    "anchorX": 69,
+    "anchorY": 193
+   },
+   {
+    "anchorX": 163,
+    "anchorY": 205
+   },
+   {
+    "anchorX": 69,
+    "anchorY": 193
    }
   ]
  },
