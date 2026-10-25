@@ -454,6 +454,8 @@ var _hover_mine := -1
 var _work_mine := -1
 ## Objects put on the plot: tile → { id, kind, name }.
 var _placed := {}
+## The kinds of object standing on the plot, kept with _placed (see _placed_changed).
+var _kinds := {}
 ## The kind being put on the plot from the inventory, or "".
 var _placing := ""
 ## The placed object whose window is open, or (-1, -1).
@@ -725,6 +727,12 @@ func _build_world() -> void:
 	_camera.add_child(_snow)
 
 
+## Grown machines' sprites enlarged to their squares, by file, and the pictures of sprites for finding what the mouse
+## points at, by texture: made once while the game runs, not again on every walk onto a plot.
+static var _grown_cache := {}
+static var _image_cache := {}
+
+
 ## One atlas source per sprite, so every sprite keeps its own size and anchor; an alternative
 ## tile of each object is brightened for the mouse.
 func _tile_set(shadows: bool) -> TileSet:
@@ -759,11 +767,13 @@ func _add_source(set: TileSet, sprite: String, file: String, looks: bool) -> int
 	var kind := _placed_kind(sprite)
 	if Footprints.GROWN.has(kind):
 		var scale := Footprints.sprite_scale(kind, Vector2(_layout_size(sprite)), TILE)
-		var image := texture.get_image()
-		if image.is_compressed():
-			image.decompress()
-		image.resize(roundi(image.get_width() * scale), roundi(image.get_height() * scale), Image.INTERPOLATE_CUBIC)
-		texture = ImageTexture.create_from_image(image)
+		if not _grown_cache.has(file):
+			var image := texture.get_image()
+			if image.is_compressed():
+				image.decompress()
+			image.resize(roundi(image.get_width() * scale), roundi(image.get_height() * scale), Image.INTERPOLATE_CUBIC)
+			_grown_cache[file] = ImageTexture.create_from_image(image)
+		texture = _grown_cache[file]
 		anchor *= scale
 		if looks:
 			_grown_textures[sprite] = texture
@@ -787,7 +797,9 @@ func _add_source(set: TileSet, sprite: String, file: String, looks: bool) -> int
 	var id := set.add_source(source)
 	if looks:
 		_sources[sprite] = id
-		_images[sprite] = texture.get_image()
+		if not _image_cache.has(texture):
+			_image_cache[texture] = texture.get_image()
+		_images[sprite] = _image_cache[texture]
 	return id
 
 
@@ -843,9 +855,7 @@ func _apply_plot(plot: Dictionary) -> void:
 	_apply_pests(plot.get("pests", {}))
 	for object: Dictionary in plot.get("objects", []):
 		_put_placed(object)
-	_logistics.set_objects(_placed)
-	_draw_tunnels()
-	_power.set_objects(_placed)
+	_placed_changed()
 
 	# The ground: the biome's texture repeated over the plot, squashed to the 45° view.
 	var floor_name: String = FLOORS.get(int(plot["biome"]), "grass")
@@ -2691,10 +2701,8 @@ func _place_object(cell: Vector2i) -> void:
 	for covered in _footprint(object["kind"], at):
 		_astar.set_point_solid(covered, not _walkable(covered))
 		_draw_cell(covered)
-	_logistics.set_objects(_placed)
-	_draw_tunnels()
+	_placed_changed()
 	_update_market_button()
-	_power.set_objects(_placed)
 	if kind in MACHINERY:
 		_show_toast("%s stoi %s. %s" % [object["name"], DIRECTIONS[int(object["rotation"])], "Kliknij kolejne pole albo Esc." if more else ""])
 	elif kind == COMPUTER:
@@ -2909,9 +2917,7 @@ func _pick_up_placed(id: String) -> void:
 			if _hovered == cell:
 				_hovered = Vector2i(-1, -1)
 			_draw_cell(cell)
-	_logistics.set_objects(_placed)
-	_draw_tunnels()
-	_power.set_objects(_placed)
+	_placed_changed()
 	_hide_placed_windows()
 	_update_market_button()
 	_using = Vector2i(-1, -1)
@@ -3110,9 +3116,7 @@ func _rotate_placed(cell: Vector2i) -> void:
 		_show_error(reply)
 		return
 	_placed[cell] = reply["payload"]["object"]
-	_logistics.set_objects(_placed)
-	_draw_tunnels()
-	_power.set_objects(_placed)
+	_placed_changed()
 	_draw_cell(cell)
 	_poll_logistics()
 
@@ -3124,18 +3128,26 @@ func _poll_logistics() -> void:
 	_polling_logistics = true
 	_next_logistics_poll = Time.get_ticks_msec() + LOGISTICS_POLL
 	# Item names once, for choosing filters.
-	var reply := await Net.request("logistics.get", {"x": _at.x, "y": _at.y, "names": _logistics.names.is_empty()})
+	var reply := await Net.request("logistics.get", {"x": _at.x, "y": _at.y, "names": _logistics.names.is_empty(), "compact": true})
 	_polling_logistics = false
 	if reply["type"] == "logistics":
 		_logistics.apply(reply["payload"])
 		_power.apply(reply["payload"].get("power", {}))
 
 
-func _has_foresters() -> bool:
+## The objects on the plot changed (placed, picked up, turned, or the plot came in): the belts, inserters and
+## power lines follow, and so do the kinds standing here, which the frames look at instead of every object.
+func _placed_changed() -> void:
+	_logistics.set_objects(_placed)
+	_draw_tunnels()
+	_power.set_objects(_placed)
+	_kinds = {}
 	for cell: Vector2i in _placed:
-		if FORESTERS.has(_placed[cell]["kind"]):
-			return true
-	return false
+		_kinds[_placed[cell]["kind"]] = true
+
+
+func _has_foresters() -> bool:
+	return FORESTERS.keys().any(func(kind: String) -> bool: return _kinds.has(kind))
 
 
 ## Asks for the foresters and the trees of the plot as the server has them now.
@@ -3191,10 +3203,7 @@ func _apply_forestry(forestry: Dictionary) -> void:
 
 
 func _has_farmsteads() -> bool:
-	for cell: Vector2i in _placed:
-		if FARMSTEADS.has(_placed[cell]["kind"]):
-			return true
-	return false
+	return FARMSTEADS.keys().any(func(kind: String) -> bool: return _kinds.has(kind))
 
 
 ## Asks for the farmsteads and the fields they sow as the server has them now.
@@ -4408,10 +4417,11 @@ func _server_now() -> float:
 
 func _load() -> void:
 	_at = Game.plot
-	var info := await Net.request("world.info")
-	var wallet := await Net.request("wallet.get")
-	var plot := await Net.request("plot.enter", {"x": _at.x, "y": _at.y})
-	var prices := await Net.request("market.prices")
+	var replies := await Net.request_all([["world.info"], ["wallet.get"], ["plot.enter", {"x": _at.x, "y": _at.y}], ["market.prices"]])
+	var info := replies[0]
+	var wallet := replies[1]
+	var plot := replies[2]
+	var prices := replies[3]
 	for reply: Dictionary in [info, wallet, plot, prices]:
 		if reply["type"] == "error":
 			_loading.text = Game.error_text(reply)

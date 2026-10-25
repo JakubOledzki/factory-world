@@ -22,7 +22,14 @@ public static class GameSocketEndpoint
             return;
         }
 
-        using var socket = await context.WebSockets.AcceptWebSocketAsync();
+        // Compressed when the client offers it (browsers do, so the web and phone game gets its plots and logistics several
+        // times smaller); each message on its own, without a dictionary shared across messages, so what one message holds
+        // (a session token) never shapes how the next one compresses.
+        using var socket = await context.WebSockets.AcceptWebSocketAsync(new WebSocketAcceptContext
+        {
+            DangerousEnableCompression = true,
+            DisableServerContextTakeover = true,
+        });
         var client = new ClientContext { ConnectionId = Guid.NewGuid() };
         var cancellationToken = context.RequestAborted;
         logger.LogInformation("Client {ConnectionId} connected", client.ConnectionId);

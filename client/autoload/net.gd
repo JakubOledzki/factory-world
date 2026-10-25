@@ -12,6 +12,14 @@ const RECONNECT_DELAY := 3.0
 ## One request waiting for its reply.
 class Pending:
 	signal done(reply: Dictionary)
+	## The reply once it came, for whoever waits for it after it did (see request_all).
+	var reply := {}
+	var finished := false
+
+	func finish(with: Dictionary) -> void:
+		reply = with
+		finished = true
+		done.emit(with)
 
 
 var _socket := WebSocketPeer.new()
@@ -68,6 +76,25 @@ func request(type: String, payload: Variant = null) -> Dictionary:
 	return reply
 
 
+## Sends several requests at once and waits for all their replies, in the same order: [[type, payload], ...].
+## The server still answers them one after another, but they need one trip over the network instead of one each.
+func request_all(requests: Array) -> Array[Dictionary]:
+	var waiting: Array[Pending] = []
+	for r: Array in requests:
+		var pending := Pending.new()
+		if is_open():
+			_pending[send(r[0], r[1] if r.size() > 1 else null)] = pending
+		else:
+			pending.finish(_disconnected_reply())
+		waiting.append(pending)
+	var replies: Array[Dictionary] = []
+	for pending in waiting:
+		if not pending.finished:
+			await pending.done
+		replies.append(pending.reply)
+	return replies
+
+
 func _process(delta: float) -> void:
 	if _reconnect_in > 0.0:
 		_reconnect_in -= delta
@@ -101,7 +128,7 @@ func _handle_packet(text: String) -> void:
 	if _pending.has(id):
 		var pending: Pending = _pending[id]
 		_pending.erase(id)
-		pending.done.emit({"type": data["type"], "payload": data.get("payload")})
+		pending.finish({"type": data["type"], "payload": data.get("payload")})
 	message_received.emit(data["type"], data.get("payload"), id)
 
 
@@ -109,7 +136,7 @@ func _fail_pending() -> void:
 	var waiting := _pending.values()
 	_pending.clear()
 	for pending: Pending in waiting:
-		pending.done.emit(_disconnected_reply())
+		pending.finish(_disconnected_reply())
 
 
 func _disconnected_reply() -> Dictionary:

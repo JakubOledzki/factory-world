@@ -75,6 +75,8 @@ const ITEM_SIZE := 14.0
 const ARM_COLOR := Color("#d9a21c")
 const ARM_DARK := Color("#2a2418")
 const STRIPE := Color(0.32, 0.31, 0.3, 0.9)
+## Pixels around the screen that are drawn as well.
+const VIEW_MARGIN := 200.0
 
 ## Pixels of one tile on screen, the sprites' anchors, the node that y-sorts inserter arms with
 ## everything else standing on the plot, and the server clock (milliseconds).
@@ -111,6 +113,8 @@ var _textures := {}
 var _icons := {}
 ## Drawn above everything standing on the plot: the cables between stations, and drones in flight.
 var _cables: CableLines
+## Cable stations that send their items over a cable, by tile.
+var _cable_starts: Array[Vector2i] = []
 var _drones: DroneFlights
 
 
@@ -185,11 +189,13 @@ func tunnel_role(cell: Vector2i) -> String:
 func set_objects(placed: Dictionary) -> void:
 	var belts := {}
 	var inserters := {}
+	var old_belts := _by_id(_belts)
+	var old_inserters := _by_id(_inserters)
 	for cell: Vector2i in placed:
 		var object: Dictionary = placed[cell]
 		var rotation := int(object.get("rotation", 0))
 		if BELT_SPEEDS.has(object["kind"]) or object["kind"] in [SPLITTER, UNDERGROUND] or CABLES.has(object["kind"]):
-			var old: Dictionary = _find(_belts, object["id"])
+			var old: Dictionary = old_belts.get(object["id"], {})
 			var items: Array = old.get("items", [])
 			if items.size() != belt_slots * belt_lanes:
 				items = []
@@ -201,7 +207,7 @@ func set_objects(placed: Dictionary) -> void:
 				"suffix": tier_suffix(object["kind"]), "cable": CABLES.has(object["kind"]), "span": int(CABLES.get(object["kind"], [0])[0]),
 				"tunnel": object["kind"] == UNDERGROUND, "down": false, "up": false, "fluid": object["kind"] in FLUID_CARRIERS}
 		elif INSERTER_SWINGS.has(object["kind"]):
-			var old: Dictionary = _find(_inserters, object["id"])
+			var old: Dictionary = old_inserters.get(object["id"], {})
 			inserters[cell] = {"id": object["id"], "rotation": rotation, "hand": old.get("hand"), "swing": int(old.get("swing", 0)),
 				"was": int(old.get("swing", 0)), "arm": old.get("arm"), "swingTicks": int(INSERTER_SWINGS[object["kind"]]),
 				"suffix": tier_suffix(object["kind"]), "speed": float(old.get("speed", 1.0)), "charge": float(old.get("charge", 0.0)),
@@ -245,12 +251,19 @@ func apply(state: Dictionary) -> void:
 	swing_ticks = int(state.get("swingTicks", swing_ticks))
 	if state.get("names") != null:
 		names = state["names"]
+	# The short form lists only belts that carry something (and splitters): any other is empty.
+	var compact: bool = state.get("compact", false)
 	var belts_by_id := {}
 	for belt: Dictionary in state.get("belts", []):
 		belts_by_id[belt["id"]] = belt
 	for cell: Vector2i in _belts:
 		var belt: Dictionary = _belts[cell]
-		if belts_by_id.has(belt["id"]):
+		if compact and not belts_by_id.has(belt["id"]):
+			if (belt["items"] as Array).any(func(item: Variant) -> bool: return item != null):
+				belt["items"] = []
+				belt["items"].resize(belt_slots * belt_lanes)
+			belt["moved"] = {}
+		elif belts_by_id.has(belt["id"]):
 			var known: Dictionary = belts_by_id[belt["id"]]
 			belt["items"] = (known["items"] as Array).duplicate()
 			belt["items"].resize(belt_slots * belt_lanes)
@@ -264,7 +277,7 @@ func apply(state: Dictionary) -> void:
 	for cell: Vector2i in _inserters:
 		var inserter: Dictionary = _inserters[cell]
 		if inserters_by_id.has(inserter["id"]):
-			inserter["hand"] = inserters_by_id[inserter["id"]]["hand"]
+			inserter["hand"] = inserters_by_id[inserter["id"]].get("hand")
 			inserter["swing"] = int(inserters_by_id[inserter["id"]]["swing"])
 			inserter["swingTicks"] = int(inserters_by_id[inserter["id"]].get("swingTicks", inserter["swingTicks"]))
 			inserter["was"] = inserter["swing"]
@@ -290,6 +303,40 @@ func _find(by_cell: Dictionary, id: String) -> Dictionary:
 		if by_cell[cell]["id"] == id:
 			return by_cell[cell]
 	return {}
+
+
+## Belts or inserters by object id.
+static func _by_id(by_cell: Dictionary) -> Dictionary:
+	var found := {}
+	for cell: Vector2i in by_cell:
+		found[by_cell[cell]["id"]] = by_cell[cell]
+	return found
+
+
+## What of the plot is on the screen, in the plot's own coordinates, with a margin of a few tiles around for
+## what stands up from the tiles below it and for the camera moving on before the next frame.
+static func view_rect(item: CanvasItem, margin := VIEW_MARGIN) -> Rect2:
+	var view := item.get_canvas_transform().affine_inverse() * item.get_viewport_rect()
+	return view.grow(margin)
+
+
+## The tiles of `cells` (by tile) inside `view`: looked up tile by tile when the screen holds fewer tiles than there
+## are cells, so drawing a big factory costs what is on the screen, not what is on the plot.
+func _on_screen(cells: Dictionary, view: Rect2) -> Array[Vector2i]:
+	var found: Array[Vector2i] = []
+	var low := Vector2i((view.position / tile).floor())
+	var high := Vector2i((view.end / tile).ceil())
+	if (high.x - low.x) * (high.y - low.y) < cells.size():
+		for y in range(low.y, high.y):
+			for x in range(low.x, high.x):
+				if cells.has(Vector2i(x, y)):
+					found.append(Vector2i(x, y))
+	else:
+		var tiles := Rect2i(low, high - low)
+		for cell: Vector2i in cells:
+			if tiles.has_point(cell):
+				found.append(cell)
+	return found
 
 
 static func facing(rotation: int) -> Vector2i:
@@ -380,6 +427,11 @@ func _link_belts() -> void:
 	var seen := {}
 	for start: Vector2i in _belts:
 		_downstream(start, seen)
+	_cable_starts = []
+	for cell: Vector2i in _belts:
+		var out: Array = _belts[cell]["out"]
+		if not out.is_empty() and not out[0].is_empty() and out[0].get("cable", false):
+			_cable_starts.append(cell)
 
 
 ## The station a cable station sends its items to: the nearest one (of either level) ahead facing the
@@ -449,7 +501,8 @@ func _process(_delta: float) -> void:
 	if _cables != null:
 		_cables.queue_redraw()
 		_drones.queue_redraw()
-	for cell: Vector2i in _inserters:
+	# An arm off the screen keeps what it drew last; it is drawn anew once it is on the screen again.
+	for cell in _on_screen(_inserters, view_rect(self)):
 		_inserters[cell]["arm"].queue_redraw()
 
 
@@ -579,7 +632,8 @@ func _belt_sprite(belt: Dictionary) -> String:
 
 func _draw() -> void:
 	var f := _fraction()
-	for cell: Vector2i in _belts:
+	var shown := _on_screen(_belts, view_rect(self))
+	for cell: Vector2i in shown:
 		var belt: Dictionary = _belts[cell]
 		var sprites: Array = [_belt_sprite(belt) + ("" if belt["splitter"] else String(belt["suffix"]))]
 		if belt["splitter"]:
@@ -589,7 +643,7 @@ func _draw() -> void:
 			var anchor := Vector2(layout[sprite]["anchorX"], layout[sprite]["anchorY"])
 			draw_texture(_textures[sprite], (Vector2(cell) + Vector2(0.5, 0.5)) * tile - anchor)
 	# Chevrons pointing the way the band runs, moving as many slots a tick as the belt is fast.
-	for cell: Vector2i in _belts:
+	for cell: Vector2i in shown:
 		if _belts[cell]["fluid"]:
 			continue  # a pipe is closed
 		var phase := fmod(float(server_now.call()) / tick_ms * int(_belts[cell]["speed"]), 1.0)
@@ -602,7 +656,7 @@ func _draw() -> void:
 			var side := Vector2(back[1].y, -back[1].x) * 0.2
 			draw_polyline([_screen(cell, back[0] + side, BAND_HEIGHT), _screen(cell, tip[0], BAND_HEIGHT),
 				_screen(cell, back[0] - side, BAND_HEIGHT)], STRIPE, 2.0, true)
-	for cell: Vector2i in _belts:
+	for cell: Vector2i in shown:
 		var belt: Dictionary = _belts[cell]
 		var items: Array = belt["items"]
 		for i in items.size():
@@ -657,12 +711,12 @@ class CableLines extends Node2D:
 		var lift := PlotLogistics.CABLE_HEIGHT * PlotLogistics.PPM * cos(PI / 4)
 		var f := logistics._fraction()
 		var now: float = logistics.server_now.call()
-		for cell: Vector2i in logistics._belts:
+		var view := PlotLogistics.view_rect(self)
+		for cell: Vector2i in logistics._cable_starts:
 			var belt: Dictionary = logistics._belts[cell]
-			var out: Array = belt["out"]
-			if out.is_empty() or out[0].is_empty() or not out[0].get("cable", false):
+			var to: Vector2i = belt["out"][0]["to"]
+			if not view.intersects(Rect2(Vector2(cell) * t, Vector2.ZERO).expand((Vector2(to) + Vector2.ONE) * t)):
 				continue
-			var to: Vector2i = out[0]["to"]
 			var dir := Vector2(PlotLogistics.facing(belt["rotation"]))
 			var side := Vector2(-dir.y, dir.x) * 0.18
 			var from_px := (Vector2(cell) + Vector2(0.5, 0.5)) * t - Vector2(0, lift)

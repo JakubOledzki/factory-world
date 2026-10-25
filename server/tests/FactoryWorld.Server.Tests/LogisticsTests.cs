@@ -177,6 +177,43 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
     }
 
     [Fact]
+    public async Task The_short_form_of_the_logistics_lists_only_belts_that_carry_something_and_what_changes()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty) = await PlotWithFreeRowAsync(client, 4);
+        await GiveAsync(client, Items.WoodenChest, 1);
+        await GiveAsync(client, Items.Inserter, 1);
+        await GiveAsync(client, Items.Belt, 2);
+        await GiveAsync(client, Items.Stone, 1);
+        var chest = await PlaceAsync(client, x, y, Items.WoodenChest, tx, ty);
+        var inserter = await PlaceAsync(client, x, y, Items.Inserter, tx + 1, ty);
+        var loaded = await PlaceAsync(client, x, y, Items.Belt, tx + 2, ty);
+        // Turned back towards the first one, so the stone stays on that one.
+        await PlaceAsync(client, x, y, Items.Belt, tx + 3, ty, West);
+        await client.SendAsync("storage.put", new { x, y, id = chest, item = Items.Stone, quantity = 1 });
+        await PowerAsync(client, x, y, tx, ty);
+
+        factory.Time.Advance(TimeSpan.FromMinutes(1));
+        var compact = (await client.SendAsync("logistics.get", new { x, y, compact = true })).Payload();
+        Assert.True(compact.GetProperty("compact").GetBoolean());
+        var belt = Assert.Single(compact.GetProperty("belts").EnumerateArray());
+        Assert.Equal(loaded, belt.GetProperty("id").GetString());
+        Assert.Equal(1, belt.GetProperty("items").EnumerateArray().Count(i => i.ValueKind == JsonValueKind.String));
+        Assert.False(belt.TryGetProperty("speed", out _));
+        var arm = Assert.Single(compact.GetProperty("inserters").EnumerateArray());
+        Assert.Equal(inserter, arm.GetProperty("id").GetString());
+        Assert.False(arm.TryGetProperty("hand", out _));
+        Assert.Equal(JsonValueKind.Null, compact.GetProperty("names").ValueKind);
+        Assert.False(compact.GetProperty("power").TryGetProperty("wires", out _));
+        Assert.Equal(1, compact.GetProperty("storages").GetArrayLength());
+
+        // The full form, as before: every belt.
+        var full = (await client.SendAsync("logistics.get", new { x, y })).Payload();
+        Assert.Equal(2, full.GetProperty("belts").GetArrayLength());
+        Assert.NotEqual(JsonValueKind.Null, (await client.SendAsync("logistics.get", new { x, y, compact = true, names = true })).Payload().GetProperty("names").ValueKind);
+    }
+
+    [Fact]
     public void An_inserter_beside_a_belt_drops_on_the_far_lane_first()
     {
         // A belt going east; the inserter stands north of it (its left) and drops south onto it.
