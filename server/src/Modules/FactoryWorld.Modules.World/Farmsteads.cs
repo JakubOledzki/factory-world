@@ -694,6 +694,15 @@ public abstract class FarmsteadHandler(IServiceScopeFactory scopes, TimeProvider
             x = request.X,
             y = request.Y,
             farmsteads = state.Select(f => FarmsteadJson(f, now)),
+            // The fields they sow, to draw on the plot: unix milliseconds of when each is ripe.
+            fields = state.SelectMany(f => f.Patch.Fields.Select(t => new
+            {
+                tileX = t.Key.X,
+                tileY = t.Key.Y,
+                crop = t.Value.Crop.Item,
+                readyAt = t.Value.ReadyAt.ToUnixTimeMilliseconds(),
+                farmstead = f.Object.Id,
+            })),
             taken = taken.Select(t => new { id = t.Item, name = Items.Names[t.Item], quantity = t.Quantity }),
             xp = xp is { } gain ? new { xp = gain.Xp, level = gain.Level, leveledUp = gain.LeveledUp } : null,
             serverTime = now.ToUnixTimeMilliseconds(),

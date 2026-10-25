@@ -29,6 +29,9 @@ var port := false
 var _by_sea := false
 ## A dog kennel or a snowmobile garage stands on this plot on the glacier or the tundra: goods can go by sled, free, up to sledMaxKm.
 var sled := false
+## A stable stands on this plot off the glacier and the tundra: a horse cart takes goods up to horseMaxKm, free, on concentrate feed
+## from the station. It goes as a sled does ("sled" when sending).
+var horse := false
 var _by_sled := false
 
 var _state := {}
@@ -406,6 +409,16 @@ func _render_send() -> void:
 			_send_button.text = _send_text()
 			_update_send())
 		grid.add_child(by_sled)
+	elif horse:
+		grid.add_child(UI.label("Wozem", UI.MUTED))
+		var by_cart := CheckBox.new()
+		by_cart.text = "Wozem konnym ze stajni (bez opłaty, do %d km, za paszę treściwą)" % int(_state["rates"].get("horseMaxKm", 50))
+		by_cart.button_pressed = _by_sled
+		by_cart.toggled.connect(func(on: bool) -> void:
+			_by_sled = on
+			_send_button.text = _send_text()
+			_update_send())
+		grid.add_child(by_cart)
 	_send_button.text = _send_text()
 	_body.add_child(grid)
 	_body.add_child(_send_info)
@@ -430,6 +443,8 @@ func _diesel_for(km: float, sending: Dictionary, quantity: int) -> int:
 func _send_text() -> String:
 	if sled and _by_sled:
 		return "Wyślij saniami"
+	if horse and _by_sled:
+		return "Wyślij wozem"
 	return "Wyślij statkiem" if _by_sea and port else "Wyślij pociąg"
 
 
@@ -461,6 +476,20 @@ func _update_send() -> void:
 		_send_info.text += "\nPociąg spalinowy: spali %d × olej napędowy ze stacji i dojedzie szybciej." % diesel
 	elif not (_by_sea and port) and _state["rates"].has("dieselKmPerUnit"):
 		_send_info.text += "\nZaładuj na stację olej napędowy, a pojedzie szybszy pociąg spalinowy."
+	if horse and _by_sled:
+		var rates: Dictionary = _state["rates"]
+		var km := float(trip["km"])
+		var feed := maxi(1, ceili(km / float(rates.get("horseKmPerFeed", 10))))
+		var max_km := float(rates.get("horseMaxKm", 50))
+		_send_info.text = "%s  ·  %s km  ·  w drodze %s  ·  bez opłaty" % [_where(), _grouped(roundi(km)),
+			_clock(float(trip["seconds"]) * float(rates.get("horseTrip", 2)))]
+		_send_info.text += "\nKonie zjedzą %d × pasza treściwa ze stacji." % feed
+		_send_button.disabled = _destination == plot or km > max_km
+		if km > max_km:
+			_send_info.text += "\nZa daleko: wóz konny jedzie najwyżej %d km." % int(max_km)
+		elif _destination == plot:
+			_send_info.text += "\nTo jest ta sama stacja."
+		return
 	if sled and _by_sled:
 		var rates: Dictionary = _state["rates"]
 		var km := float(trip["km"])
@@ -490,7 +519,7 @@ func _send() -> void:
 	_send_button.disabled = true
 	var reply := await Net.request("station.send", {
 		"x": plot.x, "y": plot.y, "toX": target.x, "toY": target.y, "item": stack["id"], "quantity": quantity,
-		"sea": _by_sea and port, "sled": sled and _by_sled,
+		"sea": _by_sea and port, "sled": (sled or horse) and _by_sled,
 	})
 	if reply["type"] != "station":
 		failed.emit(reply)
@@ -498,6 +527,8 @@ func _send() -> void:
 		return
 	if sled and _by_sled:
 		toast.emit("Sanie z %d × %s ruszyły: %s." % [quantity, stack["name"], _where()])
+	elif horse and _by_sled:
+		toast.emit("Wóz konny z %d × %s ruszył: %s." % [quantity, stack["name"], _where()])
 	else:
 		toast.emit("%s z %d × %s %s: %s." % ["Statek" if _by_sea and port else "Pociąg", quantity, stack["name"],
 			"wypłynął" if _by_sea and port else "odjechał", _where()])

@@ -23,6 +23,9 @@ const INDUSTRIES := {
 ## Shown faded in an empty slot.
 const EMPTY_ICONS := {"head": "clothes_beanie", "body": "clothes_flannel_jacket", "legs": "clothes_work_trousers", "feet": "clothes_work_boots"}
 const TAKE_OFF := 1000
+## What can be eaten on the go, for a while of faster hand work (as the server's Items.Meals).
+const MEALS := ["bread", "scrambled_eggs", "workers_lunch", "cheese_sandwich", "miners_breakfast", "lumberjack_goulash"]
+const EAT := 2000
 
 var _tab := 0
 var _tab_buttons: Array[Button] = []
@@ -37,6 +40,8 @@ var _error := UI.label("", UI.ERROR, HORIZONTAL_ALIGNMENT_LEFT, true)
 var _menu := PopupMenu.new()
 var _choices: Array[String] = []
 var _menu_slot := ""
+var _meal := UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
+var _eat: Button
 
 
 func _init() -> void:
@@ -138,6 +143,18 @@ func _build_clothes() -> void:
 	_clothes_page.add_child(heading)
 	_bonuses.add_theme_constant_override("separation", 2)
 	_clothes_page.add_child(_bonuses)
+	_clothes_page.add_child(HSeparator.new())
+	var meal_heading := UI.label("Posiłek", UI.GOLD)
+	meal_heading.add_theme_font_override("font", UI.bold())
+	_clothes_page.add_child(meal_heading)
+	var meal_row := HBoxContainer.new()
+	meal_row.add_theme_constant_override("separation", 6)
+	_meal.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_meal.custom_minimum_size.x = 220
+	meal_row.add_child(_meal)
+	_eat = UI.button("Zjedz…", func() -> void: _open_meals(_eat))
+	meal_row.add_child(_eat)
+	_clothes_page.add_child(meal_row)
 	var hint := UI.label("Ubrania szyje pracownia krawiecka w mieście (badanie „Krawiectwo”). Niektóre sprzedają sklepy miast i handlarz.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
 	hint.add_theme_font_size_override("font_size", 13)
 	hint.custom_minimum_size.x = 300
@@ -179,6 +196,14 @@ func _refresh() -> void:
 				_bonuses.add_child(row)
 	else:
 		_bonuses.add_child(UI.label("Brak. Załóż ubranie, by pracować szybciej.", UI.MUTED))
+	var meal: Variant = Game.character.get("meal")
+	if meal is Dictionary:
+		var left := (float(meal["until"]) - Time.get_unix_time_from_system() * 1000.0) / 60000.0
+		_meal.text = "%s: %s jeszcze ok. %d min." % [meal["name"], _bonus_text(meal.get("bonuses", {})), maxi(1, ceili(left))]
+		_meal.add_theme_color_override("font_color", UI.GOOD)
+	else:
+		_meal.text = "Głodny. Zjedz coś w biegu: chleb, kanapkę, gulasz drwala…, a przez chwilę popracujesz szybciej."
+		_meal.add_theme_color_override("font_color", UI.MUTED)
 	_update_save()
 
 
@@ -216,8 +241,33 @@ func _open_slot(slot: String, tile: Control) -> void:
 	_menu.popup(Rect2i(Vector2i(at), Vector2i.ZERO))
 
 
+## The meals in the inventory, next to the button; a new one replaces what was eaten before.
+func _open_meals(tile: Control) -> void:
+	var reply := await Net.request("inventory.get")
+	if reply["type"] != "inventory":
+		failed.emit(reply)
+		return
+	_menu.clear()
+	_choices.clear()
+	var seen := {}
+	for stack: Dictionary in reply["payload"]["items"]:
+		var item: String = stack["id"]
+		if item in MEALS and not seen.has(item):
+			seen[item] = true
+			_menu.add_icon_item(UI.item_texture(item), "Zjedz: %s" % stack["name"], EAT + _choices.size())
+			_choices.append(item)
+	if _menu.item_count == 0:
+		_menu.add_item("Nie masz nic do jedzenia w biegu.", -1)
+		_menu.set_item_disabled(0, true)
+	_menu.reset_size()
+	var at := tile.get_screen_transform() * Vector2(tile.size.x + 4, 0)
+	_menu.popup(Rect2i(Vector2i(at), Vector2i.ZERO))
+
+
 func _on_choice(id: int) -> void:
-	if id == TAKE_OFF:
+	if id >= EAT and id - EAT < _choices.size():
+		_send("character.eat", {"item": _choices[id - EAT]})
+	elif id == TAKE_OFF:
 		_send("character.unequip", {"clothing": _menu_slot})
 	elif id >= 0 and id < _choices.size():
 		_send("character.equip", {"item": _choices[id]})

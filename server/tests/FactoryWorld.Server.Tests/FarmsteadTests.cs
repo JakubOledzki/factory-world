@@ -188,7 +188,9 @@ public sealed class FarmsteadTests(ServerFactory factory) : IClassFixture<Server
         var id = placed.Payload().GetProperty("object").GetProperty("id").GetString()!;
 
         // It tills and sows wheat on its whole square at once.
-        var sown = Farm((await client.SendAsync("farmstead.get", new { x, y })).Payload(), id);
+        var reply = (await client.SendAsync("farmstead.get", new { x, y })).Payload();
+        Assert.Equal(50, reply.GetProperty("fields").GetArrayLength());
+        var sown = Farm(reply, id);
         Assert.Equal(1, sown.GetProperty("level").GetInt32());
         Assert.Equal(Items.Wheat, sown.GetProperty("crop").GetString());
         Assert.Equal(50, sown.GetProperty("fields").GetInt32());
