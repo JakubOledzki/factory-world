@@ -207,7 +207,7 @@ const ITEMS := {
 	"storage_receiving_chest_4": ["Skrzynia odbierająca IV", "16000 sztuk (64 przegródki). Do niej pociąg trasy między twoimi działkami wkłada przywieziony towar, najpierw do skrzyń z filtrem na ten przedmiot, potem do tych bez filtra. Gdy nie ma miejsca, pociąg czeka. Może ich stać kilka.",
 			"Stół warsztatowy: 1 × skrzynia odbierająca III + 40 × sztabka stali + 4 × silnik elektryczny (120 s). Wymaga badania: Kontenerowy terminal kolejowy."],
 	"storage_wood_pile": ["Stos drewna", "Magazyn tylko na drewno.", "Stół warsztatowy: 4 × drewno (5 s)."],
-	"storage_heap": ["Hałda", "Magazyn na kamień, piasek, węgiel albo rudę (także kruszoną), jeden rodzaj naraz.",
+	"storage_heap": ["Hałda", "Magazyn na 5000 sztuk kamienia, piasku, węgla albo rudy (także kruszonej), jeden rodzaj naraz.",
 			"Stół warsztatowy: 10 × kamień + 4 × drewno (10 s)."],
 	"storage_grain_silo": ["Silos zbożowy", "Magazyn na pszenicę, kukurydzę albo słonecznik, jeden rodzaj naraz.",
 			"Stół warsztatowy: 10 × sztabka żelaza + 20 × kamień + 10 × gwoździe (40 s)."],

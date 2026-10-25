@@ -40,7 +40,8 @@ public static class Storages
         new(Items.ReceivingChest3, 32, 200),
         new(Items.ReceivingChest4, 64, 250),
         new(Items.WoodPile, 1, 400, new HashSet<string> { Items.Wood }),
-        new(Items.Heap, 1, 1000, new HashSet<string>
+        // A heap of loose bulk goods outgrows an iron chest: twice its 2400 pieces, but of one kind only.
+        new(Items.Heap, 1, 5000, new HashSet<string>
         {
             Items.Stone, Items.Sand, Items.Coal,
             Items.IronOre, Items.CopperOre, Items.TinOre, Items.SilverOre, Items.GoldOre,

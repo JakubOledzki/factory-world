@@ -310,7 +310,7 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
     public void Storages_take_their_goods_up_to_their_size()
     {
         var heap = Storages.Find(Items.Heap)!;
-        Assert.Equal(1000, Storages.Room(heap, [], Items.IronOre));
+        Assert.Equal(5000, Storages.Room(heap, [], Items.IronOre));
         Assert.Equal(0, Storages.Room(heap, [], Items.Wood));
         Assert.Equal(0, Storages.Room(heap, [new() { Item = Items.Coal, Quantity = 1 }], Items.Stone));
 

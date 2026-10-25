@@ -217,7 +217,7 @@ public static class TechTree
         new(Automation, "Automatyzacja", "Podajniki same przekładają przedmioty między taśmami, maszynami i magazynami.",
             [Logistics], [(Items.IronIngot, 20), (Items.CopperIngot, 10), (Items.Nails, 20)], TimeSpan.FromMinutes(2), 40,
             [Items.Inserter]),
-        new(Storage, "Magazynowanie", "Skrzynia żelazna mieści trzy razy więcej niż drewniana, a hałda 1000 sztuk jednego surowca.",
+        new(Storage, "Magazynowanie", "Skrzynia żelazna mieści trzy razy więcej niż drewniana, a hałda 5000 sztuk jednego surowca.",
             [Logistics], [(Items.IronIngot, 20), (Items.Stone, 50)], TimeSpan.FromSeconds(90), 30,
             [Items.IronChest, Items.Heap]),
         new(Baking, "Piekarnictwo", "Piec piekarski wypieka chleb z mąki.",

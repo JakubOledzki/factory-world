@@ -12,6 +12,13 @@
 	},
 	{
 		"date": "2026-10-25",
+		"title": "Większa hałda",
+		"changes": [
+			"Hałda mieści teraz 5000 sztuk zamiast 1000: dwa razy więcej niż żelazna skrzynia, ale tylko jednego surowca (kamienia, piasku, węgla albo rudy, także kruszonej)."
+		]
+	},
+	{
+		"date": "2026-10-25",
 		"title": "Kompendium wiedzy",
 		"changes": [
 			"W oknie postaci (portret w rogu) jest nowa zakładka Kompendium: każdy przedmiot, maszyna i budynek w grze, podzielone na kategorie, z wyszukiwarką.",
