@@ -111,12 +111,14 @@ public sealed class LevelingTests
 {
     [Theory]
     [InlineData(0, 1)]
-    [InlineData(199, 1)]
-    [InlineData(200, 2)]
-    [InlineData(799, 2)]
-    [InlineData(800, 3)]
-    [InlineData(16_200, 10)]
-    [InlineData(1_960_200, 100)]
+    [InlineData(-5, 1)]
+    [InlineData(203, 1)]
+    [InlineData(204, 2)]
+    [InlineData(831, 2)]
+    [InlineData(832, 3)]
+    [InlineData(19_116, 10)]
+    [InlineData(5_841_395, 99)]
+    [InlineData(5_841_396, 100)]
     [InlineData(99_999_999, 100)]
     public void Level_follows_the_xp_table(long xp, int level) => Assert.Equal(level, Leveling.LevelForXp(xp));
 

@@ -8,6 +8,8 @@ const EDITOR_SCENE := "res://scenes/editor.tscn"
 const GARAGE_SCENE := "res://scenes/garage.tscn"
 const WORLD_MAP_SCENE := "res://scenes/world_map.tscn"
 const PLOT_SCENE := "res://scenes/plot.tscn"
+## The highest level a character reaches, as on the server.
+const MAX_LEVEL := 100
 
 ## Server error codes shown to the player in Polish.
 const ERRORS := {
@@ -316,13 +318,19 @@ func reload_character() -> void:
 		character = reply["payload"]
 
 
-## Applies an XP gain from the server ({ xp, level }); level thresholds follow 200 × (L − 1)².
+## Total XP to reach a level, as the server counts it: 200 × (L − 1)² + 4 × (L − 1)³.
+static func xp_for_level(level: int) -> int:
+	var n := level - 1
+	return 200 * n * n + 4 * n * n * n
+
+
+## Applies an XP gain from the server ({ xp, level }).
 func gain_xp(gain: Dictionary) -> void:
 	var level: int = gain["level"]
 	character["xp"] = gain["xp"]
 	character["level"] = level
-	character["levelXp"] = 200 * (level - 1) * (level - 1)
-	character["nextLevelXp"] = 200 * level * level
+	character["levelXp"] = xp_for_level(level)
+	character["nextLevelXp"] = xp_for_level(level + 1) if level < MAX_LEVEL else null
 
 
 func logout() -> void:
