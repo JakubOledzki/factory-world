@@ -30,6 +30,7 @@ public sealed class CharactersModule : IGameModule
         services.AddSingleton<IMessageHandler, EatHandler>();
         services.AddSingleton<IMessageHandler, UnequipHandler>();
         services.AddSingleton<IMessageHandler, RestyleHandler>();
+        services.AddSingleton<IMessageHandler, OnlineHandler>();
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>

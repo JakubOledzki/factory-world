@@ -207,7 +207,7 @@ func _render_company(company: Dictionary) -> void:
 		var line := _row()
 		var who := UI.label("%s%s" % [member["name"], "  (ty)" if member["you"] else ""], UI.GOLD if member["role"] == "owner" else UI.TEXT)
 		who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		line.add_child(who)
+		line.add_child(Online.with_dot(who, member["name"]))
 		var plots := int(member["plots"])
 		if plots > 0:
 			line.add_child(UI.label("działki: %d" % plots, UI.MUTED))
@@ -232,7 +232,7 @@ func _render_company(company: Dictionary) -> void:
 			var line := _row()
 			var text := UI.label("%s  (zaproszony, czeka)" % name, UI.MUTED)
 			text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			line.add_child(text)
+			line.add_child(Online.with_dot(text, name))
 			line.add_child(UI.button("Cofnij", _send.bind("company.uninvite", {"name": name})))
 			_body.add_child(line)
 		var row := _row()
@@ -257,7 +257,7 @@ func _render_company(company: Dictionary) -> void:
 		var line := _row()
 		var text := UI.label("%s %d:%d  ·  %s" % [_biome_names.get(int(plot["biome"]), "Działka"), at.x, at.y, "twoja" if plot["mine"] else plot["owner"]])
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		line.add_child(text)
+		line.add_child(text if plot["mine"] else Online.with_dot(text, plot["owner"]))
 		if owner:
 			var managers := OptionButton.new()
 			managers.tooltip_text = "Kierownik działki buduje tylko na działkach, które mu przydzielisz."
@@ -273,7 +273,7 @@ func _render_company(company: Dictionary) -> void:
 				_send("company.assign", {"x": at.x, "y": at.y, "name": managers.get_item_metadata(index)}))
 			line.add_child(managers)
 		elif plot.get("manager") != null:
-			line.add_child(UI.label("kierownik: %s" % plot["manager"], UI.MUTED))
+			line.add_child(Online.with_dot(UI.label("kierownik: %s" % plot["manager"], UI.MUTED), plot["manager"]))
 		line.add_child(UI.button("Wejdź", func() -> void: Game.enter_plot(at)))
 		if plot["mine"]:
 			var b := UI.button("Zabierz", _send.bind("company.removePlot", {"x": at.x, "y": at.y}))
@@ -408,7 +408,7 @@ func _render_cash(company: Dictionary) -> void:
 		var line := _row()
 		var text := UI.label("%s%s" % [holder["name"], "  (ty)" if holder["you"] else ""])
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		line.add_child(text)
+		line.add_child(Online.with_dot(text, holder["name"]))
 		line.add_child(UI.label("%d  ·  %s%%" % [int(holder["shares"]), str(holder["percent"]).replace(".", ",")], UI.MUTED))
 		_body.add_child(line)
 

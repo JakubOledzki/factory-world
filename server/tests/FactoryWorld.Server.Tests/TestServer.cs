@@ -86,6 +86,20 @@ public sealed class GameClient(WebSocket socket) : IDisposable
         return reply;
     }
 
+    /// <summary>The next message the server sends, e.g. a notice that answers no request.</summary>
+    public Task<JsonElement> NextAsync() => ReceiveAsync();
+
+    /// <summary>Waits for the server to close the connection; returns how it said it closed.</summary>
+    public async Task<string?> ClosedAsync()
+    {
+        var buffer = new byte[64 * 1024];
+        while ((await socket.ReceiveAsync(buffer, CancellationToken.None)).MessageType != WebSocketMessageType.Close)
+        {
+        }
+
+        return socket.CloseStatusDescription;
+    }
+
     private async Task<JsonElement> ReceiveAsync()
     {
         // Large replies (a plot's tiles) can come in several frames.

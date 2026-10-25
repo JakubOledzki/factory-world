@@ -217,7 +217,10 @@ func _render_on_way() -> void:
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		text.clip_text = true
 		text.tooltip_text = text.text
-		row.add_child(text)
+		var other: Variant = null
+		if t["kind"] not in ["deposit", "withdraw"]:
+			other = t["from"] if t["incoming"] else t["to"]
+		row.add_child(Online.with_dot(text, other))
 		var left := UI.label("", UI.MUTED)
 		left.custom_minimum_size.x = 72
 		left.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT

@@ -11,7 +11,10 @@ public static class GameSocketEndpoint
 {
     private const int MaxMessageBytes = 64 * 1024;
 
-    public static async Task HandleAsync(HttpContext context, MessageDispatcher dispatcher, ILogger<MessageDispatcher> logger)
+    /// <summary>How long a closed connection waits for the client to answer the close before it is dropped.</summary>
+    private static readonly TimeSpan CloseTimeout = TimeSpan.FromSeconds(5);
+
+    public static async Task HandleAsync(HttpContext context, MessageDispatcher dispatcher, OnlinePlayers online, ILogger<MessageDispatcher> logger)
     {
         if (!context.WebSockets.IsWebSocketRequest)
         {
@@ -24,23 +27,73 @@ public static class GameSocketEndpoint
         var cancellationToken = context.RequestAborted;
         logger.LogInformation("Client {ConnectionId} connected", client.ConnectionId);
 
+        // Replies and a close from elsewhere (the account logged in on another connection) take turns sending.
+        var sending = new SemaphoreSlim(1, 1);
+        var closed = false;
+        client.Close = notice => _ = Task.Run(async () =>
+        {
+            await sending.WaitAsync(CancellationToken.None);
+            try
+            {
+                if (closed)
+                {
+                    return;
+                }
+
+                closed = true;
+                logger.LogInformation("Client {ConnectionId} closed: {Type}", client.ConnectionId, notice.Type);
+                await socket.SendAsync(JsonSerializer.SerializeToUtf8Bytes(notice, MessageDispatcher.Json),
+                    WebSocketMessageType.Text, endOfMessage: true, CancellationToken.None);
+                await socket.CloseOutputAsync(WebSocketCloseStatus.PolicyViolation, notice.Type, CancellationToken.None);
+            }
+            catch (Exception ex) when (ex is WebSocketException or InvalidOperationException or ObjectDisposedException)
+            {
+                // The connection is gone already.
+                return;
+            }
+            finally
+            {
+                sending.Release();
+            }
+
+            // A client that never answers the close is dropped, so the loop below ends.
+            await Task.Delay(CloseTimeout, CancellationToken.None);
+            if (socket.State != WebSocketState.Closed)
+            {
+                socket.Abort();
+            }
+        });
+
         try
         {
             while (socket.State == WebSocketState.Open)
             {
                 var frame = await ReceiveTextAsync(socket, cancellationToken);
-                if (frame is null)
+                if (frame is null || closed)
                 {
                     break;
                 }
 
                 var reply = await dispatcher.DispatchAsync(frame, client, cancellationToken);
-                var bytes = JsonSerializer.SerializeToUtf8Bytes(reply, MessageDispatcher.Json);
-                await socket.SendAsync(bytes, WebSocketMessageType.Text, endOfMessage: true, cancellationToken);
-                while (client.Outbox.TryDequeue(out var notice))
+                await sending.WaitAsync(cancellationToken);
+                try
                 {
-                    bytes = JsonSerializer.SerializeToUtf8Bytes(notice, MessageDispatcher.Json);
+                    if (closed)
+                    {
+                        break;
+                    }
+
+                    var bytes = JsonSerializer.SerializeToUtf8Bytes(reply, MessageDispatcher.Json);
                     await socket.SendAsync(bytes, WebSocketMessageType.Text, endOfMessage: true, cancellationToken);
+                    while (client.Outbox.TryDequeue(out var notice))
+                    {
+                        bytes = JsonSerializer.SerializeToUtf8Bytes(notice, MessageDispatcher.Json);
+                        await socket.SendAsync(bytes, WebSocketMessageType.Text, endOfMessage: true, cancellationToken);
+                    }
+                }
+                finally
+                {
+                    sending.Release();
                 }
             }
         }
@@ -48,10 +101,27 @@ public static class GameSocketEndpoint
         {
             // The client went away; nothing to clean up yet.
         }
-
-        if (socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+        finally
         {
-            await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
+            online.Leave(client);
+        }
+
+        await sending.WaitAsync(CancellationToken.None);
+        try
+        {
+            if (!closed && socket.State is WebSocketState.Open or WebSocketState.CloseReceived)
+            {
+                closed = true;
+                await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, null, CancellationToken.None);
+            }
+        }
+        catch (Exception ex) when (ex is WebSocketException or OperationCanceledException)
+        {
+            // The client went away while closing.
+        }
+        finally
+        {
+            sending.Release();
         }
 
         logger.LogInformation("Client {ConnectionId} disconnected", client.ConnectionId);

@@ -623,7 +623,7 @@ func _route_row(route: Dictionary) -> void:
 	var title := UI.label("→ %s" % ("%s · %d × %d" % [receiver, to.x, to.y] if receiver != null else "moja działka %d × %d" % [to.x, to.y]))
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.clip_text = true
-	top.add_child(title)
+	top.add_child(Online.with_dot(title, receiver))
 	var minutes := int(route["everyMinutes"])
 	top.add_child(UI.label("co %d min" % minutes if minutes < 60 else "co godzinę", UI.GOLD))
 	top.add_child(UI.button("Usuń", _remove_route.bind(int(route["id"]))))

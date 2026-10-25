@@ -96,8 +96,10 @@ public sealed class AccountService(AccountsDbContext db, TimeProvider time)
         await db.Sessions.Where(s => s.TokenHash == hash).ExecuteDeleteAsync(cancellationToken);
     }
 
+    /// <summary>A new login ends the account's sessions on every other device: one account plays in one place.</summary>
     private async Task<LoginResult> StartSessionAsync(Guid accountId, CancellationToken cancellationToken)
     {
+        await db.Sessions.Where(s => s.AccountId == accountId).ExecuteDeleteAsync(cancellationToken);
         var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         var now = time.GetUtcNow();
         db.Sessions.Add(new Session

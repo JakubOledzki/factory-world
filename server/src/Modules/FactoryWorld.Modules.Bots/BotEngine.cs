@@ -18,6 +18,7 @@ public sealed class BotEngine(
     IEnumerable<IMessageHandler> handlers,
     IEnumerable<IMessageObserver> observers,
     TimeProvider time,
+    OnlinePlayers online,
     ILogger<BotEngine> logger)
 {
     private readonly IReadOnlyDictionary<string, IMessageHandler> _handlers = handlers.ToDictionary(h => h.Type, StringComparer.Ordinal);
@@ -89,6 +90,7 @@ public sealed class BotEngine(
                     row.SessionUntil = null;
                     row.NextSessionAt = now + Jitter(TimeSpan.FromHours(bot.Profile.RestHours));
                     bot.EndSession();
+                    online.SetBot(row.AccountId, false);
                     await SaveScheduleAsync(row, cancellationToken);
                     logger.LogInformation("Bot {Bot} logged out until {Next}", row.CharacterName, row.NextSessionAt);
                     continue;
@@ -106,6 +108,8 @@ public sealed class BotEngine(
                     logger.LogInformation("Bot {Bot} logged in until {Until}", row.CharacterName, row.SessionUntil);
                 }
 
+                // In a session the bot shows online like a player (also after a restart in the middle of one).
+                online.SetBot(row.AccountId, true);
                 await StepAsync(bot, now, cap, cancellationToken);
             }
         }

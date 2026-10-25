@@ -461,7 +461,7 @@ func _offer_row(offer: Dictionary, action: String, type: String, can_take: int, 
 	row.add_theme_constant_override("separation", 6)
 	var who := UI.label(("Ty" if offer["mine"] else offer["owner"]) + "  ×%d" % int(offer["quantity"]))
 	who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(who)
+	row.add_child(who if offer["mine"] else Online.with_dot(who, offer["owner"]))
 	row.add_child(UI.label("%s/szt." % UI.money(int(offer["priceCents"])), UI.GOLD))
 	if offer["mine"]:
 		row.add_child(UI.label("twoja", UI.MUTED))

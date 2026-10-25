@@ -609,8 +609,9 @@ func _show_plot() -> void:
 		var owner: Variant = _plot.get("owner")
 		if owner != null:
 			var mine: bool = owner["mine"]
-			_plot_box.add_child(UI.label("Twoja działka" if mine else "Właściciel: %s" % owner.get("name", "?"),
-				UI.GOLD if mine else UI.TEXT))
+			var owner_label := UI.label("Twoja działka" if mine else "Właściciel: %s" % owner.get("name", "?"),
+				UI.GOLD if mine else UI.TEXT)
+			_plot_box.add_child(owner_label if mine else Online.with_dot(owner_label, owner.get("name")))
 			var company: Variant = _plot.get("company")
 			if company != null:
 				_plot_box.add_child(UI.label("Działka spółki %s%s" % [company["name"], " (twojej)" if company["member"] and not mine else ""],
