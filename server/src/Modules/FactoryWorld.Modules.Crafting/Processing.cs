@@ -15,7 +15,9 @@ public sealed record ProcessingRecipe(string Id, int Quantity, TimeSpan Time, IR
 /// <param name="Fired">Whether it burns fuel: one batch takes heat from the fire.</param>
 /// <param name="Powered">Whether it runs on power: it works in its own time (<see cref="IPowerClock"/>), slower on too little power.</param>
 /// <param name="Sea">Whether it works out on the water: a boat stays in port while a storm blows (<see cref="SeaClock"/>).</param>
-public sealed record ProcessingMachine(string Kind, bool Fired, IReadOnlyList<ProcessingRecipe> Recipes, bool Powered = false, bool Sea = false)
+/// <param name="Aurora">Whether tourists keep it busy: it works faster while the aurora shines (<see cref="AuroraClock"/>).</param>
+public sealed record ProcessingMachine(
+    string Kind, bool Fired, IReadOnlyList<ProcessingRecipe> Recipes, bool Powered = false, bool Sea = false, bool Aurora = false)
 {
     public ProcessingRecipe? Recipe(string? id) => Recipes.FirstOrDefault(r => r.Id == id);
 }
@@ -229,11 +231,51 @@ public static class Processing
         [
             new(Items.Concrete, 3, TimeSpan.FromSeconds(8), [(Items.Cement, 1), (Items.Sand, 2), (Items.Water, 1)], 3),
         ], Powered: true),
+        // The glacier: a fired melter turns ice into water; a cold store freezes fish and makes ice cream, and a server room
+        // on power computes for research: both cool themselves for free on the glacier and on a block of ice per batch elsewhere.
+        new(Items.IceMelter, true,
+        [
+            new(Items.Water, 2, TimeSpan.FromSeconds(4), [(Items.Ice, 1)], 1),
+        ]),
+        new(Items.ColdStore, false,
+        [
+            new(Items.FrozenFish, 2, TimeSpan.FromSeconds(20), [(Items.Cod, 2)], 2),
+            new(Items.FrozenSalmon, 2, TimeSpan.FromSeconds(20), [(Items.Salmon, 2)], 3),
+            new(Items.IceCream, 2, TimeSpan.FromSeconds(25), [(Items.Milk, 2), (Items.Egg, 1)], 3),
+        ]),
+        new(Items.ServerRoom, false,
+        [
+            new(Items.ComputingPower, 1, TimeSpan.FromSeconds(10), [], 2),
+        ], Powered: true),
+        // An ice core drill on power brings up cores of the glacier's ice, which a fired polar station studies.
+        new(Items.IceCoreDrill, false,
+        [
+            new(Items.IceCore, 1, TimeSpan.FromSeconds(30), [], 3),
+        ], Powered: true),
+        new(Items.PolarStation, true,
+        [
+            new(Items.ResearchData, 1, TimeSpan.FromSeconds(20), [(Items.IceCore, 1)], 5),
+        ]),
+        // Tourists: a hotel of ice, heated by its fire, and a viewpoint take money from guests, three times as much under the aurora.
+        new(Items.IceHotel, true,
+        [
+            new(Items.Takings, 4, TimeSpan.FromSeconds(60), [], 2),
+        ], Aurora: true),
+        new(Items.Viewpoint, false,
+        [
+            new(Items.Takings, 1, TimeSpan.FromSeconds(60), [], 1),
+        ], Aurora: true),
     ];
+
+    /// <summary>What one piece of takings a tourist pays, in cents.</summary>
+    public const long TakingsCents = 500;
+
+    /// <summary>Machines that cool themselves with a block of ice per batch off the glacier.</summary>
+    private static bool Iced(string kind, int biome) => kind is Items.ColdStore or Items.ServerRoom && biome != Blizzard.Biome;
 
     public static readonly IReadOnlyDictionary<string, ProcessingMachine> ByKind = Machines.ToDictionary(m => m.Kind);
 
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string, double), ProcessingMachine> Variants = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<(string, double, bool), ProcessingMachine> Variants = new();
 
     /// <summary>How much faster a machine of <paramref name="kind"/> works on a plot of <paramref name="biome"/>: a glassworks on sand,
     /// a smokehouse and a cannery by the water, a deep well slower in the desert and faster in an oasis.</summary>
@@ -243,10 +285,13 @@ public static class Processing
         Items.Smokehouse or Items.Cannery when biome is 10 or 11 => 1.15,
         Items.WaterWell when biome == Oasis.Desert => 0.5,
         Items.WaterWell when biome == Oasis.Biome => 2,
+        // The cold air of the glacier cools what runs hot.
+        Items.Refinery or Items.Cracker or Items.ArcFurnace or Items.ChemicalPlant when biome == Blizzard.Biome => 1.2,
         _ => 1,
     };
 
-    /// <summary>The machine of <paramref name="kind"/> as it works on a plot of <paramref name="biome"/>: its recipes shorter by its <see cref="Bonus"/>.</summary>
+    /// <summary>The machine of <paramref name="kind"/> as it works on a plot of <paramref name="biome"/>: its recipes shorter by its <see cref="Bonus"/>,
+    /// and off the glacier with a block of ice more for a machine that has to be cooled.</summary>
     public static ProcessingMachine? For(string kind, int biome)
     {
         if (!ByKind.TryGetValue(kind, out var machine))
@@ -254,10 +299,23 @@ public static class Processing
             return null;
         }
 
-        var bonus = Bonus(kind, biome);
-        return bonus == 1 ? machine : Variants.GetOrAdd((kind, bonus), _ =>
-            machine with { Recipes = machine.Recipes.Select(r => r with { Time = r.Time / bonus }).ToList() });
+        var (bonus, iced) = (Bonus(kind, biome), Iced(kind, biome));
+        return bonus == 1 && !iced ? machine : Variants.GetOrAdd((kind, bonus, iced), _ => machine with
+        {
+            Recipes = machine.Recipes.Select(r => r with
+            {
+                Time = r.Time / bonus,
+                Ingredients = iced ? [.. r.Ingredients, (Items.Ice, 1)] : r.Ingredients,
+            }).ToList(),
+        });
     }
+
+    /// <summary>The machine of <paramref name="kind"/> as it was when it loaded <paramref name="state"/>: cooled with ice when it holds a slot more
+    /// than its plain recipe has. For a machine taken off its plot, which no longer tells its biome.</summary>
+    public static ProcessingMachine? ForState(string kind, MachineState state) =>
+        ByKind.TryGetValue(kind, out var machine) && machine.Recipe(state.Recipe) is { } recipe && state.Inputs.Count > recipe.Ingredients.Count
+            ? For(kind, 0)
+            : machine;
 
     /// <summary>The biome of the plot a machine stands on, or 0 when it stands on none.</summary>
     public static async Task<int> BiomeOfAsync(IPlotObjects plots, IPlotRegistry registry, Guid id, CancellationToken cancellationToken) =>
@@ -265,7 +323,7 @@ public static class Processing
 
     /// <summary>The clock a machine works by: its own time on the power grid, the boats' time that stands still in a storm, or plain time.</summary>
     public static async Task<IPowerClock> ClockAsync(ProcessingMachine machine, IPlotPower power, Guid id, CancellationToken cancellationToken) =>
-        machine.Powered ? await power.ClockAsync(id, cancellationToken) : machine.Sea ? SeaClock.Instance : PlainTime.Instance;
+        machine.Powered ? await power.ClockAsync(id, cancellationToken) : machine.Sea ? SeaClock.Instance : machine.Aurora ? AuroraClock.Instance : PlainTime.Instance;
 
     /// <summary>Batches the machine can still make from what it holds, ignoring time.</summary>
     public static int Batches(ProcessingMachine machine, MachineState s)
@@ -423,9 +481,10 @@ internal static class MachineRows
 
     /// <summary>The machine is being picked up: what it holds goes to the owner's inventory.</summary>
     public static async Task ReleaseAsync(
-        GameDb db, IInventory inventory, IProductionStats stats, IPlotPower power, Guid owner, Guid id, DateTimeOffset now, CancellationToken cancellationToken)
+        GameDb db, IInventory inventory, IWallet wallet, IProductionStats stats, IPlotPower power, Guid owner, Guid id, DateTimeOffset now,
+        CancellationToken cancellationToken)
     {
-        if (await ReadAsync(db, id, cancellationToken) is not { } row || !Processing.ByKind.TryGetValue(row.Kind, out var machine))
+        if (await ReadAsync(db, id, cancellationToken) is not { } row || Processing.ForState(row.Kind, row.State) is not { } machine)
         {
             return;
         }
@@ -435,7 +494,14 @@ internal static class MachineRows
         await stats.RecordAsync(owner, MachineProduction.Processed(machine, row.State, state, clock, now), cancellationToken);
         foreach (var (item, quantity) in Contents(machine, state))
         {
-            await inventory.AddAsync(owner, item, quantity, cancellationToken);
+            if (Items.IsMoney(item))
+            {
+                await wallet.CreditAsync(owner, quantity * Processing.TakingsCents, $"takings {id}", cancellationToken);
+            }
+            else
+            {
+                await inventory.AddAsync(owner, item, quantity, cancellationToken);
+            }
         }
 
         await using var delete = await db.CommandAsync("DELETE FROM crafting.machines WHERE object_id = @id", cancellationToken);
@@ -446,7 +512,7 @@ internal static class MachineRows
 
 public sealed class MachineService(
     GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, IProductionStats stats, ITechnologies technologies,
-    IPlotPower power, IPlotObjects plots, IPlotRegistry registry, TimeProvider time)
+    IPlotPower power, IPlotObjects plots, IPlotRegistry registry, IWallet wallet, TimeProvider time)
 {
     public Task<MachineReply> StateAsync(Guid owner, Guid id, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -573,7 +639,16 @@ public sealed class MachineService(
             return (state, null);
         }
 
-        await inventory.ReceiveAsync(owner, recipe.Id, state.Output, cancellationToken);
+        // What tourists paid goes into the wallet.
+        if (Items.IsMoney(recipe.Id))
+        {
+            await wallet.CreditAsync(owner, state.Output * Processing.TakingsCents, $"takings {machine.Kind}", cancellationToken);
+        }
+        else
+        {
+            await inventory.ReceiveAsync(owner, recipe.Id, state.Output, cancellationToken);
+        }
+
         taken.Add((recipe.Id, state.Output));
         var xp = await progress.AddXpAsync(owner, (long)state.Output * recipe.Xp, cancellationToken);
         return (state with { Output = 0 }, xp);
@@ -666,7 +741,8 @@ public sealed class ProcessingPorts(GameDb db, IProductionStats stats, IPlotPowe
         public string? Output(DateTimeOffset now, Func<string, bool> wanted)
         {
             Advance(now);
-            return Recipe is { } recipe && state.Output > 0 && wanted(recipe.Id) ? recipe.Id : null;
+            // Money is no good on a belt: tourists' takings are taken out by hand.
+            return Recipe is { } recipe && state.Output > 0 && !Items.IsMoney(recipe.Id) && wanted(recipe.Id) ? recipe.Id : null;
         }
 
         public void Take(string item, DateTimeOffset now)

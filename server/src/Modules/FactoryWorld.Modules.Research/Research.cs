@@ -66,6 +66,14 @@ public static class TechTree
     public const string SolarTower = "solar_tower";
     public const string WaterSupply = "water_supply";
     public const string BuildingMaterials = "building_materials";
+    public const string WindPower = "wind_power";
+    public const string LargeWind = "large_wind";
+    public const string Heating = "heating";
+    public const string Refrigeration = "refrigeration";
+    public const string Glaciology = "glaciology";
+    public const string DataCenter = "data_center";
+    public const string PolarTourism = "polar_tourism";
+    public const string PolarTransport = "polar_transport";
 
     public static readonly IReadOnlyList<Technology> Technologies =
     [
@@ -198,6 +206,30 @@ public static class TechTree
         new(BuildingMaterials, "Materiały budowlane", "Suszarnia robi cegłę z piasku, gliny i wody, piec cementowy cement, a betoniarka beton.",
             [WaterSupply], [(Items.Clay, 20), (Items.Stone, 40), (Items.Sand, 40)], TimeSpan.FromMinutes(3), 60,
             [Items.DryingYard, Items.CementKiln, Items.ConcreteMixer, Items.AdobeBricks, Items.Cement, Items.Concrete]),
+        new(WindPower, "Energia wiatrowa", "Turbina wiatrowa daje prąd bez paliwa, tyle, ile wieje wiatr: najwięcej na lodowcu, stepie i tundrze.",
+            [Automation], [(Items.IronIngot, 30), (Items.CopperIngot, 20), (Items.Planks, 20)], TimeSpan.FromMinutes(2), 50,
+            [Items.WindTurbine]),
+        new(LargeWind, "Duże turbiny wiatrowe", "Duża turbina na 3 × 3 kafelkach daje w pełnym wietrze 400 kW.",
+            [WindPower, BuildingMaterials], [(Items.SteelIngot, 40), (Items.Concrete, 20), (Items.Iridium, 2)], TimeSpan.FromMinutes(6), 150,
+            [Items.LargeWindTurbine]),
+        new(Heating, "Ogrzewanie", "Kocioł grzewczy na drewno, węgiel albo pellet grzeje maszyny wokół siebie, a topielnik zamienia lód w wodę.",
+            [], [(Items.IronIngot, 15), (Items.Stone, 30), (Items.Coal, 20)], TimeSpan.FromSeconds(90), 30,
+            [Items.Heater, Items.IceMelter]),
+        new(Refrigeration, "Chłodnictwo", "Chłodnia mrozi ryby i robi lody: na lodowcu za darmo, gdzie indziej na bloku lodu za każdą partię.",
+            [Heating], [(Items.Ice, 30), (Items.IronIngot, 20), (Items.CopperIngot, 10)], TimeSpan.FromMinutes(2), 50,
+            [Items.ColdStore, Items.FrozenFish, Items.FrozenSalmon, Items.IceCream]),
+        new(Glaciology, "Glacjologia", "Wiertnica lodowa wyciąga rdzenie z lodowca, a stacja polarna robi z nich dane naukowe, które przyspieszają badania.",
+            [Heating, Automation], [(Items.Ice, 40), (Items.SteelIngot, 15), (Items.CopperIngot, 15)], TimeSpan.FromMinutes(3), 80,
+            [Items.IceCoreDrill, Items.PolarStation, Items.IceCore, Items.ResearchData]),
+        new(DataCenter, "Centrum danych", "Serwerownia na prąd liczy dla badań; na lodowcu chłodzi ją powietrze, gdzie indziej lód.",
+            [SiliconWorks], [(Items.SiliconWafer, 20), (Items.OpticalFiber, 10), (Items.CopperIngot, 30)], TimeSpan.FromMinutes(5), 120,
+            [Items.ServerRoom, Items.ComputingPower]),
+        new(PolarTourism, "Turystyka polarna", "Hotel lodowy i punkt widokowy na lodowcu albo w tundrze zarabiają na turystach, trzy razy więcej przy zorzy.",
+            [Heating], [(Items.Ice, 60), (Items.Planks, 30), (Items.Wool, 10)], TimeSpan.FromMinutes(3), 60,
+            [Items.IceHotel, Items.Viewpoint]),
+        new(PolarTransport, "Transport polarny", "Psi zaprzęg i skuter śnieżny wiozą ładunki z lodowca bez torów, a fundament pozwala pociągom jeździć po lodzie pełną prędkością.",
+            [], [(Items.Planks, 30), (Items.Wool, 10), (Items.IronIngot, 20)], TimeSpan.FromMinutes(2), 40,
+            [Items.DogKennel, Items.SnowmobileGarage, Items.TrackFoundation]),
     ];
 
     public static readonly IReadOnlyDictionary<string, Technology> ById = Technologies.ToDictionary(t => t.Id);
@@ -286,6 +318,62 @@ public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterP
             }
 
             return await ReadAsync(owner, finished, xp, cancellationToken);
+        }, cancellationToken);
+
+    /// <summary>Speeds the research being done now up: data from a polar station and a server room's computing power each take seconds off it (<see cref="Items.ResearchBoost"/>).</summary>
+    public Task<ResearchState> BoostAsync(Guid owner, string item, int quantity, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            if (!Items.ResearchBoost.TryGetValue(item, out var seconds))
+            {
+                throw new GameException("not_boost", "Only research data and computing power speed research up.");
+            }
+
+            if (quantity < 1)
+            {
+                throw new GameException("bad_quantity", "Put in at least one.");
+            }
+
+            var (finished, xp) = await CompleteDueAsync(owner, cancellationToken);
+            var now = time.GetUtcNow();
+            DateTimeOffset finishes;
+            await using (var select = await db.CommandAsync(
+                "SELECT finishes_at FROM research.technologies WHERE owner_id = @owner AND finishes_at > @now FOR UPDATE", cancellationToken))
+            {
+                select.Parameters.AddWithValue("owner", owner);
+                select.Parameters.AddWithValue("now", now);
+                if (await select.ExecuteScalarAsync(cancellationToken) is not DateTime at)
+                {
+                    throw new GameException("no_research", "Nothing is being researched.");
+                }
+
+                finishes = new DateTimeOffset(at, TimeSpan.Zero);
+            }
+
+            // No more is used up than the research still needs.
+            var left = finishes - now;
+            var used = (int)Math.Min(quantity, Math.Ceiling(left.TotalSeconds / seconds));
+            var cut = TimeSpan.FromSeconds((double)used * seconds);
+            if (cut > left)
+            {
+                cut = left;
+            }
+
+            await inventory.RemoveAsync(owner, item, used, cancellationToken);
+            await using (var update = await db.CommandAsync(
+                """
+                UPDATE research.technologies SET starts_at = starts_at - @cut, finishes_at = finishes_at - @cut
+                WHERE owner_id = @owner AND finishes_at > @now
+                """, cancellationToken))
+            {
+                update.Parameters.AddWithValue("owner", owner);
+                update.Parameters.AddWithValue("now", now);
+                update.Parameters.AddWithValue("cut", cut);
+                await update.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            var (done, more) = await CompleteDueAsync(owner, cancellationToken);
+            return await ReadAsync(owner, [.. finished, .. done], more ?? xp, cancellationToken);
         }, cancellationToken);
 
     /// <summary>Calls off the research that is not done yet; its cost comes back.</summary>
@@ -417,6 +505,8 @@ public abstract class ResearchHandler(IServiceScopeFactory scopes) : IMessageHan
                 startsAt = state.Started.TryGetValue(t.Id, out var r) ? r.StartsAt.ToUnixTimeMilliseconds() : (long?)null,
                 finishesAt = state.Started.TryGetValue(t.Id, out var f) ? f.FinishesAt.ToUnixTimeMilliseconds() : (long?)null,
             }),
+            // What speeds research up, and by how many seconds each piece.
+            boosts = Items.ResearchBoost.Select(b => new { id = b.Key, name = Items.Names[b.Key], seconds = b.Value }),
             serverTime = state.ServerTime.ToUnixTimeMilliseconds(),
             finished = state.Finished.Where(TechTree.ById.ContainsKey).Select(id => new { id, name = TechTree.ById[id].Name }),
             xp = state.Xp is { } xp ? new { xp = xp.Xp, level = xp.Level, leveledUp = xp.LeveledUp } : null,
@@ -441,6 +531,20 @@ public sealed class StartResearchHandler(IServiceScopeFactory scopes) : Research
 
     protected override Task<ResearchState> RunAsync(ResearchService research, Guid owner, JsonElement? payload, CancellationToken cancellationToken) =>
         research.StartAsync(owner, Payload.Read<StartResearchRequest>(payload).Technology ?? "", cancellationToken);
+}
+
+public sealed record BoostResearchRequest(string Item, int Quantity);
+
+/// <summary>Speeds the research being done up with research data or computing power.</summary>
+public sealed class BoostResearchHandler(IServiceScopeFactory scopes) : ResearchHandler(scopes)
+{
+    public override string Type => "research.boost";
+
+    protected override Task<ResearchState> RunAsync(ResearchService research, Guid owner, JsonElement? payload, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<BoostResearchRequest>(payload);
+        return research.BoostAsync(owner, request.Item ?? "", request.Quantity, cancellationToken);
+    }
 }
 
 public sealed class CancelResearchHandler(IServiceScopeFactory scopes) : ResearchHandler(scopes)

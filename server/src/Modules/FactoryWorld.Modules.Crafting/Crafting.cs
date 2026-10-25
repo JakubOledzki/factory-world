@@ -119,6 +119,23 @@ public static class Workshop
         new(Items.SolarTower, 1, TimeSpan.FromSeconds(300),
             [(Items.Mirror, 40), (Items.SteelIngot, 40), (Items.StoneBlocks, 30), (Items.CopperIngot, 20)], 200),
         new(Items.Battery, 1, TimeSpan.FromSeconds(45), [(Items.IronIngot, 8), (Items.CopperIngot, 8), (Items.Sulfur, 4)], 20),
+        // The glacier: wind power, heaters, the cold store and the server room, polar research, tourists, sleds and the best pickaxe.
+        new(Items.WindTurbine, 1, TimeSpan.FromSeconds(60), [(Items.IronIngot, 20), (Items.CopperIngot, 15), (Items.Planks, 10)], 25),
+        new(Items.LargeWindTurbine, 1, TimeSpan.FromSeconds(300),
+            [(Items.SteelIngot, 60), (Items.CopperIngot, 40), (Items.Concrete, 30), (Items.Iridium, 4)], 200),
+        new(Items.Heater, 1, TimeSpan.FromSeconds(45), [(Items.IronIngot, 12), (Items.Bricks, 10), (Items.CopperIngot, 4)], 20),
+        new(Items.IceMelter, 1, TimeSpan.FromSeconds(30), [(Items.IronIngot, 10), (Items.Stone, 10)], 10),
+        new(Items.ColdStore, 1, TimeSpan.FromSeconds(60), [(Items.IronIngot, 20), (Items.Planks, 20), (Items.CopperIngot, 8)], 25),
+        new(Items.ServerRoom, 1, TimeSpan.FromSeconds(240),
+            [(Items.SiliconWafer, 20), (Items.CopperIngot, 40), (Items.OpticalFiber, 10), (Items.SteelIngot, 20), (Items.Iridium, 2)], 150),
+        new(Items.IceCoreDrill, 1, TimeSpan.FromSeconds(90), [(Items.SteelIngot, 15), (Items.IronIngot, 20), (Items.CopperIngot, 10)], 40),
+        new(Items.PolarStation, 1, TimeSpan.FromSeconds(120), [(Items.Planks, 40), (Items.IronIngot, 20), (Items.Glass, 10), (Items.CopperIngot, 10)], 50),
+        new(Items.IceHotel, 1, TimeSpan.FromSeconds(180), [(Items.Ice, 80), (Items.Planks, 30), (Items.Wool, 20), (Items.IronIngot, 10)], 80),
+        new(Items.Viewpoint, 1, TimeSpan.FromSeconds(45), [(Items.Planks, 20), (Items.Beams, 6), (Items.Nails, 10)], 15),
+        new(Items.DogKennel, 1, TimeSpan.FromSeconds(60), [(Items.Planks, 30), (Items.Wool, 10), (Items.Nails, 10)], 25),
+        new(Items.SnowmobileGarage, 1, TimeSpan.FromSeconds(120), [(Items.SteelIngot, 20), (Items.SyntheticRubber, 10), (Items.IronIngot, 20)], 60),
+        new(Items.TrackFoundation, 1, TimeSpan.FromSeconds(60), [(Items.Concrete, 20), (Items.Beams, 10), (Items.SteelIngot, 10)], 30),
+        new(Items.MeteoritePickaxe, 1, TimeSpan.FromSeconds(40), [(Items.MeteoricIron, 4), (Items.Iridium, 1), (Items.Wood, 2)], 20, Items.Anvil),
     ];
 
     public static Recipe? Find(string id) => Recipes.FirstOrDefault(r => r.Id == id);

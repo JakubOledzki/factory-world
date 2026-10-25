@@ -11,7 +11,8 @@ namespace FactoryWorld.Modules.Power;
 /// network: its generators share the load of all the machines on it. Machines draw their power
 /// whenever they stand on a network, busy or not; with too little power they all work slower, and
 /// without any they stop. A water wheel, a hydro plant and a tidal plant on the coast give their power all the time without fuel, on
-/// plots by a river, a lake or the sea; the generators of their network burn only for what they lack.
+/// plots by a river, a lake or the sea; the generators of their network burn only for what they lack. Solar power gives by day,
+/// wind turbines as much as the wind blows. On the glacier machines that no heater warms work at half their pace.
 /// </summary>
 public static class PowerRules
 {
@@ -30,7 +31,11 @@ public static class PowerRules
     /// <summary>What a generator of <paramref name="kind"/> gives at most (kW).</summary>
     public static double KwOf(string kind) => Generators.TryGetValue(kind, out var g) ? g.Kw : 0;
 
-    public static bool Burns(string kind, string fuel) => Generators.TryGetValue(kind, out var g) && g.Burns.Contains(fuel);
+    public static bool Burns(string kind, string fuel) =>
+        Generators.TryGetValue(kind, out var g) ? g.Burns.Contains(fuel) : Items.IsHeater(kind) && HeaterFuels.Contains(fuel);
+
+    /// <summary>What a heater burns: wood, coal and pellets, like a steam generator.</summary>
+    public static readonly IReadOnlySet<string> HeaterFuels = new HashSet<string> { Items.Coal, Items.Wood, Items.WoodPellets };
 
     /// <summary>What each water power plant gives (kW), before the biome's bonus.</summary>
     public static readonly IReadOnlyDictionary<string, double> Hydro = new Dictionary<string, double>
@@ -46,6 +51,13 @@ public static class PowerRules
     {
         [Items.SolarPanel] = 20,
         [Items.SolarTower] = 600,
+    };
+
+    /// <summary>What each wind turbine gives in a full wind (kW), before the biome's bonus.</summary>
+    public static readonly IReadOnlyDictionary<string, double> Wind = new Dictionary<string, double>
+    {
+        [Items.WindTurbine] = 40,
+        [Items.LargeWindTurbine] = 400,
     };
 
     /// <summary>The sun shines this much brighter on the sand of the desert and its oases.</summary>
@@ -109,6 +121,8 @@ public static class PowerRules
         [Items.WaterWell] = 20,
         [Items.Desalinator] = 60,
         [Items.ConcreteMixer] = 30,
+        [Items.ServerRoom] = 200,
+        [Items.IceCoreDrill] = 40,
     };
 
     public static bool Covers(PlotObject pole, int tileX, int tileY) =>
@@ -156,6 +170,7 @@ public static class PowerRules
         var generators = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
         var hydro = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
         var solar = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
+        var wind = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
         var batteries = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
         var consumers = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
         var demand = new double[count];
@@ -185,6 +200,10 @@ public static class PowerRules
             {
                 solar[component[pole]].Add(o.Id);
             }
+            else if (Items.IsWind(o.Kind))
+            {
+                wind[component[pole]].Add(o.Id);
+            }
             else if (o.Kind == Items.Battery)
             {
                 batteries[component[pole]].Add(o.Id);
@@ -200,6 +219,7 @@ public static class PowerRules
             .Select(n => new Network(n, poles.Where((_, i) => component[i] == n).Select(p => p.Id).ToList(), generators[n], consumers[n], demand[n], hydro[n])
             {
                 Solar = solar[n],
+                Wind = wind[n],
                 Batteries = batteries[n],
             })
             .ToList();
@@ -210,6 +230,9 @@ public static class PowerRules
 
     /// <summary>What a solar power plant of <paramref name="kind"/> gives in clear sun on a plot of <paramref name="biome"/> (kW).</summary>
     public static double SolarKw(string kind, int biome) => Solar.GetValueOrDefault(kind) * (Oasis.Sandy(biome) ? SandySun : 1);
+
+    /// <summary>What a wind turbine of <paramref name="kind"/> gives in a full wind on a plot of <paramref name="biome"/> (kW).</summary>
+    public static double WindKw(string kind, int biome) => Wind.GetValueOrDefault(kind) * Abstractions.Contracts.Wind.Bonus(biome);
 
     /// <summary>What a generator of <paramref name="kind"/> gives at most on a plot of <paramref name="biome"/> (kW).</summary>
     public static double KwOf(string kind, int biome) => KwOf(kind) * (kind == Items.Generator && Oasis.Sandy(biome) ? DrySteam : 1);
@@ -226,6 +249,9 @@ public sealed record Network(
 {
     /// <summary>Solar panels and towers on it, which give their power by day without fuel.</summary>
     public IReadOnlyList<Guid> Solar { get; init; } = [];
+
+    /// <summary>Wind turbines on it, which give as much as the wind blows, without fuel.</summary>
+    public IReadOnlyList<Guid> Wind { get; init; } = [];
 
     /// <summary>Batteries on it: they store what the free power has to spare and give it back when it falls short.</summary>
     public IReadOnlyList<Guid> Batteries { get; init; } = [];
@@ -331,6 +357,9 @@ public sealed class PowerGrid : IPowerGrid
     private readonly IReadOnlyList<PlotObject> _objects;
     private readonly Dictionary<Guid, Network> _networkOf = [];
     private readonly HashSet<Guid> _sheltered = [];
+
+    /// <summary>On the glacier, every machine on power and the moment from which no heater warms it any more.</summary>
+    private readonly Dictionary<Guid, DateTimeOffset> _coldFrom = [];
     private readonly Func<GridData, DateTimeOffset, CancellationToken, Task> _save;
     private Timeline[] _timelines = [];
 
@@ -347,7 +376,7 @@ public sealed class PowerGrid : IPowerGrid
         Networks = PowerRules.Networks(objects);
         foreach (var network in Networks)
         {
-            foreach (var id in network.Generators.Concat(network.Consumers).Concat(network.Hydro).Concat(network.Solar).Concat(network.Batteries))
+            foreach (var id in network.Generators.Concat(network.Consumers).Concat(network.Hydro).Concat(network.Solar).Concat(network.Wind).Concat(network.Batteries))
             {
                 _networkOf[id] = network;
             }
@@ -374,6 +403,21 @@ public sealed class PowerGrid : IPowerGrid
     /// <summary>Whether a sandstorm blows over the plot at <paramref name="at"/>.</summary>
     public bool Storm(DateTimeOffset at) => Sandy && SandWeather.IsStorm(at);
 
+    /// <summary>Whether the plot lies on the glacier, where blizzards blow and machines freeze.</summary>
+    public bool Icy => Frost.Freezes(Biome);
+
+    /// <summary>Whether a blizzard blows over the plot at <paramref name="at"/>: its wind turbines stand still.</summary>
+    public bool Blizzard(DateTimeOffset at) => Icy && Abstractions.Contracts.Blizzard.IsStorm(at);
+
+    /// <summary>What a wind turbine on the plot gives in a full wind (kW).</summary>
+    public double WindPeakKw(Guid id) => PowerRules.WindKw(KindOf(id), Biome);
+
+    /// <summary>What a wind turbine gives at <paramref name="at"/> (kW): as much as the wind blows, nothing in a blizzard.</summary>
+    public double WindKw(Guid id, DateTimeOffset at) => Blizzard(at) ? 0 : WindPeakKw(id) * Wind.Strength(at);
+
+    /// <summary>What all the wind turbines of a network give together at <paramref name="at"/> (kW).</summary>
+    public double WindKw(Network network, DateTimeOffset at) => network.Wind.Sum(id => WindKw(id, at));
+
     /// <summary>What a water power plant on the plot gives (kW), whether or not a pole reaches it.</summary>
     public double HydroKw(Guid id) => _objects.FirstOrDefault(o => o.Id == id) is { } o ? PowerRules.HydroKw(o.Kind, Biome) : 0;
 
@@ -394,7 +438,7 @@ public sealed class PowerGrid : IPowerGrid
     public double SolarKw(Network network, DateTimeOffset at) => network.Solar.Sum(id => SolarKw(id, at));
 
     /// <summary>What a network's water and solar power give together at <paramref name="at"/> (kW).</summary>
-    public double FreeKw(Network network, DateTimeOffset at) => HydroKw(network) + SolarKw(network, at);
+    public double FreeKw(Network network, DateTimeOffset at) => HydroKw(network) + SolarKw(network, at) + WindKw(network, at);
 
     /// <summary>What a network's power plants can give at <paramref name="at"/>: running generators, water and solar power and batteries with power in them (kW).</summary>
     public double SupplyKw(Network network, DateTimeOffset at) =>
@@ -423,6 +467,12 @@ public sealed class PowerGrid : IPowerGrid
 
     public GeneratorState Generator(Guid id, DateTimeOffset at)
     {
+        if (Items.IsHeater(KindOf(id)))
+        {
+            var heater = Data.Generators.GetValueOrDefault(id) ?? GeneratorState.Empty;
+            return heater.Running ? heater.Burn(Frost.HeaterKw * Seconds(Settled, Max(at, Settled))) : heater;
+        }
+
         if (_networkOf.TryGetValue(id, out var network) && SegmentAt(network, at) is { } segment)
         {
             var state = segment.States.GetValueOrDefault(id) ?? GeneratorState.Empty;
@@ -454,10 +504,10 @@ public sealed class PowerGrid : IPowerGrid
             return 0;
         }
 
-        if (network.Hydro.Contains(id) || network.Solar.Contains(id))
+        if (network.Hydro.Contains(id) || network.Solar.Contains(id) || network.Wind.Contains(id))
         {
             var used = segment.Free <= 0 ? 0 : Math.Min(1, (network.DemandKw + Math.Max(0, segment.Rate)) / segment.Free);
-            return (network.Hydro.Contains(id) ? HydroKw(id) : SolarKw(id, at)) * used;
+            return (network.Hydro.Contains(id) ? HydroKw(id) : network.Solar.Contains(id) ? SolarKw(id, at) : WindKw(id, at)) * used;
         }
 
         if (network.Batteries.Contains(id))
@@ -471,6 +521,11 @@ public sealed class PowerGrid : IPowerGrid
     /// <summary>When a generator burns its last fuel, or null if it never does on what it powers now (looking a few days ahead).</summary>
     public DateTimeOffset? RunsOutAt(Guid id)
     {
+        if (Items.IsHeater(KindOf(id)))
+        {
+            return HeaterOutAt(id);
+        }
+
         if (!_networkOf.TryGetValue(id, out var network))
         {
             return null;
@@ -502,7 +557,22 @@ public sealed class PowerGrid : IPowerGrid
     /// <summary>When the way a network runs next changes after <paramref name="at"/>, or null.</summary>
     public DateTimeOffset? NextChange(Network network, DateTimeOffset at) => SegmentAt(network, at)?.End;
 
-    public double Speed(Guid id, DateTimeOffset at) => _networkOf.TryGetValue(id, out var network) ? Speed(network, at) : 0;
+    public double Speed(Guid id, DateTimeOffset at) =>
+        _networkOf.TryGetValue(id, out var network) ? Speed(network, at) * (Cold(id, at) ? Frost.Speed : 1) : 0;
+
+    /// <summary>When a heater burns its last fuel, or null when it is not burning.</summary>
+    public DateTimeOffset? HeaterOutAt(Guid id) =>
+        Data.Generators.GetValueOrDefault(id) is { Running: true } heater ? Settled + Ticks(heater.Total / Frost.HeaterKw) : null;
+
+    /// <summary>Whether a machine on the glacier is cold at <paramref name="at"/>: no heater near it burns.</summary>
+    public bool Cold(Guid id, DateTimeOffset at) => _coldFrom.TryGetValue(id, out var from) && at >= from;
+
+    /// <summary>The machines on power that are cold at <paramref name="at"/>, for the client to show.</summary>
+    public IEnumerable<Guid> ColdMachines(DateTimeOffset at) => _coldFrom.Where(c => at >= c.Value).Select(c => c.Key);
+
+    /// <summary>Whether a heater warms the tile.</summary>
+    public bool Warms(PlotObject heater, int tileX, int tileY) =>
+        Math.Abs(heater.TileX - tileX) <= Frost.HeaterReach && Math.Abs(heater.TileY - tileY) <= Frost.HeaterReach;
 
     /// <summary>Ticks a machine has gone without power by <paramref name="at"/>.</summary>
     public long Lag(Guid id, DateTimeOffset at)
@@ -519,14 +589,41 @@ public sealed class PowerGrid : IPowerGrid
         }
 
         var segment = SegmentAt(network, at)!;
-        return lag + segment.LagBefore + Unpowered(segment.Speed, (at - segment.Start).Ticks);
+        return lag + segment.LagBefore + Unpowered(segment.Speed, (at - segment.Start).Ticks) + FrostLag(id, network, at);
+    }
+
+    /// <summary>Ticks a cold machine lost to the frost from the moment it was settled to <paramref name="at"/>, on top of what it lacked in power.</summary>
+    private long FrostLag(Guid id, Network network, DateTimeOffset at)
+    {
+        if (!_coldFrom.TryGetValue(id, out var from) || at <= from)
+        {
+            return 0;
+        }
+
+        double lost = 0;
+        foreach (var segment in _timelines[network.Id].Segments)
+        {
+            if (segment.Start >= at)
+            {
+                break;
+            }
+
+            var start = Max(segment.Start, from);
+            var end = segment.End is { } e && e < at ? e : at;
+            if (end > start)
+            {
+                lost += segment.Speed * (1 - Frost.Speed) * (end - start).Ticks;
+            }
+        }
+
+        return (long)Math.Round(lost);
     }
 
     public IPowerClock Clock(Guid id) => new MachineClock(this, id);
 
     public object Summary(DateTimeOffset now) => PowerJson.Grid(this, now);
 
-    public IMachinePort? Port(Guid id) => _objects.Any(o => o.Id == id && Items.IsGenerator(o.Kind)) ? new GeneratorPort(this, id) : null;
+    public IMachinePort? Port(Guid id) => _objects.Any(o => o.Id == id && (Items.IsGenerator(o.Kind) || Items.IsHeater(o.Kind))) ? new GeneratorPort(this, id) : null;
 
     public async Task SaveAsync(CancellationToken cancellationToken)
     {
@@ -544,7 +641,7 @@ public sealed class PowerGrid : IPowerGrid
         var data = new GridData();
         foreach (var o in _objects)
         {
-            if (Items.IsGenerator(o.Kind) && Generator(o.Id, at) is { Running: true } generator)
+            if ((Items.IsGenerator(o.Kind) || Items.IsHeater(o.Kind)) && Generator(o.Id, at) is { Running: true } generator)
             {
                 data.Generators[o.Id] = generator;
             }
@@ -622,6 +719,18 @@ public sealed class PowerGrid : IPowerGrid
                 n.Generators.ToDictionary(g => g, g => Data.Generators.GetValueOrDefault(g) ?? GeneratorState.Empty),
                 n.Batteries.Sum(b => Math.Min(PowerRules.BatteryKj, Data.Batteries.GetValueOrDefault(b)))))
             .ToArray();
+
+        // On the glacier a machine stays warm while a heater near it burns: each burns at its own steady pace.
+        _coldFrom.Clear();
+        if (Icy)
+        {
+            var heaters = _objects.Where(o => Items.IsHeater(o.Kind)).Select(h => (Heater: h, Out: HeaterOutAt(h.Id))).ToList();
+            foreach (var o in _objects.Where(o => PowerRules.Demand.ContainsKey(o.Kind)))
+            {
+                var warm = heaters.Where(h => h.Out is not null && Warms(h.Heater, o.TileX, o.TileY)).Select(h => h.Out!.Value).DefaultIfEmpty(Settled).Max();
+                _coldFrom[o.Id] = warm;
+            }
+        }
     }
 
     /// <summary>Works a network's timeline out past <paramref name="until"/>.</summary>
@@ -647,7 +756,8 @@ public sealed class PowerGrid : IPowerGrid
     }
 
     /// <summary>
-    /// The next segment of a network: until the sun rises or sets or a sandstorm begins or ends (with solar power on it),
+    /// The next segment of a network: until the sun rises or sets or a sandstorm begins or ends (with solar power on it), the wind
+    /// changes or a blizzard begins or ends (with wind turbines on it),
     /// its batteries fill up or run empty, or a generator burns out. Water and solar power cover what they can and what
     /// they have to spare goes into the batteries; what they lack comes from the batteries first, then from the generators.
     /// </summary>
@@ -657,6 +767,11 @@ public sealed class PowerGrid : IPowerGrid
         var demand = network.DemandKw;
         var free = FreeKw(network, t);
         DateTimeOffset? end = network.Solar.Count == 0 ? null : Min(Sun.NextChange(t), Sandy ? SandWeather.NextChange(t) : (DateTimeOffset?)null);
+        if (network.Wind.Count > 0)
+        {
+            end = Min(end, Min(Wind.NextChange(t), Icy ? Abstractions.Contracts.Blizzard.NextChange(t) : (DateTimeOffset?)null));
+        }
+
         double rate, share = 0, speed;
         Guid? burnsOut = null;
         if (free >= demand)
@@ -734,6 +849,24 @@ public sealed class PowerGrid : IPowerGrid
 
     public string KindOf(Guid id) => _objects.FirstOrDefault(o => o.Id == id)?.Kind ?? "";
 
+    /// <summary>A segment from <paramref name="start"/> on, cut where the machine grows cold, with the pace it works at in each piece.</summary>
+    private IEnumerable<(DateTimeOffset From, DateTimeOffset? To, double Speed)> Pieces(Guid id, Segment segment, DateTimeOffset start)
+    {
+        if (!_coldFrom.TryGetValue(id, out var cold) || (segment.End is { } over && over <= cold))
+        {
+            yield return (start, segment.End, segment.Speed);
+            yield break;
+        }
+
+        if (start < cold)
+        {
+            yield return (start, cold, segment.Speed);
+            start = cold;
+        }
+
+        yield return (start, segment.End, segment.Speed * Frost.Speed);
+    }
+
     private static long Unpowered(double speed, long ticks) => speed >= 1 ? 0 : speed <= 0 ? ticks : (long)Math.Round((1 - speed) * ticks);
 
     private static double Seconds(DateTimeOffset from, DateTimeOffset to) => Math.Max(0, (to - from).Ticks) / (double)TimeSpan.TicksPerSecond;
@@ -783,18 +916,22 @@ public sealed class PowerGrid : IPowerGrid
                     return null;
                 }
 
-                if (segment.Speed <= 0)
+                // A machine on the glacier works slower from the moment no heater warms it.
+                foreach (var (from2, to, speed) in grid.Pieces(id, segment, start))
                 {
-                    continue;
-                }
+                    if (speed <= 0)
+                    {
+                        continue;
+                    }
 
-                var due = start + TimeSpan.FromTicks((long)Math.Ceiling(need / segment.Speed));
-                if (segment.End is not { } stop || due <= stop)
-                {
-                    return due;
-                }
+                    var due = from2 + TimeSpan.FromTicks((long)Math.Ceiling(need / speed));
+                    if (to is not { } stop || due <= stop)
+                    {
+                        return due;
+                    }
 
-                need -= (stop - start).Ticks * segment.Speed;
+                    need -= (stop - from2).Ticks * speed;
+                }
             }
 
             return null;

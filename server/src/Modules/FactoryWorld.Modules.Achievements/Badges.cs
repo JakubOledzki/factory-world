@@ -23,6 +23,10 @@ public static class Stats
     public const string Fossils = "fossils";
     public const string DinosaurBones = "dinosaur_bones";
     public const string Glass = "glass";
+    public const string Ice = "ice";
+    public const string Meteorites = "meteorites";
+    public const string Tourists = "tourists";
+    public const string Bridges = "bridges";
 
     /// <summary>Everything the player made by hand or with machines: gathered, mined, smelted, crafted, grown, processed.</summary>
     public const string Produced = "produced";
@@ -83,6 +87,12 @@ public static class Badges
         new("fossil_collection", "Pustynia", "Gabinet osobliwości", "Wykop z wydm 10 skamielin.", Stats.Fossils, 10),
         new("dinosaur", "Pustynia", "Park jurajski", "Wykop kość dinozaura.", Stats.DinosaurBones, 1),
         new("glassblower", "Pustynia", "Hutnik szkła", "Wyjmij z huty 100 sztuk szkła.", Stats.Glass, 100),
+
+        new("ice_cutter", "Lodowiec", "Lodziarz", "Zbierz z lodowca 100 lodu.", Stats.Ice, 100),
+        new("stargazer", "Lodowiec", "Łowca meteorytów", "Rozbij pierwszy meteoryt.", Stats.Meteorites, 1),
+        new("meteorite_collection", "Lodowiec", "Kamienie z nieba", "Rozbij 10 meteorytów.", Stats.Meteorites, 10),
+        new("hotelier", "Lodowiec", "Hotelarz", "Odbierz od turystów 100 utargów.", Stats.Tourists, 100),
+        new("bridge_builder", "Lodowiec", "Budowniczy mostów", "Połóż most nad szczeliną.", Stats.Bridges, 1),
 
         new("merchant", "Handel", "Kupiec", "Sprzedaj handlarzowi 100 przedmiotów.", Stats.Sold, 100),
         new("trader", "Handel", "Handlowiec", "Kup albo sprzedaj coś innym graczom 10 razy.", Stats.Trades, 10),

@@ -136,7 +136,7 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IPlotRegistry re
             var grid = await GeneratorGridAsync(player, x, y, id, cancellationToken);
             if (grid.Objects.Any(o => o.Id == id && (Items.IsRenewable(o.Kind) || o.Kind == Items.Battery)))
             {
-                throw new GameException("no_fuel_needed", "Water, the sun or stored power drives it; it burns nothing.");
+                throw new GameException("no_fuel_needed", "Water, the sun, the wind or stored power drives it; it burns nothing.");
             }
 
             grid.Fuel(id, item, quantity, time.GetUtcNow());
@@ -166,7 +166,7 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IPlotRegistry re
     {
         // Objects are taken off only after the plot was caught up, which opened its grid.
         if (_grids.Values.FirstOrDefault(g => g.Data.Generators.ContainsKey(id) || g.Data.Batteries.ContainsKey(id)
-            || g.Objects.Any(o => o.Id == id && (Items.IsGenerator(o.Kind) || o.Kind == Items.Battery))) is not { } grid)
+            || g.Objects.Any(o => o.Id == id && (Items.IsGenerator(o.Kind) || Items.IsHeater(o.Kind) || o.Kind == Items.Battery))) is not { } grid)
         {
             return;
         }
@@ -195,7 +195,7 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IPlotRegistry re
         }
 
         var grid = await OpenAsync(x, y, cancellationToken);
-        if (!grid.Objects.Any(o => o.Id == id && (Items.IsGenerator(o.Kind) || Items.IsRenewable(o.Kind) || o.Kind == Items.Battery)))
+        if (!grid.Objects.Any(o => o.Id == id && (Items.IsGenerator(o.Kind) || Items.IsRenewable(o.Kind) || Items.IsHeater(o.Kind) || o.Kind == Items.Battery)))
         {
             throw new GameException("no_object", "There is no such generator on this plot.");
         }
@@ -273,6 +273,8 @@ public static class PowerJson
                 hydroKw = grid.HydroKw(n),
                 solar = n.Solar,
                 solarKw = grid.SolarKw(n, now),
+                wind = n.Wind,
+                windKw = grid.WindKw(n, now),
                 batteries = n.Batteries,
                 bankKj = grid.BankKj(n, now),
                 bankCapacityKj = n.BankKj,
@@ -290,6 +292,23 @@ public static class PowerJson
             sunChangesAt = Sun.NextChange(now).ToUnixTimeMilliseconds(),
             stormAt = grid.Sandy ? SandWeather.Next(now).Start.ToUnixTimeMilliseconds() : (long?)null,
             stormEndsAt = grid.Sandy ? SandWeather.Next(now).End.ToUnixTimeMilliseconds() : (long?)null,
+            // How strongly the wind blows (0 to 1) and when it changes; on the glacier, the blizzard that stops the turbines.
+            wind = Wind.Strength(now),
+            windChangesAt = Wind.NextChange(now).ToUnixTimeMilliseconds(),
+            blizzard = grid.Blizzard(now),
+            blizzardAt = grid.Icy ? Blizzard.Next(now).Start.ToUnixTimeMilliseconds() : (long?)null,
+            blizzardEndsAt = grid.Icy ? Blizzard.Next(now).End.ToUnixTimeMilliseconds() : (long?)null,
+            // On the glacier: machines no heater warms work at frostSpeed of their pace; heaters warm heaterReach tiles each way.
+            icy = grid.Icy,
+            cold = grid.ColdMachines(now),
+            frostSpeed = Frost.Speed,
+            heaterReach = Frost.HeaterReach,
+            heaters = grid.Objects.Where(o => Items.IsHeater(o.Kind)).Select(o => new
+            {
+                id = o.Id,
+                burning = grid.Generator(o.Id, now).Running,
+                outAt = grid.HeaterOutAt(o.Id)?.ToUnixTimeMilliseconds(),
+            }),
         };
     }
 
@@ -303,6 +322,8 @@ public static class PowerJson
         var hydro = Items.IsHydro(kind);
         var solar = Items.IsSolar(kind);
         var battery = kind == Items.Battery;
+        var wind = Items.IsWind(kind);
+        var heater = Items.IsHeater(kind);
         return new
         {
             id = reply.Id,
@@ -315,6 +336,18 @@ public static class PowerJson
             storm = grid.Storm(now),
             sheltered = solar && grid.Sheltered(reply.Id),
             sunChangesAt = Sun.NextChange(now).ToUnixTimeMilliseconds(),
+            // A wind turbine burns nothing either: it gives capacityKw times the wind's strength, nothing in a blizzard on the glacier.
+            wind,
+            windStrength = Wind.Strength(now),
+            windChangesAt = Wind.NextChange(now).ToUnixTimeMilliseconds(),
+            windBonus = wind ? Wind.Bonus(grid.Biome) : 0,
+            blizzard = grid.Blizzard(now),
+            // A heater gives no power: it burns heaterKw all the time and warms the machines heaterReach tiles from it on the glacier.
+            heater,
+            heaterKw = heater ? Frost.HeaterKw : 0,
+            heaterReach = Frost.HeaterReach,
+            icy = grid.Icy,
+            warmed = heater ? grid.Objects.Count(o => PowerRules.Demand.ContainsKey(o.Kind) && grid.Warms(grid.Objects.First(h => h.Id == reply.Id), o.TileX, o.TileY)) : 0,
             // A battery stores chargeKj of capacityKj; outputKw is less than 0 while it charges.
             battery,
             chargeKj = battery ? grid.Charge(reply.Id, now) : 0,
@@ -323,8 +356,9 @@ public static class PowerJson
             // kJ left in the piece burning now and in all the fuel.
             energy = state.Energy,
             total = state.Total,
-            outputKw = grid.Output(reply.Id, now),
-            capacityKw = hydro ? grid.HydroKw(reply.Id) : solar ? grid.SolarPeakKw(reply.Id) : battery ? PowerRules.BatteryKw : grid.KwOf(reply.Id),
+            outputKw = heater ? 0 : grid.Output(reply.Id, now),
+            capacityKw = hydro ? grid.HydroKw(reply.Id) : solar ? grid.SolarPeakKw(reply.Id) : wind ? grid.WindPeakKw(reply.Id)
+                : battery ? PowerRules.BatteryKw : heater ? 0 : grid.KwOf(reply.Id),
             // A steam generator gives less on sand, where there is no water to cool it.
             dry = kind == Items.Generator && grid.Sandy,
             hydroBonus = hydro ? WaterPower.Biomes.GetValueOrDefault(grid.Biome) : 0,
@@ -343,6 +377,7 @@ public static class PowerJson
                 supplyKw = grid.SupplyKw(network, now),
                 hydro = network.Hydro.Count,
                 solar = network.Solar.Count,
+                wind = network.Wind.Count,
                 batteries = network.Batteries.Count,
                 bankKj = grid.BankKj(network, now),
                 bankCapacityKj = network.BankKj,

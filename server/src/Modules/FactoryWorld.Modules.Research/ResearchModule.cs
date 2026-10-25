@@ -54,6 +54,7 @@ public sealed class ResearchModule : IGameModule
         services.AddSingleton<IMessageHandler, GetResearchHandler>();
         services.AddSingleton<IMessageHandler, StartResearchHandler>();
         services.AddSingleton<IMessageHandler, CancelResearchHandler>();
+        services.AddSingleton<IMessageHandler, BoostResearchHandler>();
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>

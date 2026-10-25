@@ -37,6 +37,19 @@ public static class PlotObjects
         Items.Pipe, Items.Pump, Items.Tank, Items.Road,
         Items.Glassworks, Items.ArcFurnace, Items.WaterWell, Items.Desalinator, Items.DryingYard, Items.CementKiln, Items.ConcreteMixer,
         Items.ReedFence, Items.SolarPanel, Items.SolarTower, Items.Battery,
+        Items.WindTurbine, Items.LargeWindTurbine, Items.Heater, Items.IceMelter, Items.ColdStore, Items.ServerRoom,
+        Items.IceCoreDrill, Items.PolarStation, Items.IceHotel, Items.Viewpoint, Items.DogKennel, Items.SnowmobileGarage, Items.TrackFoundation,
+    };
+
+    /// <summary>What stands on the glacier only, or on the glacier and the tundra.</summary>
+    private static readonly IReadOnlyDictionary<string, Biome[]> Polar = new Dictionary<string, Biome[]>
+    {
+        [Items.IceCoreDrill] = [Biome.Ice],
+        [Items.TrackFoundation] = [Biome.Ice],
+        [Items.IceHotel] = [Biome.Ice, Biome.Tundra],
+        [Items.Viewpoint] = [Biome.Ice, Biome.Tundra],
+        [Items.DogKennel] = [Biome.Ice, Biome.Tundra],
+        [Items.SnowmobileGarage] = [Biome.Ice, Biome.Tundra],
     };
 
     /// <summary>Fails unless an object of <paramref name="kind"/> may stand on (tileX, tileY) of a plot of
@@ -67,6 +80,18 @@ public static class PlotObjects
         if (kind == Items.SolarTower && !Oasis.Sandy((int)biome))
         {
             throw new GameException("no_sand", "A solar tower with mirrors stands on a desert or in an oasis.");
+        }
+
+        if (Polar.TryGetValue(kind, out var polar) && !polar.Contains(biome))
+        {
+            throw polar.Length == 1
+                ? new GameException("no_glacier", "It stands on the glacier only.")
+                : new GameException("no_polar", "It stands on the glacier or the tundra only.");
+        }
+
+        if (kind == Items.TrackFoundation && others.Any(o => o.Kind == Items.TrackFoundation))
+        {
+            throw new GameException("has_foundation", "The track of this plot has its foundation already.");
         }
 
         Coast.RequireSite(kind, x, y, biome, tileX, tileY);
@@ -204,6 +229,24 @@ public sealed class PlotObjectService(
         {
             var owner = (await plots.RightsAsync(player, x, y, cancellationToken)).Contains(PlotRight.Owner);
             await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            (int X, int Y)? tile = null;
+            await using (var find = await db.CommandAsync("SELECT tile_x, tile_y FROM world.plot_objects WHERE id = @id AND x = @x AND y = @y", cancellationToken))
+            {
+                find.Parameters.AddWithValue("id", id);
+                find.Parameters.AddWithValue("x", x);
+                find.Parameters.AddWithValue("y", y);
+                await using var reader = await find.ExecuteReaderAsync(cancellationToken);
+                if (await reader.ReadAsync(cancellationToken))
+                {
+                    tile = (reader.GetInt32(0), reader.GetInt32(1));
+                }
+            }
+
+            if (tile is { } t)
+            {
+                await plots.RequireDugOutAsync(x, y, t.X, t.Y, cancellationToken);
+            }
+
             await CatchUpAsync(x, y, cancellationToken);
             await using var delete = await db.CommandAsync(
                 """
@@ -228,9 +271,9 @@ public sealed class PlotObjectService(
     /// <summary>Any object on a plot the player may work on: their own, or one of their company's.</summary>
     public async Task<string?> KindAsync(Guid owner, Guid id, CancellationToken cancellationToken)
     {
-        int x, y;
+        int x, y, tileX, tileY;
         string kind;
-        await using (var command = await db.CommandAsync("SELECT x, y, kind FROM world.plot_objects WHERE id = @id", cancellationToken))
+        await using (var command = await db.CommandAsync("SELECT x, y, kind, tile_x, tile_y FROM world.plot_objects WHERE id = @id", cancellationToken))
         {
             command.Parameters.AddWithValue("id", id);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -239,10 +282,17 @@ public sealed class PlotObjectService(
                 return null;
             }
 
-            (x, y, kind) = (reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2));
+            (x, y, kind, tileX, tileY) = (reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetInt32(3), reader.GetInt32(4));
         }
 
-        return (await plots.RightsAsync(owner, x, y, cancellationToken)).Contains(PlotRight.Work) ? kind : null;
+        if (!(await plots.RightsAsync(owner, x, y, cancellationToken)).Contains(PlotRight.Work))
+        {
+            return null;
+        }
+
+        // Snow from an avalanche buries a machine on the glacier until it is dug out.
+        await plots.RequireDugOutAsync(x, y, tileX, tileY, cancellationToken);
+        return kind;
     }
 
     private async Task CatchUpAsync(int x, int y, CancellationToken cancellationToken)

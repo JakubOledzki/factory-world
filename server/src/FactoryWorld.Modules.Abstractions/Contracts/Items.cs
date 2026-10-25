@@ -269,6 +269,34 @@ public static class Items
     public const string Battery = "power_battery";
     public const string Camel = "animal_camel";
 
+    // The glacier: wind turbines, ice cut and melted, a cold store, a server room and a polar station that speed research up,
+    // meteorites, heaters against the frost, tourists who come for the aurora, dog sleds and snowmobiles, and bridges over crevasses.
+    public const string Ice = "ice";
+    public const string MeteoricIron = "meteoric_iron";
+    public const string Iridium = "iridium";
+    public const string MeteoritePickaxe = "tool_meteorite_pickaxe";
+    public const string FrozenFish = "frozen_fish";
+    public const string FrozenSalmon = "frozen_salmon";
+    public const string IceCream = "ice_cream";
+    public const string ComputingPower = "computing_power";
+    public const string IceCore = "ice_core";
+    public const string ResearchData = "research_data";
+    public const string Takings = "tourist_takings";
+
+    public const string WindTurbine = "power_wind_turbine";
+    public const string LargeWindTurbine = "power_large_wind_turbine";
+    public const string Heater = "power_heater";
+    public const string IceMelter = "furniture_ice_melter";
+    public const string ColdStore = "furniture_cold_store";
+    public const string ServerRoom = "furniture_server_room";
+    public const string IceCoreDrill = "furniture_ice_core_drill";
+    public const string PolarStation = "furniture_polar_station";
+    public const string IceHotel = "furniture_ice_hotel";
+    public const string Viewpoint = "furniture_viewpoint";
+    public const string DogKennel = "furniture_dog_kennel";
+    public const string SnowmobileGarage = "furniture_snowmobile_garage";
+    public const string TrackFoundation = "furniture_track_foundation";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -477,11 +505,35 @@ public static class Items
         [SolarTower] = "Elektrownia słoneczna z lustrami",
         [Battery] = "Akumulator",
         [Camel] = "Wielbłąd",
+        [Ice] = "Lód",
+        [MeteoricIron] = "Żelazo meteorytowe",
+        [Iridium] = "Iryd",
+        [MeteoritePickaxe] = "Kilof meteorytowy",
+        [FrozenFish] = "Mrożona ryba",
+        [FrozenSalmon] = "Mrożony łosoś",
+        [IceCream] = "Lody",
+        [ComputingPower] = "Moc obliczeniowa",
+        [IceCore] = "Rdzeń lodowy",
+        [ResearchData] = "Dane naukowe",
+        [Takings] = "Utarg od turystów",
+        [WindTurbine] = "Turbina wiatrowa",
+        [LargeWindTurbine] = "Duża turbina wiatrowa",
+        [Heater] = "Kocioł grzewczy",
+        [IceMelter] = "Topielnik lodu",
+        [ColdStore] = "Chłodnia",
+        [ServerRoom] = "Serwerownia",
+        [IceCoreDrill] = "Wiertnica lodowa",
+        [PolarStation] = "Stacja polarna",
+        [IceHotel] = "Hotel lodowy",
+        [Viewpoint] = "Punkt widokowy",
+        [DogKennel] = "Psiarnia z zaprzęgiem",
+        [SnowmobileGarage] = "Garaż skuterów śnieżnych",
+        [TrackFoundation] = "Fundament toru",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
 
-    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw or Shears or BronzePickaxe or SteelPickaxe or FishingRod;
+    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw or Shears or BronzePickaxe or SteelPickaxe or FishingRod or MeteoritePickaxe;
 
     /// <summary>Pickaxes of every kind and how many times faster than the iron one each mines and breaks rocks.</summary>
     public static readonly IReadOnlyDictionary<string, double> Pickaxes = new Dictionary<string, double>
@@ -489,6 +541,7 @@ public static class Items
         [Pickaxe] = 1,
         [BronzePickaxe] = 1.25,
         [SteelPickaxe] = 1.5,
+        [MeteoritePickaxe] = 2,
     };
 
     public static bool IsBackpack(string id) => Backpacks.ContainsKey(id);
@@ -551,8 +604,24 @@ public static class Items
     /// <summary>What turns sunlight into power: by day only, and less in a sandstorm.</summary>
     public static bool IsSolar(string id) => id is SolarPanel or SolarTower;
 
-    /// <summary>What gives power without fuel: water power and the sun.</summary>
-    public static bool IsRenewable(string id) => IsHydro(id) || IsSolar(id);
+    /// <summary>What turns the wind into power: as much as the wind blows, nothing in a blizzard.</summary>
+    public static bool IsWind(string id) => id is WindTurbine or LargeWindTurbine;
+
+    /// <summary>What gives power without fuel: water power, the sun and the wind.</summary>
+    public static bool IsRenewable(string id) => IsHydro(id) || IsSolar(id) || IsWind(id);
+
+    /// <summary>A heater burns fuel to warm the machines around it against the frost of the glacier; it gives no power.</summary>
+    public static bool IsHeater(string id) => id == Heater;
+
+    /// <summary>What tourists pay: taken out of a hotel or a viewpoint, it goes into the wallet, not the inventory.</summary>
+    public static bool IsMoney(string id) => id == Takings;
+
+    /// <summary>What speeds research up, and by how many seconds each piece.</summary>
+    public static readonly IReadOnlyDictionary<string, int> ResearchBoost = new Dictionary<string, int>
+    {
+        [ResearchData] = 60,
+        [ComputingPower] = 15,
+    };
 
     /// <summary>Fossils the dunes give up now and then, a collection of three.</summary>
     public static bool IsFossil(string id) => id is Ammonite or AncientCoin or DinosaurBone;

@@ -26,6 +26,12 @@ public static class Tally
         switch (message.Type)
         {
             case "plot.harvest":
+                // A bridge laid over a crevasse gives nothing but the bridge.
+                if (Text(reply, "object") == "bridge")
+                {
+                    Add(counts, Stats.Bridges, 1);
+                }
+
                 foreach (var (item, quantity) in Stacks(reply, "items"))
                 {
                     if (item == Items.Wood)
@@ -41,6 +47,16 @@ public static class Tally
                     if (item == Items.DinosaurBone)
                     {
                         Add(counts, Stats.DinosaurBones, quantity);
+                    }
+
+                    if (item == Items.Ice)
+                    {
+                        Add(counts, Stats.Ice, quantity);
+                    }
+
+                    if (item == Items.MeteoricIron)
+                    {
+                        Add(counts, Stats.Meteorites, 1);
                     }
 
                     Add(counts, Stats.Produced, quantity);
@@ -94,6 +110,11 @@ public static class Tally
                     if (item == Items.Glass)
                     {
                         Add(counts, Stats.Glass, quantity);
+                    }
+
+                    if (item == Items.Takings)
+                    {
+                        Add(counts, Stats.Tourists, quantity);
                     }
                 }
 
