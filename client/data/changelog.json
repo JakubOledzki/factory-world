@@ -1,6 +1,14 @@
 [
 	{
 		"date": "2026-10-25",
+		"title": "Stacje montażowe tylko w mieście",
+		"changes": [
+			"Stacje montażowe (zwykła, szybka i ekspresowa) można stawiać tylko na działkach w mieście, jak fabrykę wielopiętrową.",
+			"Stacje stojące na działkach poza miastem wróciły do ekwipunku właściciela razem ze wszystkim, co w nich było."
+		]
+	},
+	{
+		"date": "2026-10-25",
 		"title": "Kompendium wiedzy",
 		"changes": [
 			"W oknie postaci (portret w rogu) jest nowa zakładka Kompendium: każdy przedmiot, maszyna i budynek w grze, podzielone na kategorie, z wyszukiwarką.",

@@ -21,14 +21,17 @@ public sealed record FootprintPlan(IReadOnlyList<(PlotObject Object, int TileX, 
 /// <summary>
 /// Brings the objects of a plot built before machines grew (<see cref="Footprints"/>) in line: an object whose new square fits where it
 /// stands stays; one that does not is moved as little as it takes, so that its square still covers the tile it stood on (so belts and
-/// inserters next to it still reach it); one with no room either way goes back to the owner's inventory with all it held.
-/// Objects on one tile never move.
+/// inserters next to it still reach it); one with no room either way goes back to the owner's inventory with all it held,
+/// as does one of a kind that may no longer stand on the plot at all. Objects on one tile never move.
 /// </summary>
 public static class FootprintFit
 {
     /// <param name="ground">Whether a tile is ground anything may stand on: inside the plot, free of nature, fields, trees and animals, off the spawn.</param>
-    public static FootprintPlan Fit(IReadOnlyList<PlotObject> objects, Func<int, int, bool> ground)
+    /// <param name="allowed">Whether an object of a kind may stand on the plot at all (city-only kinds elsewhere may not); everything by default.</param>
+    public static FootprintPlan Fit(IReadOnlyList<PlotObject> objects, Func<int, int, bool> ground, Func<string, bool>? allowed = null)
     {
+        var refunded = objects.Where(o => allowed?.Invoke(o.Kind) == false).ToList();
+        objects = objects.Except(refunded).ToList();
         var taken = new HashSet<(int, int)>();
         foreach (var o in objects.Where(o => Footprints.Size(o.Kind) == 1))
         {
@@ -51,7 +54,6 @@ public static class FootprintFit
         }
 
         var moved = new List<(PlotObject, int, int)>();
-        var refunded = new List<PlotObject>();
         foreach (var o in left)
         {
             if (Anchors(o).Where(a => Fits(o.Kind, a.X, a.Y)).Select(a => ((int X, int Y)?)a).FirstOrDefault() is { } at)
@@ -92,7 +94,8 @@ public static class FootprintFit
     }
 }
 
-/// <summary>Runs <see cref="FootprintFit"/> over every plot once for each <see cref="Footprints.Version"/>, at startup.</summary>
+/// <summary>Runs <see cref="FootprintFit"/> over every plot once for each <see cref="Footprints.Version"/>, at startup: version 2 also
+/// took assembling machines, which stand in a city only since, off plots elsewhere.</summary>
 public sealed class FootprintMigration(
     GameDb db, PlotService plots, IInventory inventory, IEnumerable<IMachineContents> machines, IEnumerable<IPlotAutomation> automation,
     PlotObjectsQuery query, ILogger<FootprintMigration> logger)
@@ -179,7 +182,8 @@ public sealed class FootprintMigration(
 
         var plan = FootprintFit.Fit(objects, (tx, ty) =>
             PlotLayout.Inside(tx, ty) && tiles[ty * PlotLayout.Size + tx] is (byte)TileObject.None or (byte)TileObject.Bridge
-            && !occupied.Contains((tx, ty)) && (tx, ty) != PlotLayout.Spawn && (biome != Biome.City || CityRules.InBuildArea(tx, ty)));
+            && !occupied.Contains((tx, ty)) && (tx, ty) != PlotLayout.Spawn && (biome != Biome.City || CityRules.InBuildArea(tx, ty)),
+            kind => biome == Biome.City || !Items.IsCityOnly(kind));
         foreach (var (o, tileX, tileY) in plan.Moved)
         {
             await using var update = await db.CommandAsync("UPDATE world.plot_objects SET tile_x = @tx, tile_y = @ty WHERE id = @id", cancellationToken);

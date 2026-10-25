@@ -288,7 +288,7 @@ const CITY_HALF_WIDTH := 30
 const CITY_ROWS := 60
 const CITY_ONLY := ["furniture_multistorey_factory", "furniture_shop", "storage_high_bay", "furniture_freight_terminal",
 	"furniture_company_hq", "furniture_design_office", "furniture_laboratory", "furniture_service_workshop", "furniture_tailor", BUY_MARKET,
-	BANK, BANK_BRANCH]
+	BANK, BANK_BRANCH, "furniture_assembler", "furniture_fast_assembler", "furniture_express_assembler"]
 ## Makes every machine on power on the plot 20% faster; opens nothing.
 const CONTROL_CENTER := "furniture_control_center"
 const ONE_PER_PLOT := ["furniture_freight_terminal", "furniture_company_hq", CONTROL_CENTER, CANTEEN, STABLE, BELLOWS, EXPORT_CHEST, RAIL_PORT,
