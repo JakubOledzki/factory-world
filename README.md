@@ -230,7 +230,7 @@ Tartaki to maszyny przetwórcze na jednym polu, z przepisami jak młyn (wkłada 
 | --- | --- | --- | --- | --- | --- | --- |
 | Tartak | nie | 1 drewno → 2, 8 s | 2 drewna → 1, 10 s | 2 drewna → 3, 8 s | — | 30 drewna, 6 sztabek żelaza, 10 gwoździ, 60 s |
 | Tartak elektryczny | 40 kW | 2 → 5, 5 s | 5 → 3, 8 s | 3 → 5, 4 s | 3 deski → 1, 8 s | tartak, 10 belek, 20 sztabek żelaza, 10 sztabek miedzi, 90 s |
-| Tartak przemysłowy | 80 kW | 3 → 9, 4 s | 3 → 2, 2,5 s | 2 → 4, 1,5 s | 5 desek → 2, 4 s | tartak elektryczny, 10 sklejki, 40 sztabek żelaza, 20 sztabek miedzi, 5 sztabek cyny, 120 s |
+| Tartak przemysłowy | 80 kW | 3 → 9, 4 s | 3 → 2, 2,5 s | 2 → 4, 1,5 s | 6 desek → 2, 4 s | tartak elektryczny, 10 sklejki, 40 sztabek żelaza, 20 sztabek miedzi, 5 sztabek cyny, 120 s |
 
 Pellet drzewny to opał: do generatora parowego (4 MJ) oraz pieca piekarskiego i kuchni polowej (2 partie). Handlarz sprzedaje chatę leśnika (600 $), tartak (400 $) i deski (3 $), a skupuje deski (1,50 $), belki (6 $), pellet (2 $), sklejkę (6 $) i wszystkie budynki leśne i tartaki. Firmy NPC zamawiają deski, belki i sklejkę, a wydarzenie „boom budowlany” podbija ich ceny.
 

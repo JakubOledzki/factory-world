@@ -131,7 +131,7 @@ public static class Processing
             new(Items.Planks, 9, TimeSpan.FromSeconds(4), [(Items.Wood, 3)], 1),
             new(Items.Beams, 2, TimeSpan.FromSeconds(2.5), [(Items.Wood, 3)], 2),
             new(Items.WoodPellets, 4, TimeSpan.FromSeconds(1.5), [(Items.Wood, 2)], 1),
-            new(Items.Plywood, 2, TimeSpan.FromSeconds(4), [(Items.Planks, 5)], 3),
+            new(Items.Plywood, 2, TimeSpan.FromSeconds(4), [(Items.Planks, 6)], 3),
         ], Powered: true),
         // The mountain industry. A quarry cuts stone out of the mountain with nothing put in; it stands on mountain plots only.
         new(Items.Quarry, false,

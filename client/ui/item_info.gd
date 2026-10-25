@@ -211,7 +211,7 @@ const ITEMS := {
 	"wood_pellets": ["Pellet drzewny", "Opał: w piecu piekarskim i kuchni starcza na 2 partie, w generatorze daje 4000 kJ.",
 			"Tartak: 2 × drewno → 3 szt. (8 s); elektryczny: 3 × drewno → 5 szt. (4 s); przemysłowy: 2 × drewno → 4 szt. (1,5 s)."],
 	"plywood": ["Sklejka", "Do nadleśnictwa i tartaku przemysłowego; dobrze się sprzedaje.",
-			"Tartak elektryczny: 3 × deski (8 s); przemysłowy: 5 × deski → 2 szt. (4 s)."],
+			"Tartak elektryczny: 3 × deski (8 s); przemysłowy: 6 × deski → 2 szt. (4 s)."],
 	"flour": ["Mąka pszenna", "Do chleba i ciasta marchewkowego.", "Młyn: 2 × pszenica (6 s)."],
 	"corn_flour": ["Mąka kukurydziana", "Do chleba kukurydzianego.", "Młyn: 2 × kukurydza (6 s)."],
 	"sunflower_oil": ["Olej słonecznikowy", "Do ciasta i frytek.", "Tłocznia oleju: 2 × słonecznik (10 s)."],
