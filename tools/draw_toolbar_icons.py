@@ -217,9 +217,20 @@ def mine_upgrade():
     p.save("mine_upgrade")
 
 
+def city():
+    p = Pen()
+    p.poly([(6, 24), (32, 8), (58, 24)], INK)  # roof of the town hall
+    p.rect(9, 24, 55, 28, SHADE)
+    p.dot(32, 18, 3.5, DARK)  # clock
+    for x in (13, 24, 36, 47):  # columns
+        p.rect(x, 30, x + 5, 50, INK, 1)
+    p.rect(7, 51, 57, 57, SHADE, 1)  # steps
+    p.save("city")
+
+
 def main() -> None:
     for draw in (backpack, garage, market, contracts, company, stats, achievements, world_map, logout,
-                 station, plant, mine_upgrade):
+                 station, plant, mine_upgrade, city):
         draw()
 
 

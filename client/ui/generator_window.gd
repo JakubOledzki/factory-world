@@ -1,9 +1,13 @@
 class_name GeneratorWindow
 extends GameWindow
-## A steam generator on a plot: wood or coal goes on its fire and it gives power to the machines on
+## A generator on a plot: wood or coal on the fire of a steam generator, gas in a gas power plant, diesel
+## or petrol in a diesel generator; it gives power to the machines on
 ## the poles it stands next to, as much as they draw, up to its full power. It burns only while a
 ## pole connects it to machines, faster the more they draw. A water wheel or a small water power
-## plant opens the same window without the fire: water turns it all the time and it burns nothing.
+## plant opens the same window without the fire: water turns it all the time and it burns nothing. So do
+## solar power, which gives power by day only, a wind turbine, which gives as much as the wind blows, and a battery,
+## which stores what the free power has to spare. A heater has the fire but gives no power: on the glacier it warms
+## the machines around it, which work at half pace in the cold.
 
 ## Items went from the inventory into the generator or back: [{id, name, quantity}] taken out.
 signal inventory_changed(taken: Array, xp: Variant)
@@ -12,7 +16,10 @@ signal pick_up_requested(id: String)
 
 ## How often (ms) the window asks again while it is open: inserters may put fuel in.
 const POLL := 2000.0
-const HYDRO_NAMES := {"power_water_wheel": "Koło wodne", "power_hydro_plant": "Mała elektrownia wodna"}
+const HYDRO_NAMES := {"power_water_wheel": "Koło wodne", "power_hydro_plant": "Mała elektrownia wodna", "power_tidal_plant": "Elektrownia pływowa"}
+const FUEL_NAMES := {"power_gas_plant": "Elektrownia gazowa", "power_diesel_generator": "Agregat spalinowy"}
+const FREE_NAMES := {"power_solar_panel": "Panel słoneczny", "power_solar_tower": "Elektrownia słoneczna z lustrami", "power_battery": "Akumulator",
+	"power_wind_turbine": "Turbina wiatrowa", "power_large_wind_turbine": "Duża turbina wiatrowa", "power_heater": "Kocioł grzewczy"}
 
 var generator := ""
 var plot := Vector2i(-1, -1)
@@ -104,9 +111,15 @@ static func kw(value: float) -> String:
 func _render() -> void:
 	if _state.is_empty():
 		return
-	var hydro: bool = _state.get("hydro", false)
-	set_title(HYDRO_NAMES.get(_state.get("kind", ""), "Generator parowy"))
-	_pick_up.text = "Schowaj do ekwipunku" if hydro else "Schowaj generator do ekwipunku"
+	var solar: bool = _state.get("solar", false)
+	var battery: bool = _state.get("battery", false)
+	var wind: bool = _state.get("wind", false)
+	var heater: bool = _state.get("heater", false)
+	# Everything that burns nothing shows the same window without the fire.
+	var hydro: bool = _state.get("hydro", false) or solar or battery or wind
+	var kind: String = _state.get("kind", "")
+	set_title(HYDRO_NAMES.get(kind, FUEL_NAMES.get(kind, FREE_NAMES.get(kind, "Generator parowy"))))
+	_pick_up.text = "Schowaj do ekwipunku" if hydro or heater else "Schowaj generator do ekwipunku"
 	_fuel_row.visible = not hydro
 	_load_heading.visible = not hydro
 	_load.visible = not hydro
@@ -134,13 +147,33 @@ func _render() -> void:
 
 	var output := float(_state["outputKw"])
 	var capacity := float(_state["capacityKw"])
-	_output.text = ("Woda daje %s z %s" if hydro else "Daje %s z %s") % [kw(output), kw(capacity)]
+	_output_bar.visible = not heater
+	if heater:
+		var warmed := int(_state.get("warmed", 0))
+		if not _state.get("icy", false):
+			_output.text = "Tu nie ma mrozu: maszyny pracują pełną parą i bez kotła."
+		elif float(_state.get("total", 0.0)) <= 0.0:
+			_output.text = "Kocioł wygasł: %d %s wokół niego marznie i pracuje wolniej." % [warmed, _machines(warmed)]
+		else:
+			_output.text = "Grzeje %d %s na %d pól wokół siebie." % [warmed, _machines(warmed), int(_state.get("heaterReach", 3))]
+	elif battery:
+		var charge := float(_state.get("chargeKj", 0.0))
+		var full := float(_state.get("capacityKj", 1.0))
+		_output.text = "Naładowany %s z %s (%d%%) · %s" % [_energy(charge), _energy(full), roundi(100.0 * charge / full),
+			("oddaje %s" % kw(output)) if output > 0.001 else (("ładuje się %s" % kw(-output)) if output < -0.001 else "czeka")]
+		_output_bar.max_value = full
+		_output_bar.value = charge
+	else:
+		_output.text = ("Słońce daje %s z %s" if solar else ("Wiatr daje %s z %s" if wind else ("Woda daje %s z %s" if hydro else "Daje %s z %s"))) % [kw(output), kw(capacity)]
+		_output_bar.max_value = capacity
+		_output_bar.value = output
 	_output.add_theme_color_override("font_color", UI.GOLD if output > 0 else UI.MUTED)
-	_output_bar.max_value = capacity
-	_output_bar.value = output
 
 	var network: Variant = _state.get("network")
-	if network == null:
+	_network.visible = not heater
+	if heater:
+		pass
+	elif network == null:
 		_network.text = "Żaden słup go nie sięga. Postaw słup energetyczny najwyżej 2 pola od niego, a słupy przy maszynach połączą się przewodami."
 		_network.add_theme_color_override("font_color", UI.ERROR)
 	elif int(network["machines"]) == 0:
@@ -188,9 +221,43 @@ func _render() -> void:
 			row.add_child(b)
 		_load.add_child(row)
 	if not any:
-		_load.add_child(UI.label("Nie masz drewna ani węgla. Drewno daje ścinanie drzew, węgiel skały i kopalnie w górach.",
+		var names: Array[String] = []
+		for option: Dictionary in _state.get("fuels", []):
+			names.append(String(option["name"]).to_lower())
+		var hint := "Drewno daje ścinanie drzew, węgiel skały i kopalnie w górach." if _state.get("kind", "") == "power_generator" \
+			else "Gaz pompuje głowica gazowa, paliwa robi rafineria."
+		_load.add_child(UI.label("Nie masz opału, który ten generator spala (%s). %s" % [", ".join(names), hint],
 			UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
+	if heater:
+		_load_heading.text = "Dołóż do kotła"
+		_help.text = "Na lodowcu maszyny na prąd bez ogrzewania pracują o połowę wolniej. Kocioł spala opał bez przerwy (%s, nawet gdy nic nie grzeje) i ogrzewa maszyny do %d pól wokół siebie, a słup nie jest mu potrzebny." % [
+			kw(float(_state.get("heaterKw", 15.0))), int(_state.get("heaterReach", 3))]
+		_update_runs_out()
+		_fit.call_deferred()
+		return
+	_load_heading.text = "Dołóż do ognia"
+	if wind:
+		var strength := roundi(float(_state.get("windStrength", 0.0)) * 100.0)
+		var bonus := float(_state.get("windBonus", 1.0))
+		var now := "Teraz wieje na %d%% pełnej siły." % strength
+		if _state.get("blizzard", false):
+			now = "Szaleje zamieć: turbina stoi, żeby wiatr jej nie połamał."
+		_help.text = "Wiatr kręci nią bez opału, a jego siła zmienia się co 10 minut.%s Nadwyżkę zbiera akumulator w tej samej sieci. %s" % [
+			" Tu wieje mocniej: +%d%% mocy." % roundi((bonus - 1.0) * 100.0) if bonus > 1.0 else "", now]
+		_fit.call_deferred()
+		return
+	if solar:
+		var sun := "Teraz dzień." if _state.get("day", true) else "Teraz noc: panele nie dają prądu do świtu."
+		if _state.get("storm", false):
+			sun = "Wieje burza piaskowa: %s" % ("płot trzcinowy osłania ten panel." if _state.get("sheltered", false) else "bez płotu trzcinowego w pobliżu daje ćwierć mocy.")
+		_help.text = "Słońce daje prąd za dnia (36 z każdych 60 minut), na pustyni i w oazie o 25%% więcej. Nadwyżkę zbiera akumulator w tej samej sieci. %s" % sun
+		_fit.call_deferred()
+		return
+	if battery:
+		_help.text = "Akumulator bierze to, czego woda i słońce dają za dużo (do %s), i oddaje, gdy im brakuje, zanim generatory zaczną palić opał. Wszystkie akumulatory sieci ładują się i rozładowują razem; schowany traci ładunek." % kw(capacity)
+		_fit.call_deferred()
+		return
 	if hydro:
 		var bonus := float(_state.get("hydroBonus", 1.0))
 		_help.text = "Woda kręci nim bez przerwy i nie trzeba dokładać opału. Daje prąd od razu, przed generatorami parowymi: one dopalają tylko to, czego brakuje.%s" % [
@@ -201,17 +268,19 @@ func _render() -> void:
 	for option: Dictionary in _state.get("fuels", []):
 		lines.append("%s: %s, przy pełnej mocy na %d s." % [option["name"], _energy(float(option["kj"])), roundi(float(option["kj"]) / capacity)])
 	lines.append("Podajnik może dokładać opał z taśmy albo ze skrzyni.")
+	if _state.get("dry", false):
+		lines.append("Na piasku brak wody do chłodzenia: generator parowy daje tylko 70% mocy.")
 	_help.text = "\n".join(lines)
 	_update_runs_out()
 	_fit.call_deferred()
 
 
 func _update_runs_out() -> void:
-	if _state.get("hydro", false):
+	if _state.get("hydro", false) or _state.get("solar", false) or _state.get("battery", false) or _state.get("wind", false):
 		return
 	var at: Variant = _state.get("runsOutAt")
 	if at == null:
-		_runs_out.text = "Generator wygasł: dołóż drewna albo węgla." if float(_state.get("total", 0.0)) <= 0.0 else ""
+		_runs_out.text = "Generator wygasł: dołóż opału." if float(_state.get("total", 0.0)) <= 0.0 else ""
 		return
 	var left := maxi(0, ceili((float(at) - _server_now()) / 1000.0))
 	if left >= 3600:

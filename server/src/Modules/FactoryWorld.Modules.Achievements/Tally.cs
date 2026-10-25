@@ -26,11 +26,47 @@ public static class Tally
         switch (message.Type)
         {
             case "plot.harvest":
+                // A bridge laid over a crevasse gives nothing but the bridge.
+                if (Text(reply, "object") == "bridge")
+                {
+                    Add(counts, Stats.Bridges, 1);
+                }
+
                 foreach (var (item, quantity) in Stacks(reply, "items"))
                 {
-                    if (item == Items.Wood)
+                    if (item is Items.Wood or Items.OakWood)
                     {
                         Add(counts, Stats.Wood, quantity);
+                    }
+
+                    if (item == Items.OakWood)
+                    {
+                        Add(counts, Stats.OakWood, quantity);
+                    }
+
+                    if (item == Items.Mushrooms)
+                    {
+                        Add(counts, Stats.Mushrooms, quantity);
+                    }
+
+                    if (Items.IsFossil(item))
+                    {
+                        Add(counts, Stats.Fossils, quantity);
+                    }
+
+                    if (item == Items.DinosaurBone)
+                    {
+                        Add(counts, Stats.DinosaurBones, quantity);
+                    }
+
+                    if (item == Items.Ice)
+                    {
+                        Add(counts, Stats.Ice, quantity);
+                    }
+
+                    if (item == Items.MeteoricIron)
+                    {
+                        Add(counts, Stats.Meteorites, 1);
                     }
 
                     Add(counts, Stats.Produced, quantity);
@@ -77,10 +113,35 @@ public static class Tally
 
                 break;
             case "machine.take" when Text(message.Request, "what") == "output":
-                foreach (var (_, quantity) in Stacks(reply, "taken"))
+                foreach (var (item, quantity) in Stacks(reply, "taken"))
                 {
                     Add(counts, Stats.Processed, quantity);
                     Add(counts, Stats.Produced, quantity);
+                    if (item == Items.Glass)
+                    {
+                        Add(counts, Stats.Glass, quantity);
+                    }
+
+                    if (item == Items.Takings)
+                    {
+                        Add(counts, Stats.Tourists, quantity);
+                    }
+
+                    if (item is Items.Chair or Items.Table or Items.Wardrobe or Items.OakDresser)
+                    {
+                        Add(counts, Stats.Furniture, quantity);
+                    }
+                }
+
+                break;
+            case "hive.take":
+                foreach (var (item, quantity) in Stacks(reply, "taken"))
+                {
+                    Add(counts, Stats.Produced, quantity);
+                    if (item == Items.Honey)
+                    {
+                        Add(counts, Stats.Honey, quantity);
+                    }
                 }
 
                 break;
@@ -94,7 +155,7 @@ public static class Tally
                 break;
             case "plot.place":
                 Add(counts, Stats.Placed, 1);
-                if (reply.TryGetProperty("object", out var placed) && Text(placed, "kind") is { } placedKind && Items.IsBelt(placedKind))
+                if (reply.TryGetProperty("object", out var placed) && Text(placed, "kind") is { } placedKind && Items.IsBelt(placedKind) && placedKind != Items.Pipe)
                 {
                     Add(counts, Stats.Belts, 1);
                 }
@@ -102,6 +163,10 @@ public static class Tally
                 break;
             case "station.send":
                 Add(counts, Stats.Trains, 1);
+                break;
+            case "city.deliver" or "city.trash" when reply.TryGetProperty("result", out var city) && city.ValueKind == JsonValueKind.Object
+                && city.TryGetProperty("quantity", out var moved) && moved.TryGetInt64(out var pieces):
+                Add(counts, message.Type == "city.deliver" ? Stats.CityDeliveries : Stats.CityTrash, pieces);
                 break;
             case "world.buy":
                 Add(counts, Stats.Plots, 1);
@@ -133,6 +198,19 @@ public static class Tally
         else if (message.ReplyType == "character" && reply.TryGetProperty("level", out level) && level.TryGetInt64(out l))
         {
             counts[Stats.Level] = l;
+        }
+
+        // A town's hall shows whether the player is its mayor; a shop how much it sold in all.
+        if (message.ReplyType == "city" && reply.TryGetProperty("state", out var town) && town.ValueKind == JsonValueKind.Object
+            && town.TryGetProperty("hall", out var hall) && hall.ValueKind == JsonValueKind.Object
+            && hall.TryGetProperty("isMayor", out var isMayor) && isMayor.ValueKind == JsonValueKind.True)
+        {
+            counts[Stats.Mayor] = 1;
+        }
+
+        if (message.ReplyType == "shop" && reply.TryGetProperty("soldItems", out var shopSold) && shopSold.TryGetInt64(out var soldItems))
+        {
+            counts[Stats.ShopSold] = soldItems;
         }
 
         if (reply.TryGetProperty("balanceCents", out var balance) && balance.TryGetInt64(out var cents))

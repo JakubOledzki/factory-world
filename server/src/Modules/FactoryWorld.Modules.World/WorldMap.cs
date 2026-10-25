@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Text;
+using FactoryWorld.Modules.Abstractions.Contracts;
 
 namespace FactoryWorld.Modules.World;
 
@@ -18,6 +19,9 @@ public enum Biome : byte
     City = 9,
     Coast = 10,
     Lakeshore = 11,
+
+    /// <summary>Not in the map file: a few desert plots are oases (<see cref="Abstractions.Contracts.Oasis"/>).</summary>
+    Oasis = 12,
 }
 
 /// <summary>A bonus or a penalty a biome gives to a branch of production.</summary>
@@ -39,13 +43,14 @@ public static class Biomes
         new(Biome.Forest, "Las", true, 1, [Up("+25% drewno i przetwórstwo drewna"), Up("+20% łowiectwo"), Down("−20% rolnictwo")]),
         new(Biome.Farmland, "Żyzne gleby", true, 1.5, [Up("+30% rolnictwo"), Up("+20% hodowla")]),
         new(Biome.Grassland, "Step i łąki", true, 1, [Up("+25% hodowla"), Up("+15% energia wiatrowa")]),
-        new(Biome.Desert, "Pustynia", true, 1, [Up("+30% piasek i szkło"), Up("+25% energia słoneczna"), Down("−50% rolnictwo")]),
+        new(Biome.Desert, "Pustynia", true, 1, [Up("+30% piasek i szkło"), Up("+25% energia słoneczna"), Down("−50% rolnictwo"), Down("−50% woda ze studni"), Down("burze piaskowe")]),
         new(Biome.Mountains, "Góry", true, 1, [Up("+30% górnictwo"), Up("+15% energia wodna"), Down("−25% powierzchnia zabudowy"), Down("brak leśnictwa")]),
         new(Biome.Tundra, "Tundra", true, 1, [Up("+15% łowiectwo"), Up("+15% energia wiatrowa"), Down("−30% rolnictwo")]),
         new(Biome.Ice, "Lodowiec", true, 1, [Up("+20% energia wiatrowa"), Down("brak rolnictwa i leśnictwa")]),
         new(Biome.City, "Miasto", true, 2, [Up("+25% przemysł i montaż"), Up("−10% koszt transportu na rynek"), Down("−50% rolnictwo i leśnictwo")]),
         new(Biome.Coast, "Wybrzeże", true, 1.5, [Up("+30% rybołówstwo"), Up("+15% przetwórstwo ryb")]),
         new(Biome.Lakeshore, "Pojezierze", true, 1.5, [Up("+30% rybołówstwo"), Up("+15% przetwórstwo ryb")]),
+        new(Biome.Oasis, "Oaza", true, 1.5, [Up("staw, palmy daktylowe i żyzna ziemia"), Up("+100% woda ze studni"), Up("+30% piasek i szkło"), Up("+25% energia słoneczna")]),
     }.ToDictionary(b => b.Id);
 }
 
@@ -95,7 +100,11 @@ public sealed class WorldMap
 
     public bool Contains(int x, int y) => x >= 0 && y >= 0 && x < Width && y < Height;
 
-    public Biome BiomeAt(int x, int y) => (Biome)_biomes[y * Width + x];
+    public Biome BiomeAt(int x, int y)
+    {
+        var biome = (Biome)_biomes[y * Width + x];
+        return biome == Biome.Desert && Oasis.Is(x, y) ? Biome.Oasis : biome;
+    }
 
     /// <summary>The plot at a point of the globe, in degrees (same projection as tools/build_world.py).</summary>
     public (int X, int Y) PlotAt(double latitude, double longitude)

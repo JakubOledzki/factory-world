@@ -119,6 +119,48 @@ public static class RailRules
     }
 }
 
+/// <summary>A diesel locomotive: a train leaving a station that holds diesel burns some of it and gets there sooner.</summary>
+public static class DieselRules
+{
+    /// <summary>A diesel train takes this part of a steam train's time.</summary>
+    public const double TripFactor = 0.6;
+
+    /// <summary>Diesel one train burns: a unit for every 250 km begun.</summary>
+    public static long Fuel(double km) => Math.Max(1, (long)Math.Ceiling(km / 250));
+
+    public static TimeSpan TripTime(TimeSpan steamTrip) => steamTrip * TripFactor;
+}
+
+/// <summary>Ships between ports: a ship needs no track, takes twice as long as a train and costs a quarter of the
+/// fee; a lighthouse next to either end (on the plot or one around it) cuts a quarter off the trip.</summary>
+public static class SeaRules
+{
+    public const double SlowerThanRail = 2;
+
+    public const double LighthouseTrip = 0.75;
+
+    public static long FeeCents(long railFeeCents) => (railFeeCents + 3) / 4;
+
+    public static TimeSpan TripTime(TimeSpan railTrip, bool lighthouse) => railTrip * SlowerThanRail * (lighthouse ? LighthouseTrip : 1);
+}
+
+/// <summary>The glacier: a track on ice without a foundation takes trains <see cref="IceTrack"/> times as long, and from the glacier or the
+/// tundra a dog sled or a snowmobile carries goods to a station up to <see cref="MaxKm"/> away with no track and no fee: the dogs slower than a
+/// train, a snowmobile faster on petrol from the station.</summary>
+public static class SledRules
+{
+    public const double IceTrack = 2;
+
+    public const double MaxKm = 150;
+
+    public const double DogTrip = 1.5;
+
+    public const double SnowmobileTrip = 0.8;
+
+    /// <summary>Petrol a snowmobile burns: a unit for every 50 km begun.</summary>
+    public static long Fuel(double km) => Math.Max(1, (long)Math.Ceiling(km / 50));
+}
+
 /// <param name="Sender">Who sent the train, when it was someone else.</param>
 /// <param name="Receiver">Who owns the destination, when it is someone else.</param>
 public sealed record Shipment(
@@ -133,7 +175,7 @@ public sealed record TrainRoute(
 
 public sealed record StationState(
     int X, int Y, IReadOnlyDictionary<string, long> Items, IReadOnlyList<Shipment> Incoming, IReadOnlyList<Shipment> Outgoing,
-    IReadOnlyList<TrainRoute> Routes, DateTimeOffset Now);
+    IReadOnlyList<TrainRoute> Routes, DateTimeOffset Now, double FeeFactor = 1, int MaxRoutes = RailRules.MaxRoutes);
 
 /// <summary>A player found by name, with the plots their station stands on.</summary>
 public sealed record RailPartner(string Name, IReadOnlyList<(int X, int Y, Biome Biome)> Plots);
@@ -214,6 +256,22 @@ internal static class StationStock
         await insert.ExecuteNonQueryAsync(cancellationToken);
     }
 
+    /// <summary>Takes the diesel a train of <paramref name="km"/> burns from the station, when it holds that much; true when it did.</summary>
+    public static Task<bool> FuelAsync(GameDb db, int x, int y, double km, CancellationToken cancellationToken) =>
+        BurnAsync(db, x, y, Items.Diesel, DieselRules.Fuel(km), cancellationToken);
+
+    /// <summary>Takes <paramref name="need"/> of a fuel from the station, when it holds that much; true when it did.</summary>
+    public static async Task<bool> BurnAsync(GameDb db, int x, int y, string fuel, long need, CancellationToken cancellationToken)
+    {
+        if ((await ReadAsync(db, x, y, cancellationToken)).GetValueOrDefault(fuel) < need)
+        {
+            return false;
+        }
+
+        await ChangeAsync(db, x, y, fuel, -need, cancellationToken);
+        return true;
+    }
+
     /// <summary>The owner of a plot, or null when nobody bought it.</summary>
     public static async Task<Guid?> OwnerAsync(GameDb db, int x, int y, CancellationToken cancellationToken)
     {
@@ -226,8 +284,20 @@ internal static class StationStock
 
 public sealed class StationService(
     GameDb db, WorldMap map, PlotService plots, IInventory inventory, IWallet wallet, ICharacterNames names,
-    IEnumerable<IPlotAutomation> automation, TimeProvider time)
+    IEnumerable<IPlotAutomation> automation, BeachService beach, CityService cities, IEnumerable<ICompanies> companies, TimeProvider time)
 {
+    /// <summary>What the player's company's big projects take off their rail or sea fees.</summary>
+    private async Task<double> PerksAsync(Guid player, bool bySea, CancellationToken cancellationToken)
+    {
+        var projects = new HashSet<string>();
+        foreach (var company in companies)
+        {
+            projects.UnionWith(await company.ProjectsAsync(player, cancellationToken));
+        }
+
+        return CompanyPerks.FeeFactor(projects, bySea);
+    }
+
     /// <summary>The station of one of the player's plots, after unloading every train that has arrived.</summary>
     public Task<StationState> StateAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
         ChangeAsync(player, x, y, PlotRight.Work, () => Task.CompletedTask, cancellationToken);
@@ -250,24 +320,102 @@ public sealed class StationService(
             await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
         }, cancellationToken);
 
-    /// <summary>Sends items from this station by train to the station of another owned plot.</summary>
-    public Task<StationState> SendAsync(Guid player, int x, int y, int toX, int toY, string item, long quantity, CancellationToken cancellationToken) =>
+    /// <summary>Sends items from this station by train to the station of another owned plot; <paramref name="bySea"/>, by
+    /// ship from this plot's port to the other's: slower, but for a quarter of the fee (<see cref="SeaRules"/>).</summary>
+    public Task<StationState> SendAsync(
+        Guid player, int x, int y, int toX, int toY, string item, long quantity, CancellationToken cancellationToken, bool bySea = false, bool bySled = false) =>
         ChangeAsync(player, x, y, PlotRight.Take, async () =>
         {
             CheckQuantity(item, quantity);
             await CheckDestinationAsync(x, y, toX, toY, cancellationToken);
-            await StationStock.ChangeAsync(db, x, y, item, -quantity, cancellationToken);
             var km = RailRules.DistanceKm(map, x, y, toX, toY);
-            await wallet.DebitAsync(player, RailRules.FeeCents(km, quantity), $"rail {quantity} {item} {x}:{y}->{toX}:{toY}", cancellationToken);
-            await StationStock.DispatchAsync(db, x, y, toX, toY, item, quantity, player, time.GetUtcNow() + RailRules.TripTime(km), cancellationToken);
+            // Rail in a city is cheaper, and cheaper still with a freight terminal or the mayor's rail bonus.
+            var (fee, trip) = ((long)Math.Ceiling(RailRules.FeeCents(km, quantity) * await cities.RailFactorAsync(x, y, cancellationToken)), RailRules.TripTime(km));
+            if (bySea)
+            {
+                if (!await beach.HasAsync(x, y, Items.Port, 0, cancellationToken) || !await beach.HasAsync(toX, toY, Items.Port, 0, cancellationToken))
+                {
+                    throw new GameException("no_port", "A ship sails from a port to a port: both plots need one.");
+                }
+
+                var lighthouse = await beach.HasAsync(x, y, Items.Lighthouse, 1, cancellationToken) || await beach.HasAsync(toX, toY, Items.Lighthouse, 1, cancellationToken);
+                (fee, trip) = (SeaRules.FeeCents(fee), SeaRules.TripTime(trip, lighthouse));
+            }
+
+            fee = (long)Math.Ceiling(fee * await PerksAsync(player, bySea, cancellationToken));
+            if (bySled)
+            {
+                (fee, trip) = (0, await SledTripAsync(x, y, km, trip, cancellationToken));
+            }
+
+            await StationStock.ChangeAsync(db, x, y, item, -quantity, cancellationToken);
+            if (!bySea && !bySled)
+            {
+                if (await StationStock.FuelAsync(db, x, y, km, cancellationToken))
+                {
+                    trip = DieselRules.TripTime(trip);
+                }
+
+                trip *= await IceTrackAsync(x, y, toX, toY, cancellationToken);
+            }
+
+            if (fee > 0)
+            {
+                await wallet.DebitAsync(player, fee, $"{(bySea ? "ship" : "rail")} {quantity} {item} {x}:{y}->{toX}:{toY}", cancellationToken);
+            }
+            await StationStock.DispatchAsync(db, x, y, toX, toY, item, quantity, player, time.GetUtcNow() + trip, cancellationToken);
         }, cancellationToken);
+
+    /// <summary>How long a sled takes for <paramref name="km"/>, given a train's <paramref name="railTrip"/>: a snowmobile when there is petrol in the
+    /// station for it (which it burns), else the dogs. Fails when the plot has neither, is not on the glacier or the tundra, or it is too far.</summary>
+    private async Task<TimeSpan> SledTripAsync(int x, int y, double km, TimeSpan railTrip, CancellationToken cancellationToken)
+    {
+        if (map.BiomeAt(x, y) is not (Biome.Ice or Biome.Tundra))
+        {
+            throw new GameException("no_polar", "Sleds go from the glacier or the tundra.");
+        }
+
+        if (km > SledRules.MaxKm)
+        {
+            throw new GameException("too_far", $"A sled goes at most {SledRules.MaxKm:0} km.");
+        }
+
+        var snowmobile = await beach.HasAsync(x, y, Items.SnowmobileGarage, 0, cancellationToken);
+        if (snowmobile && await StationStock.BurnAsync(db, x, y, Items.Gasoline, SledRules.Fuel(km), cancellationToken))
+        {
+            return railTrip * SledRules.SnowmobileTrip;
+        }
+
+        if (await beach.HasAsync(x, y, Items.DogKennel, 0, cancellationToken))
+        {
+            return railTrip * SledRules.DogTrip;
+        }
+
+        throw snowmobile
+            ? new GameException("no_petrol", "A snowmobile needs petrol in the station.")
+            : new GameException("no_sled", "Sleds leave from a dog kennel or a snowmobile garage on the plot.");
+    }
+
+    /// <summary>How many times as long a train takes on the track at either end: on the glacier, without a foundation, twice.</summary>
+    private async Task<double> IceTrackAsync(int x, int y, int toX, int toY, CancellationToken cancellationToken)
+    {
+        foreach (var (px, py) in new[] { (x, y), (toX, toY) })
+        {
+            if (map.BiomeAt(px, py) == Biome.Ice && !await beach.HasAsync(px, py, Items.TrackFoundation, 0, cancellationToken))
+            {
+                return SledRules.IceTrack;
+            }
+        }
+
+        return 1;
+    }
 
     /// <summary>Sets up a train that leaves this station by itself every <paramref name="everyMinutes"/>,
     /// the first one now, with the chosen items (or everything) for another owned plot.</summary>
     public async Task<StationState> AddRouteAsync(
         Guid player, int x, int y, int toX, int toY, IReadOnlyList<string> items, int everyMinutes, CancellationToken cancellationToken)
     {
-        await ChangeAsync(player, x, y, PlotRight.Owner, async () =>
+        await ChangeAsync(player, x, y, PlotRight.Routes, async () =>
         {
             if (!RailRules.RouteMinutes.Contains(everyMinutes))
             {
@@ -284,9 +432,10 @@ public sealed class StationService(
             {
                 count.Parameters.AddWithValue("x", x);
                 count.Parameters.AddWithValue("y", y);
-                if ((long)(await count.ExecuteScalarAsync(cancellationToken))! >= RailRules.MaxRoutes)
+                var most = await cities.MaxRoutesAsync(x, y, cancellationToken);
+                if ((long)(await count.ExecuteScalarAsync(cancellationToken))! >= most)
                 {
-                    throw new GameException("too_many_routes", $"A station runs at most {RailRules.MaxRoutes} routes.");
+                    throw new GameException("too_many_routes", $"A station runs at most {most} routes.");
                 }
             }
 
@@ -312,7 +461,7 @@ public sealed class StationService(
 
     /// <summary>Stops a route; trains already on their way still arrive.</summary>
     public Task<StationState> RemoveRouteAsync(Guid player, int x, int y, long id, CancellationToken cancellationToken) =>
-        ChangeAsync(player, x, y, PlotRight.Owner, async () =>
+        ChangeAsync(player, x, y, PlotRight.Routes, async () =>
         {
             await using var delete = await db.CommandAsync(
                 "DELETE FROM world.train_routes WHERE id = @id AND from_x = @x AND from_y = @y", cancellationToken);
@@ -481,7 +630,8 @@ public sealed class StationService(
             {
                 var km = RailRules.DistanceKm(map, x, y, toX, toY);
                 var quantity = cargo.Sum(c => c.Quantity);
-                var fee = RailRules.FeeCents(km, quantity);
+                var fee = (long)Math.Ceiling(RailRules.FeeCents(km, quantity) * await cities.RailFactorAsync(x, y, cancellationToken)
+                    * await PerksAsync(owner, false, cancellationToken));
                 if (await wallet.BalanceAsync(owner, cancellationToken) < fee)
                 {
                     problem = "no_money";
@@ -492,7 +642,13 @@ public sealed class StationService(
                     foreach (var (item, count) in cargo)
                     {
                         await StationStock.ChangeAsync(db, x, y, item, -count, cancellationToken);
-                        await StationStock.DispatchAsync(db, x, y, toX, toY, item, count, owner, departure + RailRules.TripTime(km), cancellationToken);
+                    }
+
+                    var trip = await StationStock.FuelAsync(db, x, y, km, cancellationToken) ? DieselRules.TripTime(RailRules.TripTime(km)) : RailRules.TripTime(km);
+                    trip *= await IceTrackAsync(x, y, toX, toY, cancellationToken);
+                    foreach (var (item, count) in cargo)
+                    {
+                        await StationStock.DispatchAsync(db, x, y, toX, toY, item, count, owner, departure + trip, cancellationToken);
                     }
 
                     sent = quantity;
@@ -658,7 +814,9 @@ public sealed class StationService(
         var outgoing = shipments.Where(s => s.Trip.FromX == x && s.Trip.FromY == y)
             .Select(s => s.Trip with { Receiver = Receiver(s.Trip.ToX, s.Trip.ToY) }).ToList();
         return new StationState(x, y, items, incoming, outgoing,
-            routes.Select(r => r with { Receiver = Receiver(r.ToX, r.ToY) }).ToList(), time.GetUtcNow());
+            routes.Select(r => r with { Receiver = Receiver(r.ToX, r.ToY) }).ToList(), time.GetUtcNow(),
+            await cities.RailFactorAsync(x, y, cancellationToken) * await PerksAsync(player, false, cancellationToken),
+            await cities.MaxRoutesAsync(x, y, cancellationToken));
     }
 }
 
@@ -805,7 +963,7 @@ public sealed record StationRequest(int X, int Y);
 
 public sealed record StockRequest(int X, int Y, string Item, long Quantity);
 
-public sealed record SendRequest(int X, int Y, int ToX, int ToY, string Item, long Quantity);
+public sealed record SendRequest(int X, int Y, int ToX, int ToY, string Item, long Quantity, bool Sea = false, bool Sled = false);
 
 public sealed record RouteRequest(int X, int Y, int ToX, int ToY, List<string>? Items, int EveryMinutes);
 
@@ -863,8 +1021,20 @@ public abstract class StationHandler(IServiceScopeFactory scopes) : IMessageHand
                 minTripSeconds = RailRules.MinTrip.TotalSeconds,
                 routeCapacity = RailRules.RouteCapacity,
                 routeMinutes = RailRules.RouteMinutes,
-                maxRoutes = RailRules.MaxRoutes,
+                maxRoutes = state.MaxRoutes,
+                // What fees from this station are multiplied by: below 1 in a city.
+                feeFactor = state.FeeFactor,
                 maxRouteItems = RailRules.MaxRouteItems,
+                // With diesel in the station a train goes as a diesel locomotive: it burns a unit per 250 km begun and gets there sooner.
+                dieselTripFactor = DieselRules.TripFactor,
+                dieselKmPerUnit = 250,
+                // From the glacier or the tundra a sled carries goods up to sledMaxKm free: dogs take sledDogTrip of a train's time,
+                // a snowmobile sledSnowmobileTrip on a unit of petrol per 50 km; trains on ice without a foundation take iceTrack times as long.
+                sledMaxKm = SledRules.MaxKm,
+                sledDogTrip = SledRules.DogTrip,
+                sledSnowmobileTrip = SledRules.SnowmobileTrip,
+                sledKmPerPetrol = 50,
+                iceTrack = SledRules.IceTrack,
             },
         });
     }
@@ -912,7 +1082,7 @@ public sealed class SendHandler(IServiceScopeFactory scopes) : StationHandler(sc
     protected override Task<StationState> RunAsync(StationService station, Guid player, JsonElement? payload, CancellationToken cancellationToken)
     {
         var r = Payload.Read<SendRequest>(payload);
-        return station.SendAsync(player, r.X, r.Y, r.ToX, r.ToY, r.Item, r.Quantity, cancellationToken);
+        return station.SendAsync(player, r.X, r.Y, r.ToX, r.ToY, r.Item, r.Quantity, cancellationToken, r.Sea, r.Sled);
     }
 }
 

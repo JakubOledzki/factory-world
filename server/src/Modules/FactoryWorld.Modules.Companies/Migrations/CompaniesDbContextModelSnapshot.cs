@@ -37,6 +37,10 @@ namespace FactoryWorld.Modules.Companies.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("company_id");
 
+                    b.Property<Guid?>("ManagerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("manager_id");
+
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");
@@ -55,9 +59,39 @@ namespace FactoryWorld.Modules.Companies.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<long>("CashCents")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(0L)
+                        .HasColumnName("cash_cents");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("DividendAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("dividend_at")
+                        .HasDefaultValueSql("now()");
+
+                    b.Property<int>("DividendPercent")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(20)
+                        .HasColumnName("dividend_percent");
+
+                    b.Property<long>("IncomeCents")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(0L)
+                        .HasColumnName("income_cents");
+
+                    b.Property<bool>("Listed")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("listed");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -76,7 +110,101 @@ namespace FactoryWorld.Modules.Companies.Migrations
                     b.HasIndex("NormalizedName")
                         .IsUnique();
 
-                    b.ToTable("companies", "companies");
+                    b.ToTable("companies", "companies", t =>
+                        {
+                            t.HasCheckConstraint("ck_companies_cash", "cash_cents >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Companies.DealRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<Guid>("BuyerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("buyer_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Days")
+                        .HasColumnType("integer")
+                        .HasColumnName("days");
+
+                    b.Property<string>("Item")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("item");
+
+                    b.Property<int>("MissedDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("missed_days");
+
+                    b.Property<Guid>("OfferedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("offered_by");
+
+                    b.Property<long>("PerDay")
+                        .HasColumnType("bigint")
+                        .HasColumnName("per_day");
+
+                    b.Property<long>("PriceCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("price_cents");
+
+                    b.Property<int>("SettledDays")
+                        .HasColumnType("integer")
+                        .HasColumnName("settled_days");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("state");
+
+                    b.Property<Guid>("SupplierId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("supplier_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BuyerId");
+
+                    b.HasIndex("SupplierId");
+
+                    b.ToTable("deals", "companies");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Companies.IncomeRow", b =>
+                {
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateOnly>("Day")
+                        .HasColumnType("date")
+                        .HasColumnName("day");
+
+                    b.Property<long>("Cents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("cents");
+
+                    b.HasKey("CompanyId", "Day");
+
+                    b.HasIndex("Day");
+
+                    b.ToTable("income", "companies");
                 });
 
             modelBuilder.Entity("FactoryWorld.Modules.Companies.InviteRow", b =>
@@ -173,6 +301,192 @@ namespace FactoryWorld.Modules.Companies.Migrations
                     b.HasIndex("CompanyId");
 
                     b.ToTable("members", "companies");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Companies.OrderRow", b =>
+                {
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<int>("Week")
+                        .HasColumnType("integer")
+                        .HasColumnName("week");
+
+                    b.Property<int>("Slot")
+                        .HasColumnType("integer")
+                        .HasColumnName("slot");
+
+                    b.Property<long>("Delivered")
+                        .HasColumnType("bigint")
+                        .HasColumnName("delivered");
+
+                    b.HasKey("CompanyId", "Week", "Slot");
+
+                    b.ToTable("orders", "companies");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Companies.ProjectPartRow", b =>
+                {
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<string>("Project")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("project");
+
+                    b.Property<string>("Item")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("item");
+
+                    b.Property<long>("Delivered")
+                        .HasColumnType("bigint")
+                        .HasColumnName("delivered");
+
+                    b.HasKey("CompanyId", "Project", "Item");
+
+                    b.ToTable("project_parts", "companies");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Companies.ProjectRow", b =>
+                {
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<string>("Project")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("project");
+
+                    b.Property<DateTimeOffset?>("BuiltAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("built_at");
+
+                    b.Property<bool>("Rewarded")
+                        .HasColumnType("boolean")
+                        .HasColumnName("rewarded");
+
+                    b.Property<DateTimeOffset>("StartedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("started_at");
+
+                    b.HasKey("CompanyId", "Project");
+
+                    b.ToTable("projects", "companies");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Companies.SeasonRow", b =>
+                {
+                    b.Property<int>("Season")
+                        .HasColumnType("integer")
+                        .HasColumnName("season");
+
+                    b.Property<int>("Place")
+                        .HasColumnType("integer")
+                        .HasColumnName("place");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasColumnName("name");
+
+                    b.Property<long>("ValueCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("value_cents");
+
+                    b.HasKey("Season", "Place");
+
+                    b.HasIndex("CompanyId");
+
+                    b.ToTable("seasons", "companies");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Companies.ShareRow", b =>
+                {
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<long>("Shares")
+                        .HasColumnType("bigint")
+                        .HasColumnName("shares");
+
+                    b.HasKey("CompanyId", "AccountId");
+
+                    b.HasIndex("AccountId");
+
+                    b.ToTable("shares", "companies");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Companies.TaskRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid?>("AssigneeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("assignee_id");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<long>("Delivered")
+                        .HasColumnType("bigint")
+                        .HasColumnName("delivered");
+
+                    b.Property<DateTimeOffset?>("DoneAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("done_at");
+
+                    b.Property<string>("Item")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("item");
+
+                    b.Property<long>("PaidCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("paid_cents");
+
+                    b.Property<long>("Quantity")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity");
+
+                    b.Property<long>("WageCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("wage_cents");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.ToTable("tasks", "companies");
                 });
 
             modelBuilder.Entity("FactoryWorld.Modules.Companies.WarehouseRow", b =>

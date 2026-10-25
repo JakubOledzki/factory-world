@@ -26,6 +26,10 @@ public static class NpcPrices
         [Items.Trash] = 100,
         [Items.SortingMachine] = 100_000,
         [Items.Sapling] = 200,
+        [Items.SaplingSpruce] = 200,
+        [Items.SaplingBirch] = 200,
+        [Items.SaplingOak] = 500,
+        [Items.SaplingLinden] = 300,
         [Items.Nails] = 500,
         [Items.Workbench] = 50_000,
         [Items.Anvil] = 50_000,
@@ -43,6 +47,7 @@ public static class NpcPrices
         [Items.Chicken] = 5000,
         [Items.Sheep] = 20_000,
         [Items.Cow] = 50_000,
+        [Items.Camel] = 40_000,
         [Items.Belt] = 1000,
         [Items.Inserter] = 9000,
         [Items.Splitter] = 18_000,
@@ -61,6 +66,7 @@ public static class NpcPrices
         [Items.ForesterHut] = 60_000,
         [Items.Sawmill] = 40_000,
         [Items.Planks] = 300,
+        [Items.FishingRod] = 10_000,
     };
 
     /// <summary>What the NPC pays the player.</summary>
@@ -182,6 +188,160 @@ public static class NpcPrices
         [Items.WaterWheel] = 41_000,
         [Items.HydroPlant] = 245_000,
         [Items.CableStation] = 38_000,
+        [Items.FishingRod] = 3500,
+        [Items.Herring] = 120,
+        [Items.Cod] = 300,
+        [Items.Carp] = 250,
+        [Items.Pike] = 350,
+        [Items.Salmon] = 900,
+        [Items.Mussels] = 400,
+        [Items.Seaweed] = 60,
+        [Items.Amber] = 50_000,
+        [Items.SmokedFish] = 900,
+        [Items.SmokedSalmon] = 2200,
+        [Items.SaltedHerring] = 450,
+        [Items.CannedFish] = 2600,
+        [Items.FishMeal] = 220,
+        [Items.FishOil] = 650,
+        [Items.FriedCarp] = 1300,
+        [Items.FishSoup] = 450,
+        [Items.FishingBoat] = 30_000,
+        [Items.RowingBoat] = 12_000,
+        [Items.Smokehouse] = 12_000,
+        [Items.Cannery] = 60_000,
+        [Items.SaltPan] = 14_000,
+        [Items.FishFarm] = 25_000,
+        [Items.Shipyard] = 35_000,
+        [Items.Port] = 40_000,
+        [Items.Breakwater] = 12_000,
+        [Items.Lighthouse] = 60_000,
+        [Items.TidalPlant] = 220_000,
+        [Items.CrudeOil] = 150,
+        [Items.NaturalGas] = 120,
+        [Items.Gasoline] = 400,
+        [Items.Diesel] = 380,
+        [Items.Kerosene] = 280,
+        [Items.Asphalt] = 220,
+        [Items.Plastic] = 300,
+        [Items.SyntheticRubber] = 2100,
+        [Items.Fertilizer] = 150,
+        [Items.Gasket] = 1600,
+        [Items.Pumpjack] = 800_000,
+        [Items.GasWell] = 550_000,
+        [Items.OffshorePlatform] = 4_500_000,
+        [Items.WaterInjector] = 700_000,
+        [Items.OilSeparator] = 420_000,
+        [Items.Distillery] = 45_000,
+        [Items.Refinery] = 230_000,
+        [Items.Cracker] = 270_000,
+        [Items.ChemicalPlant] = 210_000,
+        [Items.GasPlant] = 150_000,
+        [Items.DieselGenerator] = 95_000,
+        [Items.Pipe] = 900,
+        [Items.Pump] = 9000,
+        [Items.Tank] = 37_000,
+        [Items.Road] = 200,
+        [Items.Glass] = 300,
+        [Items.WindowPane] = 1000,
+        [Items.GlassBottles] = 250,
+        [Items.OpticalFiber] = 2200,
+        [Items.Silicon] = 2500,
+        [Items.SiliconWafer] = 1800,
+        [Items.Water] = 20,
+        [Items.Clay] = 100,
+        [Items.AdobeBricks] = 120,
+        [Items.Cement] = 400,
+        [Items.Concrete] = 250,
+        [Items.Dates] = 200,
+        [Items.Mirror] = 3000,
+        [Items.Ammonite] = 200_000,
+        [Items.AncientCoin] = 400_000,
+        [Items.DinosaurBone] = 1_000_000,
+        [Items.Camel] = 10_000,
+        [Items.Glassworks] = 40_000,
+        [Items.ArcFurnace] = 250_000,
+        [Items.WaterWell] = 45_000,
+        [Items.Desalinator] = 120_000,
+        [Items.DryingYard] = 8000,
+        [Items.CementKiln] = 50_000,
+        [Items.ConcreteMixer] = 60_000,
+        [Items.ReedFence] = 300,
+        [Items.SolarPanel] = 12_000,
+        [Items.SolarTower] = 600_000,
+        [Items.Battery] = 15_000,
+        [Items.Ice] = 30,
+        [Items.MeteoricIron] = 15_000,
+        [Items.Iridium] = 250_000,
+        [Items.MeteoritePickaxe] = 60_000,
+        [Items.FrozenFish] = 450,
+        [Items.FrozenSalmon] = 1200,
+        [Items.IceCream] = 400,
+        [Items.ComputingPower] = 800,
+        [Items.IceCore] = 1500,
+        [Items.ResearchData] = 5000,
+        [Items.WindTurbine] = 20_000,
+        [Items.LargeWindTurbine] = 700_000,
+        [Items.Heater] = 12_000,
+        [Items.IceMelter] = 4000,
+        [Items.ColdStore] = 18_000,
+        [Items.ServerRoom] = 400_000,
+        [Items.IceCoreDrill] = 60_000,
+        [Items.PolarStation] = 50_000,
+        [Items.IceHotel] = 60_000,
+        [Items.Viewpoint] = 5000,
+        [Items.DogKennel] = 12_000,
+        [Items.SnowmobileGarage] = 70_000,
+        [Items.TrackFoundation] = 30_000,
+        [Items.CircuitBoard] = 2600,
+        [Items.ElectricMotor] = 12_000,
+        [Items.Tyres] = 11_000,
+        [Items.Blueprint] = 1500,
+        [Items.AssemblyHall] = 300_000,
+        [Items.MultistoreyFactory] = 800_000,
+        [Items.Shop] = 15_000,
+        [Items.HighBay] = 80_000,
+        [Items.CitySorter] = 60_000,
+        [Items.FreightTerminal] = 300_000,
+        [Items.CompanyHq] = 600_000,
+        [Items.DesignOffice] = 20_000,
+        [Items.Laboratory] = 60_000,
+        [Items.ServiceWorkshop] = 25_000,
+        [Items.SaplingSpruce] = 100,
+        [Items.SaplingBirch] = 100,
+        [Items.SaplingOak] = 250,
+        [Items.SaplingLinden] = 150,
+        [Items.OakWood] = 600,
+        [Items.Resin] = 300,
+        [Items.Pulp] = 300,
+        [Items.Paper] = 250,
+        [Items.Cardboard] = 350,
+        [Items.Chair] = 1500,
+        [Items.Table] = 3000,
+        [Items.Wardrobe] = 6000,
+        [Items.OakDresser] = 12_000,
+        // Charcoal is worth what coal is: a furnace hands what it burns back as coal.
+        [Items.Charcoal] = 400,
+        [Items.Mushrooms] = 150,
+        [Items.Berries] = 80,
+        [Items.Herbs] = 120,
+        [Items.MushroomSoup] = 900,
+        [Items.BerryPierogi] = 800,
+        [Items.HerbalTea] = 400,
+        [Items.Honey] = 500,
+        [Items.Wax] = 300,
+        [Items.Gingerbread] = 1500,
+        [Items.Candles] = 600,
+        [Items.Tar] = 500,
+        [Items.Turpentine] = 900,
+        [Items.Rosin] = 500,
+        [Items.Insecticide] = 1500,
+        [Items.PaperMill] = 60_000,
+        [Items.Carpentry] = 20_000,
+        [Items.CharcoalKiln] = 6000,
+        [Items.TarKiln] = 15_000,
+        [Items.Beehive] = 3000,
+        [Items.Watchtower] = 8000,
+        [Items.FireStation] = 40_000,
     };
 
     static NpcPrices()
@@ -198,9 +358,18 @@ public static class NpcPrices
     public const int MaxQuantity = 1000;
 }
 
+/// <summary>The trader's usual prices, for other modules (e.g. what towns pay for the goods they want).</summary>
+public sealed class MarketPrices : IMarketPrices
+{
+    public long? BuysCents(string item) => NpcPrices.Buys.TryGetValue(item, out var cents) ? cents : null;
+
+    public long? SellsCents(string item) => NpcPrices.Sells.TryGetValue(item, out var cents) ? cents : null;
+}
+
 public sealed record TradeRequest(string Item, int Quantity);
 
-public sealed class MarketService(GameDb db, IInventory inventory, IWallet wallet, TraderMarket trader, ITechnologies technologies)
+public sealed class MarketService(
+    GameDb db, IInventory inventory, IWallet wallet, TraderMarket trader, ITechnologies technologies, IEnumerable<IForestCertificate> certificates)
 {
     /// <summary>The player buys from the NPC: money out, items in, both or neither.</summary>
     public Task<long> BuyAsync(Guid owner, string item, int quantity, CancellationToken cancellationToken)
@@ -232,8 +401,27 @@ public sealed class MarketService(GameDb db, IInventory inventory, IWallet walle
         return db.InTransactionAsync(async () =>
         {
             await inventory.RemoveAsync(owner, item, quantity, cancellationToken);
+            // Timber from a forest kept for good pays more.
+            if (Items.IsTimber(item) && await CertifiedAsync(owner, cancellationToken))
+            {
+                price = price * (100 + ForestCertificate.BonusPercent) / 100;
+            }
+
             return await wallet.CreditAsync(owner, price * quantity, $"sell {quantity} {item}", cancellationToken);
         }, cancellationToken);
+    }
+
+    private async Task<bool> CertifiedAsync(Guid owner, CancellationToken cancellationToken)
+    {
+        foreach (var certificate in certificates)
+        {
+            if (await certificate.CertifiedAsync(owner, cancellationToken))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static long Price(IReadOnlyDictionary<string, long> prices, string item, int quantity, string notTraded)
@@ -338,6 +526,7 @@ public sealed class MarketModule : IGameModule
     {
         services.AddModuleDbContext<MarketDbContext>(MarketDbContext.Schema);
         services.AddSingleton<TraderMarket>();
+        services.AddSingleton<IMarketPrices, MarketPrices>();
         services.AddScoped<MarketService>();
         services.AddScoped<PlayerMarketService>();
         services.AddSingleton<IMessageHandler, PricesHandler>();

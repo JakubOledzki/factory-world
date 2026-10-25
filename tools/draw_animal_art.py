@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draws the art of husbandry with Pillow alone (no Blender): the hen, the sheep and the cow that
+"""Draws the art of husbandry with Pillow alone (no Blender): the hen, the sheep, the cow and the camel that
 stand on a plot (client/art/plot/, with their shadows and anchors in layout.json) and the icons of
 the animals, their products and the shears (client/art/icons/).
 
@@ -140,11 +140,35 @@ def draw_hen(draw, cx, cy, k=1.0):
     draw.ellipse((cx - 14 * s, cy - 28 * s, cx - 12 * s, cy - 26 * s), fill=(10, 8, 8))
 
 
+CAMEL = (186, 140, 84)
+
+
+def draw_camel(draw, cx, cy, k=1.0):
+    """A dromedary seen from the front left: long legs, one hump, a long curved neck."""
+    s = S * k
+    for lx in (-12, 10):
+        draw.rounded_rectangle((cx + lx * s, cy - 20 * s, cx + (lx + 4) * s, cy), radius=2 * s, fill=shade(CAMEL, 0.6))
+    for lx in (-16, 6):
+        draw.rounded_rectangle((cx + lx * s, cy - 19 * s, cx + (lx + 4) * s, cy + 1 * s), radius=2 * s, fill=shade(CAMEL, 0.8))
+    blob(draw, (cx - 20 * s, cy - 34 * s, cx + 18 * s, cy - 16 * s), CAMEL, OUTLINE, light=0.18)
+    blob(draw, (cx - 9 * s, cy - 44 * s, cx + 9 * s, cy - 28 * s), CAMEL, OUTLINE, light=0.18)
+    # The neck rising forward to the head.
+    draw.polygon([(cx - 17 * s, cy - 30 * s), (cx - 24 * s, cy - 44 * s), (cx - 19 * s, cy - 47 * s), (cx - 11 * s, cy - 31 * s)],
+                 fill=shade(CAMEL, 0.95), outline=OUTLINE)
+    blob(draw, (cx - 32 * s, cy - 52 * s, cx - 16 * s, cy - 42 * s), CAMEL, OUTLINE, light=0.16)
+    draw.ellipse((cx - 33 * s, cy - 48 * s, cx - 27 * s, cy - 43 * s), fill=shade(CAMEL, 0.75))
+    draw.ellipse((cx - 23 * s, cy - 50 * s, cx - 20 * s, cy - 47 * s), fill=(10, 8, 8))
+    draw.ellipse((cx - 19 * s, cy - 54 * s, cx - 15 * s, cy - 50 * s), fill=shade(CAMEL, 0.8), outline=OUTLINE, width=S)
+    # Tail.
+    draw.line((cx + 17 * s, cy - 28 * s, cx + 20 * s, cy - 18 * s), fill=shade(CAMEL, 0.6), width=2 * S)
+
+
 ANIMALS = {
     # name: (draw, shadow radii)
     "sheep": (draw_sheep, (22, 7)),
     "cow": (draw_cow, (30, 8)),
     "chicken": (draw_hen, (12, 4)),
+    "camel": (draw_camel, (28, 8)),
 }
 
 
@@ -170,7 +194,7 @@ def save_icon(img, name):
 def render_icons():
     for name, (paint, _) in ANIMALS.items():
         img, draw = icon()
-        k = {"sheep": 1.05, "cow": 0.8, "chicken": 1.6}[name]
+        k = {"sheep": 1.05, "cow": 0.8, "chicken": 1.6, "camel": 0.85}[name]
         paint(draw, 34 * S if name != "chicken" else 36 * S, 52 * S, k)
         save_icon(img, f"animal_{name}")
 

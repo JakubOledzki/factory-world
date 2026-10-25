@@ -26,6 +26,8 @@ public static class LogisticsRules
         [Items.FastBelt] = 2,
         [Items.ExpressBelt] = 3,
         [Items.CableStation] = 2,
+        // Fluids run fast through pipes.
+        [Items.Pipe] = 3,
     };
 
     /// <summary>Tiles a cable runs at most from one station to the next one ahead.</summary>
@@ -59,6 +61,7 @@ public static class LogisticsRules
         [Items.Inserter] = SwingTicks,
         [Items.FastInserter] = 2,
         [Items.ExpressInserter] = 1,
+        [Items.Pump] = 1,
     };
 
     /// <summary>Places a tick an item moves along a belt of this kind; a splitter's own speed comes from the belt feeding it.</summary>
@@ -201,8 +204,11 @@ public sealed class StoragePort(StorageKind kind, Contents contents, Action chan
 public sealed class PlotLogistics
 {
     /// <summary>A belt or a splitter: lanes of places that items move along.</summary>
-    private sealed class Belt(Guid id, int x, int y, int rotation, Contents contents, bool splitter, int speed)
+    private sealed class Belt(Guid id, int x, int y, int rotation, Contents contents, bool splitter, int speed, bool fluid = false)
     {
+        /// <summary>A pipe: it carries fluids only, and joins only other pipes.</summary>
+        public bool Fluid { get; } = fluid;
+
         public Guid Id { get; } = id;
         public int X { get; } = x;
         public int Y { get; } = y;
@@ -222,8 +228,11 @@ public sealed class PlotLogistics
     /// <summary>The belt items go on to, the lane each lane leads to and the place on it they come on at.</summary>
     private sealed record Link(Belt To, int[] Into, int Entry);
 
-    private sealed class Inserter(Guid id, Contents contents, int swingTicks)
+    private sealed class Inserter(Guid id, Contents contents, int swingTicks, bool fluid = false)
     {
+        /// <summary>A pump: it moves fluids only, from and onto pipes and machines; an inserter never touches them.</summary>
+        public bool Fluid { get; } = fluid;
+
         public Guid Id { get; } = id;
         public Contents Contents { get; } = contents;
         public int SwingTicks { get; } = swingTicks;
@@ -271,7 +280,7 @@ public sealed class PlotLogistics
                 c.Belt = slots;
             }
 
-            belts[(o.TileX, o.TileY)] = new Belt(o.Id, o.TileX, o.TileY, o.Rotation, c, o.Kind == Items.Splitter, LogisticsRules.BeltSpeed(o.Kind));
+            belts[(o.TileX, o.TileY)] = new Belt(o.Id, o.TileX, o.TileY, o.Rotation, c, o.Kind == Items.Splitter, LogisticsRules.BeltSpeed(o.Kind), Items.CarriesFluids(o.Kind));
         }
 
         foreach (var belt in belts.Values.Where(b => b.IsSplitter))
@@ -286,11 +295,14 @@ public sealed class PlotLogistics
         _phases = belts.Count == 0 ? 0 : belts.Values.Max(b => b.Speed);
 
         // Only belts turn corners; a splitter always runs straight.
-        var rotations = belts.Where(b => !b.Value.IsSplitter).ToDictionary(b => b.Key, b => b.Value.Rotation);
+        // Pipes and belts never join, so each bends only by its own kind.
+        var beltRotations = belts.Where(b => !b.Value.IsSplitter && !b.Value.Fluid).ToDictionary(b => b.Key, b => b.Value.Rotation);
+        var pipeRotations = belts.Where(b => b.Value.Fluid).ToDictionary(b => b.Key, b => b.Value.Rotation);
         var byId = belts.Values.ToDictionary(b => b.Id);
         var cables = LogisticsRules.CableLinks(objects);
         foreach (var belt in belts.Values)
         {
+            var rotations = belt.Fluid ? pipeRotations : beltRotations;
             if (cables.TryGetValue(belt.Id, out var station))
             {
                 // Over the cable onto the start of the station ahead.
@@ -318,22 +330,24 @@ public sealed class PlotLogistics
         foreach (var o in objects.Where(o => Items.IsInserter(o.Kind)).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
         {
             var (dx, dy) = LogisticsRules.Facing(o.Rotation);
-            var inserter = new Inserter(o.Id, Contents(contents, o.Id), LogisticsRules.Swing(o.Kind)) { Clock = power?.Clock(o.Id) };
+            var fluid = Items.CarriesFluids(o.Kind);
+            var inserter = new Inserter(o.Id, Contents(contents, o.Id), LogisticsRules.Swing(o.Kind), fluid) { Clock = power?.Clock(o.Id) };
             var from = (o.TileX - dx, o.TileY - dy);
             var to = (o.TileX + dx, o.TileY + dy);
-            inserter.FromBelt = belts.GetValueOrDefault(from);
-            inserter.ToBelt = belts.GetValueOrDefault(to);
+            // A pump reaches pipes only, an inserter belts only.
+            inserter.FromBelt = belts.GetValueOrDefault(from) is { } fromBelt && fromBelt.Fluid == fluid ? fromBelt : null;
+            inserter.ToBelt = belts.GetValueOrDefault(to) is { } toBelt && toBelt.Fluid == fluid ? toBelt : null;
             if (inserter.ToBelt is { } onto && LogisticsRules.Left(onto.Rotation) == (dx, dy))
             {
                 // Standing on the belt's right, it reaches over to the left lane first.
                 inserter.Lanes = [0, 1];
             }
-            if (at.TryGetValue(from, out var source))
+            if (at.TryGetValue(from, out var source) && !belts.ContainsKey(from))
             {
                 inserter.FromPort = ports.GetValueOrDefault(source.Id);
             }
 
-            if (at.TryGetValue(to, out var target))
+            if (at.TryGetValue(to, out var target) && !belts.ContainsKey(to))
             {
                 inserter.ToPort = ports.GetValueOrDefault(target.Id);
             }
@@ -348,7 +362,8 @@ public sealed class PlotLogistics
     /// there, unless that one runs head on into it.</summary>
     private static Link? Connect(Dictionary<(int, int), Belt> belts, Dictionary<(int, int), int> rotations, Belt belt, (int Dx, int Dy) way)
     {
-        if (!belts.TryGetValue((belt.X + way.Dx, belt.Y + way.Dy), out var next) || LogisticsRules.Facing(next.Rotation) == (-way.Dx, -way.Dy))
+        if (!belts.TryGetValue((belt.X + way.Dx, belt.Y + way.Dy), out var next) || LogisticsRules.Facing(next.Rotation) == (-way.Dx, -way.Dy)
+            || next.Fluid != belt.Fluid)
         {
             return null;
         }
@@ -619,11 +634,11 @@ public sealed class PlotLogistics
         Func<string, bool> wanted;
         if (inserter.ToBelt is not null)
         {
-            wanted = _ => true;
+            wanted = item => Items.IsFluid(item) == inserter.Fluid;
         }
         else if (inserter.ToPort is { } port)
         {
-            wanted = item => port.Accepts(item, now);
+            wanted = item => Items.IsFluid(item) == inserter.Fluid && port.Accepts(item, now);
         }
         else
         {

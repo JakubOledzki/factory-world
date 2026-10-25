@@ -8,7 +8,8 @@ public sealed record StorageKind(string Id, int Slots, int SlotSize, IReadOnlySe
 {
     public int Capacity => Slots * SlotSize;
 
-    public bool Takes(string item) => Only?.Contains(item) ?? Items.Exists(item);
+    /// <summary>Chests take any goods but fluids, which are kept in tanks only.</summary>
+    public bool Takes(string item) => Only?.Contains(item) ?? (Items.Exists(item) && !Items.IsFluid(item));
 }
 
 /// <summary>
@@ -21,6 +22,8 @@ public static class Storages
     [
         new(Items.WoodenChest, 8, 100),
         new(Items.IronChest, 24, 100),
+        // A high-bay store in a city: racks up to the roof on one tile.
+        new(Items.HighBay, 60, 200),
         new(Items.WoodPile, 1, 400, new HashSet<string> { Items.Wood }),
         new(Items.Heap, 1, 1000, new HashSet<string>
         {
@@ -28,6 +31,8 @@ public static class Storages
             Items.IronOre, Items.CopperOre, Items.TinOre, Items.SilverOre, Items.GoldOre,
         }),
         new(Items.GrainSilo, 1, 2000, new HashSet<string> { Items.Wheat, Items.Corn, Items.Sunflower }),
+        // A tank holds one fluid at a time.
+        new(Items.Tank, 1, 2000, new HashSet<string> { Items.CrudeOil, Items.NaturalGas, Items.Gasoline, Items.Diesel, Items.Kerosene }),
     ];
 
     public static StorageKind? Find(string kind) => Kinds.FirstOrDefault(k => k.Id == kind);

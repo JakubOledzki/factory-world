@@ -22,6 +22,15 @@ public static partial class CompanyRules
     /// <summary>Most items, of all kinds together, the warehouse holds.</summary>
     public const long WarehouseCapacity = 50_000;
 
+    /// <summary>With a headquarters on one of its plots (a city building) a company takes more members and stores more.</summary>
+    public const int HqMaxMembers = 30;
+
+    public const long HqWarehouseCapacity = 150_000;
+
+    public static int MaxMembersFor(bool hq) => hq ? HqMaxMembers : MaxMembers;
+
+    public static long CapacityFor(bool hq) => hq ? HqWarehouseCapacity : WarehouseCapacity;
+
     /// <summary>How many of the latest log entries members see.</summary>
     public const int LogLength = 30;
 
@@ -44,29 +53,59 @@ public static partial class CompanyRules
 /// <summary>A member's role: what they may do in the company and on its plots.</summary>
 public static class Roles
 {
-    /// <summary>Runs the company: invites and removes members, gives roles; otherwise a partner.</summary>
+    /// <summary>Runs the company: invites and removes members, gives roles; otherwise a partner and a treasurer.</summary>
     public const string Owner = "owner";
 
-    /// <summary>Builds on the company's plots and takes from its warehouse, storages and stations.</summary>
+    /// <summary>Builds on the company's plots, sets up train routes and takes from its warehouse, storages and stations; chooses research and big projects.</summary>
     public const string Partner = "partner";
+
+    /// <summary>Manages the company's cash: pays out, buys and sells for it, sets tasks with wages and signs deals with other companies.</summary>
+    public const string Treasurer = "treasurer";
+
+    /// <summary>Builds only on the plots the owner put them in charge of; elsewhere works like a worker.</summary>
+    public const string Manager = "manager";
+
+    /// <summary>Sets up train routes and sends trains from every company plot, and takes from storages and stations.</summary>
+    public const string Logistician = "logistician";
 
     /// <summary>Works on the company's plots (gathers, farms, mines, runs machines) and puts things in, but takes nothing out and builds nothing.</summary>
     public const string Worker = "worker";
 
-    public static readonly IReadOnlyList<string> All = [Owner, Partner, Worker];
+    public static readonly IReadOnlyList<string> All = [Owner, Partner, Treasurer, Manager, Logistician, Worker];
+
+    private static readonly IReadOnlySet<PlotRight> Leading = new HashSet<PlotRight> { PlotRight.Work, PlotRight.Take, PlotRight.Build, PlotRight.Routes };
 
     private static readonly IReadOnlySet<PlotRight> Building = new HashSet<PlotRight> { PlotRight.Work, PlotRight.Take, PlotRight.Build };
 
+    private static readonly IReadOnlySet<PlotRight> Taking = new HashSet<PlotRight> { PlotRight.Work, PlotRight.Take };
+
+    private static readonly IReadOnlySet<PlotRight> Shipping = new HashSet<PlotRight> { PlotRight.Work, PlotRight.Take, PlotRight.Routes };
+
     private static readonly IReadOnlySet<PlotRight> Working = new HashSet<PlotRight> { PlotRight.Work };
 
-    public static IReadOnlySet<PlotRight> Rights(string role) => role == Worker ? Working : Building;
+    /// <param name="manages">Whether the member is in charge of this plot (only a manager's role cares).</param>
+    public static IReadOnlySet<PlotRight> Rights(string role, bool manages = false) => role switch
+    {
+        Owner or Partner => Leading,
+        Treasurer => Taking,
+        Logistician => Shipping,
+        Manager => manages ? Building : Working,
+        _ => Working,
+    };
 
     public static bool MayTake(string role) => role != Worker;
+
+    /// <summary>Pays out of the company's cash, buys and sells for it, sets wages and signs deals.</summary>
+    public static bool HandlesMoney(string role) => role is Owner or Treasurer;
+
+    /// <summary>Chooses the company's research and big projects.</summary>
+    public static bool Leads(string role) => role is Owner or Partner;
 }
 
 public sealed record Member(Guid AccountId, string Name, string Role, DateTimeOffset JoinedAt);
 
-public sealed record CompanyPlot(int X, int Y, int Biome, Guid OwnerId, string OwnerName);
+/// <param name="Manager">The member in charge of building on it, if any.</param>
+public sealed record CompanyPlot(int X, int Y, int Biome, Guid OwnerId, string OwnerName, string? Manager = null);
 
 public sealed record LogEntry(DateTimeOffset At, string Who, string Action, string? Item, long Quantity, string? Other);
 
@@ -74,14 +113,41 @@ public sealed record Invitation(Guid CompanyId, string CompanyName, int Members)
 
 public sealed record CompanyState(
     Guid Id, string Name, string Role, IReadOnlyList<Member> Members, IReadOnlyList<string> Invited, IReadOnlyList<CompanyPlot> Plots,
-    IReadOnlyDictionary<string, long> Warehouse, IReadOnlyList<LogEntry> Log);
+    IReadOnlyDictionary<string, long> Warehouse, IReadOnlyList<LogEntry> Log, bool Hq = false, CompanyEconomy? Economy = null);
 
 /// <param name="Company">The player's company, or null when they are in none.</param>
 /// <param name="Invitations">Companies that invited the player.</param>
 public sealed record CompanyView(Guid Player, CompanyState? Company, IReadOnlyList<Invitation> Invitations);
 
-public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNames names, IPlotRegistry plots, TimeProvider time)
+public sealed partial class CompanyService(
+    GameDb db, IInventory inventory, ICharacterNames names, IPlotRegistry plots, IPlotObjects objects, IWallet wallet,
+    IMarketPrices prices, ITechnologies technologies, ICompanyTechnologies companyTechnologies, TimeProvider time)
 {
+    /// <summary>Whether a headquarters stands on any of the company's plots.</summary>
+    public async Task<bool> HasHqAsync(Guid company, CancellationToken cancellationToken)
+    {
+        var at = new List<(int, int)>();
+        await using (var select = await db.CommandAsync("SELECT x, y FROM companies.plots WHERE company_id = @company", cancellationToken))
+        {
+            select.Parameters.AddWithValue("company", company);
+            await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                at.Add((reader.GetInt32(0), reader.GetInt32(1)));
+            }
+        }
+
+        foreach (var (x, y) in at)
+        {
+            if ((await objects.ObjectsAsync(x, y, cancellationToken)).Any(o => o.Kind == Items.CompanyHq))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     public Task<CompanyView> ViewAsync(Guid player, CancellationToken cancellationToken) =>
         db.InTransactionAsync(() => ReadAsync(player, cancellationToken), cancellationToken);
 
@@ -99,7 +165,7 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
             var id = Guid.NewGuid();
             await using (var insert = await db.CommandAsync(
                 """
-                INSERT INTO companies.companies (id, name, normalized_name, created_at) VALUES (@id, @name, @normalized, @at)
+                INSERT INTO companies.companies (id, name, normalized_name, created_at, dividend_at) VALUES (@id, @name, @normalized, @at, @at)
                 ON CONFLICT (normalized_name) DO NOTHING
                 """, cancellationToken))
             {
@@ -114,6 +180,7 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
             }
 
             await AddMemberAsync(id, player, Roles.Owner, cancellationToken);
+            await IssueSharesAsync(id, player, CompanyMoney.FounderShares, cancellationToken);
             await LogAsync(id, player, "founded", cancellationToken);
             return await ReadAsync(player, cancellationToken);
         }, cancellationToken);
@@ -132,9 +199,9 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
 
             if (await CountAsync("SELECT count(*) FROM companies.members WHERE company_id = @company", company, cancellationToken)
                 + await CountAsync("SELECT count(*) FROM companies.invites WHERE company_id = @company", company, cancellationToken)
-                >= CompanyRules.MaxMembers)
+                >= CompanyRules.MaxMembersFor(await HasHqAsync(company, cancellationToken)))
             {
-                throw new GameException("company_full", $"A company has at most {CompanyRules.MaxMembers} members.");
+                throw new GameException("company_full", "The company has as many members as it can take.");
             }
 
             await using (var insert = await db.CommandAsync(
@@ -240,7 +307,7 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
         {
             if (!Roles.All.Contains(role ?? ""))
             {
-                throw new GameException("bad_role", "A role is owner, partner or worker.");
+                throw new GameException("bad_role", $"A role is one of: {string.Join(", ", Roles.All)}.");
             }
 
             var (company, _) = await RequireOwnerAsync(player, cancellationToken);
@@ -280,7 +347,10 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
                 insert.Parameters.AddWithValue("owner", player);
                 if (await insert.ExecuteNonQueryAsync(cancellationToken) > 0)
                 {
-                    await LogAsync(company, player, "plotAdded", cancellationToken, item: $"{x}:{y}");
+                    // What the plot cost buys its owner shares, at the price they have now.
+                    var shares = plot.PriceCents / await SharePriceAsync(company, cancellationToken);
+                    await IssueSharesAsync(company, player, shares, cancellationToken);
+                    await LogAsync(company, player, "plotAdded", cancellationToken, item: $"{x}:{y}", quantity: shares);
                 }
             }
 
@@ -317,9 +387,10 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
             await LockAsync(company, cancellationToken);
             var stored = await CountAsync(
                 "SELECT coalesce(sum(quantity), 0) FROM companies.warehouse WHERE company_id = @company", company, cancellationToken);
-            if (stored + quantity > CompanyRules.WarehouseCapacity)
+            var capacity = CompanyRules.CapacityFor(await HasHqAsync(company, cancellationToken));
+            if (stored + quantity > capacity)
             {
-                throw new GameException("warehouse_full", $"The warehouse holds {CompanyRules.WarehouseCapacity} items.");
+                throw new GameException("warehouse_full", $"The warehouse holds {capacity} items.");
             }
 
             await inventory.RemoveAsync(player, item!, quantity, cancellationToken);
@@ -352,9 +423,9 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
             throw new GameException("unknown_item", "Unknown item.");
         }
 
-        if (quantity is < 1 or > CompanyRules.WarehouseCapacity)
+        if (quantity is < 1 or > CompanyRules.HqWarehouseCapacity)
         {
-            throw new GameException("bad_quantity", $"Quantity must be 1-{CompanyRules.WarehouseCapacity}.");
+            throw new GameException("bad_quantity", $"Quantity must be 1-{CompanyRules.HqWarehouseCapacity}.");
         }
     }
 
@@ -446,9 +517,12 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
 
     private async Task RemoveMemberAsync(Guid company, Guid player, CancellationToken cancellationToken)
     {
+        // Their shares stay theirs; tasks given to them and plots they were in charge of are free again.
         await using var delete = await db.CommandAsync(
             """
             DELETE FROM companies.plots WHERE company_id = @company AND owner_id = @player;
+            UPDATE companies.plots SET manager_id = NULL WHERE company_id = @company AND manager_id = @player;
+            UPDATE companies.tasks SET assignee_id = NULL WHERE company_id = @company AND assignee_id = @player AND done_at IS NULL;
             DELETE FROM companies.members WHERE company_id = @company AND account_id = @player;
             """, cancellationToken);
         delete.Parameters.AddWithValue("company", company);
@@ -456,9 +530,22 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
         await delete.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    /// <summary>The last member left: what is in the warehouse goes to them, and the company is gone.</summary>
+    /// <summary>The last member left: what is in the warehouse and the cash (with wages nobody earned) go to them, and the company is gone.</summary>
     private async Task CloseAsync(Guid company, Guid player, CancellationToken cancellationToken)
     {
+        await using (var cash = await db.CommandAsync(
+            """
+            SELECT c.cash_cents + coalesce((SELECT sum(t.wage_cents - t.paid_cents) FROM companies.tasks t WHERE t.company_id = c.id AND t.done_at IS NULL), 0)
+            FROM companies.companies c WHERE c.id = @company
+            """, cancellationToken))
+        {
+            cash.Parameters.AddWithValue("company", company);
+            if (await cash.ExecuteScalarAsync(cancellationToken) is long cents and > 0)
+            {
+                await wallet.CreditAsync(player, cents, $"company {company} closed", cancellationToken);
+            }
+        }
+
         var stock = new List<(string, long)>();
         await using (var select = await db.CommandAsync(
             "SELECT item, quantity FROM companies.warehouse WHERE company_id = @company AND quantity > 0", cancellationToken))
@@ -482,6 +569,13 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
             DELETE FROM companies.invites WHERE company_id = @company;
             DELETE FROM companies.plots WHERE company_id = @company;
             DELETE FROM companies.log WHERE company_id = @company;
+            DELETE FROM companies.shares WHERE company_id = @company;
+            DELETE FROM companies.income WHERE company_id = @company;
+            DELETE FROM companies.project_parts WHERE company_id = @company;
+            DELETE FROM companies.projects WHERE company_id = @company;
+            DELETE FROM companies.orders WHERE company_id = @company;
+            DELETE FROM companies.tasks WHERE company_id = @company;
+            UPDATE companies.deals SET state = 'cancelled' WHERE (supplier_id = @company OR buyer_id = @company) AND state IN ('offered', 'active');
             DELETE FROM companies.companies WHERE id = @company;
             """, cancellationToken);
         delete.Parameters.AddWithValue("company", company);
@@ -556,6 +650,7 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
         }
 
         var company = membership.Company;
+        await SettleAsync(company, cancellationToken);
         string name;
         await using (var select = await db.CommandAsync("SELECT name FROM companies.companies WHERE id = @company", cancellationToken))
         {
@@ -577,15 +672,15 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
 
         var invited = await GuidsAsync("SELECT account_id FROM companies.invites WHERE company_id = @company ORDER BY invited_at", company, cancellationToken);
 
-        var plotRows = new List<(int, int, Guid)>();
+        var plotRows = new List<(int, int, Guid, Guid?)>();
         await using (var select = await db.CommandAsync(
-            "SELECT x, y, owner_id FROM companies.plots WHERE company_id = @company ORDER BY owner_id, x, y", cancellationToken))
+            "SELECT x, y, owner_id, manager_id FROM companies.plots WHERE company_id = @company ORDER BY owner_id, x, y", cancellationToken))
         {
             select.Parameters.AddWithValue("company", company);
             await using var reader = await select.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                plotRows.Add((reader.GetInt32(0), reader.GetInt32(1), reader.GetGuid(2)));
+                plotRows.Add((reader.GetInt32(0), reader.GetInt32(1), reader.GetGuid(2), reader.IsDBNull(3) ? null : reader.GetGuid(3)));
             }
         }
 
@@ -616,16 +711,18 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
             }
         }
 
+        var economy = await EconomyAsync(company, cancellationToken);
         var everyone = members.Select(m => m.Item1).Concat(invited).Concat(log.Select(l => l.Item2))
-            .Concat(log.Where(l => l.Item6 is not null).Select(l => l.Item6!.Value)).ToHashSet();
+            .Concat(log.Where(l => l.Item6 is not null).Select(l => l.Item6!.Value)).Concat(economy.People).ToHashSet();
         var known = await names.NamesAsync(everyone, cancellationToken);
         string NameOf(Guid id) => known.GetValueOrDefault(id, "?");
+        economy = economy with { Names = known };
 
         var plotStates = new List<CompanyPlot>();
-        foreach (var (x, y, owner) in plotRows)
+        foreach (var (x, y, owner, manager) in plotRows)
         {
             var biome = (await plots.FindAsync(x, y, cancellationToken))?.Biome ?? 0;
-            plotStates.Add(new CompanyPlot(x, y, biome, owner, NameOf(owner)));
+            plotStates.Add(new CompanyPlot(x, y, biome, owner, NameOf(owner), manager is { } m ? NameOf(m) : null));
         }
 
         return new CompanyView(player, new CompanyState(
@@ -634,7 +731,9 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
             invited.Select(NameOf).ToList(),
             plotStates,
             warehouse,
-            log.Select(l => new LogEntry(l.Item1, NameOf(l.Item2), l.Item3, l.Item4, l.Item5, l.Item6 is { } o ? NameOf(o) : null)).ToList()),
+            log.Select(l => new LogEntry(l.Item1, NameOf(l.Item2), l.Item3, l.Item4, l.Item5, l.Item6 is { } o ? NameOf(o) : null)).ToList(),
+            await HasHqAsync(company, cancellationToken),
+            economy),
             []);
     }
 
@@ -672,8 +771,8 @@ public sealed class CompanyService(GameDb db, IInventory inventory, ICharacterNa
     }
 }
 
-/// <summary>What members may do on their company's plots, for the world module.</summary>
-public sealed class CompanyPlots(GameDb db) : ICompanyPlots
+/// <summary>What members may do on their company's plots, for the world module, and companies as other modules see them.</summary>
+public sealed class CompanyPlots(GameDb db, TimeProvider time) : ICompanyPlots, ICompanies
 {
     private static readonly IReadOnlySet<PlotRight> None = new HashSet<PlotRight>();
 
@@ -681,13 +780,59 @@ public sealed class CompanyPlots(GameDb db) : ICompanyPlots
     {
         await using var command = await db.CommandAsync(
             """
-            SELECT m.role FROM companies.plots p JOIN companies.members m ON m.company_id = p.company_id
+            SELECT m.role, p.manager_id IS NOT DISTINCT FROM m.account_id FROM companies.plots p JOIN companies.members m ON m.company_id = p.company_id
             WHERE p.x = @x AND p.y = @y AND m.account_id = @player
             """, cancellationToken);
         command.Parameters.AddWithValue("x", x);
         command.Parameters.AddWithValue("y", y);
         command.Parameters.AddWithValue("player", player);
-        return await command.ExecuteScalarAsync(cancellationToken) is string role ? Roles.Rights(role) : None;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? Roles.Rights(reader.GetString(0), reader.GetBoolean(1)) : None;
+    }
+
+    public async Task<CompanyMembership?> MembershipAsync(Guid player, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            "SELECT c.id, c.name, m.role FROM companies.members m JOIN companies.companies c ON c.id = m.company_id WHERE m.account_id = @player",
+            cancellationToken);
+        command.Parameters.AddWithValue("player", player);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? new CompanyMembership(reader.GetGuid(0), reader.GetString(1), reader.GetString(2), Roles.Leads(reader.GetString(2)))
+            : null;
+    }
+
+    public async Task<IReadOnlyList<Guid>> MembersAsync(Guid company, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync("SELECT account_id FROM companies.members WHERE company_id = @company", cancellationToken);
+        command.Parameters.AddWithValue("company", company);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var members = new List<Guid>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            members.Add(reader.GetGuid(0));
+        }
+
+        return members;
+    }
+
+    public async Task<IReadOnlySet<string>> ProjectsAsync(Guid player, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            """
+            SELECT p.project FROM companies.projects p JOIN companies.members m ON m.company_id = p.company_id
+            WHERE m.account_id = @player AND p.built_at <= @now
+            """, cancellationToken);
+        command.Parameters.AddWithValue("player", player);
+        command.Parameters.AddWithValue("now", time.GetUtcNow());
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var done = new HashSet<string>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            done.Add(reader.GetString(0));
+        }
+
+        return done;
     }
 
     public async Task<PlotCompany?> CompanyAsync(Guid viewer, int x, int y, CancellationToken cancellationToken)

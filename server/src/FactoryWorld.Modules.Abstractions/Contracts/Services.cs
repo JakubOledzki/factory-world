@@ -143,10 +143,13 @@ public enum PlotRight
 
     /// <summary>Only the owner, e.g. a geological survey.</summary>
     Owner,
+    /// <summary>Set up and stop the station's train routes: the owner, and a company's partners and logistician.</summary>
+    Routes,
 }
 
 /// <summary>A bought plot, for modules outside the world.</summary>
-public sealed record OwnedPlot(int X, int Y, Guid Owner, int Biome);
+/// <param name="PriceCents">What its owner paid for it.</param>
+public sealed record OwnedPlot(int X, int Y, Guid Owner, int Biome, long PriceCents = 0);
 
 /// <summary>Who owns which plot.</summary>
 public interface IPlotRegistry
@@ -265,4 +268,27 @@ public interface ITechnologies
 
     /// <summary>Fails with <c>locked</c> while the item is still to be researched.</summary>
     Task RequireUnlockedAsync(Guid player, string item, CancellationToken cancellationToken);
+}
+
+/// <summary>What the trader usually pays for items, before its events move the prices.</summary>
+public interface IMarketPrices
+{
+    /// <summary>The usual price the trader pays for one piece, in cents, or null when it buys none.</summary>
+    long? BuysCents(string item);
+
+    /// <summary>The usual price the trader asks for one piece, in cents, or null when it sells none.</summary>
+    long? SellsCents(string item);
+}
+
+/// <summary>The forest certificate: a player who planted at least as many trees as they cut over the last week, and
+/// enough of them, sells timber dearer.</summary>
+public interface IForestCertificate
+{
+    Task<bool> CertifiedAsync(Guid player, CancellationToken cancellationToken);
+}
+
+public static class ForestCertificate
+{
+    /// <summary>How much more the trader pays a certified player for timber, in percent.</summary>
+    public const int BonusPercent = 15;
 }

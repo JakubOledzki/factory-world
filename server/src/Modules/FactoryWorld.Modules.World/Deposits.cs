@@ -40,7 +40,8 @@ public sealed record Mineral(MineralKind Kind, DepositSize Size)
     };
 }
 
-public sealed record Survey(DepositSize Oil, DepositSize Gas, Mineral? Mineral = null);
+/// <param name="Seabed">On the coast, the oil under the seabed off the plot, which only an offshore platform reaches.</param>
+public sealed record Survey(DepositSize Oil, DepositSize Gas, Mineral? Mineral = null, DepositSize Seabed = DepositSize.None);
 
 /// <summary>
 /// Oil and gas under the plots, and in the mountains a mineral in the rock (sulfur, salt, marble or
@@ -66,16 +67,23 @@ public static class Deposits
         [Biome.City] = (50, 50),
         [Biome.Coast] = (200, 150),
         [Biome.Lakeshore] = (60, 80),
+        [Biome.Oasis] = (250, 200),
     };
 
     /// <summary>Chance (per mille) of a mineral in the rock of a mountain plot; other plots have none.</summary>
     public const int MineralChance = 700;
 
+    /// <summary>Chance (per mille) of oil under the seabed off a coast plot.</summary>
+    public const int SeabedChance = 500;
+
     public static Survey Under(int x, int y, Biome biome)
     {
         var (oil, gas) = Chance.GetValueOrDefault(biome);
-        return new Survey(Roll(x, y, 0x0111u, oil), Roll(x, y, 0x6a50u, gas), MineralIn(x, y, biome));
+        return new Survey(Roll(x, y, 0x0111u, oil), Roll(x, y, 0x6a50u, gas), MineralIn(x, y, biome), SeabedIn(x, y, biome));
     }
+
+    /// <summary>The oil under the seabed off a coast plot, whether or not it was surveyed; none elsewhere.</summary>
+    public static DepositSize SeabedIn(int x, int y, Biome biome) => biome == Biome.Coast ? Roll(x, y, 0x5eabu, SeabedChance) : DepositSize.None;
 
     /// <summary>The mineral in the rock of a plot, whether or not it was surveyed.</summary>
     public static Mineral MineralIn(int x, int y, Biome biome)
@@ -128,7 +136,8 @@ public sealed class SurveyService(GameDb db, WorldMap map, PlotService plots, IW
         command.Parameters.AddWithValue("y", y);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken)
-            ? new Survey((DepositSize)reader.GetInt16(0), (DepositSize)reader.GetInt16(1), Deposits.MineralIn(x, y, map.BiomeAt(x, y)))
+            ? new Survey((DepositSize)reader.GetInt16(0), (DepositSize)reader.GetInt16(1), Deposits.MineralIn(x, y, map.BiomeAt(x, y)),
+                Deposits.SeabedIn(x, y, map.BiomeAt(x, y)))
             : null;
     }
 
@@ -180,6 +189,8 @@ public sealed class SurveyHandler(IServiceScopeFactory scopes) : IMessageHandler
     {
         oil = (int)survey.Oil,
         gas = (int)survey.Gas,
+        // Oil under the seabed off a coast plot (0-3), for an offshore platform.
+        seabed = (int)survey.Seabed,
         // The mineral in the rock (0 none, 1 sulfur, 2 salt, 3 marble, 4 quartz), how much (0-3) and what it comes up as.
         mineral = (int)(survey.Mineral ?? Mineral.None).Kind,
         mineralSize = (int)(survey.Mineral ?? Mineral.None).Size,

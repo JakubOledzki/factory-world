@@ -11,7 +11,8 @@ namespace FactoryWorld.Modules.World;
 /// press, pickling barrel, bakery, field kitchen), belts, inserters, chests, a generator and the
 /// poles that carry its power, a computer to trade on the market from the plot, a forester's building
 /// that grows and cuts a forest around itself, a sawmill, or the mountain industry: a drill at a mine,
-/// a quarry, a crusher, a stonemason, a foundry, water power and cable car stations. Each stands on one tile (a forester's
+/// a quarry, a crusher, a stonemason, a foundry, water power and cable car stations, or on the shore boats,
+/// a smokehouse, a cannery, a salt pan, a fish farm, a shipyard, a port, a breakwater, a lighthouse and a tidal plant. Each stands on one tile (a forester's
 /// building on 3 × 3, see <see cref="Footprints"/>), turned by quarter turns like furniture in the garage.
 /// </summary>
 public static class PlotObjects
@@ -29,6 +30,29 @@ public static class PlotObjects
         Items.Sawmill, Items.ElectricSawmill, Items.IndustrialSawmill,
         Items.Drill, Items.HeavyDrill, Items.Quarry, Items.Crusher, Items.Stonemason, Items.Foundry,
         Items.WaterWheel, Items.HydroPlant, Items.CableStation,
+        Items.FishingBoat, Items.RowingBoat, Items.Smokehouse, Items.Cannery, Items.SaltPan, Items.FishFarm,
+        Items.Shipyard, Items.Port, Items.Breakwater, Items.Lighthouse, Items.TidalPlant,
+        Items.Pumpjack, Items.GasWell, Items.OffshorePlatform, Items.WaterInjector, Items.OilSeparator,
+        Items.Distillery, Items.Refinery, Items.Cracker, Items.ChemicalPlant, Items.GasPlant, Items.DieselGenerator,
+        Items.Pipe, Items.Pump, Items.Tank, Items.Road,
+        Items.Glassworks, Items.ArcFurnace, Items.WaterWell, Items.Desalinator, Items.DryingYard, Items.CementKiln, Items.ConcreteMixer,
+        Items.ReedFence, Items.SolarPanel, Items.SolarTower, Items.Battery,
+        Items.WindTurbine, Items.LargeWindTurbine, Items.Heater, Items.IceMelter, Items.ColdStore, Items.ServerRoom,
+        Items.IceCoreDrill, Items.PolarStation, Items.IceHotel, Items.Viewpoint, Items.DogKennel, Items.SnowmobileGarage, Items.TrackFoundation,
+        Items.AssemblyHall, Items.MultistoreyFactory, Items.Shop, Items.HighBay, Items.CitySorter, Items.FreightTerminal, Items.CompanyHq,
+        Items.DesignOffice, Items.Laboratory, Items.ServiceWorkshop,
+        Items.PaperMill, Items.Carpentry, Items.CharcoalKiln, Items.TarKiln, Items.Beehive, Items.Watchtower, Items.FireStation,
+    };
+
+    /// <summary>What stands on the glacier only, or on the glacier and the tundra.</summary>
+    private static readonly IReadOnlyDictionary<string, Biome[]> Polar = new Dictionary<string, Biome[]>
+    {
+        [Items.IceCoreDrill] = [Biome.Ice],
+        [Items.TrackFoundation] = [Biome.Ice],
+        [Items.IceHotel] = [Biome.Ice, Biome.Tundra],
+        [Items.Viewpoint] = [Biome.Ice, Biome.Tundra],
+        [Items.DogKennel] = [Biome.Ice, Biome.Tundra],
+        [Items.SnowmobileGarage] = [Biome.Ice, Biome.Tundra],
     };
 
     /// <summary>Fails unless an object of <paramref name="kind"/> may stand on (tileX, tileY) of a plot of
@@ -51,10 +75,49 @@ public static class PlotObjects
             throw new GameException("no_quarry", "A quarry is cut into the mountains only.");
         }
 
-        if (Items.IsHydro(kind) && !WaterPower.Allowed((int)biome))
+        if (Items.IsHydro(kind) && kind != Items.TidalPlant && !WaterPower.Allowed((int)biome))
         {
             throw new GameException("no_water", "Water power needs a mountain stream, a lake or the sea.");
         }
+
+        if (kind == Items.SolarTower && !Oasis.Sandy((int)biome))
+        {
+            throw new GameException("no_sand", "A solar tower with mirrors stands on a desert or in an oasis.");
+        }
+
+        if (Polar.TryGetValue(kind, out var polar) && !polar.Contains(biome))
+        {
+            throw polar.Length == 1
+                ? new GameException("no_glacier", "It stands on the glacier only.")
+                : new GameException("no_polar", "It stands on the glacier or the tundra only.");
+        }
+
+        if (kind == Items.TrackFoundation && others.Any(o => o.Kind == Items.TrackFoundation))
+        {
+            throw new GameException("has_foundation", "The track of this plot has its foundation already.");
+        }
+
+        if (Items.IsCityOnly(kind) && biome != Biome.City)
+        {
+            throw new GameException("no_city", "It stands in a city only.");
+        }
+
+        if (biome == Biome.City && !Footprints.Tiles(kind, tileX, tileY).All(t => CityRules.InBuildArea(t.X, t.Y)))
+        {
+            throw new GameException("city_cramped", "In a city only the ground by the station can be built on.");
+        }
+
+        if (kind is Items.FreightTerminal or Items.CompanyHq && others.Any(o => o.Kind == kind))
+        {
+            throw new GameException("has_one", "A plot has room for one of these.");
+        }
+
+        if (kind == Items.Beehive && !Bees.Fly(biome))
+        {
+            throw new GameException("no_bees", "No bees fly on the glacier or in the mountains.");
+        }
+
+        Coast.RequireSite(kind, x, y, biome, tileX, tileY);
     }
 }
 
@@ -68,7 +131,7 @@ public interface IPlacedHook
 
 public sealed class PlotObjectService(
     GameDb db, PlotService plots, IInventory inventory, IEnumerable<IMachineContents> machines, IEnumerable<IPlotAutomation> automation,
-    IEnumerable<IPlacedHook> placing)
+    IEnumerable<IPlacedHook> placing, BeachService beach, OilService oil, IEnumerable<ICompanyPlots> companies)
     : IPlacedObjects
 {
     public async Task<IReadOnlyList<PlacedOnPlot>> ObjectsAsync(int x, int y, CancellationToken cancellationToken)
@@ -117,6 +180,27 @@ public sealed class PlotObjectService(
 
             await CatchUpAsync(x, y, cancellationToken);
             PlotObjects.RequireSite(kind, x, y, biome, tileX, tileY, await ObjectsAsync(x, y, cancellationToken));
+            if (Items.IsBoat(kind))
+            {
+                await beach.RequireRoomForBoatAsync(x, y, biome, cancellationToken);
+            }
+
+            await oil.RequireSiteAsync(kind, x, y, await ObjectsAsync(x, y, cancellationToken), cancellationToken);
+            if (kind == Items.CompanyHq)
+            {
+                // A company's headquarters stands on a plot brought into the company.
+                PlotCompany? company = null;
+                foreach (var c in companies)
+                {
+                    company ??= await c.CompanyAsync(player, x, y, cancellationToken);
+                }
+
+                if (company is not { Member: true })
+                {
+                    throw new GameException("hq_off_company", "Headquarters stand on a plot of your company.");
+                }
+            }
+
             await inventory.RemoveAsync(player, kind, 1, cancellationToken);
             var placed = new PlacedOnPlot(Guid.NewGuid(), kind, tileX, tileY, rotation);
             await using var insert = await db.CommandAsync(
@@ -182,6 +266,24 @@ public sealed class PlotObjectService(
         {
             var owner = (await plots.RightsAsync(player, x, y, cancellationToken)).Contains(PlotRight.Owner);
             await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            (int X, int Y)? tile = null;
+            await using (var find = await db.CommandAsync("SELECT tile_x, tile_y FROM world.plot_objects WHERE id = @id AND x = @x AND y = @y", cancellationToken))
+            {
+                find.Parameters.AddWithValue("id", id);
+                find.Parameters.AddWithValue("x", x);
+                find.Parameters.AddWithValue("y", y);
+                await using var reader = await find.ExecuteReaderAsync(cancellationToken);
+                if (await reader.ReadAsync(cancellationToken))
+                {
+                    tile = (reader.GetInt32(0), reader.GetInt32(1));
+                }
+            }
+
+            if (tile is { } t)
+            {
+                await plots.RequireDugOutAsync(x, y, t.X, t.Y, cancellationToken);
+            }
+
             await CatchUpAsync(x, y, cancellationToken);
             await using var delete = await db.CommandAsync(
                 """
@@ -206,9 +308,9 @@ public sealed class PlotObjectService(
     /// <summary>Any object on a plot the player may work on: their own, or one of their company's.</summary>
     public async Task<string?> KindAsync(Guid owner, Guid id, CancellationToken cancellationToken)
     {
-        int x, y;
+        int x, y, tileX, tileY;
         string kind;
-        await using (var command = await db.CommandAsync("SELECT x, y, kind FROM world.plot_objects WHERE id = @id", cancellationToken))
+        await using (var command = await db.CommandAsync("SELECT x, y, kind, tile_x, tile_y FROM world.plot_objects WHERE id = @id", cancellationToken))
         {
             command.Parameters.AddWithValue("id", id);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -217,10 +319,17 @@ public sealed class PlotObjectService(
                 return null;
             }
 
-            (x, y, kind) = (reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2));
+            (x, y, kind, tileX, tileY) = (reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2), reader.GetInt32(3), reader.GetInt32(4));
         }
 
-        return (await plots.RightsAsync(owner, x, y, cancellationToken)).Contains(PlotRight.Work) ? kind : null;
+        if (!(await plots.RightsAsync(owner, x, y, cancellationToken)).Contains(PlotRight.Work))
+        {
+            return null;
+        }
+
+        // Snow from an avalanche buries a machine on the glacier until it is dug out.
+        await plots.RequireDugOutAsync(x, y, tileX, tileY, cancellationToken);
+        return kind;
     }
 
     private async Task CatchUpAsync(int x, int y, CancellationToken cancellationToken)

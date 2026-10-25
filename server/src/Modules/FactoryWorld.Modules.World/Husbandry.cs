@@ -10,13 +10,23 @@ namespace FactoryWorld.Modules.World;
 /// <param name="Yield">Products one collection gives.</param>
 /// <param name="Time">How long a fed animal takes to give its product on a plot without a husbandry bonus.</param>
 /// <param name="Tool">The tool in hand needed to collect the product, or null for bare hands.</param>
-public sealed record Animal(string Item, string Product, int Yield, TimeSpan Time, string? Tool, int Xp);
+public sealed record Animal(string Item, string Product, int Yield, TimeSpan Time, string? Tool, int Xp)
+{
+    /// <summary>A second product one collection gives too, or null: a camel gives wool besides its milk.</summary>
+    public (string Item, int Quantity)? Extra { get; init; }
+
+    /// <summary>Whether it lives only on sand: a camel lives on a desert and in an oasis, and nowhere else.</summary>
+    public bool Sandy { get; init; }
+
+    /// <summary>Everything one collection gives.</summary>
+    public IReadOnlyList<(string Item, int Quantity)> Gives => Extra is { } extra ? [(Product, Yield), extra] : [(Product, Yield)];
+}
 
 /// <summary>
 /// Animals bought on the market are let out on a free tile of a pasture (a plot of a biome with
 /// grass), fed a few crops and, after their time, give their product: a hen eggs, a sheep wool
 /// (cut with shears), a cow milk. A fed animal gives once, then wants feeding again. The steppe
-/// and fertile soils raise animals faster; nothing lives on a desert or a glacier. An animal is
+/// and fertile soils raise animals faster; only camels live on a desert and nothing on a glacier. An animal is
 /// taken back into the inventory with what it was going to give, if anything, lost.
 /// </summary>
 public static class Husbandry
@@ -27,12 +37,13 @@ public static class Husbandry
         new(Items.Chicken, Items.Egg, 2, TimeSpan.FromMinutes(4), null, 2),
         new(Items.Sheep, Items.Wool, 2, TimeSpan.FromMinutes(8), Items.Shears, 5),
         new(Items.Cow, Items.Milk, 3, TimeSpan.FromMinutes(12), null, 7),
+        new(Items.Camel, Items.Milk, 2, TimeSpan.FromMinutes(10), null, 8) { Extra = (Items.Wool, 1), Sandy = true },
     ];
 
     public static readonly IReadOnlyDictionary<string, Animal> ById = Animals.ToDictionary(a => a.Item);
 
-    /// <summary>Crops any animal eats, <see cref="FeedPerMeal"/> of one kind per feeding.</summary>
-    public static readonly IReadOnlyList<string> Feed = [Items.Wheat, Items.Corn, Items.Carrot, Items.Cabbage];
+    /// <summary>What any animal eats, <see cref="FeedPerMeal"/> of one kind per feeding: crops, fish meal from the cannery and dates from an oasis.</summary>
+    public static readonly IReadOnlyList<string> Feed = [Items.Wheat, Items.Corn, Items.Carrot, Items.Cabbage, Items.FishMeal, Items.Dates];
 
     public const int FeedPerMeal = 2;
 
@@ -50,11 +61,15 @@ public static class Husbandry
         _ => 0,
     };
 
-    /// <summary>Whether animals can be kept on a plot of a biome.</summary>
-    public static bool Pasture(Biome biome) => BonusPercent(biome) is not null;
+    /// <summary>Whether animals can be kept on a plot of a biome: camels on a desert too.</summary>
+    public static bool Pasture(Biome biome) => Animals.Any(a => Lives(a, biome));
 
-    /// <summary>How long a fed animal takes to give its product on a plot of a biome; null where no animal lives.</summary>
-    public static TimeSpan? Time(Animal animal, Biome biome) => BonusPercent(biome) is { } bonus ? animal.Time * (100 - bonus) / 100.0 : null;
+    /// <summary>Whether an animal lives on a plot of a biome: a camel on sand only, the others where <see cref="BonusPercent"/> lets them.</summary>
+    public static bool Lives(Animal animal, Biome biome) => animal.Sandy ? Oasis.Sandy((int)biome) : BonusPercent(biome) is not null;
+
+    /// <summary>How long a fed animal takes to give its product on a plot of a biome; null where it does not live.</summary>
+    public static TimeSpan? Time(Animal animal, Biome biome) =>
+        !Lives(animal, biome) ? null : animal.Sandy ? animal.Time : animal.Time * (100 - BonusPercent(biome)!.Value) / 100.0;
 }
 
 /// <param name="ReadyAt">When the animal gives its product; null while it is hungry.</param>
@@ -97,7 +112,13 @@ public sealed class HusbandryService(
             var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             if (!Husbandry.Pasture(biome))
             {
-                throw new GameException("no_pasture", "No animal lives on a desert or a glacier.");
+                throw new GameException("no_pasture", "No animal lives on a glacier.");
+            }
+
+            if (!Husbandry.Lives(Husbandry.ById[kind], biome))
+            {
+                throw new GameException(Husbandry.ById[kind].Sandy ? "camel_sand" : "no_pasture",
+                    Husbandry.ById[kind].Sandy ? "A camel lives on a desert or in an oasis." : "Only camels live on a desert.");
             }
 
             if ((tileX, tileY) == PlotLayout.Spawn || !await plots.FreeAsync(player, x, y, tileX, tileY, cancellationToken))
@@ -128,7 +149,7 @@ public sealed class HusbandryService(
         {
             if (!Husbandry.Feed.Contains(feed))
             {
-                throw new GameException("bad_feed", "Animals eat wheat, corn, carrots and cabbage.");
+                throw new GameException("bad_feed", "Animals eat wheat, corn, carrots, cabbage, fish meal and dates.");
             }
 
             var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
@@ -182,10 +203,14 @@ public sealed class HusbandryService(
                 await clear.ExecuteNonQueryAsync(cancellationToken);
             }
 
-            await inventory.ReceiveAsync(player, animal.Product, animal.Yield, cancellationToken);
-            await stats.RecordAsync(player, [ProductionEntry.Made(animal.Product, animal.Yield, time.GetUtcNow())], cancellationToken);
+            foreach (var (item, quantity) in animal.Gives)
+            {
+                await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
+            }
+
+            await stats.RecordAsync(player, animal.Gives.Select(g => ProductionEntry.Made(g.Item, g.Quantity, time.GetUtcNow())).ToList(), cancellationToken);
             var xp = await progress.AddXpAsync(player, animal.Xp, cancellationToken);
-            return new AnimalChange(new PlotAnimal(tileX, tileY, kind, null), [(animal.Product, animal.Yield)], xp);
+            return new AnimalChange(new PlotAnimal(tileX, tileY, kind, null), animal.Gives, xp);
         }, cancellationToken);
 
     /// <summary>Takes an animal back into the inventory; what it was going to give is lost.</summary>
@@ -272,6 +297,8 @@ public abstract class AnimalHandler(IServiceScopeFactory scopes, TimeProvider ti
         product = a.Product,
         productName = Items.Names[a.Product],
         yield = a.Yield,
+        extra = a.Extra is { } extra ? new { id = extra.Item, name = Items.Names[extra.Item], quantity = extra.Quantity } : null,
+        lives = Husbandry.Lives(a, biome),
         seconds = Husbandry.Time(a, biome)?.TotalSeconds,
         tool = a.Tool,
         toolName = a.Tool is { } tool ? Items.Names[tool] : null,

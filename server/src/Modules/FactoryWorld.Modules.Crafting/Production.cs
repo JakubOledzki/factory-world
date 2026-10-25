@@ -73,7 +73,7 @@ internal static class MachineProduction
 }
 
 /// <summary>What each of the player's furnaces and processing machines is doing now.</summary>
-public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, TimeProvider time) : IMachineStatuses
+public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, IPlotObjects plots, IPlotRegistry registry, TimeProvider time) : IMachineStatuses
 {
     public async Task<IReadOnlyList<MachineStatus>> StatusesAsync(Guid owner, CancellationToken cancellationToken)
     {
@@ -123,9 +123,10 @@ public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, TimePro
         }
 
         // Machines on power work in their own time; one at work with no power at all stalls for it.
-        foreach (var (id, machine, state) in stored)
+        foreach (var (id, plain, state) in stored)
         {
-            var clock = machine.Powered ? await power.ClockAsync(id, cancellationToken) : PlainTime.Instance;
+            var machine = Processing.For(plain.Kind, await Processing.BiomeOfAsync(plots, registry, id, cancellationToken))!;
+            var clock = await Processing.ClockAsync(machine, power, id, cancellationToken);
             var status = Machine(id, machine, Processing.Advance(machine, state, clock.At(now)));
             statuses.Add(status.Activity == MachineActivity.Working && machine.Powered && clock.Speed(now) <= 0
                 ? status with { Activity = MachineActivity.NoPower }

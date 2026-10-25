@@ -23,6 +23,55 @@ namespace FactoryWorld.Modules.Research.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("FactoryWorld.Modules.Research.CompanyContributionRow", b =>
+                {
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<string>("Technology")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("technology");
+
+                    b.Property<string>("Item")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("item");
+
+                    b.Property<long>("Delivered")
+                        .HasColumnType("bigint")
+                        .HasColumnName("delivered");
+
+                    b.HasKey("CompanyId", "Technology", "Item");
+
+                    b.ToTable("company_contributions", "research");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Research.CompanyResearchRow", b =>
+                {
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<string>("Technology")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("technology");
+
+                    b.Property<DateTimeOffset?>("FinishesAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finishes_at");
+
+                    b.Property<DateTimeOffset?>("StartsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("starts_at");
+
+                    b.HasKey("CompanyId", "Technology");
+
+                    b.ToTable("company_technologies", "research");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.Research.ResearchRow", b =>
                 {
                     b.Property<Guid>("OwnerId")

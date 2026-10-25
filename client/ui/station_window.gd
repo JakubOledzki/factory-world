@@ -24,6 +24,12 @@ var world_width := 6933
 var my_plots: Array[Vector2i] = []
 var items: Array = []
 var balance := 0
+## A port stands on this plot: goods can go by ship to another plot with a port, slower but for a quarter of the fee.
+var port := false
+var _by_sea := false
+## A dog kennel or a snowmobile garage stands on this plot on the glacier or the tundra: goods can go by sled, free, up to sledMaxKm.
+var sled := false
+var _by_sled := false
 
 var _state := {}
 var _clock_offset := 0.0
@@ -331,7 +337,9 @@ func _trip(quantity: int) -> Dictionary:
 	return {
 		"km": km,
 		"seconds": maxf(rates["minTripSeconds"], km / 100.0 * rates["secondsPer100Km"]),
-		"fee": int(rates["baseFeeCents"]) + ceili(km / 100.0 * quantity * float(rates["centsPerItemPer100Km"])),
+		# Cheaper from a city plot, with a freight terminal or with the mayor's rail bonus.
+		"fee": ceili((int(rates["baseFeeCents"]) + ceili(km / 100.0 * quantity * float(rates["centsPerItemPer100Km"])))
+			* float(rates.get("feeFactor", 1.0))),
 	}
 
 
@@ -376,12 +384,61 @@ func _render_send() -> void:
 	grid.add_child(_send_quantity)
 
 	_send_info = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
-	_send_button = UI.button("Wyślij pociąg", _send, true)
+	_send_button = UI.button("Wyślij statkiem" if _by_sea and port else "Wyślij pociąg", _send, true)
 	_destination_picker()
+	if port:
+		grid.add_child(UI.label("Czym", UI.MUTED))
+		var sea := CheckBox.new()
+		sea.text = "Statkiem z portu (dwa razy wolniej, za ćwierć ceny)"
+		sea.button_pressed = _by_sea
+		sea.toggled.connect(func(on: bool) -> void:
+			_by_sea = on
+			_send_button.text = "Wyślij statkiem" if on else "Wyślij pociąg"
+			_update_send())
+		grid.add_child(sea)
+	if sled:
+		grid.add_child(UI.label("Saniami", UI.MUTED))
+		var by_sled := CheckBox.new()
+		by_sled.text = "Psim zaprzęgiem lub skuterem (bez opłaty, do %d km)" % int(_state["rates"].get("sledMaxKm", 150))
+		by_sled.button_pressed = _by_sled
+		by_sled.toggled.connect(func(on: bool) -> void:
+			_by_sled = on
+			_send_button.text = _send_text()
+			_update_send())
+		grid.add_child(by_sled)
+	_send_button.text = _send_text()
 	_body.add_child(grid)
 	_body.add_child(_send_info)
 	_body.add_child(_send_button)
 	_update_send()
+
+
+## Diesel a train to `km` away burns, as DieselRules counts it, when the station has enough of it
+## besides what is being sent; 0 when it goes by steam.
+func _diesel_for(km: float, sending: Dictionary, quantity: int) -> int:
+	var per_unit := float(_state["rates"].get("dieselKmPerUnit", 0))
+	if per_unit <= 0.0:
+		return 0
+	var need := maxi(1, ceili(km / per_unit))
+	for stack: Dictionary in _state["items"]:
+		if stack["id"] == "diesel":
+			var spare := int(stack["quantity"]) - (quantity if sending.get("id", "") == "diesel" else 0)
+			return need if spare >= need else 0
+	return 0
+
+
+func _send_text() -> String:
+	if sled and _by_sled:
+		return "Wyślij saniami"
+	return "Wyślij statkiem" if _by_sea and port else "Wyślij pociąg"
+
+
+## Petrol in the station besides what is being sent, for a snowmobile.
+func _petrol_spare(sending: Dictionary, quantity: int) -> int:
+	for stack: Dictionary in _state["items"]:
+		if stack["id"] == "gasoline":
+			return int(stack["quantity"]) - (quantity if sending.get("id", "") == "gasoline" else 0)
+	return 0
 
 
 func _send_stack() -> Dictionary:
@@ -391,8 +448,34 @@ func _send_stack() -> Dictionary:
 func _update_send() -> void:
 	var quantity := int(_send_quantity.value)
 	var trip := _trip(quantity)
+	if _by_sea and port:
+		# As SeaRules counts it; a lighthouse by either port makes the trip shorter, which shows on arrival.
+		trip["fee"] = (int(trip["fee"]) + 3) / 4
+		trip["seconds"] = float(trip["seconds"]) * 2.0
+	var diesel := 0 if _by_sea and port else _diesel_for(float(trip["km"]), _send_stack(), quantity)
+	if diesel > 0:
+		trip["seconds"] = float(trip["seconds"]) * float(_state["rates"].get("dieselTripFactor", 1.0))
 	_send_info.text = "%s  ·  %s km  ·  w drodze %s  ·  opłata %s" % [
 		_where(), _grouped(roundi(trip["km"])), _clock(trip["seconds"]), UI.money(trip["fee"])]
+	if diesel > 0:
+		_send_info.text += "\nPociąg spalinowy: spali %d × olej napędowy ze stacji i dojedzie szybciej." % diesel
+	elif not (_by_sea and port) and _state["rates"].has("dieselKmPerUnit"):
+		_send_info.text += "\nZaładuj na stację olej napędowy, a pojedzie szybszy pociąg spalinowy."
+	if sled and _by_sled:
+		var rates: Dictionary = _state["rates"]
+		var km := float(trip["km"])
+		var petrol := maxi(1, ceili(km / float(rates.get("sledKmPerPetrol", 50))))
+		var snowmobile := _petrol_spare(_send_stack(), quantity) >= petrol
+		var factor := float(rates.get("sledSnowmobileTrip", 0.8)) if snowmobile else float(rates.get("sledDogTrip", 1.5))
+		_send_info.text = "%s  ·  %s km  ·  w drodze %s  ·  bez opłaty" % [_where(), _grouped(roundi(km)), _clock(float(trip["seconds"]) * factor)]
+		_send_info.text += "\nSkuter spali %d × benzyna ze stacji (jeśli stoi garaż), inaczej pojadą psy." % petrol if snowmobile \
+			else "\nPojadą psy (jeśli stoi psiarnia). Z benzyną na stacji i garażem pojedzie szybszy skuter."
+		_send_button.disabled = _destination == plot or km > float(rates.get("sledMaxKm", 150))
+		if km > float(rates.get("sledMaxKm", 150)):
+			_send_info.text += "\nZa daleko: sanie jadą najwyżej %d km." % int(rates.get("sledMaxKm", 150))
+		elif _destination == plot:
+			_send_info.text += "\nTo jest ta sama stacja."
+		return
 	_send_button.disabled = _destination == plot or trip["fee"] > balance
 	if trip["fee"] > balance:
 		_send_info.text += "\nNie masz tyle pieniędzy."
@@ -407,12 +490,17 @@ func _send() -> void:
 	_send_button.disabled = true
 	var reply := await Net.request("station.send", {
 		"x": plot.x, "y": plot.y, "toX": target.x, "toY": target.y, "item": stack["id"], "quantity": quantity,
+		"sea": _by_sea and port, "sled": sled and _by_sled,
 	})
 	if reply["type"] != "station":
 		failed.emit(reply)
 		_send_button.disabled = false
 		return
-	toast.emit("Pociąg z %d × %s odjechał: %s." % [quantity, stack["name"], _where()])
+	if sled and _by_sled:
+		toast.emit("Sanie z %d × %s ruszyły: %s." % [quantity, stack["name"], _where()])
+	else:
+		toast.emit("%s z %d × %s %s: %s." % ["Statek" if _by_sea and port else "Pociąg", quantity, stack["name"],
+			"wypłynął" if _by_sea and port else "odjechał", _where()])
 	apply(reply)
 	_render()
 	balance_changed.emit()

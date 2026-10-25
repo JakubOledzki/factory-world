@@ -173,6 +173,191 @@ public static class Items
     // A cable car: stations facing the same way carry what a belt brings them over anything in between.
     public const string CableStation = "logistics_cable_station";
 
+    // Coastal plots: the sea along the coast and a lake on the lakeshore, fished with a rod or from boats;
+    // fish smoked, salted and canned, salt boiled from the sea, salmon and mussels farmed, and the beach
+    // combed for what the sea throws up.
+    public const string FishingRod = "tool_fishing_rod";
+    public const string Herring = "herring";
+    public const string Cod = "cod";
+    public const string Carp = "carp";
+    public const string Pike = "pike";
+    public const string Salmon = "salmon";
+    public const string Mussels = "mussels";
+    public const string Seaweed = "seaweed";
+    public const string Amber = "amber";
+    public const string SmokedFish = "smoked_fish";
+    public const string SmokedSalmon = "smoked_salmon";
+    public const string SaltedHerring = "salted_herring";
+    public const string CannedFish = "canned_fish";
+    public const string FishMeal = "fish_meal";
+    public const string FishOil = "fish_oil";
+    public const string FriedCarp = "fried_carp";
+    public const string FishSoup = "fish_soup";
+
+    // Coastal buildings: they stand on the shore, right next to the water.
+    public const string FishingBoat = "furniture_fishing_boat";
+    public const string RowingBoat = "furniture_rowing_boat";
+    public const string Smokehouse = "furniture_smokehouse";
+    public const string Cannery = "furniture_cannery";
+    public const string SaltPan = "furniture_salt_pan";
+    public const string FishFarm = "furniture_fish_farm";
+    public const string Shipyard = "furniture_shipyard";
+    public const string Port = "furniture_port";
+    public const string Breakwater = "furniture_breakwater";
+    public const string Lighthouse = "furniture_lighthouse";
+    public const string TidalPlant = "power_tidal_plant";
+
+    // Oil and gas: wells pump what the survey found under a plot, pipes carry the fluids, a distillery and a refinery
+    // split crude oil into fuels and asphalt, a cracker makes more petrol of the heavier ones and a chemical plant
+    // makes plastic, rubber and fertiliser of gas.
+    public const string CrudeOil = "crude_oil";
+    public const string NaturalGas = "natural_gas";
+    public const string Gasoline = "gasoline";
+    public const string Diesel = "diesel";
+    public const string Kerosene = "kerosene";
+    public const string Asphalt = "asphalt";
+    public const string Plastic = "plastic";
+    public const string SyntheticRubber = "synthetic_rubber";
+    public const string Fertilizer = "fertilizer";
+    public const string Gasket = "gasket";
+
+    public const string Pumpjack = "furniture_pumpjack";
+    public const string GasWell = "furniture_gas_well";
+    public const string OffshorePlatform = "furniture_offshore_platform";
+    public const string WaterInjector = "furniture_water_injector";
+    public const string OilSeparator = "furniture_oil_separator";
+    public const string Distillery = "furniture_distillery";
+    public const string Refinery = "furniture_refinery";
+    public const string Cracker = "furniture_cracker";
+    public const string ChemicalPlant = "furniture_chemical_plant";
+    public const string GasPlant = "power_gas_plant";
+    public const string DieselGenerator = "power_diesel_generator";
+    public const string Pipe = "logistics_pipe";
+    public const string Pump = "logistics_pump";
+    public const string Tank = "storage_tank";
+    public const string Road = "logistics_road";
+
+    // The desert: glass from sand, silicon and solar power, water drawn or made, sun-dried bricks and concrete,
+    // dates from an oasis, camels, and fossils the dunes give up now and then.
+    public const string Glass = "glass";
+    public const string WindowPane = "window_pane";
+    public const string GlassBottles = "glass_bottles";
+    public const string OpticalFiber = "optical_fiber";
+    public const string Silicon = "silicon";
+    public const string SiliconWafer = "silicon_wafer";
+    public const string Water = "water";
+    public const string Clay = "clay";
+    public const string AdobeBricks = "adobe_bricks";
+    public const string Cement = "cement";
+    public const string Concrete = "concrete";
+    public const string Dates = "dates";
+    public const string Mirror = "mirror";
+    public const string Ammonite = "ammonite";
+    public const string AncientCoin = "ancient_coin";
+    public const string DinosaurBone = "dinosaur_bone";
+
+    public const string Glassworks = "furniture_glassworks";
+    public const string ArcFurnace = "furniture_arc_furnace";
+    public const string WaterWell = "furniture_water_well";
+    public const string Desalinator = "furniture_desalinator";
+    public const string DryingYard = "furniture_drying_yard";
+    public const string CementKiln = "furniture_cement_kiln";
+    public const string ConcreteMixer = "furniture_concrete_mixer";
+    public const string ReedFence = "furniture_reed_fence";
+    public const string SolarPanel = "power_solar_panel";
+    public const string SolarTower = "power_solar_tower";
+    public const string Battery = "power_battery";
+    public const string Camel = "animal_camel";
+
+    // The glacier: wind turbines, ice cut and melted, a cold store, a server room and a polar station that speed research up,
+    // meteorites, heaters against the frost, tourists who come for the aurora, dog sleds and snowmobiles, and bridges over crevasses.
+    public const string Ice = "ice";
+    public const string MeteoricIron = "meteoric_iron";
+    public const string Iridium = "iridium";
+    public const string MeteoritePickaxe = "tool_meteorite_pickaxe";
+    public const string FrozenFish = "frozen_fish";
+    public const string FrozenSalmon = "frozen_salmon";
+    public const string IceCream = "ice_cream";
+    public const string ComputingPower = "computing_power";
+    public const string IceCore = "ice_core";
+    public const string ResearchData = "research_data";
+    public const string Takings = "tourist_takings";
+
+    public const string WindTurbine = "power_wind_turbine";
+    public const string LargeWindTurbine = "power_large_wind_turbine";
+    public const string Heater = "power_heater";
+    public const string IceMelter = "furniture_ice_melter";
+    public const string ColdStore = "furniture_cold_store";
+    public const string ServerRoom = "furniture_server_room";
+    public const string IceCoreDrill = "furniture_ice_core_drill";
+    public const string PolarStation = "furniture_polar_station";
+    public const string IceHotel = "furniture_ice_hotel";
+    public const string Viewpoint = "furniture_viewpoint";
+    public const string DogKennel = "furniture_dog_kennel";
+    public const string SnowmobileGarage = "furniture_snowmobile_garage";
+    public const string TrackFoundation = "furniture_track_foundation";
+
+    // Cities: an assembly hall puts goods of every biome together, the towns of the map want goods and grow on them,
+    // players keep shops, high-bay stores, multi-storey factories, municipal sorting, freight terminals, company
+    // headquarters and offices that sell their services, and a town hall where the town's players elect a mayor.
+    public const string Bicycle = "bicycle";
+    public const string CircuitBoard = "circuit_board";
+    public const string ElectricMotor = "electric_motor";
+    public const string Radio = "radio";
+    public const string WashingMachine = "washing_machine";
+    public const string Car = "car";
+    public const string Blueprint = "blueprint";
+
+    public const string AssemblyHall = "furniture_assembly_hall";
+    public const string MultistoreyFactory = "furniture_multistorey_factory";
+    public const string Shop = "furniture_shop";
+    public const string HighBay = "storage_high_bay";
+    public const string CitySorter = "furniture_city_sorter";
+    public const string FreightTerminal = "furniture_freight_terminal";
+    public const string CompanyHq = "furniture_company_hq";
+    public const string DesignOffice = "furniture_design_office";
+    public const string Laboratory = "furniture_laboratory";
+    public const string ServiceWorkshop = "furniture_service_workshop";
+
+    // Forestry: trees of five kinds with their own saplings, what the forest floor gives, paper, furniture, charcoal,
+    // resin and what is made of it, honey, and the fight against fires and the bark beetle.
+    public const string SaplingSpruce = "sapling_spruce";
+    public const string SaplingBirch = "sapling_birch";
+    public const string SaplingOak = "sapling_oak";
+    public const string SaplingLinden = "sapling_linden";
+    public const string OakWood = "oak_wood";
+    public const string Resin = "resin";
+    public const string Pulp = "pulp";
+    public const string Paper = "paper";
+    public const string Cardboard = "cardboard";
+    public const string Chair = "chair";
+    public const string Table = "table";
+    public const string Wardrobe = "wardrobe";
+    public const string OakDresser = "oak_dresser";
+    public const string Charcoal = "charcoal";
+    public const string Mushrooms = "mushrooms";
+    public const string Berries = "berries";
+    public const string Herbs = "herbs";
+    public const string MushroomSoup = "mushroom_soup";
+    public const string BerryPierogi = "berry_pierogi";
+    public const string HerbalTea = "herbal_tea";
+    public const string Honey = "honey";
+    public const string Wax = "wax";
+    public const string Gingerbread = "gingerbread";
+    public const string Candles = "candles";
+    public const string Tar = "tar";
+    public const string Turpentine = "turpentine";
+    public const string Rosin = "rosin";
+    public const string Insecticide = "insecticide";
+
+    public const string PaperMill = "furniture_paper_mill";
+    public const string Carpentry = "furniture_carpentry";
+    public const string CharcoalKiln = "furniture_charcoal_kiln";
+    public const string TarKiln = "furniture_tar_kiln";
+    public const string Beehive = "furniture_beehive";
+    public const string Watchtower = "furniture_fire_watchtower";
+    public const string FireStation = "furniture_fire_station";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -221,7 +406,7 @@ public static class Items
         [SilverIngot] = "Sztabka srebra",
         [GoldIngot] = "Sztabka złota",
         [Nails] = "Gwoździe",
-        [Sapling] = "Sadzonka drzewa",
+        [Sapling] = "Sadzonka sosny",
         [Chicken] = "Kura",
         [Sheep] = "Owca",
         [Cow] = "Krowa",
@@ -278,7 +463,7 @@ public static class Items
         [BronzePickaxe] = "Kilof z brązu",
         [SteelPickaxe] = "Kilof stalowy",
         [Sulfur] = "Siarka",
-        [Salt] = "Sól kamienna",
+        [Salt] = "Sól",
         [Marble] = "Marmur",
         [Quartz] = "Kwarc",
         [CrushedIronOre] = "Kruszona ruda żelaza",
@@ -300,11 +485,168 @@ public static class Items
         [WaterWheel] = "Koło wodne",
         [HydroPlant] = "Mała elektrownia wodna",
         [CableStation] = "Stacja kolejki linowej",
+        [FishingRod] = "Wędka",
+        [Herring] = "Śledź",
+        [Cod] = "Dorsz",
+        [Carp] = "Karp",
+        [Pike] = "Szczupak",
+        [Salmon] = "Łosoś",
+        [Mussels] = "Małże",
+        [Seaweed] = "Algi",
+        [Amber] = "Bursztyn",
+        [SmokedFish] = "Ryba wędzona",
+        [SmokedSalmon] = "Łosoś wędzony",
+        [SaltedHerring] = "Śledzie w soli",
+        [CannedFish] = "Konserwa rybna",
+        [FishMeal] = "Mączka rybna",
+        [FishOil] = "Olej rybny",
+        [FriedCarp] = "Karp smażony",
+        [FishSoup] = "Zupa rybna",
+        [FishingBoat] = "Kuter rybacki",
+        [RowingBoat] = "Łódź rybacka",
+        [Smokehouse] = "Wędzarnia",
+        [Cannery] = "Konserwiarnia",
+        [SaltPan] = "Warzelnia soli",
+        [FishFarm] = "Farma ryb",
+        [Shipyard] = "Stocznia",
+        [Port] = "Przystań",
+        [Breakwater] = "Falochron",
+        [Lighthouse] = "Latarnia morska",
+        [TidalPlant] = "Elektrownia pływowa",
+        [CrudeOil] = "Ropa naftowa",
+        [NaturalGas] = "Gaz ziemny",
+        [Gasoline] = "Benzyna",
+        [Diesel] = "Olej napędowy",
+        [Kerosene] = "Nafta",
+        [Asphalt] = "Asfalt",
+        [Plastic] = "Tworzywo sztuczne",
+        [SyntheticRubber] = "Kauczuk syntetyczny",
+        [Fertilizer] = "Nawóz",
+        [Gasket] = "Uszczelka",
+        [Pumpjack] = "Żuraw pompowy",
+        [GasWell] = "Głowica gazowa",
+        [OffshorePlatform] = "Platforma wiertnicza",
+        [WaterInjector] = "Tłocznia wody",
+        [OilSeparator] = "Separator ropy",
+        [Distillery] = "Destylarnia",
+        [Refinery] = "Rafineria",
+        [Cracker] = "Instalacja krakingu",
+        [ChemicalPlant] = "Zakład chemiczny",
+        [GasPlant] = "Elektrownia gazowa",
+        [DieselGenerator] = "Agregat spalinowy",
+        [Pipe] = "Rura",
+        [Pump] = "Pompa",
+        [Tank] = "Zbiornik",
+        [Road] = "Droga asfaltowa",
+        [Glass] = "Szkło",
+        [WindowPane] = "Szyba",
+        [GlassBottles] = "Butelki szklane",
+        [OpticalFiber] = "Światłowód",
+        [Silicon] = "Krzem",
+        [SiliconWafer] = "Płytka krzemowa",
+        [Water] = "Woda",
+        [Clay] = "Glina",
+        [AdobeBricks] = "Cegła suszona",
+        [Cement] = "Cement",
+        [Concrete] = "Beton",
+        [Dates] = "Daktyle",
+        [Mirror] = "Lustro",
+        [Ammonite] = "Amonit",
+        [AncientCoin] = "Starożytna moneta",
+        [DinosaurBone] = "Kość dinozaura",
+        [Glassworks] = "Huta szkła",
+        [ArcFurnace] = "Piec łukowy",
+        [WaterWell] = "Studnia głębinowa",
+        [Desalinator] = "Odsalarka",
+        [DryingYard] = "Suszarnia cegieł",
+        [CementKiln] = "Piec cementowy",
+        [ConcreteMixer] = "Betoniarka",
+        [ReedFence] = "Płot trzcinowy",
+        [SolarPanel] = "Panel słoneczny",
+        [SolarTower] = "Elektrownia słoneczna z lustrami",
+        [Battery] = "Akumulator",
+        [Camel] = "Wielbłąd",
+        [Ice] = "Lód",
+        [MeteoricIron] = "Żelazo meteorytowe",
+        [Iridium] = "Iryd",
+        [MeteoritePickaxe] = "Kilof meteorytowy",
+        [FrozenFish] = "Mrożona ryba",
+        [FrozenSalmon] = "Mrożony łosoś",
+        [IceCream] = "Lody",
+        [ComputingPower] = "Moc obliczeniowa",
+        [IceCore] = "Rdzeń lodowy",
+        [ResearchData] = "Dane naukowe",
+        [Takings] = "Utarg od turystów",
+        [WindTurbine] = "Turbina wiatrowa",
+        [LargeWindTurbine] = "Duża turbina wiatrowa",
+        [Heater] = "Kocioł grzewczy",
+        [IceMelter] = "Topielnik lodu",
+        [ColdStore] = "Chłodnia",
+        [ServerRoom] = "Serwerownia",
+        [IceCoreDrill] = "Wiertnica lodowa",
+        [PolarStation] = "Stacja polarna",
+        [IceHotel] = "Hotel lodowy",
+        [Viewpoint] = "Punkt widokowy",
+        [DogKennel] = "Psiarnia z zaprzęgiem",
+        [SnowmobileGarage] = "Garaż skuterów śnieżnych",
+        [TrackFoundation] = "Fundament toru",
+        [Bicycle] = "Rower",
+        [CircuitBoard] = "Płytka drukowana",
+        [ElectricMotor] = "Silnik elektryczny",
+        [Radio] = "Radio",
+        [WashingMachine] = "Pralka",
+        [Car] = "Samochód",
+        [Blueprint] = "Plany budynku",
+        [AssemblyHall] = "Hala montażowa",
+        [MultistoreyFactory] = "Fabryka wielopiętrowa",
+        [Shop] = "Sklep",
+        [HighBay] = "Magazyn wysokiego składowania",
+        [CitySorter] = "Sortownia miejska",
+        [FreightTerminal] = "Dworzec towarowy",
+        [CompanyHq] = "Siedziba spółki",
+        [DesignOffice] = "Biuro projektowe",
+        [Laboratory] = "Laboratorium",
+        [ServiceWorkshop] = "Warsztat serwisowy",
+        [SaplingSpruce] = "Sadzonka świerku",
+        [SaplingBirch] = "Sadzonka brzozy",
+        [SaplingOak] = "Sadzonka dębu",
+        [SaplingLinden] = "Sadzonka lipy",
+        [OakWood] = "Drewno dębowe",
+        [Resin] = "Żywica",
+        [Pulp] = "Masa celulozowa",
+        [Paper] = "Papier",
+        [Cardboard] = "Karton",
+        [Chair] = "Krzesło",
+        [Table] = "Stół",
+        [Wardrobe] = "Szafa",
+        [OakDresser] = "Komoda dębowa",
+        [Charcoal] = "Węgiel drzewny",
+        [Mushrooms] = "Grzyby",
+        [Berries] = "Jagody",
+        [Herbs] = "Zioła",
+        [MushroomSoup] = "Zupa grzybowa",
+        [BerryPierogi] = "Pierogi z jagodami",
+        [HerbalTea] = "Herbata ziołowa",
+        [Honey] = "Miód",
+        [Wax] = "Wosk",
+        [Gingerbread] = "Piernik",
+        [Candles] = "Świece",
+        [Tar] = "Smoła",
+        [Turpentine] = "Terpentyna",
+        [Rosin] = "Kalafonia",
+        [Insecticide] = "Środek na kornika",
+        [PaperMill] = "Papiernia",
+        [Carpentry] = "Stolarnia",
+        [CharcoalKiln] = "Mielerz",
+        [TarKiln] = "Smolarnia",
+        [Beehive] = "Ul",
+        [Watchtower] = "Wieża obserwacyjna",
+        [FireStation] = "Strażnica",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
 
-    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw or Shears or BronzePickaxe or SteelPickaxe;
+    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw or Shears or BronzePickaxe or SteelPickaxe or FishingRod or MeteoritePickaxe;
 
     /// <summary>Pickaxes of every kind and how many times faster than the iron one each mines and breaks rocks.</summary>
     public static readonly IReadOnlyDictionary<string, double> Pickaxes = new Dictionary<string, double>
@@ -312,6 +654,7 @@ public static class Items
         [Pickaxe] = 1,
         [BronzePickaxe] = 1.25,
         [SteelPickaxe] = 1.5,
+        [MeteoritePickaxe] = 2,
     };
 
     public static bool IsBackpack(string id) => Backpacks.ContainsKey(id);
@@ -347,14 +690,70 @@ public static class Items
     /// <summary>Drills of every level, which stand at a mine and dig it by themselves.</summary>
     public static bool IsDrill(string id) => id is Drill or HeavyDrill;
 
-    /// <summary>What gives power without fuel: the water wheel and the hydro plant.</summary>
-    public static bool IsHydro(string id) => id is WaterWheel or HydroPlant;
+    /// <summary>What gives power without fuel: the water wheel, the hydro plant and the tidal plant.</summary>
+    public static bool IsHydro(string id) => id is WaterWheel or HydroPlant or TidalPlant;
+
+    /// <summary>Boats, which fish the water their plot's shore stands on by themselves.</summary>
+    public static bool IsBoat(string id) => id is FishingBoat or RowingBoat;
 
     /// <summary>Belts of every level (not splitters).</summary>
-    public static bool IsBelt(string id) => id is Belt or FastBelt or ExpressBelt;
+    public static bool IsBelt(string id) => id is Belt or FastBelt or ExpressBelt or Pipe;
 
     /// <summary>Inserters of every level.</summary>
-    public static bool IsInserter(string id) => id is Inserter or FastInserter or ExpressInserter;
+    public static bool IsInserter(string id) => id is Inserter or FastInserter or ExpressInserter or Pump;
+
+    /// <summary>Fluids: they go only through pipes and pumps, never on belts or by inserters.</summary>
+    public static bool IsFluid(string id) => id is CrudeOil or NaturalGas or Gasoline or Diesel or Kerosene or Water;
+
+    /// <summary>What carries fluids: a pipe instead of a belt, a pump instead of an inserter.</summary>
+    public static bool CarriesFluids(string kind) => kind is Pipe or Pump;
+
+    /// <summary>Wells, which pump the oil or gas under their plot by themselves.</summary>
+    public static bool IsWell(string id) => id is Pumpjack or GasWell or OffshorePlatform;
+
+    /// <summary>Generators that burn fuel: the steam generator, the gas power plant and the diesel generator.</summary>
+    public static bool IsGenerator(string id) => id is Generator or GasPlant or DieselGenerator;
+
+    /// <summary>What turns sunlight into power: by day only, and less in a sandstorm.</summary>
+    public static bool IsSolar(string id) => id is SolarPanel or SolarTower;
+
+    /// <summary>What turns the wind into power: as much as the wind blows, nothing in a blizzard.</summary>
+    public static bool IsWind(string id) => id is WindTurbine or LargeWindTurbine;
+
+    /// <summary>What gives power without fuel: water power, the sun and the wind.</summary>
+    public static bool IsRenewable(string id) => IsHydro(id) || IsSolar(id) || IsWind(id);
+
+    /// <summary>A heater burns fuel to warm the machines around it against the frost of the glacier; it gives no power.</summary>
+    public static bool IsHeater(string id) => id == Heater;
+
+    /// <summary>What tourists pay: taken out of a hotel or a viewpoint, it goes into the wallet, not the inventory.</summary>
+    public static bool IsMoney(string id) => id == Takings;
+
+    /// <summary>What speeds research up, and by how many seconds each piece.</summary>
+    public static readonly IReadOnlyDictionary<string, int> ResearchBoost = new Dictionary<string, int>
+    {
+        [ResearchData] = 60,
+        [ComputingPower] = 15,
+        [Blueprint] = 120,
+    };
+
+    /// <summary>What stands in a city only.</summary>
+    public static bool IsCityOnly(string id) => id is MultistoreyFactory or Shop or HighBay or FreightTerminal or CompanyHq or DesignOffice or Laboratory or ServiceWorkshop;
+
+    /// <summary>City offices that sell a service to any player who comes by, for their owner.</summary>
+    public static bool IsService(string id) => id is DesignOffice or Laboratory or ServiceWorkshop;
+
+    /// <summary>The saplings of each kind of tree; the plain sapling grows a pine.</summary>
+    public static bool IsSapling(string id) => id is Sapling or SaplingSpruce or SaplingBirch or SaplingOak or SaplingLinden;
+
+    /// <summary>What the forest certificate makes dearer at the trader.</summary>
+    public static bool IsTimber(string id) => id is Wood or OakWood or Planks or Beams;
+
+    /// <summary>Coal and charcoal, which furnaces burn alike.</summary>
+    public static bool IsCoal(string id) => id is Coal or Charcoal;
+
+    /// <summary>Fossils the dunes give up now and then, a collection of three.</summary>
+    public static bool IsFossil(string id) => id is Ammonite or AncientCoin or DinosaurBone;
 }
 
 /// <param name="ExtraSlots">Inventory tiles the backpack adds.</param>

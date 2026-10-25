@@ -13,13 +13,16 @@ const PLOT_KM := 5.0
 const BUCKET := 64
 
 ## Biome ids, as on the server (World.Biome).
-enum { OCEAN, LAKE, FOREST, FARMLAND, GRASSLAND, DESERT, MOUNTAINS, TUNDRA, ICE, CITY, COAST, LAKESHORE }
+enum { OCEAN, LAKE, FOREST, FARMLAND, GRASSLAND, DESERT, MOUNTAINS, TUNDRA, ICE, CITY, COAST, LAKESHORE, OASIS }
+## Of desert plots, this many in a hundred are oases; the server works it out the same way (Oasis.Is).
+const OASIS_PERCENT := 4
 
 ## Map colours by biome id: forests dark green, deserts yellow, all muted for the dark style.
 const COLORS: Array[Color] = [
 	Color("#0b1620"), Color("#1d4257"), Color("#1f4a2b"), Color("#6f8a35"),
 	Color("#a5a052"), Color("#d6ad52"), Color("#75624f"), Color("#7f8f86"),
 	Color("#d9e3e8"), Color("#a39d9a"), Color("#3d8a84"), Color("#4f8fa8"),
+	Color("#5f9a4a"),
 ]
 
 var width := 0
@@ -51,7 +54,17 @@ func load_files() -> bool:
 func biome(plot: Vector2i) -> int:
 	if plot.y < 0 or plot.y >= height:
 		return OCEAN
-	return biomes[plot.y * width + posmod(plot.x, width)]
+	var x := posmod(plot.x, width)
+	var id := biomes[plot.y * width + x]
+	return OASIS if id == DESERT and is_oasis(x, plot.y) else id
+
+
+## Whether the desert plot at (x, y) is an oasis: the same hash as the server's, in 64-bit integers.
+static func is_oasis(x: int, y: int) -> bool:
+	var h := (x * 374761393 + y * 668265263) & 0xffffffff
+	h = ((h ^ (h >> 13)) * 1274126177) & 0xffffffff
+	h ^= h >> 16
+	return h % 100 < OASIS_PERCENT
 
 
 ## Part of the map as a texture: one byte per plot, the biome id, for the map shader.

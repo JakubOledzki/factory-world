@@ -33,6 +33,9 @@ public sealed class PlotHarvest
     public int TileX { get; set; }
 
     public int TileY { get; set; }
+
+    /// <summary>When it was gathered: on sand a dune dug before the last sandstorm has drifted back.</summary>
+    public DateTimeOffset HarvestedAt { get; set; }
 }
 
 /// <summary>A tilled tile of a fertile plot, with what grows on it.</summary>
@@ -66,6 +69,9 @@ public sealed class PlotTree
 
     /// <summary>The forester's building that planted it, or null for a tree a player planted.</summary>
     public Guid? ForesterId { get; set; }
+
+    /// <summary>The kind of tree, see <see cref="Trees"/>.</summary>
+    public string Species { get; set; } = Trees.Pine;
 }
 
 /// <summary>An animal a player let out on a plot; fed, it gives its product at <see cref="ReadyAt"/>.</summary>
@@ -136,6 +142,42 @@ public sealed class PlotForesterRow
     public int Wood { get; set; }
 
     public DateTimeOffset BusyUntil { get; set; }
+}
+
+/// <summary>A well pumping oil or gas: what it holds, how far it is with its unit and the state of its seals.</summary>
+public sealed class PlotWellRow
+{
+    public Guid ObjectId { get; set; }
+
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public Guid OwnerId { get; set; }
+
+    public string Kind { get; set; } = "";
+
+    public int Stored { get; set; }
+
+    public DateTimeOffset? StartedAt { get; set; }
+
+    public int Wear { get; set; }
+
+    public int Gaskets { get; set; }
+
+    public bool Leaking { get; set; }
+}
+
+/// <summary>How much the wells of a plot have pumped from one of its deposits.</summary>
+public sealed class OilFieldRow
+{
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public short Field { get; set; }
+
+    public long Pumped { get; set; }
 }
 
 /// <summary>A drill standing at a mine: the mine it works, the ore it holds and how far it is with its load.</summary>
@@ -266,6 +308,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(h => h.Y).HasColumnName("y");
             e.Property(h => h.TileX).HasColumnName("tile_x");
             e.Property(h => h.TileY).HasColumnName("tile_y");
+            e.Property(h => h.HarvestedAt).HasColumnName("harvested_at").HasDefaultValueSql("now()");
         });
         model.Entity<PlotField>(e =>
         {
@@ -288,6 +331,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(t => t.TileY).HasColumnName("tile_y");
             e.Property(t => t.ReadyAt).HasColumnName("ready_at");
             e.Property(t => t.ForesterId).HasColumnName("forester_id");
+            e.Property(t => t.Species).HasColumnName("species").HasMaxLength(16).HasDefaultValue(Trees.Pine);
             e.HasIndex(t => t.ForesterId);
         });
         model.Entity<PlotAnimalRow>(e =>
@@ -357,6 +401,45 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.HasIndex(d => d.OwnerId);
         });
 
+        model.Entity<PlotWellRow>(e =>
+        {
+            e.ToTable("plot_wells");
+            e.HasKey(w => w.ObjectId);
+            e.Property(w => w.ObjectId).HasColumnName("object_id");
+            e.Property(w => w.X).HasColumnName("x");
+            e.Property(w => w.Y).HasColumnName("y");
+            e.Property(w => w.OwnerId).HasColumnName("owner_id");
+            e.Property(w => w.Kind).HasColumnName("kind");
+            e.Property(w => w.Stored).HasColumnName("stored");
+            e.Property(w => w.StartedAt).HasColumnName("started_at");
+            e.Property(w => w.Wear).HasColumnName("wear");
+            e.Property(w => w.Gaskets).HasColumnName("gaskets");
+            e.Property(w => w.Leaking).HasColumnName("leaking");
+            e.HasIndex(w => new { w.X, w.Y });
+            e.HasIndex(w => w.OwnerId);
+        });
+
+        model.Entity<OilFieldRow>(e =>
+        {
+            e.ToTable("oil_fields");
+            e.HasKey(f => new { f.X, f.Y, f.Field });
+            e.Property(f => f.X).HasColumnName("x");
+            e.Property(f => f.Y).HasColumnName("y");
+            e.Property(f => f.Field).HasColumnName("field");
+            e.Property(f => f.Pumped).HasColumnName("pumped");
+        });
+
+        model.Entity<BeachFind>(e =>
+        {
+            e.ToTable("beach_finds");
+            e.HasKey(f => new { f.X, f.Y, f.Day, f.TileX, f.TileY });
+            e.Property(f => f.X).HasColumnName("x");
+            e.Property(f => f.Y).HasColumnName("y");
+            e.Property(f => f.Day).HasColumnName("day");
+            e.Property(f => f.TileX).HasColumnName("tile_x");
+            e.Property(f => f.TileY).HasColumnName("tile_y");
+        });
+
         model.Entity<SurveyRow>(e =>
         {
             e.ToTable("surveys");
@@ -410,6 +493,125 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.HasIndex(r => new { r.FromX, r.FromY });
             e.HasIndex(r => new { r.ToX, r.ToY });
         });
+        model.Entity<TownProgressRow>(e =>
+        {
+            e.ToTable("town_progress");
+            e.HasKey(t => new { t.TownX, t.TownY });
+            e.Property(t => t.TownX).HasColumnName("town_x");
+            e.Property(t => t.TownY).HasColumnName("town_y");
+            e.Property(t => t.DeliveredCents).HasColumnName("delivered_cents");
+        });
+        model.Entity<TownContributionRow>(e =>
+        {
+            e.ToTable("town_contributions");
+            e.HasKey(t => new { t.TownX, t.TownY, t.PlayerId });
+            e.Property(t => t.TownX).HasColumnName("town_x");
+            e.Property(t => t.TownY).HasColumnName("town_y");
+            e.Property(t => t.PlayerId).HasColumnName("player_id");
+            e.Property(t => t.DeliveredCents).HasColumnName("delivered_cents");
+        });
+        model.Entity<TownDeliveryRow>(e =>
+        {
+            e.ToTable("town_deliveries");
+            e.HasKey(t => new { t.TownX, t.TownY, t.Day, t.Item });
+            e.Property(t => t.TownX).HasColumnName("town_x");
+            e.Property(t => t.TownY).HasColumnName("town_y");
+            e.Property(t => t.Day).HasColumnName("day");
+            e.Property(t => t.Item).HasColumnName("item").HasMaxLength(64);
+            e.Property(t => t.Quantity).HasColumnName("quantity");
+        });
+        model.Entity<ShopRow>(e =>
+        {
+            e.ToTable("shops");
+            e.HasKey(s => s.Id);
+            e.Property(s => s.Id).HasColumnName("id");
+            e.Property(s => s.SettledAt).HasColumnName("settled_at");
+            e.Property(s => s.Carry).HasColumnName("carry");
+            e.Property(s => s.SoldCents).HasColumnName("sold_cents");
+            e.Property(s => s.SoldItems).HasColumnName("sold_items");
+        });
+        model.Entity<ShopItemRow>(e =>
+        {
+            e.ToTable("shop_items");
+            e.HasKey(s => new { s.ShopId, s.Item });
+            e.Property(s => s.ShopId).HasColumnName("shop_id");
+            e.Property(s => s.Item).HasColumnName("item").HasMaxLength(64);
+            e.Property(s => s.Quantity).HasColumnName("quantity");
+            e.Property(s => s.PriceCents).HasColumnName("price_cents");
+        });
+        model.Entity<ServiceSaleRow>(e =>
+        {
+            e.ToTable("service_sales");
+            e.HasKey(s => new { s.Id, s.Day });
+            e.Property(s => s.Id).HasColumnName("id");
+            e.Property(s => s.Day).HasColumnName("day");
+            e.Property(s => s.Count).HasColumnName("count");
+        });
+        model.Entity<TownVoteRow>(e =>
+        {
+            e.ToTable("town_votes");
+            e.HasKey(v => new { v.TownX, v.TownY, v.Week, v.VoterId });
+            e.Property(v => v.TownX).HasColumnName("town_x");
+            e.Property(v => v.TownY).HasColumnName("town_y");
+            e.Property(v => v.Week).HasColumnName("week");
+            e.Property(v => v.VoterId).HasColumnName("voter_id");
+            e.Property(v => v.CandidateId).HasColumnName("candidate_id");
+        });
+        model.Entity<TownPolicyRow>(e =>
+        {
+            e.ToTable("town_policies");
+            e.HasKey(p => new { p.TownX, p.TownY, p.Week });
+            e.Property(p => p.TownX).HasColumnName("town_x");
+            e.Property(p => p.TownY).HasColumnName("town_y");
+            e.Property(p => p.Week).HasColumnName("week");
+            e.Property(p => p.MayorId).HasColumnName("mayor_id");
+            e.Property(p => p.TaxPercent).HasColumnName("tax_percent");
+            e.Property(p => p.Bonus).HasColumnName("bonus").HasMaxLength(16);
+        });
+        model.Entity<PlotFireRow>(e =>
+        {
+            e.ToTable("plot_fires");
+            e.HasKey(f => new { f.X, f.Y });
+            e.Property(f => f.X).HasColumnName("x");
+            e.Property(f => f.Y).HasColumnName("y");
+            e.Property(f => f.CheckedAt).HasColumnName("checked_at");
+            e.Property(f => f.LastAt).HasColumnName("last_at");
+            e.Property(f => f.LastX).HasColumnName("last_x");
+            e.Property(f => f.LastY).HasColumnName("last_y");
+            e.Property(f => f.LastBurnt).HasColumnName("last_burnt");
+            e.Property(f => f.LastStopped).HasColumnName("last_stopped");
+        });
+        model.Entity<PlotSprayRow>(e =>
+        {
+            e.ToTable("plot_sprays");
+            e.HasKey(s => new { s.X, s.Y });
+            e.Property(s => s.X).HasColumnName("x");
+            e.Property(s => s.Y).HasColumnName("y");
+            e.Property(s => s.Until).HasColumnName("until");
+        });
+        model.Entity<HiveRow>(e =>
+        {
+            e.ToTable("hives");
+            e.HasKey(h => h.ObjectId);
+            e.Property(h => h.ObjectId).HasColumnName("object_id");
+            e.Property(h => h.X).HasColumnName("x");
+            e.Property(h => h.Y).HasColumnName("y");
+            e.Property(h => h.OwnerId).HasColumnName("owner_id");
+            e.Property(h => h.Honey).HasColumnName("honey");
+            e.Property(h => h.Wax).HasColumnName("wax");
+            e.Property(h => h.Made).HasColumnName("made");
+            e.Property(h => h.Progress).HasColumnName("progress");
+            e.Property(h => h.At).HasColumnName("at");
+        });
+        model.Entity<ForestLedgerRow>(e =>
+        {
+            e.ToTable("forest_ledger");
+            e.HasKey(l => new { l.PlayerId, l.Day });
+            e.Property(l => l.PlayerId).HasColumnName("player_id");
+            e.Property(l => l.Day).HasColumnName("day");
+            e.Property(l => l.Planted).HasColumnName("planted");
+            e.Property(l => l.Cut).HasColumnName("cut");
+        });
     }
 }
 
@@ -427,7 +629,7 @@ public sealed record Purchase(PlotState Plot, long BalanceCents, XpGain Xp, stri
 
 public sealed class WorldService(
     GameDb db, WorldMap map, IWallet wallet, ICharacterProgress progress, ICharacterNames names, IEquipment equipment, SurveyService surveys,
-    IEnumerable<ICompanyPlots> companies, TimeProvider time)
+    IEnumerable<ICompanyPlots> companies, CityService cities, TimeProvider time)
 {
     /// <summary>Most owned plots one area request returns.</summary>
     public const int MaxAreaPlots = 5000;
@@ -510,7 +712,9 @@ public sealed class WorldService(
             return new PlotState(x, y, biome, new PlotOwner(owner, name), null, survey, company, owner == viewer || company?.Member == true);
         }
 
-        long? price = Biomes.All[biome].Buyable ? PlotPrices.For(await CountOwnedAsync(viewer, cancellationToken), biome) : null;
+        long? price = Biomes.All[biome].Buyable
+            ? (long)Math.Round(PlotPrices.For(await CountOwnedAsync(viewer, cancellationToken), biome) * await cities.PlotPriceFactorAsync(x, y, cancellationToken))
+            : null;
         return new PlotState(x, y, biome, null, price);
     }
 
@@ -532,7 +736,7 @@ public sealed class WorldService(
                 await lockOwner.ExecuteNonQueryAsync(cancellationToken);
             }
 
-            var price = PlotPrices.For(await CountOwnedAsync(owner, cancellationToken), biome);
+            var price = (long)Math.Round(PlotPrices.For(await CountOwnedAsync(owner, cancellationToken), biome) * await cities.PlotPriceFactorAsync(x, y, cancellationToken));
             await using (var insert = await db.CommandAsync(
                 """
                 INSERT INTO world.plots (x, y, owner_id, biome, price_cents, bought_at)
@@ -575,11 +779,11 @@ public sealed class PlotRegistry(GameDb db) : IPlotRegistry
 {
     public async Task<OwnedPlot?> FindAsync(int x, int y, CancellationToken cancellationToken)
     {
-        await using var command = await db.CommandAsync("SELECT owner_id, biome FROM world.plots WHERE x = @x AND y = @y", cancellationToken);
+        await using var command = await db.CommandAsync("SELECT owner_id, biome, price_cents FROM world.plots WHERE x = @x AND y = @y", cancellationToken);
         command.Parameters.AddWithValue("x", x);
         command.Parameters.AddWithValue("y", y);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? new OwnedPlot(x, y, reader.GetGuid(0), reader.GetInt16(1)) : null;
+        return await reader.ReadAsync(cancellationToken) ? new OwnedPlot(x, y, reader.GetGuid(0), reader.GetInt16(1), reader.GetInt64(2)) : null;
     }
 }
 
@@ -708,9 +912,21 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton(_ => WorldMap.Load());
         services.AddScoped<WorldService>();
         services.AddScoped<PlotService>();
+        services.AddScoped<BeachService>();
         services.AddScoped<StationService>();
         services.AddScoped<FarmService>();
         services.AddScoped<ForestService>();
+        services.AddScoped<ForestLedger>();
+        services.AddScoped<IForestCertificate>(provider => provider.GetRequiredService<ForestLedger>());
+        services.AddScoped<IPlayerRanking, GreenestRanking>();
+        services.AddScoped<PestService>();
+        services.AddScoped<FireService>();
+        services.AddScoped<BeeService>();
+        services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<BeeService>());
+        services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<BeeService>());
+        services.AddSingleton<IMessageHandler, GetHiveHandler>();
+        services.AddSingleton<IMessageHandler, TakeFromHiveHandler>();
+        services.AddSingleton<IMessageHandler, SprayHandler>();
         services.AddScoped<HusbandryService>();
         services.AddScoped<MineService>();
         services.AddScoped<SurveyService>();
@@ -741,6 +957,15 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<ForesterService>());
         services.AddScoped<IMachinePorts>(provider => provider.GetRequiredService<ForesterService>());
         services.AddScoped<IMachineStatuses>(provider => provider.GetRequiredService<ForesterService>());
+        services.AddScoped<OilService>();
+        services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<OilService>());
+        services.AddScoped<IPlotAutomation>(provider => provider.GetRequiredService<OilService>());
+        services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<OilService>());
+        services.AddScoped<IMachinePorts>(provider => provider.GetRequiredService<OilService>());
+        services.AddScoped<IMachineStatuses>(provider => provider.GetRequiredService<OilService>());
+        services.AddSingleton<IMessageHandler, GetWellHandler>();
+        services.AddSingleton<IMessageHandler, TakeFromWellHandler>();
+        services.AddSingleton<IMessageHandler, SealWellHandler>();
         services.AddScoped<DrillService>();
         services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<DrillService>());
         services.AddScoped<IPlotAutomation>(provider => provider.GetRequiredService<DrillService>());
@@ -767,6 +992,18 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, PlaceOnPlotHandler>();
         services.AddSingleton<IMessageHandler, PickUpFromPlotHandler>();
         services.AddSingleton<IMessageHandler, RotateOnPlotHandler>();
+        services.AddSingleton(_ => Towns.Load());
+        services.AddScoped<CityService>();
+        services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<CityService>());
+        services.AddSingleton<IMessageHandler, GetCityHandler>();
+        services.AddSingleton<IMessageHandler, DeliverToCityHandler>();
+        services.AddSingleton<IMessageHandler, CityTrashHandler>();
+        services.AddSingleton<IMessageHandler, CityServiceHandler>();
+        services.AddSingleton<IMessageHandler, CityVoteHandler>();
+        services.AddSingleton<IMessageHandler, CityPolicyHandler>();
+        services.AddSingleton<IMessageHandler, GetShopHandler>();
+        services.AddSingleton<IMessageHandler, StockShopHandler>();
+        services.AddSingleton<IMessageHandler, TakeFromShopHandler>();
     }
 
     public async Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken)

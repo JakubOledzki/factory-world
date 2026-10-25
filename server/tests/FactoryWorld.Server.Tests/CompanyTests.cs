@@ -285,7 +285,7 @@ public sealed class CompanyTests(ServerFactory factory) : IClassFixture<ServerFa
         Assert.Equal("not_owner", (await member.SendAsync("storage.take", new { x = forest.X, y = forest.Y, id = chest, item = Items.Wood, quantity = 1 })).ErrorCode());
         Assert.Equal("no_object", (await stranger.SendAsync("furnace.get", new { furnace })).ErrorCode());
 
-        // At the station a worker loads but takes nothing out; trains are the owner's to route.
+        // At the station a worker loads but takes nothing out.
         Assert.Equal("station", (await member.SendAsync("station.load", new { x = forest.X, y = forest.Y, item = Items.Coal, quantity = 1 })).Type());
         Assert.Equal("not_owner", (await member.SendAsync("station.unload", new { x = forest.X, y = forest.Y, item = Items.Coal, quantity = 1 })).ErrorCode());
 
@@ -296,7 +296,8 @@ public sealed class CompanyTests(ServerFactory factory) : IClassFixture<ServerFa
         Assert.Equal("storage", (await member.SendAsync("storage.take", new { x = forest.X, y = forest.Y, id = chest, item = Items.Wood, quantity = 1 })).Type());
         Assert.Equal("station", (await member.SendAsync("station.unload", new { x = forest.X, y = forest.Y, item = Items.Coal, quantity = 1 })).Type());
         var route = new { x = forest.X, y = forest.Y, toX = forest.X, toY = forest.Y + 1, items = Array.Empty<string>(), everyMinutes = RailRules.RouteMinutes.First() };
-        Assert.Equal("not_owner", (await member.SendAsync("station.route", route)).ErrorCode());
+        // Partners set up train routes too: this one only fails because the next plot has no station.
+        Assert.Equal("no_station", (await member.SendAsync("station.route", route)).ErrorCode());
         Assert.Equal("plot.rotated", (await member.SendAsync("plot.rotate", new { x = forest.X, y = forest.Y, id = chest, rotation = 1 })).Type());
         Assert.Equal("not_yours", (await member.SendAsync("plot.pickup", new { x = forest.X, y = forest.Y, id = chest })).ErrorCode());
         var own = placed.Payload().GetProperty("object").GetProperty("id").GetGuid();
