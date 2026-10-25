@@ -333,9 +333,23 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("busy_until");
 
+                    b.Property<int>("OakWood")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("oak_wood");
+
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");
+
+                    b.Property<string>("Species")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("pine")
+                        .HasColumnName("species");
 
                     b.Property<int>("Wood")
                         .HasColumnType("integer")

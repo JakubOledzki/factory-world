@@ -19,8 +19,10 @@ public sealed record ForesterLevel(string Kind, int Level, int Radius, int Capac
 /// in its place. Trees that grew there by themselves it cuts first. It keeps a clearing one tile wide
 /// around itself and a path three tiles wide from its door (the way it faces) to the edge of its forest,
 /// so the player can walk up to it and belts can carry the wood away. The wood waits in it until taken out
-/// by hand or by an inserter standing next to it. The lodge and the forestry station are the same,
-/// only with a bigger forest that grows faster, quicker cutting and room for more wood.
+/// by hand or by an inserter standing next to it. The player picks the kind of tree it plants (a pine at first):
+/// what grows already stays and is cut as it is, and the new kind goes in where the trees stood. An oak forest gives
+/// oak wood, the rest plain wood. The lodge and the forestry station are the same, only with a bigger forest that
+/// grows faster, quicker cutting and room for more wood.
 /// </summary>
 public static class Foresters
 {
@@ -39,8 +41,10 @@ public static class Foresters
     /// <summary>Wood taken out by hand gives one experience point for every this many.</summary>
     public const int WoodPerXp = 4;
 
-    /// <summary>How long a sapling grows in its care on a plot of <paramref name="biome"/>; null where nothing grows.</summary>
-    public static TimeSpan? GrowTime(ForesterLevel level, Biome biome) => Forestry.GrowTime(biome) / level.GrowSpeed;
+    /// <summary>How long a sapling of <paramref name="kind"/> (a pine's when none) grows in its care on a plot of <paramref name="biome"/>;
+    /// null where nothing grows.</summary>
+    public static TimeSpan? GrowTime(ForesterLevel level, Biome biome, TreeKind? kind = null) =>
+        Trees.GrowTime(biome, kind ?? Trees.Kinds[0]) / level.GrowSpeed;
 
     /// <summary>The way the door faces, as (dx, dy): 0 south, 1 east, 2 north, 3 west.</summary>
     public static (int Dx, int Dy) Facing(int rotation) => (rotation & 3) switch
@@ -110,20 +114,39 @@ public static class Foresters
 /// One forester's forest as it works through time, in memory: worked out up to a moment from the trees
 /// standing in it, then written back. Times only ever move forward.
 /// </summary>
+/// <param name="grow">How long a sapling of a kind grows in its care.</param>
+/// <param name="species">The kind of tree it plants.</param>
+/// <param name="store">The wood it keeps, by item.</param>
 /// <param name="busyUntil">When it is done with the tree it cuts now, or could start the next one.</param>
-public sealed class ForestPatch(ForesterLevel level, TimeSpan grow, int wood, DateTimeOffset busyUntil)
+public sealed class ForestPatch(
+    ForesterLevel level, Func<TreeKind, TimeSpan> grow, TreeKind species, IReadOnlyDictionary<string, int> store, DateTimeOffset busyUntil)
 {
+    public ForestPatch(ForesterLevel level, TimeSpan grow, int wood, DateTimeOffset busyUntil)
+        : this(level, _ => grow, World.Trees.Kinds[0], new Dictionary<string, int> { [Items.Wood] = wood }, busyUntil)
+    {
+    }
+
     public ForesterLevel ForesterLevel { get; } = level;
 
-    public int Wood { get; private set; } = wood;
+    /// <summary>The kind of tree it plants on free tiles and where it cut one.</summary>
+    public TreeKind Species { get; private set; } = species;
+
+    /// <summary>The wood it keeps, by item: plain wood and oak wood.</summary>
+    public Dictionary<string, int> Store { get; } = store.Where(s => s.Value > 0).ToDictionary();
+
+    /// <summary>All the wood it keeps, of every kind.</summary>
+    public int Wood => Store.Values.Sum();
 
     public DateTimeOffset BusyUntil { get; private set; } = busyUntil;
 
     /// <summary>Planted trees in its forest and when each has grown.</summary>
     public Dictionary<(int X, int Y), DateTimeOffset> Trees { get; } = [];
 
-    /// <summary>Trees that grew in its forest by themselves and stand there still.</summary>
-    public HashSet<(int X, int Y)> Wild { get; } = [];
+    /// <summary>The kind of each planted tree; a pine where none is set.</summary>
+    public Dictionary<(int X, int Y), TreeKind> Kinds { get; } = [];
+
+    /// <summary>Trees that grew in its forest by themselves and stand there still, with their kind.</summary>
+    public Dictionary<(int X, int Y), TreeKind> Wild { get; } = [];
 
     /// <summary>Free tiles of its forest, to be planted the next time it works.</summary>
     public HashSet<(int X, int Y)> Open { get; } = [];
@@ -141,13 +164,33 @@ public sealed class ForestPatch(ForesterLevel level, TimeSpan grow, int wood, Da
 
     public bool Full => Wood >= ForesterLevel.Capacity;
 
+    /// <summary>The kind of the tree on a tile of its forest.</summary>
+    public TreeKind KindAt((int X, int Y) tile) =>
+        Wild.GetValueOrDefault(tile) ?? Kinds.GetValueOrDefault(tile) ?? World.Trees.Kinds[0];
+
+    /// <summary>From now on it plants <paramref name="kind"/>; the trees standing are cut as they are.</summary>
+    public void Plant(TreeKind kind)
+    {
+        if (kind != Species)
+        {
+            Species = kind;
+            Changed = true;
+        }
+    }
+
+    private void PlantAt((int X, int Y) tile, DateTimeOffset at)
+    {
+        Trees[tile] = at + grow(Species);
+        Kinds[tile] = Species;
+        Planted.Add(tile);
+    }
+
     /// <summary>Plants the free tiles at <paramref name="now"/>, then cuts every tree it could have cut by then.</summary>
     public void Advance(DateTimeOffset now)
     {
         foreach (var tile in Open)
         {
-            Trees[tile] = now + grow;
-            Planted.Add(tile);
+            PlantAt(tile, now);
             Changed = true;
         }
 
@@ -159,7 +202,7 @@ public sealed class ForestPatch(ForesterLevel level, TimeSpan grow, int wood, Da
 
         // Wild trees are ready from the start, so they come first.
         var queue = new PriorityQueue<(int X, int Y), DateTimeOffset>();
-        foreach (var tile in Wild)
+        foreach (var tile in Wild.Keys)
         {
             queue.Enqueue(tile, DateTimeOffset.MinValue);
         }
@@ -181,18 +224,20 @@ public sealed class ForestPatch(ForesterLevel level, TimeSpan grow, int wood, Da
             }
 
             queue.Dequeue();
-            Wood++;
+            var kind = KindAt(tile);
+            // What does not fit in the store is left in the forest.
+            var cut = Math.Min(kind.WoodQuantity, ForesterLevel.Capacity - Wood);
+            Store[kind.Wood] = Store.GetValueOrDefault(kind.Wood) + cut;
             BusyUntil = done;
-            Made.Add(ProductionEntry.Made(Items.Wood, 1, done));
+            Made.Add(ProductionEntry.Made(kind.Wood, cut, done));
             if (Wild.Remove(tile))
             {
                 Cleared.Add(tile);
             }
 
-            // A new sapling goes in at once where the tree stood.
-            var grown = done + grow;
-            Trees[tile] = grown;
-            Planted.Add(tile);
+            // A new sapling of the kind it plants now goes in at once where the tree stood.
+            PlantAt(tile, done);
+            var grown = Trees[tile];
             if (grown + ForesterLevel.CutTime <= now)
             {
                 queue.Enqueue(tile, grown);
@@ -217,23 +262,43 @@ public sealed class ForestPatch(ForesterLevel level, TimeSpan grow, int wood, Da
         return first is { } at ? (at > BusyUntil ? at : BusyUntil) + ForesterLevel.CutTime : null;
     }
 
-    /// <summary>Takes wood out at <paramref name="now"/>; one that stood full starts cutting again only from then.</summary>
-    public int Take(int quantity, DateTimeOffset now)
+    /// <summary>Takes wood out at <paramref name="now"/>, plain wood first unless <paramref name="item"/> is named;
+    /// one that stood full starts cutting again only from then.</summary>
+    public int Take(int quantity, DateTimeOffset now, string? item = null)
     {
-        var taken = Math.Min(quantity, Wood);
-        if (taken == 0)
+        var taken = 0;
+        foreach (var kind in Store.Keys.Where(k => item is null || k == item).OrderBy(k => k == Items.Wood ? 0 : 1).ToList())
         {
-            return 0;
+            var some = Math.Min(quantity - taken, Store[kind]);
+            if (some == 0)
+            {
+                continue;
+            }
+
+            if (Full && BusyUntil < now)
+            {
+                BusyUntil = now;
+            }
+
+            Store[kind] -= some;
+            if (Store[kind] == 0)
+            {
+                Store.Remove(kind);
+            }
+
+            taken += some;
+            Changed = true;
         }
 
-        if (Full && BusyUntil < now)
-        {
-            BusyUntil = now;
-        }
-
-        Wood -= taken;
-        Changed = true;
         return taken;
+    }
+
+    /// <summary>Takes all the wood out at <paramref name="now"/>, by item.</summary>
+    public IReadOnlyList<(string Item, int Quantity)> TakeAll(DateTimeOffset now)
+    {
+        var all = Store.OrderBy(s => s.Key == Items.Wood ? 0 : 1).Select(s => (s.Key, s.Value)).ToList();
+        Take(int.MaxValue, now);
+        return all;
     }
 }
 
@@ -262,7 +327,7 @@ public sealed class ForesterService(
         }, cancellationToken);
 
     /// <summary>Takes all the wood out of a forester on the player's plot into the inventory.</summary>
-    public Task<(PlotForests State, int Taken, XpGain? Xp)> TakeAsync(
+    public Task<(PlotForests State, IReadOnlyList<(string Item, int Quantity)> Taken, XpGain? Xp)> TakeAsync(
         Guid player, int x, int y, Guid id, IEnumerable<IPlotAutomation> automation, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
@@ -276,18 +341,44 @@ public sealed class ForesterService(
             var forests = await OpenAsync(x, y, now, cancellationToken);
             var forester = forests.FirstOrDefault(f => f.Object.Id == id)
                 ?? throw new GameException("no_object", "There is no such forester's building on this plot.");
-            var taken = forester.Patch.Take(int.MaxValue, now);
+            var taken = forester.Patch.TakeAll(now);
             // Room again: what waited on the full store is cut from now on.
             forester.Patch.Advance(now);
             await SaveAsync(x, y, forests, cancellationToken);
             XpGain? xp = null;
-            if (taken > 0)
+            foreach (var (item, quantity) in taken)
             {
-                await inventory.ReceiveAsync(player, Items.Wood, taken, cancellationToken);
-                xp = await progress.AddXpAsync(player, taken / Foresters.WoodPerXp, cancellationToken);
+                await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
+            }
+
+            if (taken.Count > 0)
+            {
+                xp = await progress.AddXpAsync(player, taken.Sum(t => t.Quantity) / Foresters.WoodPerXp, cancellationToken);
             }
 
             return (await ReportAsync(x, y, cancellationToken), taken, xp);
+        }, cancellationToken);
+
+    /// <summary>Sets the kind of tree a forester on the player's plot plants from now on.</summary>
+    public Task<PlotForests> PlantAsync(
+        Guid player, int x, int y, Guid id, string species, IEnumerable<IPlotAutomation> automation, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            var kind = Trees.ById.GetValueOrDefault(species) ?? throw new GameException("bad_species", "There is no such kind of tree.");
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
+            foreach (var machinery in automation)
+            {
+                await machinery.CatchUpAsync(x, y, cancellationToken);
+            }
+
+            var now = time.GetUtcNow();
+            var forests = await OpenAsync(x, y, now, cancellationToken);
+            var forester = forests.FirstOrDefault(f => f.Object.Id == id)
+                ?? throw new GameException("no_object", "There is no such forester's building on this plot.");
+            forester.Patch.Advance(now);
+            forester.Patch.Plant(kind);
+            await SaveAsync(x, y, forests, cancellationToken);
+            return await ReportAsync(x, y, cancellationToken);
         }, cancellationToken);
 
     public async Task PlacedAsync(Guid owner, int x, int y, PlacedOnPlot placed, CancellationToken cancellationToken)
@@ -338,11 +429,21 @@ public sealed class ForesterService(
             await trees.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        await using var delete = await db.CommandAsync("DELETE FROM world.plot_foresters WHERE object_id = @id RETURNING wood", cancellationToken);
+        await using var delete = await db.CommandAsync("DELETE FROM world.plot_foresters WHERE object_id = @id RETURNING wood, oak_wood", cancellationToken);
         delete.Parameters.AddWithValue("id", id);
-        if (await delete.ExecuteScalarAsync(cancellationToken) is int wood && wood > 0)
+        var store = new List<(string Item, int Quantity)>();
+        await using (var reader = await delete.ExecuteReaderAsync(cancellationToken))
         {
-            await inventory.AddAsync(owner, Items.Wood, wood, cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                store.Add((Items.Wood, reader.GetInt32(0)));
+                store.Add((Items.OakWood, reader.GetInt32(1)));
+            }
+        }
+
+        foreach (var (item, quantity) in store.Where(s => s.Quantity > 0))
+        {
+            await inventory.AddAsync(owner, item, quantity, cancellationToken);
         }
     }
 
@@ -384,7 +485,7 @@ public sealed class ForesterService(
 
             await SaveAsync(x, y, forests, cancellationToken);
             statuses.AddRange(forests.Where(f => f.Object.Owner == owner).Select(f => new MachineStatus(
-                f.Object.Id, f.Object.Kind, Items.Wood, f.Patch.Full ? MachineActivity.OutputFull : MachineActivity.Working, [])));
+                f.Object.Id, f.Object.Kind, f.Patch.Species.Wood, f.Patch.Full ? MachineActivity.OutputFull : MachineActivity.Working, [])));
         }
 
         return statuses;
@@ -401,16 +502,19 @@ public sealed class ForesterService(
             return [];
         }
 
-        var rows = new Dictionary<Guid, (int Wood, DateTimeOffset BusyUntil)>();
+        var rows = new Dictionary<Guid, (int Wood, int OakWood, DateTimeOffset BusyUntil, string Species)>();
         await using (var command = await db.CommandAsync(
-            "SELECT object_id, wood, busy_until FROM world.plot_foresters WHERE x = @x AND y = @y ORDER BY object_id FOR UPDATE", cancellationToken))
+            """
+            SELECT object_id, wood, oak_wood, busy_until, species FROM world.plot_foresters
+            WHERE x = @x AND y = @y ORDER BY object_id FOR UPDATE
+            """, cancellationToken))
         {
             command.Parameters.AddWithValue("x", x);
             command.Parameters.AddWithValue("y", y);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                rows[reader.GetGuid(0)] = (reader.GetInt32(1), reader.GetFieldValue<DateTimeOffset>(2));
+                rows[reader.GetGuid(0)] = (reader.GetInt32(1), reader.GetInt32(2), reader.GetFieldValue<DateTimeOffset>(3), reader.GetString(4));
             }
         }
 
@@ -442,21 +546,23 @@ public sealed class ForesterService(
         foreach (var o in foresters)
         {
             var level = Foresters.Level(o.Kind)!;
-            var (wood, busyUntil) = rows.GetValueOrDefault(o.Id, (0, start));
-            var patch = new ForestPatch(level, Foresters.GrowTime(level, biome) ?? Forestry.Grow, wood, busyUntil);
+            var (wood, oakWood, busyUntil, species) = rows.GetValueOrDefault(o.Id, (0, 0, start, Trees.Pine));
+            var store = new Dictionary<string, int> { [Items.Wood] = wood, [Items.OakWood] = oakWood };
+            var patch = new ForestPatch(level, k => Foresters.GrowTime(level, biome, k) ?? Forestry.Grow, Trees.Of(species), store, busyUntil);
             foreach (var tile in areas[o.Id])
             {
-                if (trees.TryGetValue(tile, out var ready))
+                if (trees.TryGetValue(tile, out var tree))
                 {
-                    patch.Trees[tile] = ready;
+                    patch.Trees[tile] = tree.ReadyAt;
+                    patch.Kinds[tile] = tree.Kind;
                 }
                 else if (taken.Contains(tile))
                 {
                     continue;
                 }
-                else if (Trees.IsTree(tiles[tile.Y * PlotLayout.Size + tile.X]))
+                else if (Trees.ByTile.GetValueOrDefault((TileObject)tiles[tile.Y * PlotLayout.Size + tile.X]) is { } wild)
                 {
-                    patch.Wild.Add(tile);
+                    patch.Wild[tile] = wild;
                 }
                 else if (tiles[tile.Y * PlotLayout.Size + tile.X] == (byte)TileObject.None)
                 {
@@ -470,17 +576,17 @@ public sealed class ForesterService(
         return result;
     }
 
-    private async Task<Dictionary<(int X, int Y), DateTimeOffset>> PlantedAsync(int x, int y, CancellationToken cancellationToken)
+    private async Task<Dictionary<(int X, int Y), (DateTimeOffset ReadyAt, TreeKind Kind)>> PlantedAsync(int x, int y, CancellationToken cancellationToken)
     {
-        var trees = new Dictionary<(int, int), DateTimeOffset>();
+        var trees = new Dictionary<(int, int), (DateTimeOffset, TreeKind)>();
         await using var command = await db.CommandAsync(
-            "SELECT tile_x, tile_y, ready_at FROM world.plot_trees WHERE x = @x AND y = @y", cancellationToken);
+            "SELECT tile_x, tile_y, ready_at, species FROM world.plot_trees WHERE x = @x AND y = @y", cancellationToken);
         command.Parameters.AddWithValue("x", x);
         command.Parameters.AddWithValue("y", y);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         while (await reader.ReadAsync(cancellationToken))
         {
-            trees[(reader.GetInt32(0), reader.GetInt32(1))] = reader.GetFieldValue<DateTimeOffset>(2);
+            trees[(reader.GetInt32(0), reader.GetInt32(1))] = (reader.GetFieldValue<DateTimeOffset>(2), Trees.Of(reader.GetString(3)));
         }
 
         return trees;
@@ -493,16 +599,19 @@ public sealed class ForesterService(
         {
             await using (var update = await db.CommandAsync(
                 """
-                INSERT INTO world.plot_foresters (object_id, x, y, owner_id, wood, busy_until) VALUES (@id, @x, @y, @owner, @wood, @busy)
-                ON CONFLICT (object_id) DO UPDATE SET wood = @wood, busy_until = @busy
+                INSERT INTO world.plot_foresters (object_id, x, y, owner_id, wood, oak_wood, busy_until, species)
+                VALUES (@id, @x, @y, @owner, @wood, @oak, @busy, @species)
+                ON CONFLICT (object_id) DO UPDATE SET wood = @wood, oak_wood = @oak, busy_until = @busy, species = @species
                 """, cancellationToken))
             {
                 update.Parameters.AddWithValue("id", o.Id);
                 update.Parameters.AddWithValue("x", x);
                 update.Parameters.AddWithValue("y", y);
                 update.Parameters.AddWithValue("owner", o.Owner);
-                update.Parameters.AddWithValue("wood", patch.Wood);
+                update.Parameters.AddWithValue("wood", patch.Store.GetValueOrDefault(Items.Wood));
+                update.Parameters.AddWithValue("oak", patch.Store.GetValueOrDefault(Items.OakWood));
                 update.Parameters.AddWithValue("busy", patch.BusyUntil);
+                update.Parameters.AddWithValue("species", patch.Species.Id);
                 await update.ExecuteNonQueryAsync(cancellationToken);
             }
 
@@ -511,9 +620,10 @@ public sealed class ForesterService(
                 var planted = patch.Planted.ToList();
                 await using var trees = await db.CommandAsync(
                     """
-                    INSERT INTO world.plot_trees (x, y, tile_x, tile_y, ready_at, forester_id)
-                    SELECT @x, @y, t.tx, t.ty, t.ready, @forester FROM unnest(@txs, @tys, @readies) AS t(tx, ty, ready)
-                    ON CONFLICT (x, y, tile_x, tile_y) DO UPDATE SET ready_at = EXCLUDED.ready_at, forester_id = EXCLUDED.forester_id
+                    INSERT INTO world.plot_trees (x, y, tile_x, tile_y, ready_at, forester_id, species)
+                    SELECT @x, @y, t.tx, t.ty, t.ready, @forester, t.species FROM unnest(@txs, @tys, @readies, @species) AS t(tx, ty, ready, species)
+                    ON CONFLICT (x, y, tile_x, tile_y) DO UPDATE
+                    SET ready_at = EXCLUDED.ready_at, forester_id = EXCLUDED.forester_id, species = EXCLUDED.species
                     """, cancellationToken);
                 trees.Parameters.AddWithValue("forester", o.Id);
                 trees.Parameters.AddWithValue("x", x);
@@ -524,6 +634,7 @@ public sealed class ForesterService(
                 {
                     Value = planted.Select(t => patch.Trees[t]).ToArray(),
                 });
+                trees.Parameters.AddWithValue("species", planted.Select(t => patch.KindAt(t).Id).ToArray());
                 await trees.ExecuteNonQueryAsync(cancellationToken);
                 patch.Planted.Clear();
             }
@@ -593,13 +704,13 @@ public sealed class ForesterService(
         public string? Output(DateTimeOffset now, Func<string, bool> wanted)
         {
             patch.Advance(now);
-            return patch.Wood > 0 && wanted(Items.Wood) ? Items.Wood : null;
+            return patch.Store.Keys.OrderBy(k => k == Items.Wood ? 0 : 1).FirstOrDefault(wanted);
         }
 
         public void Take(string item, DateTimeOffset now)
         {
             patch.Advance(now);
-            if (item == Items.Wood && patch.Take(1, now) == 1)
+            if (patch.Take(1, now, item) == 1)
             {
                 patch.Advance(now);
             }
@@ -626,6 +737,8 @@ public sealed record ForestryRequest(int X, int Y);
 
 public sealed record TakeFromForesterRequest(int X, int Y, Guid Id);
 
+public sealed record PlantForesterRequest(int X, int Y, Guid Id, string Species);
+
 public abstract class ForestryHandler(IServiceScopeFactory scopes, TimeProvider time) : IMessageHandler
 {
     public abstract string Type { get; }
@@ -644,13 +757,13 @@ public abstract class ForestryHandler(IServiceScopeFactory scopes, TimeProvider 
             foresters = state.Foresters.Select(f => ForesterJson(f, biome, time.GetUtcNow())),
             trees = state.Trees.Select(PlantTreeHandler.TreeJson),
             cleared = state.Cleared.Select(t => new { tileX = t.X, tileY = t.Y }),
-            taken = taken > 0 ? new[] { new { id = Items.Wood, name = Items.Names[Items.Wood], quantity = taken } } : [],
+            taken = taken.Select(t => new { id = t.Item, name = Items.Names[t.Item], quantity = t.Quantity }),
             xp = xp is { } gain ? new { xp = gain.Xp, level = gain.Level, leveledUp = gain.LeveledUp } : null,
             serverTime = time.GetUtcNow().ToUnixTimeMilliseconds(),
         });
     }
 
-    protected abstract Task<(PlotForests, int, XpGain?)> RunAsync(
+    protected abstract Task<(PlotForests, IReadOnlyList<(string Item, int Quantity)>, XpGain?)> RunAsync(
         ForesterService foresters, IEnumerable<IPlotAutomation> automation, Guid player, JsonElement? payload, CancellationToken cancellationToken);
 
     public static object ForesterJson(ForesterOnPlot forester, Biome biome, DateTimeOffset now)
@@ -670,9 +783,25 @@ public abstract class ForestryHandler(IServiceScopeFactory scopes, TimeProvider 
             radius = level.Radius,
             clearing = Foresters.Clearing,
             wood = patch.Wood,
+            store = patch.Store.OrderBy(s => s.Key == Items.Wood ? 0 : 1).Select(s => new { id = s.Key, name = Items.Names[s.Key], quantity = s.Value }),
             capacity = level.Capacity,
             cutSeconds = level.CutTime.TotalSeconds,
-            growSeconds = Foresters.GrowTime(level, biome)?.TotalSeconds,
+            growSeconds = Foresters.GrowTime(level, biome, patch.Species)?.TotalSeconds,
+            species = patch.Species.Id,
+            // The kinds it can plant, how long each grows in its care here and what it gives.
+            kinds = Trees.Kinds.Select(k => new
+            {
+                id = k.Id,
+                name = Trees.Names[k.Id],
+                sapling = k.Sapling,
+                growSeconds = Foresters.GrowTime(level, biome, k)?.TotalSeconds,
+                wood = k.Wood,
+                woodName = Items.Names[k.Wood],
+                woodQuantity = k.WoodQuantity,
+                flowers = k.Flowers,
+                note = Trees.Notes[k.Id],
+                standing = patch.Trees.Keys.Count(t => patch.KindAt(t) == k) + patch.Wild.Values.Count(v => v == k),
+            }),
             trees = patch.Trees.Count + patch.Wild.Count,
             grown = patch.Wild.Count + patch.Trees.Values.Count(r => r <= now),
             full = patch.Full,
@@ -684,7 +813,7 @@ public abstract class ForestryHandler(IServiceScopeFactory scopes, TimeProvider 
                 radius = next.Radius,
                 capacity = next.Capacity,
                 cutSeconds = next.CutTime.TotalSeconds,
-                growSeconds = Foresters.GrowTime(next, biome)?.TotalSeconds,
+                growSeconds = Foresters.GrowTime(next, biome, patch.Species)?.TotalSeconds,
             },
         };
     }
@@ -695,11 +824,11 @@ public sealed class GetForestryHandler(IServiceScopeFactory scopes, TimeProvider
 {
     public override string Type => "forestry.get";
 
-    protected override async Task<(PlotForests, int, XpGain?)> RunAsync(
+    protected override async Task<(PlotForests, IReadOnlyList<(string Item, int Quantity)>, XpGain?)> RunAsync(
         ForesterService foresters, IEnumerable<IPlotAutomation> automation, Guid player, JsonElement? payload, CancellationToken cancellationToken)
     {
         var request = Payload.Read<ForestryRequest>(payload);
-        return (await foresters.StateAsync(player, request.X, request.Y, automation, cancellationToken), 0, null);
+        return (await foresters.StateAsync(player, request.X, request.Y, automation, cancellationToken), [], null);
     }
 }
 
@@ -708,10 +837,23 @@ public sealed class TakeFromForesterHandler(IServiceScopeFactory scopes, TimePro
 {
     public override string Type => "forester.take";
 
-    protected override Task<(PlotForests, int, XpGain?)> RunAsync(
+    protected override Task<(PlotForests, IReadOnlyList<(string Item, int Quantity)>, XpGain?)> RunAsync(
         ForesterService foresters, IEnumerable<IPlotAutomation> automation, Guid player, JsonElement? payload, CancellationToken cancellationToken)
     {
         var request = Payload.Read<TakeFromForesterRequest>(payload);
         return foresters.TakeAsync(player, request.X, request.Y, request.Id, automation, cancellationToken);
+    }
+}
+
+/// <summary>Picks the kind of tree a forester plants from now on.</summary>
+public sealed class PlantForesterHandler(IServiceScopeFactory scopes, TimeProvider time) : ForestryHandler(scopes, time)
+{
+    public override string Type => "forester.plant";
+
+    protected override async Task<(PlotForests, IReadOnlyList<(string Item, int Quantity)>, XpGain?)> RunAsync(
+        ForesterService foresters, IEnumerable<IPlotAutomation> automation, Guid player, JsonElement? payload, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<PlantForesterRequest>(payload);
+        return (await foresters.PlantAsync(player, request.X, request.Y, request.Id, request.Species, automation, cancellationToken), [], null);
     }
 }
