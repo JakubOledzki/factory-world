@@ -23,6 +23,26 @@ namespace FactoryWorld.Modules.Crafting.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("FactoryWorld.Modules.Crafting.CanteenRow", b =>
+                {
+                    b.Property<Guid>("ObjectId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<DateTimeOffset?>("FedUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fed_until");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.HasKey("ObjectId");
+
+                    b.ToTable("canteens", "crafting");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.Crafting.CraftingJobRow", b =>
                 {
                     b.Property<long>("Id")
@@ -117,6 +137,13 @@ namespace FactoryWorld.Modules.Crafting.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid")
                         .HasColumnName("object_id");
+
+                    b.PrimitiveCollection<int[]>("Extras")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer[]")
+                        .HasColumnName("extras")
+                        .HasDefaultValueSql("'{}'");
 
                     b.Property<int>("Fuel")
                         .HasColumnType("integer")

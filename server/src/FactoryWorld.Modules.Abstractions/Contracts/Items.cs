@@ -434,6 +434,44 @@ public static class Items
     public const string Megafactory = "furniture_megafactory";
     public const string FusionPlant = "power_fusion_plant";
 
+    // Husbandry and gastronomy for the other industries: a slaughterhouse, a dairy, a potato distillery, a biogas plant and work horses
+    // give what the rest of the game needs; meals feed the character, a works canteen feeds the machines' crews, fine dishes feed banquets.
+    public const string Meat = "meat";
+    public const string Hide = "hide";
+    public const string Tallow = "tallow";
+    public const string Bones = "bones";
+    public const string Manure = "manure";
+    public const string Gelatin = "gelatin";
+    public const string CultureMedium = "culture_medium";
+    public const string Cheese = "cheese";
+    public const string Butter = "butter";
+    public const string Casein = "casein";
+    public const string Ethanol = "ethanol";
+    public const string Stillage = "stillage";
+    public const string DriedMeat = "dried_meat";
+    public const string WorkersLunch = "workers_lunch";
+    public const string CheeseSandwich = "cheese_sandwich";
+    public const string MinersBreakfast = "miners_breakfast";
+    public const string LumberjackGoulash = "lumberjack_goulash";
+    public const string ConcentrateFeed = "concentrate_feed";
+    public const string RoastBeef = "roast_beef";
+    public const string Cheesecake = "cheesecake";
+    public const string DiningTakings = "dining_takings";
+    public const string Horse = "animal_horse";
+    public const string LeatherBoots = "clothes_leather_boots";
+
+    public const string Canteen = "furniture_canteen";
+    public const string Slaughterhouse = "furniture_slaughterhouse";
+    public const string Dairy = "furniture_dairy";
+    public const string PotatoDistillery = "furniture_potato_distillery";
+    public const string BiogasPlant = "furniture_biogas_plant";
+    public const string Stable = "furniture_stable";
+    public const string Bellows = "furniture_bellows";
+
+    // A farmer's farmstead stands on 3 × 3 tiles of a fertile plot, sows the crop it is told around itself and reaps it by itself; the manor farm is its upgrade.
+    public const string Farmstead = "furniture_farmstead";
+    public const string ManorFarm = "furniture_manor_farm";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -788,6 +826,38 @@ public static class Items
         [SteelCombine] = "Kombinat hutniczy",
         [Megafactory] = "Megafabryka",
         [FusionPlant] = "Elektrownia fuzyjna",
+        [Meat] = "Mięso",
+        [Hide] = "Skóra",
+        [Tallow] = "Łój",
+        [Bones] = "Kości",
+        [Manure] = "Obornik",
+        [Gelatin] = "Żelatyna",
+        [CultureMedium] = "Pożywka laboratoryjna",
+        [Cheese] = "Ser",
+        [Butter] = "Masło",
+        [Casein] = "Kazeina",
+        [Ethanol] = "Etanol",
+        [Stillage] = "Wywar",
+        [DriedMeat] = "Suszone mięso",
+        [WorkersLunch] = "Obiad pracowniczy",
+        [CheeseSandwich] = "Kanapka z serem",
+        [MinersBreakfast] = "Drugie śniadanie górnika",
+        [LumberjackGoulash] = "Gulasz drwala",
+        [ConcentrateFeed] = "Pasza treściwa",
+        [RoastBeef] = "Pieczeń wołowa",
+        [Cheesecake] = "Sernik",
+        [DiningTakings] = "Utarg z restauracji",
+        [Horse] = "Koń roboczy",
+        [LeatherBoots] = "Buty skórzane",
+        [Canteen] = "Stołówka zakładowa",
+        [Slaughterhouse] = "Rzeźnia",
+        [Dairy] = "Mleczarnia",
+        [PotatoDistillery] = "Gorzelnia",
+        [BiogasPlant] = "Biogazownia",
+        [Stable] = "Stajnia",
+        [Bellows] = "Miech skórzany",
+        [Farmstead] = "Zagroda rolnika",
+        [ManorFarm] = "Folwark",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
@@ -833,6 +903,12 @@ public static class Items
     /// <summary>Forester's buildings of every level: the hut and its upgrades.</summary>
     public static bool IsForester(string id) => id is ForesterHut or ForesterLodge or ForestryStation;
 
+    /// <summary>Farmer's buildings of every level: the farmstead and the manor farm.</summary>
+    public static bool IsFarmstead(string id) => id is Farmstead or ManorFarm;
+
+    /// <summary>Fine dishes: what banquets, a company's listing, a mayor's festival and the restaurants of hotels need.</summary>
+    public static bool IsFineDish(string id) => id is RoastBeef or Cheesecake;
+
     /// <summary>Drills of every level, which stand at a mine and dig it by themselves.</summary>
     public static bool IsDrill(string id) => id is Drill or HeavyDrill;
 
@@ -872,8 +948,8 @@ public static class Items
     /// <summary>A heater burns fuel to warm the machines around it against the frost of the glacier; it gives no power.</summary>
     public static bool IsHeater(string id) => id == Heater;
 
-    /// <summary>What tourists pay: taken out of a hotel or a viewpoint, it goes into the wallet, not the inventory.</summary>
-    public static bool IsMoney(string id) => id == Takings;
+    /// <summary>What tourists and diners pay: taken out of a hotel or a viewpoint, it goes into the wallet, not the inventory.</summary>
+    public static bool IsMoney(string id) => id is Takings or DiningTakings;
 
     /// <summary>What speeds research up, and by how many seconds each piece.</summary>
     public static readonly IReadOnlyDictionary<string, int> ResearchBoost = new Dictionary<string, int>
@@ -881,6 +957,7 @@ public static class Items
         [ResearchData] = 60,
         [ComputingPower] = 15,
         [Blueprint] = 120,
+        [CultureMedium] = 10,
     };
 
     /// <summary>What stands in a city only.</summary>
@@ -906,6 +983,19 @@ public static class Items
         [RubberBoots] = new(ClothingSlots.Feet, new Dictionary<string, int> { [Industries.Fishing] = 10, [Industries.Farming] = 10 }),
         [WorkBoots] = new(ClothingSlots.Feet, new Dictionary<string, int> { [Industries.Forestry] = 10, [Industries.Mining] = 10 }),
         [DressShoes] = new(ClothingSlots.Feet, new Dictionary<string, int> { [Industries.Trade] = 3 }),
+        [LeatherBoots] = new(ClothingSlots.Feet, new Dictionary<string, int> { [Industries.Forestry] = 15, [Industries.Mining] = 15, [Industries.Farming] = 10 }),
+    };
+
+    /// <summary>What the character can eat and what each meal gives for a while, in percent per industry (see <see cref="Industries"/>),
+    /// on top of the clothes. A new meal takes the place of the one before.</summary>
+    public static readonly IReadOnlyDictionary<string, Meal> Meals = new Dictionary<string, Meal>
+    {
+        [Bread] = new(Industries.HandWork.ToDictionary(i => i, _ => 10), TimeSpan.FromMinutes(10)),
+        [ScrambledEggs] = new(Industries.HandWork.ToDictionary(i => i, _ => 15), TimeSpan.FromMinutes(15)),
+        [WorkersLunch] = new(Industries.HandWork.ToDictionary(i => i, _ => 15), TimeSpan.FromMinutes(20)),
+        [CheeseSandwich] = new(Industries.HandWork.ToDictionary(i => i, _ => 20), TimeSpan.FromMinutes(20)),
+        [MinersBreakfast] = new(new Dictionary<string, int> { [Industries.Mining] = 30 }, TimeSpan.FromMinutes(30)),
+        [LumberjackGoulash] = new(new Dictionary<string, int> { [Industries.Forestry] = 30 }, TimeSpan.FromMinutes(30)),
     };
 
     /// <summary>City offices that sell a service to any player who comes by, for their owner.</summary>
@@ -931,6 +1021,10 @@ public sealed record Backpack(int ExtraSlots, int ToolSlots);
 /// <param name="Slot">One of <see cref="ClothingSlots.All"/>.</param>
 /// <param name="Bonuses">Percent per industry: work in it goes this much faster (trade: the trader pays this much more).</param>
 public sealed record Garment(string Slot, IReadOnlyDictionary<string, int> Bonuses);
+
+/// <param name="Bonuses">Percent per industry: work in it goes this much faster while the meal lasts.</param>
+/// <param name="Time">How long it lasts.</param>
+public sealed record Meal(IReadOnlyDictionary<string, int> Bonuses, TimeSpan Time);
 
 /// <summary>Where clothes are worn.</summary>
 public static class ClothingSlots
@@ -965,6 +1059,9 @@ public static class Industries
     public const string Trade = "trade";
 
     public static readonly IReadOnlyList<string> All = [Forestry, Mining, Farming, Fishing, Crafting, Trade];
+
+    /// <summary>Work done by hand, which meals make faster: everything but trade.</summary>
+    public static readonly IReadOnlyList<string> HandWork = [Forestry, Mining, Farming, Fishing, Crafting];
 
     /// <summary>How many times faster work goes with <paramref name="percent"/> from clothes.</summary>
     public static double Speed(int percent) => 1 + percent / 100.0;

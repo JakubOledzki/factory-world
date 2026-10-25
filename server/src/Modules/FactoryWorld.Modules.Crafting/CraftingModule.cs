@@ -45,6 +45,16 @@ public sealed class FurnaceRow
     public DateTimeOffset? StartedAt { get; set; }
 }
 
+/// <summary>When the food of a works canteen runs out; keyed by the id of the object on the plot.</summary>
+public sealed class CanteenRow
+{
+    public Guid ObjectId { get; set; }
+
+    public Guid OwnerId { get; set; }
+
+    public DateTimeOffset? FedUntil { get; set; }
+}
+
 /// <summary>What a placed processing machine (mill, bakery, ...) holds; keyed by the id of the object on the plot.</summary>
 public sealed class MachineRow
 {
@@ -58,6 +68,9 @@ public sealed class MachineRow
 
     /// <summary>How much of each ingredient of the recipe is loaded, in the recipe's order.</summary>
     public int[] Inputs { get; set; } = [];
+
+    /// <summary>How much of each of the recipe's byproducts waits to be taken out, in the recipe's order.</summary>
+    public int[] Extras { get; set; } = [];
 
     public string? FuelItem { get; set; }
 
@@ -103,6 +116,14 @@ public sealed class CraftingDbContext(DbContextOptions<CraftingDbContext> option
             e.Property(f => f.OutputQuantity).HasColumnName("output_quantity");
             e.Property(f => f.StartedAt).HasColumnName("started_at");
         });
+        model.Entity<CanteenRow>(e =>
+        {
+            e.ToTable("canteens");
+            e.HasKey(c => c.ObjectId);
+            e.Property(c => c.ObjectId).HasColumnName("object_id");
+            e.Property(c => c.OwnerId).HasColumnName("owner_id");
+            e.Property(c => c.FedUntil).HasColumnName("fed_until");
+        });
         model.Entity<MachineRow>(e =>
         {
             e.ToTable("machines");
@@ -116,6 +137,7 @@ public sealed class CraftingDbContext(DbContextOptions<CraftingDbContext> option
             e.Property(m => m.Fuel).HasColumnName("fuel");
             e.Property(m => m.Heat).HasColumnName("heat");
             e.Property(m => m.Output).HasColumnName("output");
+            e.Property(m => m.Extras).HasColumnName("extras").HasDefaultValueSql("'{}'");
             e.Property(m => m.StartedAt).HasColumnName("started_at");
         });
     }
@@ -146,6 +168,11 @@ public sealed class CraftingModule : IGameModule
         services.AddSingleton<IMessageHandler, SetMachineRecipeHandler>();
         services.AddSingleton<IMessageHandler, LoadMachineHandler>();
         services.AddSingleton<IMessageHandler, TakeMachineHandler>();
+        services.AddScoped<CanteenService>();
+        services.AddScoped<IMachinePorts, CanteenPorts>();
+        services.AddScoped<IMachineContents, CanteenContents>();
+        services.AddSingleton<IMessageHandler, GetCanteenHandler>();
+        services.AddSingleton<IMessageHandler, LoadCanteenHandler>();
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>

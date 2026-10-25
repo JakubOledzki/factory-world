@@ -454,10 +454,15 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         await client.SendAsync("character.equip", new { item = Items.Shears });
         var collected = await client.SendAsync("plot.collect", At());
         Assert.Equal("plot.animal", collected.Type());
-        var wool = Assert.Single(collected.Payload().GetProperty("items").EnumerateArray());
+        // Every animal also leaves manure for the fields.
+        var gathered = collected.Payload().GetProperty("items").EnumerateArray().ToList();
+        Assert.Equal(2, gathered.Count);
+        var wool = gathered[0];
         Assert.Equal(Items.Wool, wool.GetProperty("id").GetString());
         Assert.Equal(2, wool.GetProperty("quantity").GetInt32());
+        Assert.Equal(Items.Manure, gathered[1].GetProperty("id").GetString());
         Assert.Equal(2, (await client.InventoryAsync())[Items.Wool]);
+        Assert.Equal(1, (await client.InventoryAsync())[Items.Manure]);
         Assert.Equal(JsonValueKind.Null, collected.Payload().GetProperty("animal").GetProperty("readyAt").ValueKind);
         Assert.Equal("hungry", (await client.SendAsync("plot.collect", At())).ErrorCode());
 

@@ -29,11 +29,11 @@ public static class Mining
     [
         new(1, 50, TimeSpan.FromMinutes(10), TimeSpan.FromSeconds(5), [], 0),
         new(2, 100, TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(4), [(Items.IronIngot, 30), (Items.Wood, 40)], 30),
-        new(3, 200, TimeSpan.FromSeconds(150), TimeSpan.FromSeconds(3), [(Items.IronIngot, 80), (Items.CopperIngot, 30), (Items.TinIngot, 10)], 80),
+        new(3, 200, TimeSpan.FromSeconds(150), TimeSpan.FromSeconds(3), [(Items.IronIngot, 80), (Items.CopperIngot, 30), (Items.TinIngot, 10), (Items.Provisions, 10)], 80),
         new(4, 400, TimeSpan.FromSeconds(90), TimeSpan.FromSeconds(2.5),
-            [(Items.MineSupport, 20), (Items.SteelIngot, 40), (Items.BronzeIngot, 20), (Items.StoneBlocks, 40)], 150, 2),
+            [(Items.MineSupport, 20), (Items.SteelIngot, 40), (Items.BronzeIngot, 20), (Items.StoneBlocks, 40), (Items.Provisions, 20)], 150, 2),
         new(5, 800, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(2),
-            [(Items.MineSupport, 50), (Items.SteelIngot, 100), (Items.BronzeIngot, 50), (Items.Bricks, 100)], 300, 3),
+            [(Items.MineSupport, 50), (Items.SteelIngot, 100), (Items.BronzeIngot, 50), (Items.Bricks, 100), (Items.Provisions, 20)], 300, 3),
     ];
 
     /// <summary>How much faster mining goes on a plot of the biome, in percent: mines, drills and breaking rocks.</summary>
@@ -182,7 +182,7 @@ public sealed class MineService(
                 throw new GameException("mine_empty", "The mine is worked out; it fills up again in a while.");
             }
 
-            pace(before.Time / Items.Pickaxes[pickaxe] / await plots.SpeedAsync(player, Industries.Mining, cancellationToken));
+            pace(before.Time / Items.Pickaxes[pickaxe] / await plots.SpeedAsync(player, Industries.Mining, cancellationToken, (x, y, null, null)));
             var (after, items) = await DigAsync(player, x, y, biome, before, 1, cancellationToken);
             var xp = await progress.AddXpAsync(player, Mining.XpPerLoad, cancellationToken);
             return new MineLoad(after, items, xp);

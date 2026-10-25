@@ -159,6 +159,20 @@ public static class SledRules
 
     /// <summary>Petrol a snowmobile burns: a unit for every 50 km begun.</summary>
     public static long Fuel(double km) => Math.Max(1, (long)Math.Ceiling(km / 50));
+
+    /// <summary>How much of a unit of petrol a unit of ethanol from the potato distillery stands for in a snowmobile or a diesel generator.</summary>
+    public const double EthanolWorth = 0.8;
+
+    /// <summary>Ethanol a snowmobile burns instead of petrol.</summary>
+    public static long EthanolFuel(double km) => (long)Math.Ceiling(Fuel(km) / EthanolWorth);
+
+    /// <summary>Off the glacier, a horse cart from a stable carries goods up to <see cref="HorseMaxKm"/> free, taking <see cref="HorseTrip"/> of a train's time.</summary>
+    public const double HorseMaxKm = 50;
+
+    public const double HorseTrip = 2;
+
+    /// <summary>Concentrate the horses eat on the way: a unit for every 10 km begun, from the station.</summary>
+    public static long HorseFeed(double km) => Math.Max(1, (long)Math.Ceiling(km / 10));
 }
 
 /// <param name="Sender">Who sent the train, when it was someone else.</param>
@@ -372,7 +386,23 @@ public sealed class StationService(
     {
         if (map.BiomeAt(x, y) is not (Biome.Ice or Biome.Tundra))
         {
-            throw new GameException("no_polar", "Sleds go from the glacier or the tundra.");
+            // Elsewhere a horse cart from a stable goes a short way, on concentrate from the station.
+            if (!await beach.HasAsync(x, y, Items.Stable, 0, cancellationToken))
+            {
+                throw new GameException("no_polar", "Sleds go from the glacier or the tundra; elsewhere a horse cart leaves from a stable.");
+            }
+
+            if (km > SledRules.HorseMaxKm)
+            {
+                throw new GameException("too_far", $"A horse cart goes at most {SledRules.HorseMaxKm:0} km.");
+            }
+
+            if (!await StationStock.BurnAsync(db, x, y, Items.ConcentrateFeed, SledRules.HorseFeed(km), cancellationToken))
+            {
+                throw new GameException("no_feed", $"The horses need {SledRules.HorseFeed(km)} concentrate feed in the station.");
+            }
+
+            return railTrip * SledRules.HorseTrip;
         }
 
         if (km > SledRules.MaxKm)
@@ -381,7 +411,8 @@ public sealed class StationService(
         }
 
         var snowmobile = await beach.HasAsync(x, y, Items.SnowmobileGarage, 0, cancellationToken);
-        if (snowmobile && await StationStock.BurnAsync(db, x, y, Items.Gasoline, SledRules.Fuel(km), cancellationToken))
+        if (snowmobile && (await StationStock.BurnAsync(db, x, y, Items.Gasoline, SledRules.Fuel(km), cancellationToken)
+            || await StationStock.BurnAsync(db, x, y, Items.Ethanol, SledRules.EthanolFuel(km), cancellationToken)))
         {
             return railTrip * SledRules.SnowmobileTrip;
         }
@@ -1034,6 +1065,9 @@ public abstract class StationHandler(IServiceScopeFactory scopes) : IMessageHand
                 sledDogTrip = SledRules.DogTrip,
                 sledSnowmobileTrip = SledRules.SnowmobileTrip,
                 sledKmPerPetrol = 50,
+                horseMaxKm = SledRules.HorseMaxKm,
+                horseTrip = SledRules.HorseTrip,
+                horseKmPerFeed = 10,
                 iceTrack = SledRules.IceTrack,
             },
         });

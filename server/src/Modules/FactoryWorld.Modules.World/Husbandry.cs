@@ -18,8 +18,24 @@ public sealed record Animal(string Item, string Product, int Yield, TimeSpan Tim
     /// <summary>Whether it lives only on sand: a camel lives on a desert and in an oasis, and nowhere else.</summary>
     public bool Sandy { get; init; }
 
+    /// <summary>Manure one collection gives besides, for the fields and the biogas plant.</summary>
+    public int Manure { get; init; }
+
+    /// <summary>Every how many collections two of a kind on neighbouring tiles give a young one; 0 for never.</summary>
+    public int BreedEvery { get; init; }
+
+    /// <summary>What it eats, when not <see cref="Husbandry.Feed"/>: a work horse wants concentrate.</summary>
+    public IReadOnlyList<string>? Diet { get; init; }
+
+    /// <summary>Whether it works while fed: a horse hauls logs and ore (see <see cref="Husbandry.HorseBonus"/>).</summary>
+    public bool Works { get; init; }
+
     /// <summary>Everything one collection gives.</summary>
-    public IReadOnlyList<(string Item, int Quantity)> Gives => Extra is { } extra ? [(Product, Yield), extra] : [(Product, Yield)];
+    public IReadOnlyList<(string Item, int Quantity)> Gives =>
+        [(Product, Yield), .. Extra is { } extra ? [extra] : Array.Empty<(string, int)>(), .. Manure > 0 && Product != Items.Manure ? [(Items.Manure, Manure)] : Array.Empty<(string, int)>()];
+
+    /// <summary>What it eats.</summary>
+    public IReadOnlyList<string> Eats => Diet ?? Husbandry.Feed;
 }
 
 /// <summary>
@@ -34,20 +50,47 @@ public static class Husbandry
     /// <summary>Every animal, in the order the client lists them.</summary>
     public static readonly IReadOnlyList<Animal> Animals =
     [
-        new(Items.Chicken, Items.Egg, 2, TimeSpan.FromMinutes(4), null, 2),
-        new(Items.Sheep, Items.Wool, 2, TimeSpan.FromMinutes(8), Items.Shears, 5),
-        new(Items.Cow, Items.Milk, 3, TimeSpan.FromMinutes(12), null, 7),
-        new(Items.Camel, Items.Milk, 2, TimeSpan.FromMinutes(10), null, 8) { Extra = (Items.Wool, 1), Sandy = true },
+        new(Items.Chicken, Items.Egg, 2, TimeSpan.FromMinutes(4), null, 2) { Manure = 1, BreedEvery = 5 },
+        new(Items.Sheep, Items.Wool, 2, TimeSpan.FromMinutes(8), Items.Shears, 5) { Manure = 1, BreedEvery = 8 },
+        new(Items.Cow, Items.Milk, 3, TimeSpan.FromMinutes(12), null, 7) { Manure = 2, BreedEvery = 10 },
+        new(Items.Camel, Items.Milk, 2, TimeSpan.FromMinutes(10), null, 8) { Extra = (Items.Wool, 1), Sandy = true, BreedEvery = 10 },
+        // A work horse lives by a stable, eats concentrate only and, while fed, helps with the work around it.
+        new(Items.Horse, Items.Manure, 2, TimeSpan.FromMinutes(10), null, 6) { BreedEvery = 20, Diet = [Items.ConcentrateFeed], Works = true },
     ];
 
     public static readonly IReadOnlyDictionary<string, Animal> ById = Animals.ToDictionary(a => a.Item);
 
     /// <summary>What any animal eats, <see cref="FeedPerMeal"/> of one kind per feeding: crops, fish meal from the cannery and dates from an oasis.</summary>
-    public static readonly IReadOnlyList<string> Feed = [Items.Wheat, Items.Corn, Items.Carrot, Items.Cabbage, Items.FishMeal, Items.Dates];
+    public static readonly IReadOnlyList<string> Feed = [Items.Wheat, Items.Corn, Items.Carrot, Items.Cabbage, Items.FishMeal, Items.Dates, Items.ConcentrateFeed];
 
     public const int FeedPerMeal = 2;
 
     public const int XpPerRelease = 1;
+
+    /// <summary>How much faster cutting trees and bushes, breaking rocks and working mines goes with a fed work horse at hand.</summary>
+    public const double HorseBonus = 1.25;
+
+    /// <summary>How many tiles away from the work a horse still helps.</summary>
+    public const int HorseReach = 6;
+
+    /// <summary>Whether a fed (working) horse stands on the plot at <paramref name="now"/>, within <see cref="HorseReach"/> of a tile when one is given.</summary>
+    public static async Task<bool> HorseAtWorkAsync(GameDb db, int x, int y, (int X, int Y)? near, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            """
+            SELECT EXISTS (SELECT 1 FROM world.plot_animals WHERE x = @x AND y = @y AND kind = @kind AND ready_at > @now
+                AND (@near = false OR (abs(tile_x - @tx) <= @r AND abs(tile_y - @ty) <= @r)))
+            """, cancellationToken);
+        command.Parameters.AddWithValue("x", x);
+        command.Parameters.AddWithValue("y", y);
+        command.Parameters.AddWithValue("kind", Items.Horse);
+        command.Parameters.AddWithValue("now", now);
+        command.Parameters.AddWithValue("near", near is not null);
+        command.Parameters.AddWithValue("tx", near?.X ?? 0);
+        command.Parameters.AddWithValue("ty", near?.Y ?? 0);
+        command.Parameters.AddWithValue("r", HorseReach);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken))!;
+    }
 
     /// <summary>
     /// The biome's husbandry bonus in percent, as the map lists it: the steppe raises animals 25%
@@ -73,7 +116,8 @@ public static class Husbandry
 }
 
 /// <param name="ReadyAt">When the animal gives its product; null while it is hungry.</param>
-public sealed record PlotAnimal(int TileX, int TileY, string Kind, DateTimeOffset? ReadyAt);
+/// <param name="Meals">Collections so far, which count towards a young one.</param>
+public sealed record PlotAnimal(int TileX, int TileY, string Kind, DateTimeOffset? ReadyAt, int Meals = 0);
 
 /// <param name="Animal">The animal after the action; null when it was taken off the plot.</param>
 /// <param name="Items">What collecting gave; empty otherwise.</param>
@@ -86,7 +130,7 @@ public sealed class HusbandryService(
     public async Task<IReadOnlyList<PlotAnimal>> AnimalsAsync(int x, int y, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync(
-            "SELECT tile_x, tile_y, kind, ready_at FROM world.plot_animals WHERE x = @x AND y = @y", cancellationToken);
+            "SELECT tile_x, tile_y, kind, ready_at, meals FROM world.plot_animals WHERE x = @x AND y = @y", cancellationToken);
         command.Parameters.AddWithValue("x", x);
         command.Parameters.AddWithValue("y", y);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -94,7 +138,7 @@ public sealed class HusbandryService(
         while (await reader.ReadAsync(cancellationToken))
         {
             animals.Add(new PlotAnimal(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2),
-                reader.IsDBNull(3) ? null : reader.GetFieldValue<DateTimeOffset>(3)));
+                reader.IsDBNull(3) ? null : reader.GetFieldValue<DateTimeOffset>(3), reader.GetInt32(4)));
         }
 
         return animals;
@@ -126,6 +170,11 @@ public sealed class HusbandryService(
                 throw new GameException("blocked", "Something stands here.");
             }
 
+            if (Husbandry.ById[kind].Works && !await HasAsync(x, y, Items.Stable, cancellationToken))
+            {
+                throw new GameException("no_stable", "A work horse lives on a plot with a stable.");
+            }
+
             await inventory.RemoveAsync(player, kind, 1, cancellationToken);
             await stats.RecordAsync(player, [ProductionEntry.Used(kind, 1, time.GetUtcNow())], cancellationToken);
             await using (var insert = await db.CommandAsync(
@@ -149,11 +198,16 @@ public sealed class HusbandryService(
         {
             if (!Husbandry.Feed.Contains(feed))
             {
-                throw new GameException("bad_feed", "Animals eat wheat, corn, carrots, cabbage, fish meal and dates.");
+                throw new GameException("bad_feed", "Animals eat wheat, corn, carrots, cabbage, fish meal, dates and concentrate.");
             }
 
             var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
-            var (kind, readyAt) = await LockAsync(x, y, tileX, tileY, cancellationToken);
+            var (kind, readyAt, _) = await LockAsync(x, y, tileX, tileY, cancellationToken);
+            if (!Husbandry.ById[kind].Eats.Contains(feed))
+            {
+                throw new GameException("bad_feed", "A work horse eats concentrate feed only.");
+            }
+
             if (readyAt is not null)
             {
                 throw new GameException("already_fed", readyAt <= time.GetUtcNow() ? "Collect what it gives first." : "It has eaten already.");
@@ -179,7 +233,7 @@ public sealed class HusbandryService(
         db.InTransactionAsync(async () =>
         {
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
-            var (kind, readyAt) = await LockAsync(x, y, tileX, tileY, cancellationToken);
+            var (kind, readyAt, meals) = await LockAsync(x, y, tileX, tileY, cancellationToken);
             if (readyAt is null)
             {
                 throw new GameException("hungry", "Feed it first.");
@@ -196,21 +250,30 @@ public sealed class HusbandryService(
                 await plots.RequireToolAsync(player, tool, cancellationToken);
             }
 
+            meals++;
             await using (var clear = await db.CommandAsync(
-                "UPDATE world.plot_animals SET ready_at = NULL WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty", cancellationToken))
+                "UPDATE world.plot_animals SET ready_at = NULL, meals = @meals WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty", cancellationToken))
             {
                 Bind(clear, x, y, tileX, tileY);
+                clear.Parameters.AddWithValue("meals", meals);
                 await clear.ExecuteNonQueryAsync(cancellationToken);
             }
 
-            foreach (var (item, quantity) in animal.Gives)
+            // Two of a kind side by side have a young one now and then; it goes to the inventory.
+            var gives = animal.Gives.ToList();
+            if (animal.BreedEvery > 0 && meals % animal.BreedEvery == 0 && await MateAsync(x, y, tileX, tileY, kind, cancellationToken))
+            {
+                gives.Add((kind, 1));
+            }
+
+            foreach (var (item, quantity) in gives)
             {
                 await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
             }
 
-            await stats.RecordAsync(player, animal.Gives.Select(g => ProductionEntry.Made(g.Item, g.Quantity, time.GetUtcNow())).ToList(), cancellationToken);
+            await stats.RecordAsync(player, gives.Select(g => ProductionEntry.Made(g.Item, g.Quantity, time.GetUtcNow())).ToList(), cancellationToken);
             var xp = await progress.AddXpAsync(player, animal.Xp, cancellationToken);
-            return new AnimalChange(new PlotAnimal(tileX, tileY, kind, null), animal.Gives, xp);
+            return new AnimalChange(new PlotAnimal(tileX, tileY, kind, null, meals), gives, xp);
         }, cancellationToken);
 
     /// <summary>Takes an animal back into the inventory; what it was going to give is lost.</summary>
@@ -218,7 +281,7 @@ public sealed class HusbandryService(
         db.InTransactionAsync(async () =>
         {
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Build);
-            var (kind, _) = await LockAsync(x, y, tileX, tileY, cancellationToken);
+            var (kind, _, _) = await LockAsync(x, y, tileX, tileY, cancellationToken);
             await using (var delete = await db.CommandAsync(
                 "DELETE FROM world.plot_animals WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty", cancellationToken))
             {
@@ -231,10 +294,10 @@ public sealed class HusbandryService(
         }, cancellationToken);
 
     /// <summary>The animal on a tile, locked for the transaction; fails with <c>no_animal</c> when there is none.</summary>
-    private async Task<(string Kind, DateTimeOffset? ReadyAt)> LockAsync(int x, int y, int tileX, int tileY, CancellationToken cancellationToken)
+    private async Task<(string Kind, DateTimeOffset? ReadyAt, int Meals)> LockAsync(int x, int y, int tileX, int tileY, CancellationToken cancellationToken)
     {
         await using var select = await db.CommandAsync(
-            "SELECT kind, ready_at FROM world.plot_animals WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty FOR UPDATE", cancellationToken);
+            "SELECT kind, ready_at, meals FROM world.plot_animals WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty FOR UPDATE", cancellationToken);
         Bind(select, x, y, tileX, tileY);
         await using var reader = await select.ExecuteReaderAsync(cancellationToken);
         if (!await reader.ReadAsync(cancellationToken))
@@ -242,7 +305,30 @@ public sealed class HusbandryService(
             throw new GameException("no_animal", "No animal stands here.");
         }
 
-        return (reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetFieldValue<DateTimeOffset>(1));
+        return (reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetFieldValue<DateTimeOffset>(1), reader.GetInt32(2));
+    }
+
+    /// <summary>Whether an animal of the same kind stands on a tile next to (tileX, tileY).</summary>
+    private async Task<bool> MateAsync(int x, int y, int tileX, int tileY, string kind, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            """
+            SELECT EXISTS (SELECT 1 FROM world.plot_animals WHERE x = @x AND y = @y AND kind = @kind
+                AND abs(tile_x - @tx) <= 1 AND abs(tile_y - @ty) <= 1 AND (tile_x, tile_y) <> (@tx, @ty))
+            """, cancellationToken);
+        Bind(command, x, y, tileX, tileY);
+        command.Parameters.AddWithValue("kind", kind);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken))!;
+    }
+
+    private async Task<bool> HasAsync(int x, int y, string kind, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            "SELECT EXISTS (SELECT 1 FROM world.plot_objects WHERE x = @x AND y = @y AND kind = @kind)", cancellationToken);
+        command.Parameters.AddWithValue("x", x);
+        command.Parameters.AddWithValue("y", y);
+        command.Parameters.AddWithValue("kind", kind);
+        return (bool)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 
     private static void Bind(Npgsql.NpgsqlCommand command, int x, int y, int tileX, int tileY)
@@ -287,6 +373,7 @@ public abstract class AnimalHandler(IServiceScopeFactory scopes, TimeProvider ti
         kind = animal.Kind,
         name = Items.Names[animal.Kind],
         readyAt = animal.ReadyAt?.ToUnixTimeMilliseconds(),
+        meals = animal.Meals,
     };
 
     /// <summary>The animals a plot's biome can keep and how long each takes there, for the plot's window.</summary>
@@ -298,6 +385,10 @@ public abstract class AnimalHandler(IServiceScopeFactory scopes, TimeProvider ti
         productName = Items.Names[a.Product],
         yield = a.Yield,
         extra = a.Extra is { } extra ? new { id = extra.Item, name = Items.Names[extra.Item], quantity = extra.Quantity } : null,
+        manure = a.Product == Items.Manure ? 0 : a.Manure,
+        breedEvery = a.BreedEvery,
+        eats = a.Eats,
+        works = a.Works,
         lives = Husbandry.Lives(a, biome),
         seconds = Husbandry.Time(a, biome)?.TotalSeconds,
         tool = a.Tool,

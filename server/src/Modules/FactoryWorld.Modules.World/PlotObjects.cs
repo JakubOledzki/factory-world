@@ -44,6 +44,8 @@ public static class PlotObjects
         Items.PaperMill, Items.Carpentry, Items.CharcoalKiln, Items.TarKiln, Items.Beehive, Items.Watchtower, Items.FireStation,
         Items.MachineShop, Items.RoboticHall, Items.OxygenConverter, Items.RollingMill, Items.ControlCenter, Items.ContinuousCaster,
         Items.AutomatedWarehouse, Items.SteelCombine, Items.Megafactory, Items.FusionPlant,
+        Items.Canteen, Items.Slaughterhouse, Items.Dairy, Items.PotatoDistillery, Items.BiogasPlant, Items.Stable, Items.Bellows,
+        Items.Farmstead, Items.ManorFarm,
     };
 
     /// <summary>What stands on the glacier only, or on the glacier and the tundra.</summary>
@@ -109,9 +111,14 @@ public static class PlotObjects
             throw new GameException("city_cramped", "In a city only the ground by the station can be built on.");
         }
 
-        if (kind is Items.FreightTerminal or Items.CompanyHq or Items.ControlCenter && others.Any(o => o.Kind == kind))
+        if (kind is Items.FreightTerminal or Items.CompanyHq or Items.ControlCenter or Items.Canteen or Items.Stable or Items.Bellows && others.Any(o => o.Kind == kind))
         {
             throw new GameException("has_one", "A plot has room for one of these.");
+        }
+
+        if (Items.IsFarmstead(kind) && !Farming.Fertile(biome))
+        {
+            throw new GameException("not_fertile", "A farmstead stands on fertile land: farmland or an oasis.");
         }
 
         if (kind == Items.Beehive && !Bees.Fly(biome))

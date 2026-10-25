@@ -166,7 +166,7 @@ public sealed class ClothesTests(ServerFactory factory) : IClassFixture<ServerFa
     [Fact]
     public void Every_piece_of_clothing_is_sewn_at_the_tailors_researched_in_tailoring_and_bought_by_the_trader()
     {
-        Assert.Equal(14, Items.Clothes.Count);
+        Assert.Equal(15, Items.Clothes.Count);
         Assert.All(ClothingSlots.All, slot => Assert.Contains(Items.Clothes.Values, g => g.Slot == slot));
         var tailoring = TechTree.ById[TechTree.Tailoring];
         Assert.Contains(Items.Tailor, tailoring.Unlocks);

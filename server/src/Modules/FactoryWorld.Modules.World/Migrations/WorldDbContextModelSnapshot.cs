@@ -197,6 +197,12 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("kind");
 
+                    b.Property<int>("Meals")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("meals");
+
                     b.Property<DateTimeOffset?>("ReadyAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("ready_at");
@@ -251,6 +257,57 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plot_drills", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotFarmsteadRow", b =>
+                {
+                    b.Property<Guid>("ObjectId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<DateTimeOffset>("BusyUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("busy_until");
+
+                    b.Property<string>("Crop")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("crop");
+
+                    b.Property<int>("Manure")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("manure");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("Store")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("{}")
+                        .HasColumnName("store");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("ObjectId");
+
+                    b.HasIndex("OwnerId");
+
+                    b.HasIndex("X", "Y");
+
+                    b.ToTable("plot_farmsteads", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.PlotField", b =>
                 {
                     b.Property<int>("X")
@@ -274,11 +331,17 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("crop");
 
+                    b.Property<Guid?>("FarmsteadId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("farmstead_id");
+
                     b.Property<DateTimeOffset?>("PlantedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("planted_at");
 
                     b.HasKey("X", "Y", "TileX", "TileY");
+
+                    b.HasIndex("FarmsteadId");
 
                     b.ToTable("plot_fields", "world");
                 });
@@ -815,6 +878,25 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.HasKey("TownX", "TownY", "Day", "Item");
 
                     b.ToTable("town_deliveries", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownFestivalRow", b =>
+                {
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<DateTimeOffset>("Until")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("until");
+
+                    b.HasKey("TownX", "TownY");
+
+                    b.ToTable("town_festivals", "world");
                 });
 
             modelBuilder.Entity("FactoryWorld.Modules.World.TownPolicyRow", b =>

@@ -90,6 +90,18 @@ public static class TechTree
     public const string Beekeeping = "beekeeping";
     public const string ForestFoods = "forest_foods";
     public const string FireProtection = "fire_protection";
+    public const string Breeding = "breeding";
+    public const string Dairying = "dairying";
+    public const string Butchery = "butchery";
+    public const string Biogas = "biogas";
+    public const string Distilling = "distilling";
+    public const string Horsemanship = "horsemanship";
+    public const string WorksCanteens = "works_canteens";
+    public const string WorkMeals = "work_meals";
+    public const string FineCuisine = "fine_cuisine";
+    public const string BioLab = "bio_lab";
+    public const string Farmsteads = "farmsteads";
+    public const string ManorFarms = "manor_farms";
 
     // The crafting tree: one technology for each of its items, named after it.
     public const string Lubricant = "lubricant";
@@ -351,6 +363,43 @@ public static class TechTree
         new(FireProtection, "Ochrona lasu", "Strażnica chroni drzewa wokół siebie przed ogniem, a zakłady chemiczne robią z terpentyny środek na kornika.",
             [Silviculture, Charring], [(Items.Bricks, 20), (Items.IronIngot, 20), (Items.Turpentine, 5)], TimeSpan.FromMinutes(3), 60,
             [Items.FireStation, Items.Insecticide]),
+        // Husbandry and gastronomy, which the other industries need.
+        new(Breeding, "Rozród i obornik", "Dwa zwierzęta jednego gatunku na sąsiednich polach mają młode, a obornik spod krów, owiec i kur przyspiesza wzrost upraw o 25%.",
+            [], [(Items.Wheat, 40), (Items.Corn, 20)], TimeSpan.FromSeconds(90), 30,
+            [Items.Manure]),
+        new(Dairying, "Mleczarstwo", "Mleczarnia robi z mleka ser, masło i kazeinę, a z kazeiny tworzywo i farbę.",
+            [], [(Items.Milk, 40), (Items.Planks, 10)], TimeSpan.FromMinutes(2), 40,
+            [Items.Dairy, Items.Cheese, Items.Butter, Items.Casein]),
+        new(Butchery, "Rzeźnictwo i garbarstwo", "Rzeźnia daje z krowy mięso, skórę, łój i kości; ze skóry szyjesz miech, który przyspiesza piece i odlewnię o 15%.",
+            [Breeding], [(Items.Cow, 1), (Items.Bricks, 20)], TimeSpan.FromMinutes(3), 60,
+            [Items.Slaughterhouse, Items.Meat, Items.Hide, Items.Tallow, Items.Bones, Items.Bellows, Items.DriedMeat]),
+        new(Biogas, "Biogaz", "Biogazownia fermentuje obornik na gaz i nawóz.",
+            [Breeding], [(Items.Manure, 40), (Items.Bricks, 20), (Items.IronIngot, 10)], TimeSpan.FromMinutes(4), 80,
+            [Items.BiogasPlant]),
+        new(Distilling, "Gorzelnictwo", "Gorzelnia pędzi z ziemniaków etanol, który pali się w agregatach i skuterach, a wywar idzie na paszę.",
+            [], [(Items.Potato, 60), (Items.CopperIngot, 10)], TimeSpan.FromMinutes(3), 60,
+            [Items.PotatoDistillery, Items.Ethanol, Items.Stillage]),
+        new(Horsemanship, "Koniarstwo", "Konie robocze ze stajni przyspieszają ścinkę i kopanie o 25% i ciągną wozy do 50 km bez kolei.",
+            [Breeding, Distilling], [(Items.Corn, 40), (Items.Planks, 20), (Items.Stillage, 10)], TimeSpan.FromMinutes(4), 80,
+            [Items.Stable, Items.Horse, Items.ConcentrateFeed]),
+        new(WorksCanteens, "Stołówki zakładowe", "Stołówka karmi załogi maszyn działki: póki ma jedzenie, maszyny na opał i na prąd pracują o 20% szybciej.",
+            [Cooking], [(Items.Bigos, 20), (Items.Bread, 20)], TimeSpan.FromMinutes(3), 60,
+            [Items.Canteen, Items.WorkersLunch]),
+        new(WorkMeals, "Posiłki regeneracyjne", "Kanapki, drugie śniadanie górnika i gulasz drwala przyspieszają pracę postaci na dłużej niż chleb.",
+            [Cooking, Dairying], [(Items.Cheese, 10), (Items.Bread, 10)], TimeSpan.FromMinutes(2), 40,
+            [Items.CheeseSandwich, Items.MinersBreakfast, Items.LumberjackGoulash]),
+        new(FineCuisine, "Kuchnia wykwintna", "Pieczeń i sernik na bankiety, festyny, debiut spółki na giełdzie i do restauracji hotelu i punktu widokowego.",
+            [Butchery, Dairying], [(Items.Meat, 20), (Items.Cheese, 20), (Items.Butter, 10)], TimeSpan.FromMinutes(5), 100,
+            [Items.RoastBeef, Items.Cheesecake, Items.DiningTakings]),
+        new(BioLab, "Laboratorium biologiczne", "Żelatyna z kości i pożywka laboratoryjna, która przyspiesza badania.",
+            [Butchery], [(Items.Bones, 40), (Items.Egg, 20)], TimeSpan.FromMinutes(3), 60,
+            [Items.Gelatin, Items.CultureMedium]),
+        new(Farmsteads, "Zagroda rolnika", "Zagroda sama sieje wybraną uprawę na polach wokół siebie i zbiera plony.",
+            [], [(Items.Wheat, 40), (Items.Wood, 40)], TimeSpan.FromSeconds(90), 30,
+            [Items.Farmstead]),
+        new(ManorFarms, "Folwark", "Folwark obrabia większe pole, sieje szybciej rosnące uprawy i mieści więcej plonów.",
+            [Farmsteads, Breeding], [(Items.Wheat, 100), (Items.Bricks, 20), (Items.Provisions, 5)], TimeSpan.FromMinutes(4), 80,
+            [Items.ManorFarm]),
         // The crafting tree, level by level: each technology unlocks one item and needs the technologies of its ingredients first.
         new(Lubricant, "Smar techniczny", "Smaruje łożyska, przekładnie i siłowniki.",
             [Refining], [(Items.Kerosene, 10), (Items.Wax, 5)], TimeSpan.FromMinutes(2), 20,
@@ -538,6 +587,8 @@ public static class TechTree
             [ForestryIndustry, Silviculture, Woodworking, IndustrialForestry, Papermaking, Furniture, Charring, FireProtection, Beekeeping, ForestFoods]),
         new("food", "Przetwórstwo", Items.Bread,
             [Milling, OilPressing, Pickling, Baking, GrainStorage, Cooking, Confectionery]),
+        new("husbandry", "Hodowla", Items.Cow,
+            [Breeding, Dairying, Distilling, Farmsteads, Butchery, Biogas, WorksCanteens, WorkMeals, BioLab, Horsemanship, FineCuisine, ManorFarms]),
         new("energy", "Energia", Items.WindTurbine, [Hydropower, HydroPlant, WindPower, LargeWind]),
         new("oil", "Ropa i gaz", Items.CrudeOil,
             [OilExtraction, Refining, EnhancedRecovery, OffshoreDrilling, Cracking, Petrochemistry, Combustion, Roads]),
