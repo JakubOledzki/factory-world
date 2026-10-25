@@ -127,9 +127,9 @@ const WORK := {
 	SNOWDRIFT: {"name": "Zaspa", "tool": "tool_shovel", "verb": "Odkop", "need": "łopaty"},
 	CREVASSE: {"name": "Szczelina", "tool": "", "verb": "Przerzuć most", "need": ""},
 }
-## Tools that do another's work: a chainsaw cuts trees like an axe, only faster.
+## Tools that do another's work: a saw cuts trees like an axe, only faster.
 ## Bronze and steel pickaxes break rock and work mines like the iron one, only faster.
-const STANDS_IN := {"tool_chainsaw": "tool_axe", "tool_bronze_pickaxe": "tool_pickaxe", "tool_steel_pickaxe": "tool_pickaxe",
+const STANDS_IN := {"tool_chainsaw": "tool_axe", "tool_steel_saw": "tool_axe", "tool_harvester_saw": "tool_axe", "tool_meteorite_saw": "tool_axe", "tool_bronze_pickaxe": "tool_pickaxe", "tool_steel_pickaxe": "tool_pickaxe",
 	"tool_meteorite_pickaxe": "tool_pickaxe"}
 const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalnia", WATER: "Woda", FLOTSAM: "Znalezisko",
 	BRIDGE: "Most nad szczeliną"}
@@ -1961,10 +1961,10 @@ func _work_on(cell: Vector2i) -> void:
 func _start_work(cell: Vector2i, mode := "harvest") -> void:
 	_work = cell
 	_work_mode = mode
-	# Cutting a tree down takes longer than a swing at a rock or a dune, unless with a chainsaw.
+	# Cutting a tree down takes longer than a swing at a rock or a dune, unless with a saw.
 	_work_seconds = _harvest_seconds
 	if mode == "harvest" and _work_kind(cell) in TREES:
-		_work_seconds = _saw_seconds if Game.holds("tool_chainsaw") else _chop_seconds
+		_work_seconds = _tree_seconds()
 	if mode == "harvest" and _work_kind(cell) in [ROCK, ICE_BLOCK]:
 		_work_seconds = float(_plot.get("rockSeconds", _harvest_seconds)) / _pickaxe_speed()
 	if mode == "harvest" and _work_kind(cell) == METEORITE:
@@ -2000,6 +2000,16 @@ func _industry(cell: Vector2i, mode: String) -> String:
 func _outfit_speed(industry: String) -> float:
 	var bonuses: Variant = Game.character.get("bonuses")
 	return 1.0 + (float(bonuses.get(industry, 0)) / 100.0 if bonuses is Dictionary else 0.0)
+
+
+## How long the best saw in the tool bar (or the axe) takes to cut a tree.
+func _tree_seconds() -> float:
+	var best := _chop_seconds
+	var saws: Dictionary = _plot.get("saws", {"tool_chainsaw": {"seconds": _saw_seconds}})
+	for held: Dictionary in Game.tools():
+		if saws.has(held["id"]):
+			best = minf(best, float(saws[held["id"]]["seconds"]))
+	return best
 
 
 ## How many times faster than an iron pickaxe the best pickaxe in the tool bar breaks rock.
@@ -2048,6 +2058,10 @@ func _harvest(cell: Vector2i) -> void:
 		return
 	var result: Dictionary = reply["payload"]
 	_clear_tile(cell, kind)
+	# A saw may fell the trees next to it at the same cut.
+	for felled: Dictionary in result.get("felled", []):
+		var other := Vector2i(int(felled["tileX"]), int(felled["tileY"]))
+		_clear_tile(other, _tile(other))
 	var items: Array = result["items"]
 	for i in items.size():
 		var item: Dictionary = items[i]
@@ -3972,6 +3986,9 @@ func _update_hint() -> void:
 	var lines := {
 		"tool_axe": "Kliknij drzewo, aby je ściąć siekierą.",
 		"tool_chainsaw": "Kliknij drzewo, aby je ściąć piłą spalinową (o 70% szybciej niż siekierą).",
+		"tool_steel_saw": "Kliknij drzewo: piła stalowa ścina je w 1 s i daje o 1 drewno więcej.",
+		"tool_harvester_saw": "Kliknij drzewo: piła harwesterowa ścina je razem z 2 sąsiednimi.",
+		"tool_meteorite_saw": "Kliknij drzewo: piła meteorytowa ścina je w 0,5 s razem z 4 sąsiednimi.",
 		"tool_pickaxe": "Kliknij bryłę lodu, skałę albo meteoryt, aby je rozbić kilofem. Szczelinę przekryjesz mostem z 3 belek." if _biome() == GLACIER \
 			else ("Kliknij kopalnię, aby wydobywać rudy, albo skałę, aby ją rozbić kilofem." if not _mines.is_empty() else "Kliknij skałę, aby ją rozbić kilofem."),
 		"tool_bronze_pickaxe": "Kliknij kopalnię albo skałę: kilof z brązu kopie o 25% szybciej niż żelazny.",
@@ -3995,9 +4012,12 @@ func _update_hint() -> void:
 		_hint.text = "Wypuszczanie: kliknij wolne pole, aby wypuścić: %s (masz %d). Esc kończy." % [_item_name(_releasing).to_lower(), _count(_releasing)]
 		return
 	var held := Game.tools().map(func(t: Dictionary) -> String: return t["id"])
-	# A chainsaw does an axe's work, faster, so the axe's line goes when both are held.
-	if "tool_chainsaw" in held:
-		held.erase("tool_axe")
+	# A saw does an axe's work, faster, so only the best saw's line stays.
+	var saws := ["tool_meteorite_saw", "tool_harvester_saw", "tool_steel_saw", "tool_chainsaw", "tool_axe"]
+	var best := saws.filter(func(id: String) -> bool: return id in held)
+	for id: String in saws:
+		if not best.is_empty() and id != best[0]:
+			held.erase(id)
 	if held.is_empty() and _fertile:
 		lines[""] = "Kliknij pole, aby zasiać lub zebrać plony. Do orania weź motykę [Q]."
 	if held.is_empty() and _pasture and not _animals.is_empty():

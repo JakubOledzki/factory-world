@@ -5390,20 +5390,30 @@ def icon_models():
         ra.box("edge", (0.03, 0.032, 0.2), (0.24, 0.085, 0.08), ra.plain("edge", (0.7, 0.7, 0.72), 0.2, 1.0, grime=0.1),
                rotation=(0, 0, math.radians(20)))
 
-    def chainsaw():
-        # Lying on its side: an orange motor housing, a black handle loop over it, and the long
-        # guide bar with its chain pointing to the right.
-        orange = ra.plain("saw_body", (0.75, 0.22, 0.02), 0.45, variation=0.15, grime=0.4)
-        black = ra.plain("saw_black", (0.03, 0.03, 0.035), 0.55, grime=0.3)
-        bar = ra.plain("saw_bar", (0.55, 0.56, 0.58), 0.3, 1.0, grime=0.3)
-        turn = (0, 0, math.radians(15))
-        ra.box("saw_body", (0.2, 0.13, 0.12), (-0.12, 0, 0.07), orange, bevel=0.025, rotation=turn)
-        ra.box("saw_cover", (0.1, 0.135, 0.06), (-0.17, -0.013, 0.12), black, bevel=0.015, rotation=turn)
-        ra.torus("saw_handle", 0.07, 0.014, (-0.1, 0.03, 0.17), black, rotation=(math.radians(90), 0, math.radians(15)))
-        ra.box("saw_grip", (0.08, 0.035, 0.035), (-0.27, -0.04, 0.07), black, bevel=0.012, rotation=turn)
-        ra.box("saw_bar", (0.36, 0.022, 0.065), (0.15, 0.072, 0.07), bar, bevel=0.025, rotation=turn)
-        ra.box("saw_chain", (0.37, 0.026, 0.012), (0.15, 0.072, 0.105), black, bevel=0.004, rotation=turn)
-        ra.box("saw_chain_low", (0.37, 0.026, 0.012), (0.15, 0.072, 0.035), black, bevel=0.004, rotation=turn)
+    def saw(body_color=(0.75, 0.22, 0.02), bar_color=(0.55, 0.56, 0.58), prefix="saw", rollers=False, glow=None):
+        # Lying on its side: a motor housing, a black handle loop over it, and the long guide bar
+        # with its chain pointing to the right. A harvester's head has feed rollers on the bar,
+        # and the meteorite saw's chain glows.
+        def build():
+            body = ra.plain(f"{prefix}_body", body_color, 0.45, variation=0.15, grime=0.4)
+            black = ra.plain(f"{prefix}_black", (0.03, 0.03, 0.035), 0.55, grime=0.3)
+            bar = ra.plain(f"{prefix}_bar", bar_color, 0.3, 1.0, grime=0.3)
+            chain = ra.emission(f"{prefix}_chain", glow, 6) if glow else black
+            turn = (0, 0, math.radians(15))
+            ra.box(f"{prefix}_body", (0.2, 0.13, 0.12), (-0.12, 0, 0.07), body, bevel=0.025, rotation=turn)
+            ra.box(f"{prefix}_cover", (0.1, 0.135, 0.06), (-0.17, -0.013, 0.12), black, bevel=0.015, rotation=turn)
+            ra.torus(f"{prefix}_handle", 0.07, 0.014, (-0.1, 0.03, 0.17), black, rotation=(math.radians(90), 0, math.radians(15)))
+            ra.box(f"{prefix}_grip", (0.08, 0.035, 0.035), (-0.27, -0.04, 0.07), black, bevel=0.012, rotation=turn)
+            ra.box(f"{prefix}_bar", (0.36, 0.022, 0.065), (0.15, 0.072, 0.07), bar, bevel=0.025, rotation=turn)
+            ra.box(f"{prefix}_chain", (0.37, 0.026, 0.012), (0.15, 0.072, 0.105), chain, bevel=0.004, rotation=turn)
+            ra.box(f"{prefix}_chain_low", (0.37, 0.026, 0.012), (0.15, 0.072, 0.035), chain, bevel=0.004, rotation=turn)
+            if rollers:
+                for k, dx in enumerate((0.02, 0.14)):
+                    ra.cylinder(f"{prefix}_roller{k}", 0.045, 0.05, (dx, 0.03 + dx * 0.27, 0.16), black, verts=16,
+                                rotation=(math.radians(90), 0, math.radians(15)))
+        return build
+
+    chainsaw = saw()
 
     def shovel():
         ra.cylinder("handle", 0.02, 0.45, (-0.08, 0, 0.04), ra.wood("handle", (0.25, 0.15, 0.07)),
@@ -5921,6 +5931,9 @@ def icon_models():
         "item_bigos": bowl((0.3, 0.18, 0.06), [((0.65, 0.6, 0.3), 12), ((0.35, 0.12, 0.08), 6)]),
         "item_tool_axe": axe, "item_tool_shovel": shovel, "item_tool_pickaxe": pickaxe, "item_tool_hoe": hoe,
         "item_tool_chainsaw": chainsaw,
+        "item_tool_steel_saw": saw((0.42, 0.45, 0.5), (0.8, 0.81, 0.84), "ssaw"),
+        "item_tool_harvester_saw": saw((0.85, 0.62, 0.05), (0.55, 0.56, 0.58), "hsaw", rollers=True),
+        "item_tool_meteorite_saw": saw((0.2, 0.13, 0.3), (0.25, 0.22, 0.3), "msaw", glow=(0.55, 0.3, 1.0)),
         "item_wheat": wheat_sheaf, "item_carrot": carrots, "item_cabbage": cabbage_head, "item_corn": corn_cob,
         "item_potato": potatoes, "item_sunflower": sunflower_head,
         "item_wood": wood, "item_stone": stones((0.2, 0.19, 0.18)), "item_sand": sand, "item_coal": coal,

@@ -1004,6 +1004,14 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                     _inventory[item.Text("id")!] = Have(item.Text("id")!) + item.Long("quantity");
                 }
 
+                // A saw may have felled the trees next to it too.
+                foreach (var tile in reply.Payload.Each("felled"))
+                {
+                    var (tx, ty) = ((int)tile.Long("tileX"), (int)tile.Long("tileY"));
+                    plot.Targets.Remove((tx, ty));
+                    plot.Tiles[ty * plot.Size + tx] = Tiles.None;
+                }
+
                 return true;
             }
         }
@@ -1152,7 +1160,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
     /// <summary>Gets the tool into the bot's hand: from the inventory, or bought from the trader.</summary>
     private async Task<bool> HoldAsync(string tool, CancellationToken cancellationToken)
     {
-        if (_tools.Contains(tool) || tool == Items.Axe && _tools.Contains(Items.Chainsaw))
+        if (_tools.Contains(tool) || tool == Items.Axe && Items.BestSaw(_tools) is not null)
         {
             return true;
         }

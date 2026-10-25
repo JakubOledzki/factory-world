@@ -213,17 +213,18 @@ public static class Trees
     public static TimeSpan? GrowTime(Biome biome, TreeKind kind) =>
         Forestry.GrowTime(biome) * (kind.Id == Spruce && biome == Biome.Tundra ? 0.5 : kind.Grow);
 
-    /// <summary>What a tree of <paramref name="kind"/> gives when cut, for a roll of 0-99 and a <paramref name="rare"/> one of 0-999;
-    /// a tree the bark beetle ate gives a log and nothing more.</summary>
-    public static IReadOnlyList<(string Item, int Quantity)> Yield(TreeKind kind, int roll, int rare = 999, bool infested = false)
+    /// <summary>What a tree of <paramref name="kind"/> gives when cut with <paramref name="saw"/> (null for an axe), for a roll of 0-99
+    /// and a <paramref name="rare"/> one of 0-999; a tree the bark beetle ate gives a log and nothing more, unless the saw gets
+    /// all the wood out of it all the same. A better saw gets more wood out of a tree, and some make saplings fall twice as often.</summary>
+    public static IReadOnlyList<(string Item, int Quantity)> Yield(TreeKind kind, int roll, int rare = 999, bool infested = false, Saw? saw = null)
     {
-        if (infested)
+        if (infested && saw is not { ThroughBeetle: true })
         {
             return [(Items.Wood, 1)];
         }
 
-        var items = new List<(string, int)> { (kind.Wood, kind.WoodQuantity) };
-        if (roll < Forestry.SaplingChance)
+        var items = new List<(string, int)> { (kind.Wood, kind.WoodQuantity + (saw?.ExtraWood ?? 0)) };
+        if (roll < Forestry.SaplingChance * (saw is { MoreSaplings: true } ? 2 : 1))
         {
             items.Add((kind.Sapling, 1));
         }

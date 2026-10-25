@@ -44,6 +44,11 @@ public static class Items
     public const string BronzePickaxe = "tool_bronze_pickaxe";
     public const string SteelPickaxe = "tool_steel_pickaxe";
 
+    // Saws better than the chainsaw, researched and forged at the anvil: they cut trees faster and get more out of them.
+    public const string SteelSaw = "tool_steel_saw";
+    public const string HarvesterSaw = "tool_harvester_saw";
+    public const string MeteoriteSaw = "tool_meteorite_saw";
+
     // Backpacks: worn by the character, each adds tiles to the inventory and slots to the tool bar.
     public const string SchoolBackpack = "backpack_school";
     public const string HikingBackpack = "backpack_hiking";
@@ -738,6 +743,9 @@ public static class Items
         [MeteoricIron] = "Żelazo meteorytowe",
         [Iridium] = "Iryd",
         [MeteoritePickaxe] = "Kilof meteorytowy",
+        [SteelSaw] = "Piła stalowa",
+        [HarvesterSaw] = "Piła harwesterowa",
+        [MeteoriteSaw] = "Piła meteorytowa",
         [FrozenFish] = "Mrożona ryba",
         [FrozenSalmon] = "Mrożony łosoś",
         [IceCream] = "Lody",
@@ -921,7 +929,8 @@ public static class Items
 
     public static bool Exists(string id) => Names.ContainsKey(id);
 
-    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw or Shears or BronzePickaxe or SteelPickaxe or FishingRod or MeteoritePickaxe;
+    public static bool IsTool(string id) => id is Axe or Shovel or Pickaxe or Hoe or Chainsaw or Shears or BronzePickaxe or SteelPickaxe or FishingRod or MeteoritePickaxe
+        || Saws.ContainsKey(id);
 
     /// <summary>Pickaxes of every kind and how many times faster than the iron one each mines and breaks rocks.</summary>
     public static readonly IReadOnlyDictionary<string, double> Pickaxes = new Dictionary<string, double>
@@ -931,6 +940,21 @@ public static class Items
         [SteelPickaxe] = 1.5,
         [MeteoritePickaxe] = 2,
     };
+
+    /// <summary>Saws of every kind, which do an axe's work: what part of an axe's time each takes over a tree, how much more wood it
+    /// gets out of one, how many trees next to it it fells at the same cut, whether saplings fall twice as often and whether a tree
+    /// the bark beetle is in still gives all its wood.</summary>
+    public static readonly IReadOnlyDictionary<string, Saw> Saws = new Dictionary<string, Saw>
+    {
+        [Chainsaw] = new(0.3, 0, 0, false, false),
+        [SteelSaw] = new(0.2, 1, 0, false, false),
+        [HarvesterSaw] = new(0.2, 1, 2, true, false),
+        [MeteoriteSaw] = new(0.1, 2, 4, true, true),
+    };
+
+    /// <summary>The best saw among <paramref name="held"/>, or null when there is none.</summary>
+    public static string? BestSaw(IEnumerable<string> held) =>
+        held.Where(Saws.ContainsKey).OrderBy(s => Saws[s].Time).ThenByDescending(s => Saws[s].Fells).FirstOrDefault();
 
     public static bool IsBackpack(string id) => Backpacks.ContainsKey(id);
 
@@ -1104,6 +1128,13 @@ public static class Items
 /// <param name="ExtraSlots">Inventory tiles the backpack adds.</param>
 /// <param name="ToolSlots">Tool bar slots in all while it is worn.</param>
 public sealed record Backpack(int ExtraSlots, int ToolSlots);
+
+/// <param name="Time">What part of an axe's time the saw takes to cut a tree.</param>
+/// <param name="ExtraWood">Wood a tree gives over what it gives an axe.</param>
+/// <param name="Fells">Grown trees next to the one cut that fall at the same cut.</param>
+/// <param name="MoreSaplings">Whether saplings fall twice as often.</param>
+/// <param name="ThroughBeetle">Whether a tree the bark beetle is in still gives all its wood.</param>
+public sealed record Saw(double Time, int ExtraWood, int Fells, bool MoreSaplings, bool ThroughBeetle);
 
 /// <param name="Slot">One of <see cref="ClothingSlots.All"/>.</param>
 /// <param name="Bonuses">Percent per industry: work in it goes this much faster (trade: the trader pays this much more).</param>

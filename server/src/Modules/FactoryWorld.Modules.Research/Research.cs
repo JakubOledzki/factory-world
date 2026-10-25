@@ -58,6 +58,9 @@ public static class TechTree
     public const string ForestryIndustry = "forestry_industry";
     public const string Woodworking = "woodworking";
     public const string IndustrialForestry = "industrial_forestry";
+    public const string Sawing = "sawing";
+    public const string Harvesters = "harvesters";
+    public const string MeteoriteSaws = "meteorite_saws";
     public const string MiningAutomation = "mining_automation";
     public const string Crushing = "crushing";
     public const string Stonemasonry = "stonemasonry";
@@ -280,6 +283,15 @@ public static class TechTree
         new(IndustrialForestry, "Leśnictwo przemysłowe", "Nadleśnictwo prowadzi największy las, a tartak przemysłowy robi z kłody trzy deski.",
             [Woodworking], [(Items.Plywood, 20), (Items.Beams, 40), (Items.CopperIngot, 20)], TimeSpan.FromMinutes(5), 100,
             [Items.ForestryStation, Items.IndustrialSawmill]),
+        new(Sawing, "Pilarstwo", "Piłę stalową wykuwasz na kowadle: ścina drzewo w 1 s i daje z niego o 1 drewno więcej.",
+            [Woodworking, Metallurgy], [(Items.Wood, 80), (Items.SteelIngot, 15), (Items.BronzeIngot, 10)], TimeSpan.FromMinutes(3), 60,
+            [Items.SteelSaw]),
+        new(Harvesters, "Harwestery", "Piła harwesterowa ścina drzewo w 1 s razem z 2 sąsiednimi, daje o 1 drewno więcej z każdego, a sadzonki wypadają z niej 2 razy częściej.",
+            [Sawing, IndustrialForestry], [(Items.Plywood, 30), (Items.SteelIngot, 25), (Items.CopperIngot, 20)], TimeSpan.FromMinutes(5), 100,
+            [Items.HarvesterSaw]),
+        new(MeteoriteSaws, "Piła z meteorytu", "Piła meteorytowa ścina drzewo w 0,5 s razem z 4 sąsiednimi, daje o 2 drewna więcej z każdego i całe drewno nawet z drzewa z kornikiem.",
+            [Harvesters, MeteoriteTools], [(Items.MeteoricIron, 10), (Items.Iridium, 1), (Items.Plywood, 20)], TimeSpan.FromMinutes(6), 120,
+            [Items.MeteoriteSaw]),
         new(Stonemasonry, "Kamieniarstwo", "Warsztat kamieniarski ciosa z kamienia bloki, a z marmuru płyty.",
             [], [(Items.Stone, 100), (Items.IronIngot, 10)], TimeSpan.FromSeconds(90), 30,
             [Items.Stonemason]),
@@ -690,7 +702,7 @@ public static class TechTree
             [Stonemasonry, BrickFurnaces, Metallurgy, BlastFurnaces, MiningAutomation, Crushing, MechanizedQuarrying, ConeCrushing, Explosives,
              DeepMining, OpenPitMining, OreProcessing, MeteoriteTools]),
         new("forestry", "Leśnictwo", Items.Wood,
-            [ForestryIndustry, Silviculture, Woodworking, IndustrialForestry, Papermaking, Furniture, Charring, FireProtection, Beekeeping, ForestFoods]),
+            [ForestryIndustry, Silviculture, Woodworking, IndustrialForestry, Sawing, Harvesters, MeteoriteSaws, Papermaking, Furniture, Charring, FireProtection, Beekeeping, ForestFoods]),
         new("food", "Przetwórstwo", Items.Bread,
             [Milling, OilPressing, Pickling, Baking, RollerMilling, GrainStorage, Cooking, FlourIndustry, Confectionery]),
         new("husbandry", "Hodowla", Items.Cow,
