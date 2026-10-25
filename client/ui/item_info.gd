@@ -578,7 +578,7 @@ const ITEMS := {
 	"wardrobe": ["Szafa", "Mebel, na który czekają duże miasta.", "Stolarnia: 4 × sklejka + 4 × deski + 6 × gwoździe (45 s). Wymaga badania: Meblarstwo."],
 	"oak_dresser": ["Komoda dębowa", "Najdroższy mebel; chcą go metropolie.",
 			"Stolarnia: 6 × drewno dębowe + 4 × gwoździe + 1 × kalafonia (60 s). Wymaga badania: Meblarstwo."],
-	"charcoal": ["Węgiel drzewny", "Pali się w piecach, generatorach i maszynach jak węgiel kopalny.",
+	"charcoal": ["Węgiel drzewny", "Pali się w piecach, generatorach i maszynach jak węgiel kopalny i zastępuje go w przepisach maszyn: stal w odlewni, krzem w piecu łukowym.",
 			"Mielerz: 4 × drewno → 2 szt. (60 s). Wymaga badania: Węglarstwo i smolarstwo."],
 	"mushrooms": ["Grzyby", "Na zupę grzybową.", "Zbierane ręką w starym lesie; odrastają po 12 godzinach."],
 	"berries": ["Jagody", "Na pierogi z jagodami.", "Krzaki w lesie, nad jeziorem i na tundrze."],

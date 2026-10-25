@@ -10,6 +10,15 @@
 	},
 	{
 		"date": "2026-10-25",
+		"title": "Węgiel z drewna",
+		"changes": [
+			"Węgiel drzewny z mielerza zastępuje teraz węgiel kopalny w przepisach maszyn: odlewnia i konwertor tlenowy robią z niego stal, a piec łukowy krzem.",
+			"W oknie maszyny pod węglem pojawia się wiersz „Węgiel drzewny zamiast: węgiel”, gdy masz go w ekwipunku; podajniki też go wkładają.",
+			"Przypomnienie: mielerz (badanie „Węglarstwo i smolarstwo” w gałęzi leśnictwa) wypala 2 węgla drzewnego z 4 drewna w 60 s, bez opału i prądu."
+		]
+	},
+	{
+		"date": "2026-10-25",
 		"title": "Lepsze poziomy maszyn",
 		"changes": [
 			"Nowe badania odblokowują wyższe poziomy maszyn: piec ceglany i piec hutniczy mają teraz własne badania (Piece ceglane, Piece hutnicze) w gałęzi górnictwa.",
