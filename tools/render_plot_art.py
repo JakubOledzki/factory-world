@@ -1695,26 +1695,27 @@ def build_quarry():
 
 
 def build_crusher():
-    """A jaw crusher: a green steel hopper on four legs over a heavy body, a flywheel and belt to its
-    motor, and a heap of gravel under the chute."""
+    """A jaw crusher: a green steel hopper on four short legs over a heavy body, a flywheel and belt to
+    its motor, and a heap of gravel under the chute. Squat and kept within its tile, heap and all, so
+    it is plain which tile it stands on and an inserter next to it reaches it."""
     green = ra.rusty_metal("crush_green", (0.07, 0.2, 0.08), rust=0.3)
     dark = ra.rusty_metal("crush_dark", (0.06, 0.06, 0.07), rust=0.3)
     gravel = rock("crush_gravel", (0.22, 0.21, 0.2))
-    for x in (-0.38, 0.38):
-        for y in (-0.15, 0.4):
-            ra.box("crush_leg", (0.08, 0.08, 0.9), (x, y, 0.45), dark)
-    ra.box("crush_body", (0.85, 0.65, 0.5), (0, 0.12, 0.95), green, bevel=0.03)
-    v = [(-0.55, -0.25, 1.2), (0.55, -0.25, 1.2), (0.55, 0.5, 1.2), (-0.55, 0.5, 1.2),
-         (-0.35, -0.1, 1.2), (0.35, -0.1, 1.2), (0.35, 0.35, 1.2), (-0.35, 0.35, 1.2)]
-    top = [(x * 1.25, (y - 0.12) * 1.3 + 0.12, 1.6) for x, y, _ in v[:4]]
+    for x in (-0.34, 0.34):
+        for y in (-0.1, 0.3):
+            ra.box("crush_leg", (0.08, 0.08, 0.6), (x, y, 0.3), dark)
+    ra.box("crush_body", (0.75, 0.55, 0.4), (0, 0.1, 0.75), green, bevel=0.03)
+    v = [(-0.48, -0.2, 0.95), (0.48, -0.2, 0.95), (0.48, 0.4, 0.95), (-0.48, 0.4, 0.95),
+         (-0.3, -0.07, 0.95), (0.3, -0.07, 0.95), (0.3, 0.27, 0.95), (-0.3, 0.27, 0.95)]
+    top = [(x * 1.2, (y - 0.1) * 1.25 + 0.1, 1.25) for x, y, _ in v[:4]]
     ra.mesh_from("crush_hopper", top + v[:4], [(0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7)], green)
     for k in range(9):
-        ra.sphere("crush_stone", 0.08, (random.uniform(-0.4, 0.4), random.uniform(-0.1, 0.4), 1.25), gravel, segments=8)
-    ra.box("crush_chute", (0.35, 0.5, 0.05), (0, -0.35, 0.6), dark, rotation=(math.radians(35), 0, 0))
-    heap = ra.sphere("crush_heap", 0.38, (0, -0.65, 0.0), gravel, scale=(1.1, 0.9, 0.55), segments=16)
+        ra.sphere("crush_stone", 0.07, (random.uniform(-0.34, 0.34), random.uniform(-0.08, 0.3), 0.99), gravel, segments=8)
+    ra.box("crush_chute", (0.3, 0.4, 0.05), (0, -0.28, 0.42), dark, rotation=(math.radians(35), 0, 0))
+    heap = ra.sphere("crush_heap", 0.3, (0, -0.55, 0.0), gravel, scale=(1.1, 0.9, 0.55), segments=16)
     ra.displace(heap, 0.04, 0.12, 2)
-    ra.cylinder("crush_flywheel", 0.32, 0.06, (0.5, 0.1, 0.95), dark, rotation=(0, math.radians(90), 0), verts=28)
-    ra.cylinder("crush_motor", 0.15, 0.32, (0.55, 0.5, 0.3), ra.rusty_metal("crush_motor", (0.05, 0.12, 0.35), rust=0.15),
+    ra.cylinder("crush_flywheel", 0.26, 0.06, (0.44, 0.1, 0.75), dark, rotation=(0, math.radians(90), 0), verts=28)
+    ra.cylinder("crush_motor", 0.13, 0.28, (0.5, 0.42, 0.25), ra.rusty_metal("crush_motor", (0.05, 0.12, 0.35), rust=0.15),
                 rotation=(0, math.radians(90), 0), verts=18)
 
 
@@ -1851,7 +1852,7 @@ MOUNTAIN = {
     "drill": (112, 152, 0.9, build_drill),
     "heavy_drill": (112, 176, 1.15, build_heavy_drill),
     "quarry": (112, 120, 0.6, build_quarry),
-    "crusher": (112, 136, 0.75, build_crusher),
+    "crusher": (112, 120, 0.55, build_crusher),
     "stonemason": (112, 112, 0.5, build_stonemason),
     "foundry": (112, 168, 1.1, build_foundry),
 }
