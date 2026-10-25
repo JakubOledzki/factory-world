@@ -8,7 +8,7 @@ namespace FactoryWorld.Server.Tests;
 
 public sealed class GarageUpgradeTests(ServerFactory factory) : IClassFixture<ServerFactory>
 {
-    private async Task<GameClient> PlayerAsync(long cents = 1_000_000_00)
+    private async Task<GameClient> PlayerAsync(long cents = 100_000_000_00)
     {
         var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
@@ -80,13 +80,13 @@ public sealed class GarageUpgradeTests(ServerFactory factory) : IClassFixture<Se
 
         // Not enough materials, then not enough money: nothing is taken either time.
         Assert.Equal("not_enough_items", (await client.SendAsync("garage.upgrade", new { track = GarageUpgrades.Floor })).ErrorCode());
-        await GiveAsync(client, Items.Sand, 20);
+        await GiveAsync(client, Items.Sand, 200);
         Assert.Equal("not_enough_money", (await client.SendAsync("garage.upgrade", new { track = GarageUpgrades.Floor })).ErrorCode());
-        Assert.Equal(20, (await client.InventoryAsync())[Items.Sand]);
+        Assert.Equal(200, (await client.InventoryAsync())[Items.Sand]);
 
         await using (var scope = factory.Services.CreateAsyncScope())
         {
-            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 1_000_000_00, "test", CancellationToken.None);
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 100_000_000_00, "test", CancellationToken.None);
         }
 
         var before = await client.BalanceAsync();
@@ -94,7 +94,7 @@ public sealed class GarageUpgradeTests(ServerFactory factory) : IClassFixture<Se
         var floor = bought.GetProperty("tracks").EnumerateArray().First(t => t.GetProperty("id").GetString() == GarageUpgrades.Floor);
         Assert.Equal(1, floor.GetProperty("level").GetInt32());
         Assert.Equal(1, floor.GetProperty("bonus").GetInt32());
-        Assert.Equal(before - 150_00, await client.BalanceAsync());
+        Assert.Equal(before - 15_000_00, await client.BalanceAsync());
         Assert.False((await client.InventoryAsync()).ContainsKey(Items.Sand));
 
         // The garage reports the level, so the client draws the cleaner floor.
