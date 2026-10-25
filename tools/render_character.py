@@ -613,7 +613,6 @@ def clothes(rig):
         for s, side in sides():
             arm = body.arm(Blob(rig, family, mat, "arm_" + side), s, d * 0.6, hand=False)
             arm.ball(Vector((s * 0.218, -0.012, 0.925)), 0.038)
-            arm.ellipsoid(Vector((s * 0.19, 0.012, 1.42)), inflate((0.06, 0.06, 0.05), d))   # the shoulder seam
             objs.append(arm.obj)
         return objs
 
@@ -732,6 +731,8 @@ def clothes(rig):
                 knee = Vector((s * 0.096, 0.004, 0.52))
                 ankle = Vector((s * 0.098, 0.016, 0.1))
                 boot.capsule(ankle, ankle.lerp(knee, (top - 0.1) / 0.42), 0.052 + d)
+            if top > 0.3:  # Round the calf, so the trousers do not show through at the back.
+                boot.ellipsoid(knee.lerp(ankle, 0.3) + Vector((0, 0.012, 0)), inflate((0.04, 0.043, 0.09), d + 0.008))
             objs.append(boot.obj)
             sole = ra.box("sole", (0.118, 0.272, 0.03), (s * 0.098, -0.032, 0.015), sole_mat or mat, bevel=0.01)
             objs.append(a(sole, "leg_" + side))
@@ -988,7 +989,29 @@ def main(args):
             print("layer", name, flush=True)
         studio.holdout(holdout, False)
 
+    if "icons" in args:
+        render_icons(studio, garments)
+
     write_meta(studio, garments)
+
+
+def render_icons(studio, garments):
+    """Inventory icons of the clothes: each garment alone, turned a little towards the light."""
+    studio.shade_mode()
+    studio.use(studio.portrait_cam, (PORTRAIT_RES[0] * 2, PORTRAIT_RES[1] * 2))
+    every = [o for _, objs in garments.values() for o in objs]
+    shown = [o for o in studio.scene.objects if o.type in ("MESH", "META") and not o.hide_render and o not in every]
+    studio.show(shown, False)
+    for item, (_, objs) in garments.items():
+        studio.show(every, False)
+        studio.show(objs, True)
+        studio.rig.pose(-0.45)
+        ra.render(TMP / "icon.png")
+        ra.icon_from(Image.open(TMP / "icon.png").convert("RGBA"), ra.ART / "icons" / f"item_{item}.png")
+        print("icon", item, flush=True)
+    studio.show(every, False)
+    studio.show(shown, True)
+    studio.rig.pose()
 
 
 def render_shadow_and_base(studio, L, shirts, hairs, body_objs):

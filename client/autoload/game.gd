@@ -21,6 +21,7 @@ const ERRORS := {
 	"invalid_name": "Nazwa: 3–16 znaków, litery, cyfry lub _.",
 	"name_taken": "Ta nazwa jest już zajęta.",
 	"invalid_appearance": "Nieznana opcja wyglądu.",
+	"same_look": "To jest twój obecny wygląd. Zmień coś, zanim zapłacisz.",
 	"character_exists": "To konto ma już postać.",
 	"no_character": "Najpierw stwórz postać.",
 	"not_enough_items": "Nie masz tylu przedmiotów.",
@@ -189,8 +190,14 @@ const ERRORS := {
 var token := ""
 ## Palettes and option counts of the character editor, from the server.
 var appearance_options := {}
+## After the character changed: its clothes, look, tools or backpack.
+signal character_changed
+
 ## The logged-in player's character, as sent by the server, or empty.
-var character := {}
+var character := {}:
+	set(value):
+		character = value
+		character_changed.emit()
 ## The plot the player is on or last left, so the world map opens there; (-1, -1) if none.
 var plot := Vector2i(-1, -1)
 
@@ -284,6 +291,18 @@ func holds(id: String) -> bool:
 func backpack() -> Dictionary:
 	var worn: Variant = character.get("backpack")
 	return worn if worn is Dictionary else {}
+
+
+## The character's look for drawing: its appearance, with the clothes worn ({slot: item}) under "outfit".
+func look() -> Dictionary:
+	var drawn: Dictionary = character.get("appearance", {}).duplicate()
+	var worn := {}
+	var outfit: Variant = character.get("outfit")
+	if outfit is Dictionary:
+		for slot: String in outfit:
+			worn[slot] = outfit[slot]["id"]
+	drawn["outfit"] = worn
+	return drawn
 
 
 ## Fetches the character again, e.g. after the server gave a tool.

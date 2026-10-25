@@ -3538,6 +3538,38 @@ def build_service_workshop():
     ra.box("sw_toolbox", (0.25, 0.15, 0.2), (-0.6, -0.5, 0.12), m["red"], bevel=0.02)
 
 
+
+def build_tailor():
+    """A tailor's workshop: a plaster shop with a striped awning, a shop window with a dressed mannequin,
+    a pair of scissors over the door and rolls of cloth stacked outside."""
+    m = city_mats()
+    ra.box("tl_pavement", (1.6, 1.3, 0.05), (0, 0, 0.025), m["concrete"])
+    ra.box("tl_house", (1.3, 0.9, 1.3), (0, 0.15, 0.7), m["plaster"], bevel=0.02)
+    ra.box("tl_roof", (1.38, 0.98, 0.1), (0, 0.15, 1.4), m["brick"])
+    ra.box("tl_sign", (0.9, 0.03, 0.16), (-0.1, -0.32, 1.22), m["blue"])
+    ra.box("tl_sign_text", (0.7, 0.01, 0.05), (-0.1, -0.34, 1.22), m["window"])
+    ra.box("tl_window", (0.6, 0.02, 0.55), (-0.25, -0.31, 0.5), m["glass"])
+    ra.box("tl_window_glow", (0.56, 0.01, 0.5), (-0.25, -0.3, 0.5), ra.emission("tl_glow", (1.0, 0.8, 0.55), 1.2))
+    # The mannequin in the window, in a navy jacket.
+    navy = ra.plain("tl_suit", (0.04, 0.06, 0.16), 0.7)
+    ra.cylinder("tl_body", 0.09, 0.3, (-0.25, -0.24, 0.55), navy, radius2=0.07, verts=16)
+    ra.sphere("tl_head", 0.05, (-0.25, -0.24, 0.76), ra.plain("tl_dummy", (0.6, 0.5, 0.38), 0.6), segments=12)
+    ra.cylinder("tl_stand", 0.012, 0.25, (-0.25, -0.24, 0.27), m["steel"], verts=8)
+    ra.box("tl_door", (0.3, 0.02, 0.6), (0.4, -0.31, 0.35), m["timber"])
+    # A striped awning over the window and the door.
+    for k in range(8):
+        ra.box("tl_awning", (0.15, 0.3, 0.02), (-0.53 + k * 0.15, -0.42, 0.93), m["red"] if k % 2 else m["white"],
+               rotation=(math.radians(-22), 0, 0))
+    # The sign: open scissors.
+    gold = m["yellow"]
+    for side in (-1, 1):
+        ra.box("tl_blade", (0.03, 0.02, 0.32), (0.4, -0.36, 1.12), gold, rotation=(0, math.radians(side * 22), 0))
+        ra.cylinder("tl_ring", 0.045, 0.015, (0.4 + side * 0.07, -0.36, 0.98), gold, rotation=(math.radians(90), 0, 0), verts=12)
+    # Rolls of cloth by the wall.
+    for k, colour in enumerate(((0.45, 0.06, 0.05), (0.08, 0.2, 0.4), (0.5, 0.42, 0.25))):
+        ra.cylinder("tl_cloth", 0.06, 0.32, (-0.62 + k * 0.13, -0.5, 0.21), ra.plain(f"tl_cloth{k}", colour, 0.9), verts=14)
+
+
 CITY = {
     # name: (canvas width, height, camera target height, builder); the assembly hall stands on 3 × 3 tiles.
     "assembly_hall": (256, 240, 1.0, build_assembly_hall),
@@ -3550,6 +3582,7 @@ CITY = {
     "design_office": (128, 152, 0.8, build_design_office),
     "laboratory": (128, 136, 0.6, build_laboratory),
     "service_workshop": (128, 128, 0.5, build_service_workshop),
+    "tailor": (128, 144, 0.7, build_tailor),
 }
 
 

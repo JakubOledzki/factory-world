@@ -34,6 +34,7 @@ const ACTIONS := {
 	"market": [KEY_M],
 	"stats": [KEY_L],
 	"achievements": [KEY_O],
+	"character": [KEY_C],
 }
 
 const LAYOUT_FILE := "res://art/plot/layout.json"
@@ -165,7 +166,7 @@ const PLACED_SPRITES := {
 	"furniture_assembly_hall": "assembly_hall", "furniture_multistorey_factory": "multistorey_factory", "furniture_shop": "shop",
 	"storage_high_bay": "high_bay", "furniture_city_sorter": "city_sorter", "furniture_freight_terminal": "freight_terminal",
 	"furniture_company_hq": "company_hq", "furniture_design_office": "design_office", "furniture_laboratory": "laboratory",
-	"furniture_service_workshop": "service_workshop",
+	"furniture_service_workshop": "service_workshop", "furniture_tailor": "tailor",
 	"furniture_paper_mill": "paper_mill", "furniture_carpentry": "carpentry", "furniture_charcoal_kiln": "charcoal_kiln",
 	"furniture_tar_kiln": "tar_kiln", "furniture_beehive": "beehive", "furniture_fire_watchtower": "fire_watchtower",
 	"furniture_fire_station": "fire_station",
@@ -247,7 +248,7 @@ const CITY := 9
 const CITY_HALF_WIDTH := 30
 const CITY_ROWS := 60
 const CITY_ONLY := ["furniture_multistorey_factory", "furniture_shop", "storage_high_bay", "furniture_freight_terminal",
-	"furniture_company_hq", "furniture_design_office", "furniture_laboratory", "furniture_service_workshop"]
+	"furniture_company_hq", "furniture_design_office", "furniture_laboratory", "furniture_service_workshop", "furniture_tailor"]
 const ONE_PER_PLOT := ["furniture_freight_terminal", "furniture_company_hq"]
 const ASSEMBLY_HALL := "furniture_assembly_hall"
 const SHOP := "furniture_shop"
@@ -499,6 +500,7 @@ var _hive_window: HiveWindow
 var _city_window: CityWindow
 var _city_button: Button
 var _achievements_window: AchievementsWindow
+var _character_window: CharacterWindow
 var _clock_offset := 0.0
 var _next_station_poll := 0.0
 
@@ -580,7 +582,7 @@ func _build_world() -> void:
 	_power.tile = TILE
 	_power.layout = _layout
 
-	_player = GaragePlayer.new(Game.character.get("appearance", {}), Game.appearance_options)
+	_player = GaragePlayer.new(Game.look(), Game.appearance_options)
 	_player.light = LIGHT
 	_player.scale = Vector2.ONE * PLAYER_SCALE
 	_player.shadow.scale = Vector2.ONE * PLAYER_SCALE
@@ -1597,8 +1599,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _releasing != "":
 			_stop_releasing()
 		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _achievements_window.visible \
-				or _mine_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _forester_window, _generator_window, _storage_window, _splitter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window]:
+				or _mine_window.visible or _character_window.visible or _using_window_open():
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _forester_window, _generator_window, _storage_window, _splitter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -1640,6 +1642,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_stats_window.toggle()
 	elif event.is_action_pressed("achievements"):
 		_achievements_window.toggle()
+	elif event.is_action_pressed("character"):
+		_character_window.toggle()
 	elif event.is_action_pressed("tool"):
 		_tool_slot.open()
 	elif event.is_action_pressed("plant"):
@@ -1757,10 +1761,33 @@ func _start_work(cell: Vector2i, mode := "harvest") -> void:
 		_work_seconds = float(_plot.get("fishSeconds", _harvest_seconds))
 	if mode == "mine":
 		_work_seconds = _mine_seconds / _pickaxe_speed()
+	_work_seconds /= _outfit_speed(_industry(cell, mode))
 	_work_left = _work_seconds
 	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
 	_work_bar.max_value = _work_seconds
 	_work_bar.visible = true
+
+
+## The industry a job is part of, for the bonus of the clothes worn (as the server's HarvestRules.Industry).
+func _industry(cell: Vector2i, mode: String) -> String:
+	if mode == "mine":
+		return "mining"
+	if mode == "till":
+		return "farming"
+	var kind := _work_kind(cell)
+	if kind in TREES or kind in [BUSH, MUSHROOMS]:
+		return "forestry"
+	if kind in [ROCK, ICE_BLOCK, METEORITE, SNOWDRIFT]:
+		return "mining"
+	if kind == WATER:
+		return "fishing"
+	return ""
+
+
+## How many times faster the clothes worn make a job of `industry`.
+func _outfit_speed(industry: String) -> float:
+	var bonuses: Variant = Game.character.get("bonuses")
+	return 1.0 + (float(bonuses.get(industry, 0)) / 100.0 if bonuses is Dictionary else 0.0)
 
 
 ## How many times faster than an iron pickaxe the best pickaxe in the tool bar breaks rock.
@@ -2438,7 +2465,7 @@ func _use_placed(cell: Vector2i) -> void:
 		_machine_window.open_at(object["id"], object["name"])
 	elif object["kind"] in STORAGES:
 		_storage_window.open_at(_at, object["id"])
-	elif object["kind"] in ["furniture_workbench", "furniture_anvil", SHIPYARD]:
+	elif object["kind"] in ["furniture_workbench", "furniture_anvil", SHIPYARD, "furniture_tailor"]:
 		_crafting_window.open_at(object["id"], object["kind"])
 	elif object["kind"] in GENERATORS or object["kind"] in HYDRO or object["kind"] in SOLAR or object["kind"] == BATTERY \
 			or object["kind"] in WIND or object["kind"] == HEATER:
@@ -3245,19 +3272,39 @@ func _build_hud() -> void:
 	_weather = UI.label("", UI.MUTED)
 	_weather.visible = false
 	box.add_child(_weather)
+	# The name and level open the character: clothes and a new look.
+	var me := VBoxContainer.new()
+	me.add_theme_constant_override("separation", 2)
+	me.mouse_filter = Control.MOUSE_FILTER_STOP
+	me.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	me.tooltip_text = "Postać: ubrania i wygląd  [C]"
+	me.gui_input.connect(func(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			_character_window.toggle()
+			me.accept_event())
+	box.add_child(me)
 	var level_row := HBoxContainer.new()
 	level_row.add_theme_constant_override("separation", 8)
+	var portrait := CharacterPreview.new()
+	portrait.options = Game.appearance_options
+	portrait.appearance = Game.look()
+	portrait.region = Rect2(0.3, 0.06, 0.4, 0.12)
+	portrait.display_scale = 0.45
+	portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	level_row.add_child(portrait)
+	Game.character_changed.connect(_on_character_changed.bind(portrait))
 	var name_label := UI.label(Game.character.get("name", ""))
 	name_label.add_theme_font_override("font", UI.bold())
 	level_row.add_child(name_label)
 	_level = UI.label("", UI.GOLD)
 	level_row.add_child(_level)
-	box.add_child(level_row)
+	me.add_child(level_row)
 	_xp_bar = ProgressBar.new()
 	_xp_bar.theme_type_variation = "XpBar"
 	_xp_bar.show_percentage = false
 	_xp_bar.custom_minimum_size = Vector2(200, 8)
-	box.add_child(_xp_bar)
+	_xp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	me.add_child(_xp_bar)
 	_refresh_character()
 
 	var money_parts := UI.panel(0)
@@ -3682,6 +3729,11 @@ func _build_windows() -> void:
 	_achievements_window = AchievementsWindow.new()
 	_achievements_window.failed.connect(_show_error)
 	layer.add_child(_achievements_window)
+	_character_window = CharacterWindow.new()
+	_character_window.position = Vector2(280, 60)
+	_character_window.failed.connect(_show_error)
+	_character_window.balance_changed.connect(_reload_balance)
+	layer.add_child(_character_window)
 
 
 func _reload_inventory() -> void:
@@ -3817,6 +3869,12 @@ func _show_toast(text: String, color := UI.TEXT) -> void:
 	_toast_tween = create_tween()
 	_toast_tween.tween_interval(3.0)
 	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.6)
+
+
+## New clothes or a new look: the portrait and the character on the plot follow.
+func _on_character_changed(portrait: CharacterPreview) -> void:
+	portrait.appearance = Game.look()
+	_player.set_look(Game.look(), Game.appearance_options)
 
 
 func _show_error(reply: Dictionary) -> void:

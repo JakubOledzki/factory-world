@@ -783,5 +783,9 @@
  "fire_station": {
   "anchorX": 72,
   "anchorY": 108
+ },
+ "tailor": {
+  "anchorX": 64,
+  "anchorY": 88
  }
 }
