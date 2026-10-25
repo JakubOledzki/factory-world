@@ -133,6 +133,18 @@ public sealed class ForestryIndustryTests(ServerFactory factory) : IClassFixture
         Assert.True(electric.Recipe(Items.Planks)!.Time < plain.Recipe(Items.Planks)!.Time);
         Assert.True(industrial.Recipe(Items.Planks)!.Quantity > electric.Recipe(Items.Planks)!.Quantity);
 
+        // A better sawmill both works faster and gets more out of a log, recipe by recipe, so it pays for itself
+        // over as many plain sawmills as it is faster: on the same wood it makes more.
+        foreach (var product in new[] { Items.Planks, Items.Beams, Items.WoodPellets })
+        {
+            double PerWood(ProcessingMachine m) => (double)m.Recipe(product)!.Quantity / m.Recipe(product)!.Ingredients.Single().Quantity;
+            double WoodPerSecond(ProcessingMachine m) => m.Recipe(product)!.Ingredients.Single().Quantity / m.Recipe(product)!.Time.TotalSeconds;
+            Assert.True(PerWood(electric) > PerWood(plain));
+            Assert.True(PerWood(industrial) > PerWood(electric));
+            Assert.True(WoodPerSecond(electric) >= 2.5 * WoodPerSecond(plain));
+            Assert.True(WoodPerSecond(industrial) >= 1.7 * WoodPerSecond(electric));
+        }
+
         // Pellets burn in fired machines too.
         Assert.True(Processing.Fuels[Items.WoodPellets] > Processing.Fuels[Items.Wood]);
     }

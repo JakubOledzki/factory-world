@@ -110,7 +110,9 @@ public static class Processing
             new(Items.CultureMedium, 1, TimeSpan.FromSeconds(15), [(Items.Gelatin, 1), (Items.Egg, 2), (Items.Water, 1)], 3),
         ]),
         // Sawmills of three levels: the plain one saws by hand, the electric and the industrial one run on
-        // power, work faster and glue plywood from planks; the industrial one gets three planks from a log.
+        // power and glue plywood from planks. Every level gets more out of a log as well as working faster, so a better
+        // sawmill pays for itself on the same wood: the electric one about three times the pace of the plain one with
+        // a quarter more out of each log, the industrial one about six times with half as much more again.
         new(Items.Sawmill, false,
         [
             new(Items.Planks, 2, TimeSpan.FromSeconds(8), [(Items.Wood, 1)], 1),
@@ -119,17 +121,17 @@ public static class Processing
         ]),
         new(Items.ElectricSawmill, false,
         [
-            new(Items.Planks, 2, TimeSpan.FromSeconds(4), [(Items.Wood, 1)], 1),
-            new(Items.Beams, 1, TimeSpan.FromSeconds(5), [(Items.Wood, 2)], 2),
-            new(Items.WoodPellets, 3, TimeSpan.FromSeconds(4), [(Items.Wood, 2)], 1),
-            new(Items.Plywood, 1, TimeSpan.FromSeconds(12), [(Items.Planks, 3)], 3),
+            new(Items.Planks, 5, TimeSpan.FromSeconds(5), [(Items.Wood, 2)], 1),
+            new(Items.Beams, 3, TimeSpan.FromSeconds(8), [(Items.Wood, 5)], 2),
+            new(Items.WoodPellets, 5, TimeSpan.FromSeconds(4), [(Items.Wood, 3)], 1),
+            new(Items.Plywood, 1, TimeSpan.FromSeconds(8), [(Items.Planks, 3)], 3),
         ], Powered: true),
         new(Items.IndustrialSawmill, false,
         [
-            new(Items.Planks, 3, TimeSpan.FromSeconds(2), [(Items.Wood, 1)], 1),
-            new(Items.Beams, 1, TimeSpan.FromSeconds(2.5), [(Items.Wood, 2)], 2),
-            new(Items.WoodPellets, 4, TimeSpan.FromSeconds(2), [(Items.Wood, 2)], 1),
-            new(Items.Plywood, 1, TimeSpan.FromSeconds(5), [(Items.Planks, 3)], 3),
+            new(Items.Planks, 9, TimeSpan.FromSeconds(4), [(Items.Wood, 3)], 1),
+            new(Items.Beams, 2, TimeSpan.FromSeconds(2.5), [(Items.Wood, 3)], 2),
+            new(Items.WoodPellets, 4, TimeSpan.FromSeconds(1.5), [(Items.Wood, 2)], 1),
+            new(Items.Plywood, 2, TimeSpan.FromSeconds(4), [(Items.Planks, 6)], 3),
         ], Powered: true),
         // The mountain industry. A quarry cuts stone out of the mountain with nothing put in; it stands on mountain plots only.
         new(Items.Quarry, false,
