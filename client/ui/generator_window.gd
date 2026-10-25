@@ -5,7 +5,9 @@ extends GameWindow
 ## the poles it stands next to, as much as they draw, up to its full power. It burns only while a
 ## pole connects it to machines, faster the more they draw. A water wheel or a small water power
 ## plant opens the same window without the fire: water turns it all the time and it burns nothing. So do
-## solar power, which gives power by day only, and a battery, which stores what the free power has to spare.
+## solar power, which gives power by day only, a wind turbine, which gives as much as the wind blows, and a battery,
+## which stores what the free power has to spare. A heater has the fire but gives no power: on the glacier it warms
+## the machines around it, which work at half pace in the cold.
 
 ## Items went from the inventory into the generator or back: [{id, name, quantity}] taken out.
 signal inventory_changed(taken: Array, xp: Variant)
@@ -16,7 +18,8 @@ signal pick_up_requested(id: String)
 const POLL := 2000.0
 const HYDRO_NAMES := {"power_water_wheel": "Koło wodne", "power_hydro_plant": "Mała elektrownia wodna", "power_tidal_plant": "Elektrownia pływowa"}
 const FUEL_NAMES := {"power_gas_plant": "Elektrownia gazowa", "power_diesel_generator": "Agregat spalinowy"}
-const FREE_NAMES := {"power_solar_panel": "Panel słoneczny", "power_solar_tower": "Elektrownia słoneczna z lustrami", "power_battery": "Akumulator"}
+const FREE_NAMES := {"power_solar_panel": "Panel słoneczny", "power_solar_tower": "Elektrownia słoneczna z lustrami", "power_battery": "Akumulator",
+	"power_wind_turbine": "Turbina wiatrowa", "power_large_wind_turbine": "Duża turbina wiatrowa", "power_heater": "Kocioł grzewczy"}
 
 var generator := ""
 var plot := Vector2i(-1, -1)
@@ -110,11 +113,13 @@ func _render() -> void:
 		return
 	var solar: bool = _state.get("solar", false)
 	var battery: bool = _state.get("battery", false)
+	var wind: bool = _state.get("wind", false)
+	var heater: bool = _state.get("heater", false)
 	# Everything that burns nothing shows the same window without the fire.
-	var hydro: bool = _state.get("hydro", false) or solar or battery
+	var hydro: bool = _state.get("hydro", false) or solar or battery or wind
 	var kind: String = _state.get("kind", "")
 	set_title(HYDRO_NAMES.get(kind, FUEL_NAMES.get(kind, FREE_NAMES.get(kind, "Generator parowy"))))
-	_pick_up.text = "Schowaj do ekwipunku" if hydro else "Schowaj generator do ekwipunku"
+	_pick_up.text = "Schowaj do ekwipunku" if hydro or heater else "Schowaj generator do ekwipunku"
 	_fuel_row.visible = not hydro
 	_load_heading.visible = not hydro
 	_load.visible = not hydro
@@ -142,7 +147,16 @@ func _render() -> void:
 
 	var output := float(_state["outputKw"])
 	var capacity := float(_state["capacityKw"])
-	if battery:
+	_output_bar.visible = not heater
+	if heater:
+		var warmed := int(_state.get("warmed", 0))
+		if not _state.get("icy", false):
+			_output.text = "Tu nie ma mrozu: maszyny pracują pełną parą i bez kotła."
+		elif float(_state.get("total", 0.0)) <= 0.0:
+			_output.text = "Kocioł wygasł: %d %s wokół niego marznie i pracuje wolniej." % [warmed, _machines(warmed)]
+		else:
+			_output.text = "Grzeje %d %s na %d pól wokół siebie." % [warmed, _machines(warmed), int(_state.get("heaterReach", 3))]
+	elif battery:
 		var charge := float(_state.get("chargeKj", 0.0))
 		var full := float(_state.get("capacityKj", 1.0))
 		_output.text = "Naładowany %s z %s (%d%%) · %s" % [_energy(charge), _energy(full), roundi(100.0 * charge / full),
@@ -150,13 +164,16 @@ func _render() -> void:
 		_output_bar.max_value = full
 		_output_bar.value = charge
 	else:
-		_output.text = ("Słońce daje %s z %s" if solar else ("Woda daje %s z %s" if hydro else "Daje %s z %s")) % [kw(output), kw(capacity)]
+		_output.text = ("Słońce daje %s z %s" if solar else ("Wiatr daje %s z %s" if wind else ("Woda daje %s z %s" if hydro else "Daje %s z %s"))) % [kw(output), kw(capacity)]
 		_output_bar.max_value = capacity
 		_output_bar.value = output
 	_output.add_theme_color_override("font_color", UI.GOLD if output > 0 else UI.MUTED)
 
 	var network: Variant = _state.get("network")
-	if network == null:
+	_network.visible = not heater
+	if heater:
+		pass
+	elif network == null:
 		_network.text = "Żaden słup go nie sięga. Postaw słup energetyczny najwyżej 2 pola od niego, a słupy przy maszynach połączą się przewodami."
 		_network.add_theme_color_override("font_color", UI.ERROR)
 	elif int(network["machines"]) == 0:
@@ -212,6 +229,24 @@ func _render() -> void:
 		_load.add_child(UI.label("Nie masz opału, który ten generator spala (%s). %s" % [", ".join(names), hint],
 			UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
+	if heater:
+		_load_heading.text = "Dołóż do kotła"
+		_help.text = "Na lodowcu maszyny na prąd bez ogrzewania pracują o połowę wolniej. Kocioł spala opał bez przerwy (%s, nawet gdy nic nie grzeje) i ogrzewa maszyny do %d pól wokół siebie, a słup nie jest mu potrzebny." % [
+			kw(float(_state.get("heaterKw", 15.0))), int(_state.get("heaterReach", 3))]
+		_update_runs_out()
+		_fit.call_deferred()
+		return
+	_load_heading.text = "Dołóż do ognia"
+	if wind:
+		var strength := roundi(float(_state.get("windStrength", 0.0)) * 100.0)
+		var bonus := float(_state.get("windBonus", 1.0))
+		var now := "Teraz wieje na %d%% pełnej siły." % strength
+		if _state.get("blizzard", false):
+			now = "Szaleje zamieć: turbina stoi, żeby wiatr jej nie połamał."
+		_help.text = "Wiatr kręci nią bez opału, a jego siła zmienia się co 10 minut.%s Nadwyżkę zbiera akumulator w tej samej sieci. %s" % [
+			" Tu wieje mocniej: +%d%% mocy." % roundi((bonus - 1.0) * 100.0) if bonus > 1.0 else "", now]
+		_fit.call_deferred()
+		return
 	if solar:
 		var sun := "Teraz dzień." if _state.get("day", true) else "Teraz noc: panele nie dają prądu do świtu."
 		if _state.get("storm", false):
@@ -241,7 +276,7 @@ func _render() -> void:
 
 
 func _update_runs_out() -> void:
-	if _state.get("hydro", false) or _state.get("solar", false) or _state.get("battery", false):
+	if _state.get("hydro", false) or _state.get("solar", false) or _state.get("battery", false) or _state.get("wind", false):
 		return
 	var at: Variant = _state.get("runsOutAt")
 	if at == null:

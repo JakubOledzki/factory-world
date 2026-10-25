@@ -291,6 +291,33 @@ func _render_details() -> void:
 		_start_button.text = "Zbadaj"
 	_cancel_button.visible = technology["status"] == "active"
 	_cancel_button.disabled = _busy
+	if technology["status"] == "active":
+		_render_boosts()
+
+
+## Research data and computing power from the glacier speed the research being done up: a button for each held.
+func _render_boosts() -> void:
+	var held: Array = _state.get("boosts", []).filter(func(boost: Dictionary) -> bool: return _count(boost["id"]) > 0)
+	if held.is_empty():
+		return
+	_details.add_child(UI.label("Przyspiesz badanie:", UI.MUTED))
+	for boost: Dictionary in held:
+		var have := _count(boost["id"])
+		var row := _item_row(boost["id"], "%s (masz %d, każda −%s)" % [boost["name"], have, _seconds(float(boost["seconds"]))], "")
+		var button := UI.button("Użyj", func() -> void: _boost(boost["id"], have))
+		button.disabled = _busy
+		row.add_child(button)
+		_details.add_child(row)
+
+
+func _boost(item: String, quantity: int) -> void:
+	_busy = true
+	_render()
+	var reply := await Net.request("research.boost", {"item": item, "quantity": quantity})
+	_busy = false
+	_apply(reply)
+	if reply["type"] == "research":
+		inventory_changed.emit()
 
 
 func _item_row(item: String, name: String, amount: String, color := UI.TEXT) -> HBoxContainer:

@@ -589,5 +589,91 @@
  "camel": {
   "anchorX": 56,
   "anchorY": 62
+ },
+ "ice_block_0": {
+  "anchorX": 80,
+  "anchorY": 86
+ },
+ "ice_block_1": {
+  "anchorX": 80,
+  "anchorY": 83
+ },
+ "meteorite_0": {
+  "anchorX": 80,
+  "anchorY": 72
+ },
+ "snowdrift_0": {
+  "anchorX": 80,
+  "anchorY": 63
+ },
+ "snowdrift_1": {
+  "anchorX": 80,
+  "anchorY": 63
+ },
+ "crevasse": {
+  "anchorX": 56,
+  "anchorY": 48
+ },
+ "bridge": {
+  "anchorX": 56,
+  "anchorY": 48
+ },
+ "ice_melter": {
+  "anchorX": 56,
+  "anchorY": 76
+ },
+ "cold_store": {
+  "anchorX": 64,
+  "anchorY": 76
+ },
+ "server_room": {
+  "anchorX": 64,
+  "anchorY": 75
+ },
+ "ice_core_drill": {
+  "anchorX": 64,
+  "anchorY": 94
+ },
+ "polar_station": {
+  "anchorX": 64,
+  "anchorY": 100
+ },
+ "ice_hotel": {
+  "anchorX": 128,
+  "anchorY": 130
+ },
+ "viewpoint": {
+  "anchorX": 56,
+  "anchorY": 78
+ },
+ "dog_kennel": {
+  "anchorX": 64,
+  "anchorY": 59
+ },
+ "snowmobile_garage": {
+  "anchorX": 64,
+  "anchorY": 65
+ },
+ "track_foundation": {
+  "anchorX": 68,
+  "anchorY": 55
+ },
+ "wind_turbine": {
+  "anchorX": 64,
+  "anchorY": 177,
+  "wireX": 72,
+  "wireY": 174
+ },
+ "large_wind_turbine": {
+  "anchorX": 144,
+  "anchorY": 358,
+  "wireX": 189,
+  "wireY": 360
+ },
+ "heater": {
+  "anchorX": 56,
+  "anchorY": 88,
+  "wireX": 66,
+  "wireY": 72
  }
 }

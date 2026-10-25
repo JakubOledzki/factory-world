@@ -2926,6 +2926,426 @@ def desert_icon_models():
     }
 
 
+# --- Glacier --------------------------------------------------------------------------------------
+
+def glacier_mats():
+    """The paint of the glacier: ice, snow, red polar timber and steel, the warm glow of windows in the cold."""
+    return {
+        "ice": ra.plain("gl_ice", (0.42, 0.62, 0.78), 0.12, variation=0.25, scale=5, grime=0.05, bump=0.4),
+        "deep": ra.plain("gl_deep", (0.1, 0.25, 0.42), 0.1, variation=0.3, scale=6, grime=0.05, bump=0.3),
+        "snow": ra.plain("gl_snow", (0.8, 0.82, 0.86), 0.7, variation=0.06, scale=20, grime=0.0, bump=0.4),
+        "red": ra.plain("gl_red", (0.42, 0.04, 0.03), 0.6, variation=0.15, grime=0.4),
+        "white": ra.plain("gl_white", (0.7, 0.71, 0.7), 0.45, 0.2, variation=0.08, grime=0.3),
+        "steel": ra.rusty_metal("gl_steel", (0.32, 0.33, 0.35), rust=0.08),
+        "dark": ra.rusty_metal("gl_dark", (0.04, 0.045, 0.05), rust=0.1),
+        "timber": ra.wood("gl_timber", (0.22, 0.13, 0.06)),
+        "concrete": ra.plain("gl_concrete", (0.3, 0.3, 0.3), 0.9, variation=0.15),
+        "window": ra.emission("gl_window", (1.0, 0.68, 0.3), 5.0),
+        "glow": ra.emission("gl_glow", (1.0, 0.4, 0.06), 6.0),
+        "screen": ra.emission("gl_screen", (0.2, 0.7, 1.0), 4.0),
+        "led": ra.emission("gl_led", (0.2, 1.0, 0.3), 5.0),
+        "orange": ra.plain("gl_orange", (0.7, 0.22, 0.02), 0.45, 0.2, variation=0.1, grime=0.3),
+        "fur": ra.plain("gl_fur", (0.35, 0.33, 0.3), 0.95, variation=0.3, scale=30, bump=0.6),
+    }
+
+
+def ice_block(size, seed):
+    random.seed(seed)
+    m = glacier_mats()
+    main = ra.box("ice", (size, size * 0.8, size * 0.7), (0, 0, size * 0.3), m["ice"], rotation=(0.1, -0.08, random.uniform(0, 1)))
+    ra.displace(main, size * 0.08, 0.6, 2)
+    for _ in range(3):
+        a = random.random() * math.tau
+        s = ra.box("ice_shard", (size * 0.3, size * 0.25, size * 0.4), (math.cos(a) * size * 0.55, math.sin(a) * size * 0.45, size * 0.12),
+                   m["ice"], rotation=(random.uniform(-0.4, 0.4), random.uniform(-0.4, 0.4), a))
+        ra.displace(s, size * 0.04, 0.4, 1)
+    ra.sphere("ice_snowcap", size * 0.45, (0, 0, size * 0.62), m["snow"], scale=(1.1, 0.9, 0.25), segments=14)
+    return meshes()
+
+
+def meteorite():
+    m = glacier_mats()
+    crater = ra.sphere("met_crater", 0.9, (0, 0, -0.05), m["snow"], scale=(1.2, 1, 0.18), segments=20)
+    ra.displace(crater, 0.06, 0.4, 1)
+    stone = ra.sphere("met_stone", 0.42, (0, 0, 0.32), ra.rusty_metal("met_iron", (0.06, 0.055, 0.05), rust=0.45, scale=8),
+                      scale=(1.1, 0.9, 0.8), segments=16)
+    ra.displace(stone, 0.12, 0.35, 2)
+    for k in range(5):
+        a = k * 1.3
+        ra.box("met_crack", (0.25, 0.02, 0.02), (math.cos(a) * 0.3, math.sin(a) * 0.25, 0.3 + (k % 2) * 0.1), m["glow"],
+               rotation=(0.3 * k, 0.5, a))
+    return meshes()
+
+
+def snowdrift(size):
+    m = glacier_mats()
+    d = ra.sphere("drift", size / 2, (0, 0, -size * 0.1), m["snow"], scale=(1.25, 0.95, 0.5), segments=24)
+    ra.displace(d, size * 0.07, 0.5, 2)
+    return meshes()
+
+
+def crevasse_tile(bridged):
+    """A tile of glacier split by a crevasse (2 m square, flat, laid on the ground like the road); bridged, with planks over it."""
+    m = glacier_mats()
+    ra.box("cv_lip", (2.0, 2.0, 0.02), (0, 0, 0.0), m["snow"])
+    gap = ra.box("cv_gap", (2.05, 0.8, 0.03), (0, 0, 0.012), m["deep"], rotation=(0, 0, 0.08))
+    ra.displace(gap, 0.08, 0.5, 2)
+    ra.box("cv_dark", (2.05, 0.4, 0.035), (0, 0, 0.016), ra.plain("gl_abyss", (0.01, 0.03, 0.06), 0.3, grime=0.0), rotation=(0, 0, 0.08))
+    if bridged:
+        for k in range(5):
+            ra.box("cv_plank", (0.32, 1.6, 0.06), (-0.7 + k * 0.35, 0, 0.05), m["timber"], bevel=0.01)
+        for x in (-0.9, 0.9):
+            ra.box("cv_beam", (0.1, 1.9, 0.08), (x, 0, 0.09), ra.wood("gl_beam", (0.14, 0.08, 0.04)))
+    return meshes()
+
+
+def blades(hub, radius, width, mat, spin=0.3):
+    """Three blades turning about the y axis at `hub`, facing south."""
+    for k in range(3):
+        a = spin + k * math.tau / 3
+        mid = hub + Vector((math.cos(a) * radius / 2, -0.05, math.sin(a) * radius / 2))
+        ra.box("wt_blade", (radius, 0.04, width), mid, mat, rotation=(0, -a, 0), bevel=0.01)
+
+
+def build_wind_turbine():
+    """A small wind turbine: a white mast on a concrete pad, a nacelle and three long blades turning to the south."""
+    m = glacier_mats()
+    ra.box("wt_pad", (0.8, 0.8, 0.1), (0, 0, 0.05), m["concrete"])
+    ra.cylinder("wt_mast", 0.09, 3.0, (0, 0, 1.55), m["white"], verts=16, radius2=0.06)
+    ra.box("wt_nacelle", (0.22, 0.45, 0.22), (0, 0.05, 3.1), m["white"], bevel=0.04)
+    ra.sphere("wt_hub", 0.1, (0, -0.2, 3.1), m["white"], segments=12)
+    blades(Vector((0, -0.25, 3.1)), 1.1, 0.12, m["white"])
+    ra.box("wt_stripe", (0.06, 0.02, 0.15), (0, -0.25, 2.55), m["red"])
+    ra.box("wt_box", (0.2, 0.14, 0.24), (0.25, -0.2, 0.22), m["dark"])
+
+
+def build_large_wind_turbine():
+    """A large wind turbine on 3 × 3 tiles: a tall tapered tower, a big nacelle and blades of 3 m, with a red tip on each."""
+    m = glacier_mats()
+    ra.box("lw_ground", (5.6, 5.6, 0.02), (0, 0, 0.01), m["snow"])
+    ra.cylinder("lw_base", 0.9, 0.3, (0, 0.3, 0.15), m["concrete"], verts=24)
+    ra.cylinder("lw_tower", 0.32, 6.6, (0, 0.3, 3.6), m["white"], verts=24, radius2=0.18)
+    ra.box("lw_nacelle", (0.5, 1.1, 0.5), (0, 0.45, 7.0), m["white"], bevel=0.08)
+    ra.sphere("lw_hub", 0.22, (0, -0.15, 7.0), m["white"], scale=(1, 1.4, 1), segments=14)
+    blades(Vector((0, -0.25, 7.0)), 3.1, 0.25, m["white"], spin=0.9)
+    for k in range(3):
+        a = 0.9 + k * math.tau / 3
+        ra.box("lw_tip", (0.4, 0.05, 0.2), Vector((0, -0.3, 7.0)) + Vector((math.cos(a) * 2.9, 0, math.sin(a) * 2.9)), m["red"], rotation=(0, -a, 0))
+    ra.box("lw_house", (1.0, 0.7, 0.7), (1.4, -0.8, 0.35), m["white"], bevel=0.03)
+    ra.box("lw_door", (0.3, 0.02, 0.5), (1.4, -1.16, 0.3), m["dark"])
+    ra.light("POINT", (0, 0.45, 7.35), 5, (1, 0.1, 0.05), size=0.05)
+    ra.sphere("lw_beacon", 0.06, (0, 0.45, 7.3), ra.emission("gl_beacon", (1, 0.1, 0.05), 20.0), segments=8)
+
+
+def build_heater():
+    """A heater: a squat iron stove with a glowing grate and a tall flue, a heap of coal at its side."""
+    m = glacier_mats()
+    ra.box("ht_pad", (1.1, 0.9, 0.06), (0, 0, 0.03), m["concrete"])
+    ra.cylinder("ht_body", 0.35, 0.7, (0, 0, 0.41), m["dark"], verts=20)
+    ra.cylinder("ht_top", 0.38, 0.05, (0, 0, 0.78), m["steel"], verts=20)
+    ra.box("ht_grate", (0.3, 0.04, 0.18), (0, -0.34, 0.3), m["glow"])
+    for k in range(3):
+        ra.box("ht_bar", (0.02, 0.05, 0.2), (-0.1 + k * 0.1, -0.36, 0.3), m["dark"])
+    ra.cylinder("ht_flue", 0.07, 1.2, (0.1, 0.1, 1.38), m["steel"], verts=12)
+    ra.cylinder("ht_cap", 0.12, 0.05, (0.1, 0.1, 2.0), m["dark"], verts=12, radius2=0.04)
+    coal = ra.plain("gl_coal", (0.02, 0.02, 0.02), 0.6, variation=0.3, bump=0.8)
+    for k in range(5):
+        ra.sphere("ht_coal", 0.08, (0.4 + (k % 3) * 0.06, -0.15 + k * 0.05, 0.08 + (k > 2) * 0.06), coal, segments=6)
+
+
+def build_ice_melter():
+    """An ice melter: a steel vat on a brick fire, blocks of ice in a hopper on top and a tap of water at its side."""
+    m = glacier_mats()
+    ra.box("im_fire", (1.0, 0.8, 0.35), (0, 0, 0.175), ra.plain("gl_brick", (0.3, 0.11, 0.06), 0.9, variation=0.35, scale=10, bump=0.5))
+    ra.box("im_mouth", (0.3, 0.02, 0.15), (0, -0.41, 0.15), m["glow"])
+    ra.cylinder("im_vat", 0.38, 0.5, (0, 0, 0.6), m["steel"], verts=24)
+    ra.cylinder("im_hopper", 0.3, 0.25, (0, 0, 0.97), m["dark"], verts=4, radius2=0.42)
+    for k in range(4):
+        ra.box("im_ice", (0.16, 0.16, 0.14), (-0.12 + (k % 2) * 0.22, -0.1 + (k // 2) * 0.2, 1.12), m["ice"], rotation=(0.2, 0.1, k))
+    ra.cylinder("im_tap", 0.04, 0.3, (0.45, -0.1, 0.45), m["steel"], rotation=(0, math.radians(90), 0), verts=10)
+    ra.cylinder("im_bucket", 0.1, 0.16, (0.6, -0.1, 0.08), ra.plain("gl_bucket", (0.15, 0.3, 0.6), 0.4), verts=14)
+
+
+def build_cold_store():
+    """A cold store: an insulated white box with a heavy door, a frosted condenser on the roof and ice blocks stacked by it."""
+    m = glacier_mats()
+    ra.box("cs_floor", (1.6, 1.2, 0.06), (0, 0, 0.03), m["concrete"])
+    ra.box("cs_box", (1.3, 0.9, 0.95), (0, 0.1, 0.52), ra.corrugated("cs_sheet", (0.62, 0.64, 0.66), 0.05), bevel=0.03)
+    ra.box("cs_door", (0.45, 0.04, 0.75), (-0.2, -0.36, 0.45), m["white"], bevel=0.02)
+    ra.box("cs_handle", (0.04, 0.05, 0.2), (0.0, -0.39, 0.45), m["dark"])
+    ra.box("cs_condenser", (0.5, 0.4, 0.25), (0.25, 0.2, 1.12), m["steel"])
+    ra.cylinder("cs_fan", 0.15, 0.03, (0.25, 0.2, 1.26), m["dark"], verts=16)
+    ra.box("cs_frost", (1.32, 0.92, 0.04), (0, 0.1, 1.0), m["snow"])
+    for k in range(3):
+        ra.box("cs_ice", (0.2, 0.2, 0.18), (0.55, -0.35 + k * 0.02, 0.15 + k * 0.18), m["ice"], rotation=(0, 0, 0.2 * k))
+
+
+def build_server_room():
+    """A server room: a container with rows of racks lit blue and green behind glass, and cooling fins along its roof."""
+    m = glacier_mats()
+    ra.box("sr_pad", (1.6, 1.0, 0.06), (0, 0, 0.03), m["concrete"])
+    ra.box("sr_box", (1.4, 0.8, 0.9), (0, 0.05, 0.51), ra.corrugated("sr_sheet", (0.12, 0.16, 0.22), 0.05), bevel=0.02)
+    ra.box("sr_glass", (1.0, 0.02, 0.6), (-0.1, -0.36, 0.5), ra.plain("gl_glass", (0.05, 0.1, 0.15), 0.05, grime=0.05))
+    for k in range(4):
+        ra.box("sr_rack", (0.18, 0.02, 0.52), (-0.48 + k * 0.25, -0.37, 0.5), m["dark"])
+        for j in range(5):
+            ra.box("sr_led", (0.12, 0.01, 0.015), (-0.48 + k * 0.25, -0.385, 0.3 + j * 0.1), m["screen"] if (j + k) % 3 else m["led"])
+    for k in range(6):
+        ra.box("sr_fin", (0.03, 0.6, 0.15), (-0.55 + k * 0.22, 0.05, 1.03), m["steel"])
+    ra.box("sr_ice", (0.3, 0.3, 0.25), (0.6, -0.3, 0.19), m["ice"], rotation=(0, 0, 0.3))
+
+
+def build_ice_core_drill():
+    """An ice core drill: a red derrick over a hole in the ice, a winch drum and long cylinders of core laid in a rack."""
+    m = glacier_mats()
+    ra.cylinder("cd_hole", 0.18, 0.03, (0, 0, 0.015), ra.plain("gl_abyss2", (0.01, 0.03, 0.06), 0.3, grime=0.0), verts=16)
+    for a in (0.6, 2.6, 4.6):
+        ra.box("cd_leg", (0.05, 0.05, 1.7), (math.cos(a) * 0.35, math.sin(a) * 0.35, 0.8), m["red"],
+               rotation=(math.sin(a) * 0.2, -math.cos(a) * 0.2, 0))
+    ra.box("cd_head", (0.25, 0.25, 0.15), (0, 0, 1.65), m["red"])
+    ra.cylinder("cd_rod", 0.05, 1.4, (0, 0, 0.9), m["steel"], verts=10)
+    ra.cylinder("cd_drum", 0.15, 0.35, (0.55, 0.1, 0.22), m["dark"], rotation=(math.radians(90), 0, 0), verts=16)
+    ra.box("cd_engine", (0.3, 0.3, 0.25), (0.55, 0.45, 0.15), m["orange"], bevel=0.02)
+    ra.box("cd_rack", (0.9, 0.3, 0.05), (-0.3, -0.5, 0.15), m["timber"])
+    for k in range(3):
+        ra.cylinder("cd_core", 0.05, 0.8, (-0.3, -0.58 + k * 0.08, 0.22), m["ice"], rotation=(0, math.radians(90), 0), verts=12)
+
+
+def build_polar_station():
+    """A polar research station: a red hut on stilts above the snow, a lit window, a weather mast with cups turning and a dish."""
+    m = glacier_mats()
+    for x in (-0.5, 0.5):
+        for y in (-0.3, 0.3):
+            ra.box("ps_stilt", (0.08, 0.08, 0.4), (x, y, 0.2), m["steel"])
+    ra.box("ps_hut", (1.3, 0.8, 0.65), (0, 0, 0.73), m["red"], bevel=0.04)
+    ra.box("ps_roof", (1.36, 0.86, 0.06), (0, 0, 1.08), m["white"])
+    for x in (-0.35, 0.2):
+        ra.box("ps_window", (0.25, 0.02, 0.2), (x, -0.41, 0.8), m["window"])
+    ra.box("ps_stairs", (0.3, 0.4, 0.05), (0.5, -0.6, 0.2), m["steel"], rotation=(0.6, 0, 0))
+    ra.cylinder("ps_mast", 0.025, 1.0, (-0.5, 0.2, 1.6), m["steel"], verts=8)
+    for k in range(3):
+        a = k * math.tau / 3
+        ra.sphere("ps_cup", 0.05, (-0.5 + math.cos(a) * 0.15, 0.2 + math.sin(a) * 0.15, 2.05), m["white"], segments=8)
+    ra.sphere("ps_dish", 0.25, (0.4, 0.2, 1.3), m["white"], scale=(1, 0.35, 1), segments=16)
+
+
+def build_ice_hotel():
+    """An ice hotel on 3 × 3 tiles: domes and walls of blocks of ice lit warm from within, a vaulted gate and torches."""
+    m = glacier_mats()
+    ra.box("ih_ground", (5.6, 5.6, 0.02), (0, 0, 0.01), m["snow"])
+    hall = ra.sphere("ih_hall", 1.6, (0, 0.6, 0.0), m["ice"], scale=(1.2, 1, 0.9), segments=28)
+    ra.displace(hall, 0.04, 0.4, 1)
+    for x in (-1.9, 1.9):
+        dome = ra.sphere("ih_dome", 0.9, (x, 0.2, 0.0), m["ice"], segments=24)
+        ra.displace(dome, 0.03, 0.4, 1)
+        ra.box("ih_window", (0.25, 0.02, 0.25), (x, -0.68, 0.45), m["window"])
+    ra.cylinder("ih_gate", 0.45, 0.8, (0, -1.1, 0.0), m["ice"], rotation=(math.radians(90), 0, 0), verts=20)
+    ra.box("ih_door", (0.5, 0.02, 0.5), (0, -1.51, 0.25), m["window"])
+    for k in range(8):
+        ra.box("ih_block", (0.5, 0.25, 0.25), (-2.2 + k * 0.62, -1.8, 0.13), m["ice"], bevel=0.02)
+    for x in (-0.7, 0.7):
+        ra.cylinder("ih_torch", 0.03, 0.8, (x, -1.6, 0.4), m["timber"], verts=8)
+        ra.sphere("ih_flame", 0.07, (x, -1.6, 0.85), m["glow"], scale=(1, 1, 1.5), segments=8)
+        ra.light("POINT", (x, -1.7, 0.95), 15, (1.0, 0.6, 0.3), size=0.1)
+    ra.light("POINT", (0, 0.6, 0.6), 60, (1.0, 0.65, 0.35), size=0.5)
+
+
+def build_viewpoint():
+    """A viewpoint: a timber deck on posts with a railing, a coin telescope and a bench, for watching the aurora."""
+    m = glacier_mats()
+    for x in (-0.55, 0.55):
+        for y in (-0.4, 0.4):
+            ra.box("vp_post", (0.08, 0.08, 0.6), (x, y, 0.3), m["timber"])
+    ra.box("vp_deck", (1.3, 1.0, 0.06), (0, 0, 0.62), m["timber"])
+    for x in (-0.6, 0.6):
+        ra.box("vp_rail", (0.04, 1.0, 0.04), (x, 0, 0.95), m["timber"])
+    ra.box("vp_rail", (1.24, 0.04, 0.04), (0, -0.48, 0.95), m["timber"])
+    for x in (-0.6, -0.2, 0.2, 0.6):
+        ra.box("vp_baluster", (0.03, 0.03, 0.32), (x, -0.48, 0.79), m["timber"])
+    ra.cylinder("vp_scope_post", 0.03, 0.4, (0.3, -0.2, 0.85), m["dark"], verts=8)
+    ra.cylinder("vp_scope", 0.05, 0.3, (0.3, -0.25, 1.08), m["steel"], rotation=(math.radians(70), 0, 0), verts=12)
+    ra.box("vp_bench", (0.6, 0.2, 0.05), (-0.25, 0.25, 0.85), m["red"])
+    ra.box("vp_stairs", (0.35, 0.5, 0.05), (0.75, 0.15, 0.32), m["timber"], rotation=(0, 0.7, 0))
+
+
+def build_dog_kennel():
+    """A dog kennel: a timber kennel and a sled loaded with a bundle, with two grey husky shapes lying in the snow."""
+    m = glacier_mats()
+    ra.box("dk_house", (0.6, 0.5, 0.4), (-0.4, 0.2, 0.2), m["timber"], bevel=0.02)
+    gable_roof("dk_roof", 0.7, 0.6, 0.4, 0.62, m["red"], at=(-0.4, 0.2))
+    ra.box("dk_door", (0.2, 0.02, 0.25), (-0.4, -0.06, 0.13), m["dark"])
+    for y in (-0.15, 0.15):
+        ra.box("dk_runner", (1.0, 0.04, 0.03), (0.35, y - 0.25, 0.03), m["dark"])
+    ra.box("dk_bed", (0.8, 0.34, 0.04), (0.35, -0.25, 0.14), m["timber"])
+    ra.box("dk_load", (0.5, 0.28, 0.2), (0.3, -0.25, 0.26), ra.plain("gl_canvas", (0.35, 0.3, 0.18), 0.9), bevel=0.04)
+    for x, y in ((0.1, -0.7), (0.6, -0.65)):
+        ra.sphere("dk_dog", 0.14, (x, y, 0.1), m["fur"], scale=(1.6, 0.8, 0.7), segments=12)
+        ra.sphere("dk_head", 0.08, (x + 0.2, y - 0.02, 0.16), m["fur"], segments=10)
+
+
+def build_snowmobile_garage():
+    """A snowmobile garage: a corrugated shed with an open door and an orange snowmobile with skis in front of it."""
+    m = glacier_mats()
+    ra.box("sg_floor", (1.6, 1.3, 0.04), (0, 0, 0.02), m["concrete"])
+    ra.box("sg_shed", (1.4, 0.8, 0.8), (0, 0.25, 0.42), ra.corrugated("sg_sheet", (0.25, 0.27, 0.3), 0.2), bevel=0.02)
+    ra.box("sg_door", (0.8, 0.02, 0.6), (0, -0.16, 0.32), m["dark"])
+    ra.box("sg_body", (0.65, 0.3, 0.2), (0.1, -0.5, 0.22), m["orange"], bevel=0.05)
+    ra.box("sg_seat", (0.3, 0.22, 0.08), (0.2, -0.5, 0.35), m["dark"], bevel=0.02)
+    ra.box("sg_screen", (0.05, 0.25, 0.12), (-0.12, -0.5, 0.38), ra.plain("gl_glass2", (0.1, 0.15, 0.2), 0.05, grime=0.05), rotation=(0, -0.5, 0))
+    for y in (-0.62, -0.38):
+        ra.box("sg_ski", (0.55, 0.05, 0.02), (-0.15, y, 0.04), m["dark"])
+    ra.box("sg_track", (0.4, 0.25, 0.1), (0.25, -0.5, 0.07), m["dark"])
+    ra.cylinder("sg_can", 0.08, 0.22, (0.6, -0.1, 0.13), m["red"], verts=12)
+
+
+def build_track_foundation():
+    """A track foundation: a long concrete sleeper bed on piles driven into the ice, with a section of steel rail laid over it."""
+    m = glacier_mats()
+    for x in (-0.7, 0.0, 0.7):
+        ra.cylinder("tf_pile", 0.1, 0.4, (x, 0, 0.12), m["steel"], verts=10)
+    ra.box("tf_slab", (1.9, 0.9, 0.15), (0, 0, 0.3), m["concrete"], bevel=0.02)
+    for k in range(6):
+        ra.box("tf_sleeper", (0.12, 0.8, 0.06), (-0.8 + k * 0.32, 0, 0.41), m["timber"])
+    for y in (-0.22, 0.22):
+        ra.box("tf_rail", (1.9, 0.05, 0.07), (0, y, 0.47), m["steel"])
+    ra.box("tf_sign", (0.25, 0.03, 0.18), (0.8, -0.5, 0.55), m["orange"])
+    ra.cylinder("tf_sign_post", 0.02, 0.4, (0.8, -0.5, 0.3), m["dark"], verts=6)
+
+
+GLACIER_NATURE = {
+    "ice_block_0": (160, 144, 0.6, lambda: ice_block(1.9, 21)),
+    "ice_block_1": (160, 144, 0.5, lambda: ice_block(1.6, 22)),
+    "meteorite_0": (160, 128, 0.35, meteorite),
+    "snowdrift_0": (160, 112, 0.3, lambda: snowdrift(2.5)),
+    "snowdrift_1": (160, 112, 0.3, lambda: snowdrift(2.1)),
+}
+
+GLACIER = {
+    # name: (canvas width, height, camera target height, builder); the ice hotel stands on 3 × 3 tiles.
+    "ice_melter": (112, 128, 0.55, build_ice_melter),
+    "cold_store": (128, 128, 0.55, build_cold_store),
+    "server_room": (128, 128, 0.5, build_server_room),
+    "ice_core_drill": (128, 152, 0.8, build_ice_core_drill),
+    "polar_station": (128, 160, 0.9, build_polar_station),
+    "ice_hotel": (256, 224, 0.8, build_ice_hotel),
+    "viewpoint": (112, 128, 0.6, build_viewpoint),
+    "dog_kennel": (128, 104, 0.3, build_dog_kennel),
+    "snowmobile_garage": (128, 112, 0.4, build_snowmobile_garage),
+    "track_foundation": (136, 96, 0.3, build_track_foundation),
+}
+
+GLACIER_POWER = {
+    "wind_turbine": (128, 272, 1.8, build_wind_turbine, Vector((0.25, -0.2, 0.3))),
+    "large_wind_turbine": (288, 544, 3.8, build_large_wind_turbine, Vector((1.4, -0.8, 0.7))),
+    "heater": (112, 144, 0.7, build_heater, Vector((0.3, 0.1, 0.6))),
+}
+
+
+def render_glacier(layout: dict, only=()):
+    for name, (w, h, tz, build) in GLACIER_NATURE.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), build)
+    for name, bridged in (("crevasse", False), ("bridge", True)):
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, 112, 96, Vector((0, 0, 0)), lambda b=bridged: crevasse_tile(b))
+    for name, (w, h, tz, build) in GLACIER.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build), true_scale=True)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
+    for name, (w, h, tz, build, wire) in GLACIER_POWER.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        target = Vector((0, 0, tz))
+        layout[name] = render_sprite(name, w, h, target, crafted(build), true_scale=True)
+        layout[name]["wireX"], layout[name]["wireY"] = anchor(w, h, target, wire)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"item_power_{name}.png")
+
+
+def glacier_icon_models():
+    """Icons of what the glacier gives up and makes."""
+    def ice():
+        mat = ra.plain("ic_ice", (0.42, 0.62, 0.78), 0.12, variation=0.25, scale=5, grime=0.05, bump=0.4)
+        for k, (x, y, z) in enumerate(((-0.1, 0, 0.08), (0.1, 0.03, 0.08), (0, -0.02, 0.22))):
+            c = ra.box("cube", (0.17, 0.17, 0.15), (x, y, z), mat, bevel=0.02, rotation=(0.1 * k, 0.05, 0.3 * k))
+            ra.displace(c, 0.01, 0.2, 1)
+
+    def metal_lump(name, color, glow=False):
+        def build():
+            mat = ra.rusty_metal(name, color, rust=0.3, scale=8)
+            c = ra.sphere("lump", 0.17, (0, 0, 0.12), mat, scale=(1.2, 1, 0.8), segments=14)
+            ra.displace(c, 0.05, 0.2, 2)
+            if glow:
+                ra.sphere("sheen", 0.05, (0.08, -0.12, 0.2), ra.plain("ic_irid", (0.75, 0.78, 0.85), 0.1, 1.0, grime=0.0), segments=10)
+        return build
+
+    def iridium():
+        mat = ra.plain("ic_iridium", (0.72, 0.75, 0.8), 0.15, 1.0, variation=0.1, grime=0.1)
+        ra.box("bar", (0.34, 0.14, 0.09), (0, 0, 0.05), mat, bevel=0.025)
+        ra.box("bar2", (0.34, 0.14, 0.09), (0.02, 0.03, 0.14), mat, bevel=0.025, rotation=(0, 0, 0.3))
+
+    def pickaxe():
+        head = ra.rusty_metal("ic_mpick", (0.08, 0.07, 0.06), rust=0.5, scale=8)
+        ra.cylinder("handle", 0.022, 0.5, (0, 0, 0.2), ra.wood("ic_mhandle", (0.25, 0.15, 0.07)), rotation=(0, math.radians(30), 0), verts=10)
+        ra.box("head", (0.42, 0.06, 0.06), (0.12, 0, 0.42), head, rotation=(0, math.radians(30), 0), bevel=0.02)
+        ra.box("glow", (0.12, 0.065, 0.015), (0.14, 0, 0.44), ra.emission("ic_mglow", (1.0, 0.4, 0.06), 4.0), rotation=(0, math.radians(30), 0))
+
+    def frozen(color):
+        def build():
+            fish("ic_ffish", 0.42, color, (0.7, 0.68, 0.62), at=(0, 0, 0.07))
+            frost = ra.plain("ic_frost", (0.6, 0.75, 0.88), 0.15, variation=0.2, grime=0.0)
+            for k in range(4):
+                ra.box("cube", (0.09, 0.09, 0.08), (-0.18 + k * 0.12, 0.12 - (k % 2) * 0.25, 0.04), frost, bevel=0.01, rotation=(0, 0, 0.4 * k))
+        return build
+
+    def ice_cream():
+        cone = ra.plain("ic_cone", (0.55, 0.32, 0.1), 0.8, variation=0.2, scale=30, bump=0.6)
+        ra.cylinder("cone", 0.01, 0.28, (0, 0, 0.14), cone, radius2=0.09, verts=16)
+        ra.sphere("scoop", 0.1, (0, 0, 0.32), ra.plain("ic_vanilla", (0.85, 0.75, 0.5), 0.6, grime=0.0), segments=16)
+        ra.sphere("scoop2", 0.08, (0.02, 0, 0.43), ra.plain("ic_pink", (0.8, 0.35, 0.45), 0.6, grime=0.0), segments=16)
+
+    def chip():
+        ra.box("chip", (0.3, 0.3, 0.04), (0, 0, 0.03), ra.plain("ic_chip", (0.04, 0.05, 0.06), 0.4))
+        for k in range(6):
+            for s in (-1, 1):
+                ra.box("pin", (0.025, 0.06, 0.01), (-0.12 + k * 0.048, s * 0.17, 0.02), ra.plain("ic_pin", (0.7, 0.55, 0.2), 0.3, 1.0))
+        ra.box("core", (0.12, 0.12, 0.01), (0, 0, 0.055), ra.emission("ic_core_glow", (0.2, 0.7, 1.0), 4.0))
+
+    def ice_core():
+        mat = ra.plain("ic_icecore", (0.5, 0.68, 0.82), 0.1, variation=0.2, grime=0.05)
+        ra.cylinder("core", 0.07, 0.42, (0, 0, 0.08), mat, rotation=(0, math.radians(90), math.radians(20)), verts=16)
+        for k in range(4):
+            ra.cylinder("layer", 0.072, 0.012, (-0.15 + k * 0.1, 0, 0.08), ra.plain("ic_layer", (0.3, 0.35, 0.4), 0.3),
+                        rotation=(0, math.radians(90), math.radians(20)), verts=16)
+
+    def notes():
+        paper = ra.plain("ic_paper", (0.75, 0.73, 0.68), 0.8, grime=0.1)
+        for k in range(3):
+            ra.box("sheet", (0.3, 0.38, 0.01), (k * 0.02, -k * 0.015, 0.01 + k * 0.012), paper, rotation=(0, 0, 0.1 * k))
+        for j in range(5):
+            ra.box("line", (0.22, 0.012, 0.003), (0.04, 0.12 - j * 0.06, 0.05), ra.plain("ic_ink", (0.05, 0.1, 0.3), 0.5))
+        ra.box("graph", (0.12, 0.012, 0.004), (0.06, -0.15, 0.052), ra.plain("ic_red_ink", (0.6, 0.05, 0.03), 0.5), rotation=(0, 0, 0.5))
+
+    def takings():
+        gold = ra.plain("ic_tcoin", (0.75, 0.52, 0.12), 0.3, 1.0, variation=0.2, bump=0.4)
+        for k in range(4):
+            ra.cylinder("coin", 0.12, 0.025, (0.02 * k, 0, 0.013 + k * 0.027), gold, verts=28)
+        ra.box("ticket", (0.2, 0.1, 0.005), (0.15, -0.12, 0.02), ra.plain("ic_ticket", (0.15, 0.35, 0.6), 0.6), rotation=(0, 0, 0.4))
+
+    return {
+        "item_ice": ice, "item_meteoric_iron": metal_lump("ic_metiron", (0.12, 0.1, 0.09)), "item_iridium": iridium,
+        "item_tool_meteorite_pickaxe": pickaxe, "item_frozen_fish": frozen((0.25, 0.27, 0.22)),
+        "item_frozen_salmon": frozen((0.55, 0.25, 0.18)), "item_ice_cream": ice_cream, "item_computing_power": chip,
+        "item_ice_core": ice_core, "item_research_data": notes, "item_tourist_takings": takings,
+    }
+
+
 # --- Power ----------------------------------------------------------------------------------------
 
 def build_generator():
@@ -3584,7 +4004,7 @@ def icon_models():
 
 def render_icons(only=()):
     ICONS.mkdir(parents=True, exist_ok=True)
-    for name, build in {**icon_models(), **desert_icon_models()}.items():
+    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models()}.items():
         if only and name not in only:
             continue
         random.seed(zlib.crc32(name.encode()))
@@ -3596,7 +4016,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "office", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "office", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -3643,6 +4063,10 @@ if __name__ == "__main__":
     if "desert" in args or any(a in DESERT or a in DESERT_POWER or a in PALMS for a in args):
         # Names of desert sprites render just those.
         render_desert(layout, [a for a in args if a in DESERT or a in DESERT_POWER or a in PALMS])
+    glacier = {**GLACIER_NATURE, **GLACIER, **GLACIER_POWER, "crevasse": 0, "bridge": 0}
+    if "glacier" in args or any(a in glacier for a in args):
+        # Names of glacier sprites render just those.
+        render_glacier(layout, [a for a in args if a in glacier])
     if "logistics" in args or any(a in LOGISTICS for a in args):
         # Names of logistics sprites render just those.
         render_logistics(layout, [a for a in args if a in LOGISTICS])

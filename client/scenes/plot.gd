@@ -66,6 +66,13 @@ const BUSH := 6
 const MINE := 7
 const WATER := 8
 const FLOTSAM := 9
+## The glacier's own: blocks of ice, meteorites, crevasses (and the bridges laid over them) and the snowdrifts
+## a blizzard's avalanches leave, also over what stands on the plot.
+const ICE_BLOCK := 10
+const METEORITE := 11
+const CREVASSE := 12
+const BRIDGE := 13
+const SNOWDRIFT := 14
 
 const SPRITES := {
 	TREE: ["tree_0", "tree_1", "tree_2", "tree_3", "tree_4"],
@@ -73,8 +80,11 @@ const SPRITES := {
 	DUNE: ["dune_0", "dune_1"],
 	BUSH: ["bush_0", "bush_1"],
 	FLOTSAM: ["flotsam_0", "flotsam_1", "flotsam_2"],
+	ICE_BLOCK: ["ice_block_0", "ice_block_1"],
+	METEORITE: ["meteorite_0"],
+	SNOWDRIFT: ["snowdrift_0", "snowdrift_1"],
 }
-const SOLID := [TREE, ROCK, DUNE, STATION, MINE, WATER]
+const SOLID := [TREE, ROCK, DUNE, STATION, MINE, WATER, ICE_BLOCK, METEORITE, CREVASSE, SNOWDRIFT]
 ## Objects that can be worked: their name, the tool ("" for bare hands) and how the tool is named in "you need a ...".
 const WORK := {
 	BUSH: {"name": "Krzak", "tool": "", "verb": "Wyrwij", "need": ""},
@@ -83,11 +93,17 @@ const WORK := {
 	DUNE: {"name": "Wydma", "tool": "tool_shovel", "verb": "Kop", "need": "łopaty"},
 	WATER: {"name": "Woda", "tool": "tool_fishing_rod", "verb": "Łów", "need": "wędki"},
 	FLOTSAM: {"name": "Coś wyrzuconego przez morze", "tool": "", "verb": "Zbierz", "need": ""},
+	ICE_BLOCK: {"name": "Bryła lodu", "tool": "tool_pickaxe", "verb": "Rozbij", "need": "kilofa"},
+	METEORITE: {"name": "Meteoryt", "tool": "tool_pickaxe", "verb": "Rozbij", "need": "kilofa"},
+	SNOWDRIFT: {"name": "Zaspa", "tool": "tool_shovel", "verb": "Odkop", "need": "łopaty"},
+	CREVASSE: {"name": "Szczelina", "tool": "", "verb": "Przerzuć most", "need": ""},
 }
 ## Tools that do another's work: a chainsaw cuts trees like an axe, only faster.
 ## Bronze and steel pickaxes break rock and work mines like the iron one, only faster.
-const STANDS_IN := {"tool_chainsaw": "tool_axe", "tool_bronze_pickaxe": "tool_pickaxe", "tool_steel_pickaxe": "tool_pickaxe"}
-const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalnia", WATER: "Woda", FLOTSAM: "Znalezisko"}
+const STANDS_IN := {"tool_chainsaw": "tool_axe", "tool_bronze_pickaxe": "tool_pickaxe", "tool_steel_pickaxe": "tool_pickaxe",
+	"tool_meteorite_pickaxe": "tool_pickaxe"}
+const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalnia", WATER: "Woda", FLOTSAM: "Znalezisko",
+	BRIDGE: "Most nad szczeliną"}
 ## What a player can put on a plot from the inventory, and its sprite there; belts are drawn by
 ## PlotLogistics, flat on the ground.
 const PLACED_SPRITES := {
@@ -118,6 +134,11 @@ const PLACED_SPRITES := {
 	"furniture_desalinator": "desalinator", "furniture_drying_yard": "drying_yard", "furniture_cement_kiln": "cement_kiln",
 	"furniture_concrete_mixer": "concrete_mixer", "furniture_reed_fence": "reed_fence", "power_solar_panel": "solar_panel",
 	"power_solar_tower": "solar_tower", "power_battery": "battery",
+	"power_wind_turbine": "wind_turbine", "power_large_wind_turbine": "large_wind_turbine", "power_heater": "heater",
+	"furniture_ice_melter": "ice_melter", "furniture_cold_store": "cold_store", "furniture_server_room": "server_room",
+	"furniture_ice_core_drill": "ice_core_drill", "furniture_polar_station": "polar_station", "furniture_ice_hotel": "ice_hotel",
+	"furniture_viewpoint": "viewpoint", "furniture_dog_kennel": "dog_kennel", "furniture_snowmobile_garage": "snowmobile_garage",
+	"furniture_track_foundation": "track_foundation",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
@@ -130,7 +151,8 @@ const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_
 	"furniture_fishing_boat", "furniture_rowing_boat", "furniture_smokehouse", "furniture_cannery", "furniture_salt_pan",
 	"furniture_fish_farm", "furniture_distillery", "furniture_refinery", "furniture_cracker", "furniture_chemical_plant",
 	"furniture_glassworks", "furniture_arc_furnace", "furniture_water_well", "furniture_desalinator", "furniture_drying_yard",
-	"furniture_cement_kiln", "furniture_concrete_mixer"]
+	"furniture_cement_kiln", "furniture_concrete_mixer", "furniture_ice_melter", "furniture_cold_store", "furniture_server_room",
+	"furniture_ice_core_drill", "furniture_polar_station", "furniture_ice_hotel", "furniture_viewpoint"]
 ## Wells, which pump the oil or gas the survey found under the plot, and open the well window.
 const WELLS := ["furniture_pumpjack", "furniture_gas_well", "furniture_offshore_platform"]
 ## Asphalt road: walked over like a belt, and faster.
@@ -167,6 +189,21 @@ const SOLAR := ["power_solar_panel", "power_solar_tower"]
 const SOLAR_TOWER := "power_solar_tower"
 const BATTERY := "power_battery"
 const REED_FENCE := "furniture_reed_fence"
+## The glacier and the tundra: wind blows stronger, blizzards sweep the glacier and the aurora shines on some nights.
+const TUNDRA := 7
+const GLACIER := 8
+const POLAR := [TUNDRA, GLACIER]
+## Wind power, which burns nothing; the large turbine stands on 3 × 3 tiles. A heater burns fuel to warm machines in the frost.
+const WIND := ["power_wind_turbine", "power_large_wind_turbine"]
+const LARGE_WIND := "power_large_wind_turbine"
+const HEATER := "power_heater"
+## What stands only on the glacier, and what on the glacier or the tundra.
+const GLACIER_ONLY := ["furniture_ice_core_drill", "furniture_track_foundation"]
+const POLAR_ONLY := ["furniture_ice_hotel", "furniture_viewpoint", "furniture_dog_kennel", "furniture_snowmobile_garage"]
+const ICE_HOTEL := "furniture_ice_hotel"
+const TRACK_FOUNDATION := "furniture_track_foundation"
+## Tourist buildings, which earn more while the aurora shines.
+const TOURISM := ["furniture_ice_hotel", "furniture_viewpoint"]
 ## Forester's buildings of every level and how far their forest reaches from the building's tile;
 ## each covers 3 × 3 tiles (FOOTPRINT each way) and keeps a clearing FOREST_CLEARING tiles out.
 const FORESTERS := {"furniture_forester_hut": 5, "furniture_forester_lodge": 6, "furniture_forestry_station": 7}
@@ -191,7 +228,7 @@ const GENERATOR := "power_generator"
 const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator"]
 ## Placed objects with nothing to open: a click shows the menu to pick them up.
 const MENU_ONLY := ["power_pole", "furniture_port", "furniture_lighthouse", "furniture_breakwater", ROAD, REED_FENCE,
-	"furniture_water_injector", "furniture_oil_separator"]
+	"furniture_water_injector", "furniture_oil_separator", "furniture_dog_kennel", "furniture_snowmobile_garage", TRACK_FOUNDATION]
 const POLE := "power_pole"
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo", "storage_tank"]
 ## Where a rotation faces, as players read it: 0 south, 1 east, 2 north, 3 west.
@@ -221,7 +258,8 @@ const FLOORS := {
 const MINIMAP_COLORS := {
 	NONE: Color(0, 0, 0, 0), TREE: Color("#2f5a2a"), ROCK: Color("#8a8580"), DUNE: Color("#c9a25a"),
 	RAIL: Color("#4a3a2e"), STATION: Color("#b5663a"), BUSH: Color("#3f6a30"), MINE: Color("#e0b040"),
-	WATER: Color("#2f6f9a"), FLOTSAM: Color("#e8d8a8"),
+	WATER: Color("#2f6f9a"), FLOTSAM: Color("#e8d8a8"), ICE_BLOCK: Color("#9cc4dc"), METEORITE: Color("#3a2a22"),
+	CREVASSE: Color("#16324a"), BRIDGE: Color("#7a5532"), SNOWDRIFT: Color("#e4e8ee"),
 }
 const FIELD_COLOR := Color("#6a4526")
 
@@ -310,6 +348,12 @@ var _field_source := 0
 var _water_layer: TileMapLayer
 var _water_source := 0
 var _road_source := 0
+var _crevasse_source := 0
+var _bridge_source := 0
+## Snow blown across the screen in a blizzard.
+var _snow: CPUParticles2D
+## The blizzard and the aurora last seen, to notice when they begin and end.
+var _was_blizzard := false
 var _shadows: TileMapLayer
 var _marks: Node2D
 var _sorted: Node2D
@@ -429,6 +473,9 @@ func _build_world() -> void:
 	_field_source = _add_source(field_set, "field", "field", false)
 	# So are asphalt roads.
 	_road_source = _add_source(field_set, "road", "road", false)
+	# And crevasses in the glacier, with the bridges laid over them.
+	_crevasse_source = _add_source(field_set, "crevasse", "crevasse", false)
+	_bridge_source = _add_source(field_set, "bridge", "bridge", false)
 	_field_layer.tile_set = field_set
 	add_child(_field_layer)
 	_shadows = TileMapLayer.new()
@@ -476,6 +523,23 @@ func _build_world() -> void:
 	_camera.position_smoothing_enabled = true
 	_camera.position_smoothing_speed = 8.0
 	add_child(_camera)
+	_snow = CPUParticles2D.new()
+	_snow.emitting = false
+	_snow.amount = 500
+	_snow.lifetime = 2.5
+	_snow.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	_snow.emission_rect_extents = Vector2(1100, 50)
+	_snow.position = Vector2(200, -650)
+	_snow.direction = Vector2(-0.6, 1)
+	_snow.spread = 12.0
+	_snow.gravity = Vector2(-120, 260)
+	_snow.initial_velocity_min = 260.0
+	_snow.initial_velocity_max = 420.0
+	_snow.scale_amount_min = 1.5
+	_snow.scale_amount_max = 3.5
+	_snow.color = Color(1, 1, 1, 0.8)
+	_snow.z_index = 100
+	_camera.add_child(_snow)
 
 
 ## One atlas source per sprite, so every sprite keeps its own size and anchor; an alternative
@@ -645,9 +709,13 @@ func _sandy() -> bool:
 	return int(_plot.get("biome", -1)) in SANDY
 
 
-## Whether an object of `kind` stands on 3 × 3 tiles: a forester's building or a solar tower.
+## Whether an object of `kind` stands on 3 × 3 tiles: a forester's building, a solar tower, a large wind turbine or an ice hotel.
 func _big(kind: String) -> bool:
-	return FORESTERS.has(kind) or kind == SOLAR_TOWER
+	return FORESTERS.has(kind) or kind in [SOLAR_TOWER, LARGE_WIND, ICE_HOTEL]
+
+
+func _biome() -> int:
+	return int(_plot.get("biome", -1))
 
 
 func _cell_centre(cell: Vector2i) -> Vector2:
@@ -689,6 +757,10 @@ func _draw_cell(cell: Vector2i) -> void:
 		_field_layer.set_cell(cell, _field_source, Vector2i.ZERO)
 	elif _placed.has(cell) and _placed[cell]["kind"] == ROAD:
 		_field_layer.set_cell(cell, _road_source, Vector2i.ZERO)
+	elif _tile(cell) == CREVASSE:
+		_field_layer.set_cell(cell, _crevasse_source, Vector2i.ZERO)
+	elif _tile(cell) == BRIDGE:
+		_field_layer.set_cell(cell, _bridge_source, Vector2i.ZERO)
 	else:
 		_field_layer.erase_cell(cell)
 	var sprite := _sprite_at(cell)
@@ -710,6 +782,8 @@ func _draw_cell(cell: Vector2i) -> void:
 
 ## The sprite standing on a tile: nature, the crop growing on a field, a planted tree or an animal; "" for nothing.
 func _sprite_at(cell: Vector2i) -> String:
+	if _tile(cell) == SNOWDRIFT:
+		return _variant(SNOWDRIFT, cell)  # over whatever the avalanche buried, too
 	if _placed.has(cell):
 		if _anchor(cell) != cell:
 			return ""  # A 3 × 3 building is drawn once, on its own tile.
@@ -1046,7 +1120,22 @@ func _can_place(cell: Vector2i) -> bool:
 		return biome in WATER_BIOMES
 	if _placing == SOLAR_TOWER:
 		return biome in SANDY
+	if _placing in GLACIER_ONLY:
+		if _placing == TRACK_FOUNDATION and _count_placed(TRACK_FOUNDATION) > 0:
+			return false
+		return biome == GLACIER
+	if _placing in POLAR_ONLY:
+		return biome in POLAR
 	return true
+
+
+## How many objects of `kind` stand on the plot.
+func _count_placed(kind: String) -> int:
+	var ids := {}
+	for cell: Vector2i in _placed:
+		if _placed[cell]["kind"] == kind:
+			ids[_placed[cell]["id"]] = true
+	return ids.size()
 
 
 ## Whether a tile touches the water, corners included.
@@ -1077,7 +1166,7 @@ func _drill_at(mine: int) -> Vector2i:
 
 func _free_ground(cell: Vector2i, mind_player := true) -> bool:
 	var spawn: Dictionary = _plot.get("spawn", {})
-	return _tile(cell) == NONE and not _fields.has(cell) and not _trees.has(cell) and not _placed.has(cell) \
+	return _tile(cell) in [NONE, BRIDGE] and not _fields.has(cell) and not _trees.has(cell) and not _placed.has(cell) \
 		and not _animals.has(cell) and cell != Vector2i(spawn.get("x", -1), spawn.get("y", -1)) \
 		and (not mind_player or Vector2i(_player.floor_pos.floor()) != cell)
 
@@ -1216,6 +1305,20 @@ func _placed_label(cell: Vector2i) -> String:
 		return "%s (słońce daje prąd za dnia, bez opału): kliknij po więcej" % object["name"]
 	if object["kind"] == BATTERY:
 		return "%s (%s): kliknij po więcej" % [object["name"], _power.describe_battery(object["id"])]
+	if object["kind"] in WIND:
+		return "%s (wiatr daje prąd bez opału): kliknij po więcej" % object["name"]
+	if object["kind"] == HEATER:
+		return "%s (grzeje maszyny %d pola wokół): kliknij, aby dołożyć opału" % [object["name"], int(_plot.get("frost", {}).get("heaterReach", 3)) if _plot.get("frost") != null else 3]
+	if object["kind"] == TRACK_FOUNDATION:
+		return "%s: pociągi przez lodowiec jadą tu z normalną prędkością. Kliknij, aby schować" % object["name"]
+	if object["kind"] == "furniture_dog_kennel":
+		return "%s: wyślesz sanie z psim zaprzęgiem ze stacji, bez opłaty. Kliknij, aby schować" % object["name"]
+	if object["kind"] == "furniture_snowmobile_garage":
+		return "%s: wyślesz skuter ze stacji, szybko i za benzynę. Kliknij, aby schować" % object["name"]
+	if object["kind"] in TOURISM:
+		return "%s%s: kliknij, aby odebrać utarg" % [object["name"], " (zorza! turyści płacą potrójnie)" if _aurora_now() else ""]
+	if _power.cold(object["id"]):
+		return "%s (zmarzła: pracuje o połowę wolniej, postaw kocioł grzewczy obok)%s: kliknij, aby użyć" % [object["name"], _power_note(object["id"])]
 	if object["kind"] == REED_FENCE:
 		return "%s: chroni panele i wykopane wydmy przed burzą piaskową. Kliknij, aby schować" % object["name"]
 	if object["kind"] in DRILLS:
@@ -1359,7 +1462,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				_go_to_station()
 			elif _hover_mine >= 0:
 				_go_to_mine(_hover_mine)
-			elif _fields.has(cell) or _animals.has(cell) or _tile(cell) == WATER:
+			elif _fields.has(cell) or _animals.has(cell) or _tile(cell) in [WATER, CREVASSE]:
 				_act_on(cell)
 			elif _can_plant(cell):
 				_go_and(cell, _plant_tree)
@@ -1528,8 +1631,10 @@ func _start_work(cell: Vector2i, mode := "harvest") -> void:
 	_work_seconds = _harvest_seconds
 	if mode == "harvest" and _work_kind(cell) == TREE:
 		_work_seconds = _saw_seconds if Game.holds("tool_chainsaw") else _chop_seconds
-	if mode == "harvest" and _work_kind(cell) == ROCK:
+	if mode == "harvest" and _work_kind(cell) in [ROCK, ICE_BLOCK]:
 		_work_seconds = float(_plot.get("rockSeconds", _harvest_seconds)) / _pickaxe_speed()
+	if mode == "harvest" and _work_kind(cell) == METEORITE:
+		_work_seconds = 2.0 * float(_plot.get("rockSeconds", _harvest_seconds)) / _pickaxe_speed()
 	if mode == "harvest" and _work_kind(cell) == WATER:
 		_work_seconds = float(_plot.get("fishSeconds", _harvest_seconds))
 	if mode == "mine":
@@ -1605,6 +1710,13 @@ func _harvest(cell: Vector2i) -> void:
 
 ## Removes a worked object: it falls over (a tree) or crumbles, and the tile becomes free.
 func _clear_tile(cell: Vector2i, kind: int) -> void:
+	if kind == CREVASSE:
+		# A bridge now lies over the crevasse: it is walked over and built on.
+		_tiles[cell.y * _size + cell.x] = BRIDGE
+		_astar.set_point_solid(cell, false)
+		_draw_cell(cell)
+		_set_minimap(cell, BRIDGE)
+		return
 	if _trees.has(cell):
 		var sprite := _sprite_at(cell)
 		_trees.erase(cell)
@@ -1618,7 +1730,8 @@ func _clear_tile(cell: Vector2i, kind: int) -> void:
 		return
 	var sprite_name := _variant(kind, cell)
 	_tiles[cell.y * _size + cell.x] = NONE
-	_astar.set_point_solid(cell, false)
+	# Snow dug off something that stands there leaves it as solid as it was.
+	_astar.set_point_solid(cell, _placed.has(cell) and not _walkable(cell))
 	if _hovered == cell:
 		_hovered = Vector2i(-1, -1)
 	_draw_cell(cell)
@@ -1649,6 +1762,9 @@ func _vanish(sprite_name: String, cell: Vector2i, fall: bool) -> void:
 
 ## What a click on a tile does: work nature, sow an empty field, reap a ripe crop, tend an animal.
 func _act_on(cell: Vector2i) -> void:
+	if _tile(cell) == SNOWDRIFT:
+		_work_on(cell)  # whatever is buried is dug out first
+		return
 	if _turnable(cell) or (_placed.has(cell) and _placed[cell]["kind"] in MENU_ONLY):
 		_open_object_menu(cell)
 		return
@@ -2095,6 +2211,16 @@ func _place_object(cell: Vector2i) -> void:
 		_show_toast("%s stoi na działce i za dnia daje prąd bez opału. Postaw obok słup, a nadwyżkę zbierze akumulator." % object["name"])
 	elif kind == BATTERY:
 		_show_toast("%s stoi na działce: postaw obok słup, a zbierze nadwyżkę prądu ze słońca i wody i odda ją, gdy zabraknie." % object["name"])
+	elif kind in WIND:
+		_show_toast("%s stoi na działce i daje prąd, gdy wieje. Postaw obok słup; w zamieć staje." % object["name"])
+	elif kind == HEATER:
+		_show_toast("%s stoi na działce: dołóż opału, a ogrzeje maszyny do 3 pól wokół, by nie marzły." % object["name"])
+	elif kind == TRACK_FOUNDATION:
+		_show_toast("%s leży na działce: pociągi przez lodowiec nie będą już zwalniać." % object["name"])
+	elif kind == "furniture_dog_kennel" or kind == "furniture_snowmobile_garage":
+		_show_toast("%s stoi na działce: w oknie stacji [T] wyślesz teraz towar saniami." % object["name"])
+	elif kind in TOURISM:
+		_show_toast("%s przyjmuje turystów. Utarg trafia prosto do portfela, a w noce z zorzą jest potrójny." % object["name"])
 	elif kind == REED_FENCE:
 		_show_toast("%s stoi na działce: osłoni przed burzą piaskową panele 3 pola wokół i wykopane wydmy 4 pola wokół." % object["name"])
 	elif kind in WELLS:
@@ -2133,7 +2259,8 @@ func _use_placed(cell: Vector2i) -> void:
 		_storage_window.open_at(_at, object["id"])
 	elif object["kind"] in ["furniture_workbench", "furniture_anvil", SHIPYARD]:
 		_crafting_window.open_at(object["id"], object["kind"])
-	elif object["kind"] in GENERATORS or object["kind"] in HYDRO or object["kind"] in SOLAR or object["kind"] == BATTERY:
+	elif object["kind"] in GENERATORS or object["kind"] in HYDRO or object["kind"] in SOLAR or object["kind"] == BATTERY \
+			or object["kind"] in WIND or object["kind"] == HEATER:
 		_generator_window.open_at(_at, object["id"])
 	elif object["kind"] in WELLS:
 		_well_window.open_at(_at, object["id"])
@@ -2367,6 +2494,9 @@ func _on_furnace_changed(taken: Array, xp: Variant) -> void:
 		_float_text("+%d %s" % [int(item["quantity"]), item["name"]], UI.TEXT, at, i * 0.25, item["id"])
 	_gain(xp, at, taken.size() * 0.25)
 	_reload_inventory()
+	# Tourists' takings go straight to the wallet.
+	if taken.any(func(item: Dictionary) -> bool: return item["id"] == "tourist_takings"):
+		_reload_balance()
 
 
 func _gain(xp: Variant, at: Vector2, delay: float) -> void:
@@ -2738,6 +2868,9 @@ func _update_weather() -> void:
 				_weather.text = "%s · burza piaskowa za %s" % [light, _clock_text(start - server)]
 			break
 	_daylight_target = Color(1.0, 0.86, 0.62) if sandstorm else (Color.WHITE if day else Color(0.62, 0.66, 0.85))
+	if _biome() in POLAR:
+		_update_polar_weather(server, day, sun_change)
+		return
 	if _sandy() or not int(_plot.get("biome", -1)) in [COAST, LAKESHORE]:
 		return
 	for storm: Dictionary in _plot.get("storms", []):
@@ -2754,6 +2887,88 @@ func _update_weather() -> void:
 			_weather.add_theme_color_override("font_color", UI.MUTED)
 		return
 	_weather.visible = false
+
+
+## On the glacier the blizzards, and on the glacier and the tundra the aurora on some nights: the line over the plot,
+## the light and the snow blowing across the screen.
+func _update_polar_weather(server: float, day: bool, sun_change: float) -> void:
+	_weather.visible = true
+	_weather.add_theme_color_override("font_color", UI.MUTED)
+	var parts: Array[String] = []
+	var blizzard := false
+	if _biome() == GLACIER:
+		for storm: Dictionary in _plot.get("blizzards", []):
+			var start := float(storm["start"])
+			var end := float(storm["end"])
+			if end <= server:
+				continue
+			if start <= server:
+				blizzard = true
+				parts.append("Zamieć! Turbiny stoją, lód odrasta, lawiny sypią zaspy (jeszcze %s)" % _clock_text(end - server))
+				_weather.add_theme_color_override("font_color", UI.ERROR)
+			else:
+				parts.append("zamieć za %s" % _clock_text(start - server))
+			break
+	var aurora := _aurora_now()
+	if aurora:
+		parts.append("Zorza polarna! Turyści płacą potrójnie (świt za %s)" % _clock_text(sun_change))
+		if not blizzard:
+			_weather.add_theme_color_override("font_color", Color(0.55, 1.0, 0.7))
+	elif day:
+		parts.append("Dzień (zmierzch za %s)" % _clock_text(sun_change))
+	else:
+		var next := _next_aurora(server)
+		parts.append("Noc bez zorzy" + (" · następna zorza za %s" % _clock_text(next - server) if next > 0.0 else ""))
+	_weather.text = " · ".join(parts)
+	_snow.emitting = blizzard
+	if blizzard:
+		_daylight_target = Color(0.82, 0.86, 0.94)
+	elif aurora:
+		_daylight_target = Color(0.55, 0.8, 0.72)
+	if _was_blizzard and not blizzard:
+		# The ice dug away has frozen again and the avalanches left snow about: the plot's tiles are fetched again.
+		_refresh_tiles()
+	_was_blizzard = blizzard
+
+
+func _aurora_now() -> bool:
+	var server := _server_now()
+	for night: Dictionary in _plot.get("auroras", []):
+		if float(night["start"]) <= server and server < float(night["end"]):
+			return true
+	return false
+
+
+## When the next aurora begins, or 0 when the forecast does not reach it.
+func _next_aurora(server: float) -> float:
+	for night: Dictionary in _plot.get("auroras", []):
+		if float(night["start"]) > server:
+			return float(night["start"])
+	return 0.0
+
+
+## Fetches the plot's tiles again (after a blizzard) and redraws them, with the forecast that came with them.
+func _refresh_tiles() -> void:
+	var reply := await Net.request("plot.enter", {"x": _at.x, "y": _at.y})
+	if reply["type"] == "error":
+		return
+	var plot: Dictionary = reply["payload"]
+	for key: String in ["blizzards", "auroras", "sun"]:
+		if plot.has(key):
+			_plot[key] = plot[key]
+	_tiles = Marshalls.base64_to_raw(plot["tiles"]).decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP)
+	for y in _size:
+		for x in _size:
+			var cell := Vector2i(x, y)
+			_astar.set_point_solid(cell, _solid(cell))
+	if _work.x >= 0 and not WORK.has(_work_kind(_work)):
+		_stop_work()
+	for chunk: Vector2i in _chunks:
+		for y in CHUNK:
+			for x in CHUNK:
+				_draw_cell(chunk * CHUNK + Vector2i(x, y))
+	_build_minimap()
+	_show_toast("Zamieć ucichła: lód odrósł, a lawiny zostawiły zaspy. Odkop je łopatą.", UI.MUTED)
 
 
 ## Milliseconds as m:ss, or h:mm:ss from an hour up.
@@ -3010,10 +3225,12 @@ func _update_hint() -> void:
 	var lines := {
 		"tool_axe": "Kliknij drzewo, aby je ściąć siekierą.",
 		"tool_chainsaw": "Kliknij drzewo, aby je ściąć piłą spalinową (o 70% szybciej niż siekierą).",
-		"tool_pickaxe": "Kliknij kopalnię, aby wydobywać rudy, albo skałę, aby ją rozbić kilofem." if not _mines.is_empty() else "Kliknij skałę, aby ją rozbić kilofem.",
+		"tool_pickaxe": "Kliknij bryłę lodu, skałę albo meteoryt, aby je rozbić kilofem. Szczelinę przekryjesz mostem z 3 belek." if _biome() == GLACIER \
+			else ("Kliknij kopalnię, aby wydobywać rudy, albo skałę, aby ją rozbić kilofem." if not _mines.is_empty() else "Kliknij skałę, aby ją rozbić kilofem."),
 		"tool_bronze_pickaxe": "Kliknij kopalnię albo skałę: kilof z brązu kopie o 25% szybciej niż żelazny.",
 		"tool_steel_pickaxe": "Kliknij kopalnię albo skałę: kilof stalowy kopie o 50% szybciej niż żelazny.",
-		"tool_shovel": "Kliknij wydmę, aby ją przekopać łopatą.",
+		"tool_meteorite_pickaxe": "Kliknij kopalnię, skałę albo lód: kilof z meteorytu kopie dwa razy szybciej niż żelazny.",
+		"tool_shovel": "Kliknij zaspę, aby ją odkopać łopatą." if _biome() == GLACIER else "Kliknij wydmę, aby ją przekopać łopatą.",
 		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile else "Motyką orze się tylko żyzne gleby.",
 		"tool_shears": "Kliknij owcę, aby ją ostrzyc nożycami, albo inne zwierzę, aby je nakarmić." if _pasture else "Na tej działce nie da się trzymać zwierząt.",
 	}
@@ -3248,6 +3465,8 @@ func _reload_inventory() -> void:
 
 func _refresh_station() -> void:
 	_station_window.port = _placed.values().any(func(object: Dictionary) -> bool: return object["kind"] == PORT)
+	_station_window.sled = _biome() in POLAR and _placed.values().any(func(object: Dictionary) -> bool:
+		return object["kind"] in ["furniture_dog_kennel", "furniture_snowmobile_garage"])
 	await _station_window.refresh()
 	_show_trains()
 
