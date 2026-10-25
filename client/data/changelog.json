@@ -20,9 +20,9 @@
 		"date": "2026-10-25",
 		"title": "Szybkie chowanie obiektów",
 		"changes": [
-			"Przytrzymaj prawy przycisk myszy na postawionym obiekcie przez 2 sekundy, a schowa się do ekwipunku razem z tym, co ma w środku. Wokół obiektu wypełnia się wtedy złote kółko.",
+			"Przytrzymaj prawy przycisk myszy na postawionym obiekcie przez sekundę, a schowa się do ekwipunku razem z tym, co ma w środku. Wokół obiektu wypełnia się wtedy złote kółko.",
 			"Puszczenie przycisku albo zjechanie kursorem z obiektu przerywa chowanie. W garażu krótkie kliknięcie prawym przyciskiem dalej otwiera menu mebla.",
-			"Na telefonie to samo robi przytrzymanie palca na obiekcie przez 2 sekundy; zwykłe dotknięcie działa jak wcześniej."
+			"Na telefonie to samo robi przytrzymanie palca na obiekcie przez sekundę; zwykłe dotknięcie działa jak wcześniej."
 		]
 	},
 	{
