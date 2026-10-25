@@ -276,4 +276,59 @@ public sealed class MountainIndustryTests(ServerFactory factory) : IClassFixture
         Assert.Equal("no_quarry", await PlaceErrorAsync(client, x, y, Items.Quarry, tx, ty));
         Assert.Equal("no_water", await PlaceErrorAsync(client, x, y, Items.WaterWheel, tx, ty));
     }
+
+    [Fact]
+    public void A_heap_takes_crushed_ore_too()
+    {
+        var heap = Storages.Find(Items.Heap)!;
+        Assert.All([Items.CrushedIronOre, Items.CrushedCopperOre, Items.CrushedTinOre], ore => Assert.True(heap.Takes(ore), ore));
+    }
+
+    [Fact]
+    public async Task Inserters_carry_ore_through_a_crusher_onto_a_heap()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, _) = await BuyAsync(client, Biome.Grassland);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<FactoryWorld.Modules.Abstractions.GameDb>();
+            await using var command = await db.CommandAsync(
+                "INSERT INTO research.technologies (owner_id, technology, starts_at, finishes_at, rewarded) VALUES (@owner, @id, @at, @at, true)", CancellationToken.None);
+            command.Parameters.AddWithValue("owner", client.AccountId);
+            command.Parameters.AddWithValue("id", TechTree.Crushing);
+            command.Parameters.AddWithValue("at", factory.Time.GetUtcNow() - TimeSpan.FromMinutes(1));
+            await command.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        await GiveAsync(client, Items.Crusher, 1);
+        await GiveAsync(client, Items.Inserter, 2);
+        await GiveAsync(client, Items.WoodenChest, 1);
+        await GiveAsync(client, Items.Heap, 1);
+        await GiveAsync(client, Items.Pole, 1);
+        await GiveAsync(client, Items.Generator, 1);
+        await GiveAsync(client, Items.Coal, 20);
+        await GiveAsync(client, Items.IronOre, 4);
+
+        // A chest of ore, an inserter, the crusher, an inserter and the heap, in a line facing south; powered from the side.
+        var (tx, ty) = (PlotLayout.Spawn.X + 4, PlotLayout.Spawn.Y + 4);
+        var chest = await PlaceAsync(client, x, y, Items.WoodenChest, tx, ty - 2);
+        await PlaceAsync(client, x, y, Items.Inserter, tx, ty - 1, 0);
+        var crusher = await PlaceAsync(client, x, y, Items.Crusher, tx, ty);
+        await PlaceAsync(client, x, y, Items.Inserter, tx, ty + 1, 0);
+        var heap = await PlaceAsync(client, x, y, Items.Heap, tx, ty + 2);
+        await PlaceAsync(client, x, y, Items.Pole, tx + 1, ty + 1);
+        var generator = await PlaceAsync(client, x, y, Items.Generator, tx + 2, ty + 1);
+        Assert.Equal("generator", (await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Coal, quantity = 20 })).Type());
+        Assert.Equal("machine", (await client.SendAsync("machine.recipe", new { machine = crusher, recipe = Items.CrushedIronOre })).Type());
+        Assert.Equal("storage", (await client.SendAsync("storage.put", new { x, y, id = chest, item = Items.IronOre, quantity = 4 })).Type());
+
+        // Two batches of three from four ores, all of it out of the crusher.
+        factory.Time.Advance(TimeSpan.FromSeconds(30));
+        var storages = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("storages")
+            .EnumerateArray().ToDictionary(s => s.GetProperty("id").GetString()!);
+        var stored = storages[heap].GetProperty("items").EnumerateArray()
+            .Where(i => i.GetProperty("id").GetString() == Items.CrushedIronOre).Sum(i => i.GetProperty("quantity").GetInt32());
+        Assert.Equal(6, stored);
+        Assert.Equal(JsonValueKind.Null, (await client.SendAsync("machine.get", new { machine = crusher })).Payload().GetProperty("output").ValueKind);
+    }
 }
