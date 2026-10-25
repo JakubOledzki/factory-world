@@ -358,6 +358,64 @@ public static class Items
     public const string Watchtower = "furniture_fire_watchtower";
     public const string FireStation = "furniture_fire_station";
 
+    // The crafting tree of eleven levels: half-products that join branches of production (level 1), parts made of them
+    // (levels 2-6), and at the top rockets, satellites and fusion (levels 7-9). Each level is made of the ones below it.
+    public const string Lubricant = "lubricant";
+    public const string ElectricWire = "electric_wire";
+    public const string GlassLaminate = "glass_laminate";
+    public const string Paint = "paint";
+    public const string CaseinGlue = "casein_glue";
+    public const string InsulationBoard = "insulation_board";
+    public const string Firebrick = "firebrick";
+    public const string PrecastConcrete = "precast_concrete";
+    public const string Coolant = "coolant";
+    public const string IridiumAlloy = "iridium_alloy";
+    public const string Provisions = "provisions";
+    public const string Bearing = "bearing";
+    public const string PaintedSheet = "painted_sheet";
+    public const string Coil = "coil";
+    public const string WiringHarness = "wiring_harness";
+    public const string RefractoryLining = "refractory_lining";
+    public const string CarbonComposite = "carbon_composite";
+    public const string SuperconductingWire = "superconducting_wire";
+    public const string RocketFuel = "rocket_fuel";
+    public const string Gearbox = "gearbox";
+    public const string Rotor = "rotor";
+    public const string MachineHousing = "machine_housing";
+    public const string CombustionChamber = "combustion_chamber";
+    public const string CompositePanel = "composite_panel";
+    public const string SuperconductingMagnet = "superconducting_magnet";
+    public const string Alternator = "alternator";
+    public const string ControlModule = "control_module";
+    public const string HydraulicActuator = "hydraulic_actuator";
+    public const string RocketNozzle = "rocket_nozzle";
+    public const string PressureVessel = "pressure_vessel";
+    public const string ComputingCore = "computing_core";
+    public const string RobotArm = "robot_arm";
+    public const string Turbopump = "turbopump";
+    public const string TurbineSet = "turbine_set";
+    public const string CryogenicTank = "cryogenic_tank";
+    public const string IndustrialRobot = "industrial_robot";
+    public const string NavigationSystem = "navigation_system";
+    public const string RocketEngine = "rocket_engine";
+    public const string PlasmaChamber = "plasma_chamber";
+    public const string Avionics = "avionics";
+    public const string PlasmaControl = "plasma_control";
+    public const string RocketStage = "rocket_stage";
+    public const string Satellite = "satellite";
+    public const string FusionReactor = "fusion_reactor";
+    public const string LaunchRocket = "launch_rocket";
+    public const string MachineShop = "furniture_machine_shop";
+    public const string RoboticHall = "furniture_robotic_hall";
+    public const string OxygenConverter = "furniture_oxygen_converter";
+    public const string RollingMill = "furniture_rolling_mill";
+    public const string ControlCenter = "furniture_control_center";
+    public const string ContinuousCaster = "furniture_continuous_caster";
+    public const string AutomatedWarehouse = "storage_automated_warehouse";
+    public const string SteelCombine = "furniture_steel_combine";
+    public const string Megafactory = "furniture_megafactory";
+    public const string FusionPlant = "power_fusion_plant";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -642,6 +700,61 @@ public static class Items
         [Beehive] = "Ul",
         [Watchtower] = "Wieża obserwacyjna",
         [FireStation] = "Strażnica",
+        [Lubricant] = "Smar techniczny",
+        [ElectricWire] = "Przewód elektryczny",
+        [GlassLaminate] = "Laminat szklany",
+        [Paint] = "Farba",
+        [CaseinGlue] = "Klej kazeinowy",
+        [InsulationBoard] = "Płyta izolacyjna",
+        [Firebrick] = "Cegła szamotowa",
+        [PrecastConcrete] = "Prefabrykat żelbetowy",
+        [Coolant] = "Płyn chłodniczy",
+        [IridiumAlloy] = "Stop irydowy",
+        [Provisions] = "Prowiant",
+        [Bearing] = "Łożysko",
+        [PaintedSheet] = "Blacha lakierowana",
+        [Coil] = "Cewka",
+        [WiringHarness] = "Wiązka kablowa",
+        [RefractoryLining] = "Okładzina ogniotrwała",
+        [CarbonComposite] = "Kompozyt węglowy",
+        [SuperconductingWire] = "Drut nadprzewodzący",
+        [RocketFuel] = "Paliwo rakietowe",
+        [Gearbox] = "Przekładnia",
+        [Rotor] = "Wirnik",
+        [MachineHousing] = "Obudowa przemysłowa",
+        [CombustionChamber] = "Komora spalania",
+        [CompositePanel] = "Panel kompozytowy",
+        [SuperconductingMagnet] = "Elektromagnes nadprzewodzący",
+        [Alternator] = "Prądnica",
+        [ControlModule] = "Moduł sterujący",
+        [HydraulicActuator] = "Siłownik hydrauliczny",
+        [RocketNozzle] = "Dysza rakietowa",
+        [PressureVessel] = "Zbiornik ciśnieniowy",
+        [ComputingCore] = "Rdzeń obliczeniowy",
+        [RobotArm] = "Ramię robotyczne",
+        [Turbopump] = "Turbopompa",
+        [TurbineSet] = "Turbozespół",
+        [CryogenicTank] = "Zbiornik kriogeniczny",
+        [IndustrialRobot] = "Robot przemysłowy",
+        [NavigationSystem] = "System nawigacji",
+        [RocketEngine] = "Silnik rakietowy",
+        [PlasmaChamber] = "Komora plazmowa",
+        [Avionics] = "Awionika",
+        [PlasmaControl] = "Układ sterowania plazmą",
+        [RocketStage] = "Człon rakiety",
+        [Satellite] = "Satelita",
+        [FusionReactor] = "Reaktor fuzyjny",
+        [LaunchRocket] = "Rakieta nośna",
+        [MachineShop] = "Warsztat mechaniczny",
+        [RoboticHall] = "Zrobotyzowana hala",
+        [OxygenConverter] = "Konwerter tlenowy",
+        [RollingMill] = "Walcownia",
+        [ControlCenter] = "Centrum sterowania",
+        [ContinuousCaster] = "Odlewnia ciągła",
+        [AutomatedWarehouse] = "Magazyn zautomatyzowany",
+        [SteelCombine] = "Kombinat hutniczy",
+        [Megafactory] = "Megafabryka",
+        [FusionPlant] = "Elektrownia fuzyjna",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
@@ -711,8 +824,8 @@ public static class Items
     /// <summary>Wells, which pump the oil or gas under their plot by themselves.</summary>
     public static bool IsWell(string id) => id is Pumpjack or GasWell or OffshorePlatform;
 
-    /// <summary>Generators that burn fuel: the steam generator, the gas power plant and the diesel generator.</summary>
-    public static bool IsGenerator(string id) => id is Generator or GasPlant or DieselGenerator;
+    /// <summary>Generators that burn fuel: the steam generator, the gas power plant, the diesel generator and the fusion plant, which uses up coolant.</summary>
+    public static bool IsGenerator(string id) => id is Generator or GasPlant or DieselGenerator or FusionPlant;
 
     /// <summary>What turns sunlight into power: by day only, and less in a sandstorm.</summary>
     public static bool IsSolar(string id) => id is SolarPanel or SolarTower;

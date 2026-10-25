@@ -285,6 +285,52 @@ public sealed class CompanyEconomyTests(ServerFactory factory) : IClassFixture<S
         Assert.Equal("projectDone", (await owner.CompanyAsync("company.get")).GetProperty("log")[0].GetProperty("action").GetString());
     }
 
+    /// <summary>Marks a big project as built, as if members had brought its parts and waited.</summary>
+    private Task BuiltAsync(Guid company, string project) =>
+        SqlAsync("INSERT INTO companies.projects (company_id, project, started_at, built_at, rewarded) VALUES (@c, @p, @at, @at, true)",
+            ("c", company), ("p", project), ("at", factory.Time.GetUtcNow().AddMinutes(-1)));
+
+    [Fact]
+    public async Task The_space_projects_go_one_after_another_and_the_orbit_and_station_help_every_member()
+    {
+        var (owner, members, id, _) = await CompanyAsync(Roles.Worker);
+        using var o = owner;
+        using var worker = members[0];
+        await ResearchedAsync(id, TechTree.Megaprojects);
+
+        // The mission needs the spaceport, the station the mission.
+        Assert.Equal("project_locked", (await owner.SendAsync("company.project.start", new { project = CompanyPerks.Orbit })).ErrorCode());
+        Assert.Equal("project_locked", (await owner.SendAsync("company.project.start", new { project = CompanyPerks.Station })).ErrorCode());
+        var projects = Economy(await owner.CompanyAsync("company.get")).GetProperty("projects").EnumerateArray()
+            .ToDictionary(p => p.GetProperty("id").GetString()!);
+        Assert.Equal("Kosmodrom", projects[CompanyPerks.Orbit].GetProperty("requires")[0].GetString());
+
+        await BuiltAsync(id, CompanyPerks.Spaceport);
+        await owner.CompanyAsync("company.project.start", new { project = CompanyPerks.Orbit });
+        Assert.Equal("project_locked", (await owner.SendAsync("company.project.start", new { project = CompanyPerks.Station })).ErrorCode());
+
+        // A satellite on orbit: trains of members cost 20% less.
+        var (x, y) = FreePlot(Biome.Grassland);
+        Assert.Equal("world.bought", (await worker.SendAsync("world.buy", new { x, y })).Type());
+        await SqlAsync("UPDATE companies.projects SET built_at = @at WHERE company_id = @c AND project = @p",
+            ("c", id), ("p", CompanyPerks.Orbit), ("at", factory.Time.GetUtcNow().AddMinutes(-1)));
+        Assert.Equal(CompanyPerks.OrbitFactor, (await worker.SendAsync("station.get", new { x, y })).Payload().GetProperty("rates").GetProperty("feeFactor").GetDouble(), 3);
+
+        // The station on orbit: research of members takes 20% less time.
+        await owner.CompanyAsync("company.project.start", new { project = CompanyPerks.Station });
+        await SqlAsync("UPDATE companies.projects SET built_at = @at WHERE company_id = @c AND project = @p",
+            ("c", id), ("p", CompanyPerks.Station), ("at", factory.Time.GetUtcNow().AddMinutes(-1)));
+        foreach (var (item, quantity) in TechTree.ById[TechTree.Logistics].Cost)
+        {
+            await GiveAsync(worker, item, quantity);
+        }
+
+        var started = (await worker.SendAsync("research.start", new { technology = TechTree.Logistics })).Payload();
+        var logistics = started.GetProperty("technologies").EnumerateArray().First(t => t.GetProperty("id").GetString() == TechTree.Logistics);
+        Assert.Equal(TechTree.ById[TechTree.Logistics].Time.TotalMilliseconds * CompanyPerks.StationResearchFactor,
+            logistics.GetProperty("finishesAt").GetInt64() - logistics.GetProperty("startsAt").GetInt64());
+    }
+
     [Fact]
     public async Task A_finished_rig_lands_in_the_warehouse()
     {

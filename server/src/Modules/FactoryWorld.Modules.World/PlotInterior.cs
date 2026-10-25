@@ -330,6 +330,7 @@ public sealed class PlotService(
                 AND NOT EXISTS (SELECT 1 FROM world.plot_objects o WHERE o.x = h.x AND o.y = h.y
                     AND ((o.tile_x = h.tile_x AND o.tile_y = h.tile_y)
                         OR (o.kind = ANY(@large) AND abs(o.tile_x - h.tile_x) <= 1 AND abs(o.tile_y - h.tile_y) <= 1)
+                        OR (o.kind = ANY(@huge) AND abs(o.tile_x - h.tile_x) <= 2 AND abs(o.tile_y - h.tile_y) <= 2)
                         OR (o.kind = @fence AND abs(o.tile_x - h.tile_x) <= @shelter AND abs(o.tile_y - h.tile_y) <= @shelter)))
                 AND NOT EXISTS (SELECT 1 FROM world.plot_fields f WHERE f.x = h.x AND f.y = h.y AND f.tile_x = h.tile_x AND f.tile_y = h.tile_y)
                 AND NOT EXISTS (SELECT 1 FROM world.plot_trees t WHERE t.x = h.x AND t.y = h.y AND t.tile_x = h.tile_x AND t.tile_y = h.tile_y)
@@ -342,6 +343,7 @@ public sealed class PlotService(
             command.Parameters.AddWithValue("y", y);
             command.Parameters.Add(new NpgsqlParameter("storm", NpgsqlDbType.TimestampTz) { Value = (object?)storm ?? DBNull.Value });
             command.Parameters.AddWithValue("large", Footprints.Large);
+            command.Parameters.AddWithValue("huge", Footprints.Huge);
             command.Parameters.AddWithValue("fence", Items.ReedFence);
             command.Parameters.AddWithValue("shelter", PlotLayout.FenceShelter);
             command.Parameters.AddWithValue("picked", time.GetUtcNow() - Forestry.MushroomRegrow);
@@ -415,13 +417,16 @@ public sealed class PlotService(
                 OR EXISTS (SELECT 1 FROM world.plot_objects WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty)
                 OR EXISTS (SELECT 1 FROM world.plot_objects WHERE x = @x AND y = @y AND kind = ANY(@large)
                     AND abs(tile_x - @tx) <= 1 AND abs(tile_y - @ty) <= 1)
+                OR EXISTS (SELECT 1 FROM world.plot_objects WHERE x = @x AND y = @y AND kind = ANY(@huge)
+                    AND abs(tile_x - @tx) <= 2 AND abs(tile_y - @ty) <= 2)
             """, cancellationToken);
         command.Parameters.AddWithValue("x", x);
         command.Parameters.AddWithValue("y", y);
         command.Parameters.AddWithValue("tx", tileX);
         command.Parameters.AddWithValue("ty", tileY);
-        // Objects that cover 3 × 3 tiles around their own.
+        // Objects that cover 3 × 3 and 5 × 5 tiles around their own.
         command.Parameters.AddWithValue("large", Footprints.Large);
+        command.Parameters.AddWithValue("huge", Footprints.Huge);
         return !(bool)(await command.ExecuteScalarAsync(cancellationToken))!;
     }
 

@@ -129,6 +129,7 @@ const ERRORS := {
 	"already_owner": "Już kierujesz tą spółką.",
 	"no_project": "Nie ma takiego projektu.",
 	"project_started": "Spółka już podjęła się tego projektu.",
+	"project_locked": "Spółka musi najpierw zbudować projekty, których ten wymaga.",
 	"project_closed": "Spółka nie zbiera teraz części na ten projekt.",
 	"not_needed": "Tego już nie potrzeba.",
 	"order_done": "To zlecenie jest już wykonane.",

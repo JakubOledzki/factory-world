@@ -130,6 +130,7 @@ public abstract class CompanyHandler(IServiceScopeFactory scopes) : IMessageHand
                 description = p.Project.Description,
                 started = p.Started,
                 buildSeconds = p.Project.Build.TotalSeconds,
+                requires = (p.Project.Requires ?? []).Select(r => BigProjects.ById[r].Name),
                 builtAt = p.BuiltAt?.ToUnixTimeMilliseconds(),
                 parts = p.Project.Parts.Select(part => new
                 {

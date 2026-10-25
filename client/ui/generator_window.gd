@@ -1,7 +1,7 @@
 class_name GeneratorWindow
 extends GameWindow
 ## A generator on a plot: wood or coal on the fire of a steam generator, gas in a gas power plant, diesel
-## or petrol in a diesel generator; it gives power to the machines on
+## or petrol in a diesel generator, coolant in a fusion plant; it gives power to the machines on
 ## the poles it stands next to, as much as they draw, up to its full power. It burns only while a
 ## pole connects it to machines, faster the more they draw. A water wheel or a small water power
 ## plant opens the same window without the fire: water turns it all the time and it burns nothing. So do
@@ -17,7 +17,7 @@ signal pick_up_requested(id: String)
 ## How often (ms) the window asks again while it is open: inserters may put fuel in.
 const POLL := 2000.0
 const HYDRO_NAMES := {"power_water_wheel": "Koło wodne", "power_hydro_plant": "Mała elektrownia wodna", "power_tidal_plant": "Elektrownia pływowa"}
-const FUEL_NAMES := {"power_gas_plant": "Elektrownia gazowa", "power_diesel_generator": "Agregat spalinowy"}
+const FUEL_NAMES := {"power_gas_plant": "Elektrownia gazowa", "power_diesel_generator": "Agregat spalinowy", "power_fusion_plant": "Elektrownia fuzyjna"}
 const FREE_NAMES := {"power_solar_panel": "Panel słoneczny", "power_solar_tower": "Elektrownia słoneczna z lustrami", "power_battery": "Akumulator",
 	"power_wind_turbine": "Turbina wiatrowa", "power_large_wind_turbine": "Duża turbina wiatrowa", "power_heater": "Kocioł grzewczy"}
 

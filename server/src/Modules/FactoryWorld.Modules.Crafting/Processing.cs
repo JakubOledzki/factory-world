@@ -88,6 +88,8 @@ public static class Processing
             new(Items.MushroomSoup, 2, TimeSpan.FromSeconds(20), [(Items.Mushrooms, 3), (Items.Potato, 1)], 4),
             new(Items.BerryPierogi, 2, TimeSpan.FromSeconds(25), [(Items.Flour, 2), (Items.Berries, 3)], 4),
             new(Items.HerbalTea, 2, TimeSpan.FromSeconds(10), [(Items.Herbs, 2)], 2),
+            // Provisions for the crew of an orbital station.
+            new(Items.Provisions, 2, TimeSpan.FromSeconds(10), [(Items.CannedFish, 1), (Items.Bread, 2), (Items.Cardboard, 1)], 2),
         ]),
         // Sawmills of three levels: the plain one saws by hand, the electric and the industrial one run on
         // power, work faster and glue plywood from planks; the industrial one gets three planks from a log.
@@ -128,6 +130,8 @@ public static class Processing
         [
             new(Items.StoneBlocks, 1, TimeSpan.FromSeconds(8), [(Items.Stone, 3)], 2),
             new(Items.MarbleSlabs, 2, TimeSpan.FromSeconds(10), [(Items.Marble, 1)], 3),
+            // Refractory lining of firebricks.
+            new(Items.RefractoryLining, 1, TimeSpan.FromSeconds(15), [(Items.Firebrick, 8), (Items.PrecastConcrete, 1)], 3),
         ]),
         // A foundry casts bronze and steel and fires bricks, on coal or wood.
         new(Items.Foundry, true,
@@ -135,6 +139,8 @@ public static class Processing
             new(Items.BronzeIngot, 4, TimeSpan.FromSeconds(12), [(Items.CopperIngot, 3), (Items.TinIngot, 1)], 4),
             new(Items.SteelIngot, 1, TimeSpan.FromSeconds(15), [(Items.IronIngot, 2), (Items.Coal, 1)], 3),
             new(Items.Bricks, 4, TimeSpan.FromSeconds(10), [(Items.Sand, 2), (Items.Stone, 2)], 2),
+            // Firebricks of clay and quartz.
+            new(Items.Firebrick, 4, TimeSpan.FromSeconds(10), [(Items.Clay, 2), (Items.Quartz, 1)], 2),
         ]),
         // Boats on the shore fish by themselves, 30% faster than a rod does on the same water; they stay in port in a storm.
         new(Items.FishingBoat, false,
@@ -177,6 +183,8 @@ public static class Processing
         [
             new(Items.Kerosene, 1, TimeSpan.FromSeconds(12), [(Items.CrudeOil, 2)], 2),
             new(Items.Asphalt, 1, TimeSpan.FromSeconds(10), [(Items.CrudeOil, 2)], 1),
+            // Lubricant for bearings and gearboxes, of kerosene and wax.
+            new(Items.Lubricant, 2, TimeSpan.FromSeconds(10), [(Items.Kerosene, 2), (Items.Wax, 1)], 2),
         ]),
         new(Items.Refinery, false,
         [
@@ -184,6 +192,8 @@ public static class Processing
             new(Items.Diesel, 2, TimeSpan.FromSeconds(8), [(Items.CrudeOil, 3)], 3),
             new(Items.Kerosene, 2, TimeSpan.FromSeconds(6), [(Items.CrudeOil, 2)], 2),
             new(Items.Asphalt, 2, TimeSpan.FromSeconds(6), [(Items.CrudeOil, 2)], 1),
+            // Rocket fuel: kerosene chilled with coolant.
+            new(Items.RocketFuel, 2, TimeSpan.FromSeconds(15), [(Items.Kerosene, 3), (Items.Coolant, 1)], 3),
         ], Powered: true),
         new(Items.Cracker, false,
         [
@@ -197,6 +207,10 @@ public static class Processing
             new(Items.Fertilizer, 3, TimeSpan.FromSeconds(10), [(Items.NaturalGas, 2)], 2),
             new(Items.Tyres, 1, TimeSpan.FromSeconds(20), [(Items.SyntheticRubber, 4), (Items.SteelIngot, 1)], 8),
             new(Items.Insecticide, 2, TimeSpan.FromSeconds(10), [(Items.Turpentine, 1), (Items.NaturalGas, 1)], 3),
+            // Glass laminate, coolant and carbon composite for the crafting tree.
+            new(Items.GlassLaminate, 2, TimeSpan.FromSeconds(10), [(Items.Glass, 2), (Items.Resin, 1), (Items.Plastic, 1)], 2),
+            new(Items.Coolant, 2, TimeSpan.FromSeconds(10), [(Items.NaturalGas, 2), (Items.Water, 2), (Items.Ice, 2)], 2),
+            new(Items.CarbonComposite, 2, TimeSpan.FromSeconds(15), [(Items.GlassLaminate, 2), (Items.Charcoal, 2), (Items.CaseinGlue, 1)], 3),
         ], Powered: true),
         // The desert: a fired glassworks melts sand into glass (30% faster on sand) and blows bottles from waste glass;
         // an arc furnace on power makes silicon from quartz and cuts it into wafers for solar panels.
@@ -212,6 +226,8 @@ public static class Processing
         [
             new(Items.Silicon, 1, TimeSpan.FromSeconds(10), [(Items.Quartz, 2), (Items.Coal, 1)], 4),
             new(Items.SiliconWafer, 2, TimeSpan.FromSeconds(8), [(Items.Silicon, 1)], 4),
+            // The iridium alloy, of the glacier's iridium and meteoric iron.
+            new(Items.IridiumAlloy, 1, TimeSpan.FromSeconds(10), [(Items.Iridium, 1), (Items.MeteoricIron, 2), (Items.SteelIngot, 2)], 2),
         ], Powered: true),
         // Water: a deep well on power draws it out of the ground (half as fast in the desert, twice in an oasis);
         // a desalinator on the sea coast makes it from the sea and leaves salt.
@@ -236,6 +252,8 @@ public static class Processing
         new(Items.ConcreteMixer, false,
         [
             new(Items.Concrete, 3, TimeSpan.FromSeconds(8), [(Items.Cement, 1), (Items.Sand, 2), (Items.Water, 1)], 3),
+            // Precast concrete, reinforced with steel.
+            new(Items.PrecastConcrete, 1, TimeSpan.FromSeconds(10), [(Items.Concrete, 4), (Items.SteelIngot, 1)], 2),
         ], Powered: true),
         // The glacier: a fired melter turns ice into water; a cold store freezes fish and makes ice cream, and a server room
         // on power computes for research: both cool themselves for free on the glacier and on a block of ice per batch elsewhere.
@@ -274,6 +292,15 @@ public static class Processing
         // Cities: an assembly hall puts together what the other biomes make; a multi-storey factory does the same twice as fast on one tile.
         new(Items.AssemblyHall, false, Assembly, Powered: true),
         new(Items.MultistoreyFactory, false, Assembly.Select(r => r with { Time = r.Time / 2 }).ToList(), Powered: true),
+        // The crafting tree: a machine shop makes parts, a robotic hall the top of the tree; steelworks make steel, sheet and alloys
+        // better than the foundry and the machine shop, and the steel combine and the megafactory do everything their parts do, three times as fast.
+        new(Items.MachineShop, false, MachineShop, Powered: true),
+        new(Items.RoboticHall, false, RoboticHall, Powered: true),
+        new(Items.OxygenConverter, false, Converter, Powered: true),
+        new(Items.RollingMill, false, Rolling, Powered: true),
+        new(Items.ContinuousCaster, false, Casting, Powered: true),
+        new(Items.SteelCombine, false, Combined(CombinedSpeed, Converter, Rolling, Casting), Powered: true),
+        new(Items.Megafactory, false, Combined(CombinedSpeed, MachineShop, Assembly, RoboticHall), Powered: true),
         // A municipal sorting plant sorts the town's rubbish.
         new(Items.CitySorter, false,
         [
@@ -311,6 +338,8 @@ public static class Processing
             new(Items.Table, 1, TimeSpan.FromSeconds(30), [(Items.Planks, 6), (Items.Beams, 2), (Items.Nails, 4)], 5),
             new(Items.Wardrobe, 1, TimeSpan.FromSeconds(45), [(Items.Plywood, 4), (Items.Planks, 4), (Items.Nails, 6)], 8),
             new(Items.OakDresser, 1, TimeSpan.FromSeconds(60), [(Items.OakWood, 6), (Items.Nails, 4), (Items.Rosin, 1)], 12),
+            // Insulation boards of wool between plywood.
+            new(Items.InsulationBoard, 1, TimeSpan.FromSeconds(10), [(Items.Wool, 2), (Items.Plywood, 1)], 2),
         ]),
         new(Items.CharcoalKiln, false,
         [
@@ -321,6 +350,9 @@ public static class Processing
             new(Items.Tar, 2, TimeSpan.FromSeconds(20), [(Items.Resin, 3)], 2),
             new(Items.Turpentine, 1, TimeSpan.FromSeconds(15), [(Items.Resin, 2)], 3),
             new(Items.Rosin, 2, TimeSpan.FromSeconds(15), [(Items.Resin, 2)], 2),
+            // Paint and casein glue.
+            new(Items.Paint, 3, TimeSpan.FromSeconds(10), [(Items.Turpentine, 1), (Items.SunflowerOil, 1), (Items.Clay, 1)], 2),
+            new(Items.CaseinGlue, 2, TimeSpan.FromSeconds(10), [(Items.Milk, 2), (Items.Rosin, 1)], 2),
         ]),
     ];
 
@@ -329,8 +361,75 @@ public static class Processing
     [
         new(Items.CircuitBoard, 2, TimeSpan.FromSeconds(15), [(Items.CopperIngot, 1), (Items.Plastic, 1), (Items.SiliconWafer, 1)], 2),
         new(Items.ElectricMotor, 1, TimeSpan.FromSeconds(20), [(Items.CopperIngot, 4), (Items.IronIngot, 2)], 2),
-        // Bicycles, radios, washing machines and cars come later.
+        // The crafting tree from level 3 up: parts, robots, rocket engines and the plasma chamber.
+        new(Items.CompositePanel, 1, TimeSpan.FromSeconds(30), [(Items.CarbonComposite, 3), (Items.InsulationBoard, 1), (Items.CaseinGlue, 1)], 5),
+        new(Items.Alternator, 1, TimeSpan.FromSeconds(45), [(Items.Rotor, 1), (Items.MachineHousing, 1), (Items.WiringHarness, 1)], 8),
+        new(Items.ControlModule, 1, TimeSpan.FromSeconds(45), [(Items.CircuitBoard, 2), (Items.WiringHarness, 1), (Items.WindowPane, 1), (Items.MachineHousing, 1)], 8),
+        new(Items.PressureVessel, 1, TimeSpan.FromSeconds(45), [(Items.CompositePanel, 2), (Items.PaintedSheet, 4), (Items.Gasket, 4)], 8),
+        new(Items.ComputingCore, 1, TimeSpan.FromSeconds(90), [(Items.ControlModule, 2), (Items.OpticalFiber, 4), (Items.SiliconWafer, 4), (Items.Coolant, 2)], 12),
+        new(Items.RobotArm, 1, TimeSpan.FromSeconds(90), [(Items.HydraulicActuator, 2), (Items.ControlModule, 1), (Items.WiringHarness, 2)], 12),
+        new(Items.Turbopump, 1, TimeSpan.FromSeconds(90), [(Items.Rotor, 2), (Items.Gearbox, 1), (Items.CombustionChamber, 1), (Items.ControlModule, 1)], 12),
+        new(Items.TurbineSet, 1, TimeSpan.FromSeconds(90), [(Items.CompositePanel, 4), (Items.Alternator, 1), (Items.Gearbox, 1)], 12),
+        new(Items.CryogenicTank, 1, TimeSpan.FromSeconds(90), [(Items.PressureVessel, 1), (Items.InsulationBoard, 4), (Items.Coolant, 4), (Items.ControlModule, 1)], 12),
+        new(Items.IndustrialRobot, 1, TimeSpan.FromSeconds(180), [(Items.RobotArm, 2), (Items.ComputingCore, 1), (Items.Alternator, 1)], 20),
+        new(Items.NavigationSystem, 1, TimeSpan.FromSeconds(180), [(Items.ComputingCore, 1), (Items.Mirror, 4), (Items.Coil, 2), (Items.OpticalFiber, 4)], 20),
+        new(Items.RocketEngine, 1, TimeSpan.FromSeconds(180), [(Items.Turbopump, 2), (Items.RocketNozzle, 1), (Items.CombustionChamber, 1), (Items.ControlModule, 1)], 20),
+        new(Items.PlasmaChamber, 1, TimeSpan.FromSeconds(180), [(Items.SuperconductingMagnet, 8), (Items.RefractoryLining, 4), (Items.PressureVessel, 2), (Items.ComputingCore, 1)], 20),
     ];
+
+    /// <summary>What a machine shop makes: wire and the mechanical parts of the crafting tree.</summary>
+    private static List<ProcessingRecipe> MachineShop =>
+    [
+        new(Items.ElectricWire, 4, TimeSpan.FromSeconds(10), [(Items.CopperIngot, 1), (Items.Plastic, 1)], 2),
+        new(Items.Bearing, 2, TimeSpan.FromSeconds(15), [(Items.SteelIngot, 1), (Items.Lubricant, 1)], 3),
+        new(Items.PaintedSheet, 2, TimeSpan.FromSeconds(15), [(Items.SteelIngot, 1), (Items.Paint, 1)], 3),
+        new(Items.Coil, 1, TimeSpan.FromSeconds(15), [(Items.ElectricWire, 6), (Items.GlassLaminate, 1)], 3),
+        new(Items.WiringHarness, 1, TimeSpan.FromSeconds(15), [(Items.ElectricWire, 8), (Items.SyntheticRubber, 1), (Items.CaseinGlue, 1)], 3),
+        new(Items.SuperconductingWire, 4, TimeSpan.FromSeconds(15), [(Items.IridiumAlloy, 1), (Items.ElectricWire, 4), (Items.Coolant, 2)], 3),
+        new(Items.Gearbox, 1, TimeSpan.FromSeconds(30), [(Items.BronzeIngot, 2), (Items.Bearing, 2), (Items.Lubricant, 1)], 5),
+        new(Items.Rotor, 1, TimeSpan.FromSeconds(30), [(Items.Coil, 2), (Items.Bearing, 2), (Items.SteelIngot, 2)], 5),
+        new(Items.MachineHousing, 1, TimeSpan.FromSeconds(30), [(Items.PaintedSheet, 4), (Items.InsulationBoard, 1), (Items.Gasket, 2)], 5),
+        new(Items.CombustionChamber, 1, TimeSpan.FromSeconds(30), [(Items.RefractoryLining, 2), (Items.SteelIngot, 4), (Items.Gasket, 2)], 5),
+        new(Items.SuperconductingMagnet, 1, TimeSpan.FromSeconds(30), [(Items.SuperconductingWire, 4), (Items.Coil, 2), (Items.Coolant, 2)], 5),
+        new(Items.HydraulicActuator, 1, TimeSpan.FromSeconds(45), [(Items.Gearbox, 1), (Items.Gasket, 2), (Items.Lubricant, 2), (Items.SteelIngot, 2)], 8),
+        new(Items.RocketNozzle, 1, TimeSpan.FromSeconds(45), [(Items.CombustionChamber, 1), (Items.SteelIngot, 2), (Items.Firebrick, 4)], 8),
+    ];
+
+    /// <summary>What a robotic hall builds: the top of the crafting tree, rockets, satellites and fusion reactors.</summary>
+    private static List<ProcessingRecipe> RoboticHall =>
+    [
+        new(Items.Avionics, 1, TimeSpan.FromSeconds(300), [(Items.NavigationSystem, 1), (Items.ComputingCore, 2), (Items.WiringHarness, 4)], 30),
+        new(Items.PlasmaControl, 1, TimeSpan.FromSeconds(300), [(Items.ComputingCore, 2), (Items.SuperconductingMagnet, 4), (Items.ControlModule, 2), (Items.IndustrialRobot, 1)], 30),
+        new(Items.RocketStage, 1, TimeSpan.FromSeconds(600), [(Items.RocketEngine, 4), (Items.CryogenicTank, 2), (Items.Avionics, 1), (Items.CompositePanel, 8)], 50),
+        new(Items.Satellite, 1, TimeSpan.FromSeconds(600), [(Items.SolarPanel, 8), (Items.Avionics, 1), (Items.CompositePanel, 4), (Items.SuperconductingMagnet, 1)], 50),
+        new(Items.FusionReactor, 1, TimeSpan.FromSeconds(600), [(Items.PlasmaChamber, 2), (Items.PlasmaControl, 1), (Items.TurbineSet, 2), (Items.CryogenicTank, 2)], 50),
+        new(Items.LaunchRocket, 1, TimeSpan.FromSeconds(1200), [(Items.RocketStage, 2), (Items.Avionics, 1), (Items.CompositePanel, 6)], 80),
+    ];
+
+    /// <summary>What an oxygen converter, a rolling mill and a continuous caster make, each better than the machine it outdoes.</summary>
+    private static List<ProcessingRecipe> Converter =>
+    [
+        new(Items.SteelIngot, 2, TimeSpan.FromSeconds(12), [(Items.IronIngot, 3), (Items.Coal, 1)], 3),
+    ];
+
+    private static List<ProcessingRecipe> Rolling =>
+    [
+        new(Items.PaintedSheet, 3, TimeSpan.FromSeconds(10), [(Items.SteelIngot, 1), (Items.Paint, 1)], 3),
+        new(Items.ElectricWire, 6, TimeSpan.FromSeconds(6), [(Items.CopperIngot, 1), (Items.Plastic, 1)], 2),
+    ];
+
+    private static List<ProcessingRecipe> Casting =>
+    [
+        new(Items.BronzeIngot, 5, TimeSpan.FromSeconds(10), [(Items.CopperIngot, 3), (Items.TinIngot, 1)], 4),
+        new(Items.IridiumAlloy, 2, TimeSpan.FromSeconds(30), [(Items.Iridium, 1), (Items.MeteoricIron, 2), (Items.SteelIngot, 2)], 20),
+    ];
+
+    /// <summary>Recipes of several machines in one, <paramref name="faster"/> times as fast.</summary>
+    private static List<ProcessingRecipe> Combined(double faster, params List<ProcessingRecipe>[] lists) =>
+        lists.SelectMany(l => l).GroupBy(r => r.Id).Select(g => g.First() with { Time = g.First().Time / faster }).ToList();
+
+    /// <summary>How much faster the steel combine and the megafactory work than the machines they combine.</summary>
+    public const double CombinedSpeed = 3;
 
     /// <summary>How much faster every machine works in a city: industry and assembly +25%.</summary>
     public const double CityBonus = 1.25;
@@ -362,16 +461,19 @@ public static class Processing
         _ => 1,
     };
 
-    /// <summary>The machine of <paramref name="kind"/> as it works on a plot of <paramref name="biome"/>: its recipes shorter by its <see cref="Bonus"/>,
-    /// and off the glacier with a block of ice more for a machine that has to be cooled.</summary>
-    public static ProcessingMachine? For(string kind, int biome)
+    /// <summary>How much faster a machine on power works on a plot with a control center.</summary>
+    public const double ControlBonus = 1.2;
+
+    /// <summary>The machine of <paramref name="kind"/> as it works on a plot of <paramref name="biome"/>: its recipes shorter by its <see cref="Bonus"/>
+    /// (and by <see cref="ControlBonus"/> on power when the plot has a control center), and off the glacier with a block of ice more for a machine that has to be cooled.</summary>
+    public static ProcessingMachine? For(string kind, int biome, bool controlled = false)
     {
         if (!ByKind.TryGetValue(kind, out var machine))
         {
             return null;
         }
 
-        var (bonus, iced) = (Bonus(kind, biome), Iced(kind, biome));
+        var (bonus, iced) = (Bonus(kind, biome) * (controlled && machine.Powered ? ControlBonus : 1), Iced(kind, biome));
         return bonus == 1 && !iced ? machine : Variants.GetOrAdd((kind, bonus, iced), _ => machine with
         {
             Recipes = machine.Recipes.Select(r => r with
@@ -392,6 +494,20 @@ public static class Processing
     /// <summary>The biome of the plot a machine stands on, or 0 when it stands on none.</summary>
     public static async Task<int> BiomeOfAsync(IPlotObjects plots, IPlotRegistry registry, Guid id, CancellationToken cancellationToken) =>
         await plots.PlotOfAsync(id, cancellationToken) is { } at ? (await registry.FindAsync(at.X, at.Y, cancellationToken))?.Biome ?? 0 : 0;
+
+    /// <summary>The machine of <paramref name="kind"/> as it works where the object <paramref name="id"/> stands: by the plot's biome and its control center.</summary>
+    public static async Task<ProcessingMachine?> OnPlotAsync(
+        string kind, IPlotObjects plots, IPlotRegistry registry, Guid id, CancellationToken cancellationToken)
+    {
+        if (await plots.PlotOfAsync(id, cancellationToken) is not { } at)
+        {
+            return For(kind, 0);
+        }
+
+        var biome = (await registry.FindAsync(at.X, at.Y, cancellationToken))?.Biome ?? 0;
+        var controlled = (await plots.ObjectsAsync(at.X, at.Y, cancellationToken)).Any(o => o.Kind == Items.ControlCenter);
+        return For(kind, biome, controlled);
+    }
 
     /// <summary>The clock a machine works by: its own time on the power grid, the boats' time that stands still in a storm, or plain time.</summary>
     public static async Task<IPowerClock> ClockAsync(ProcessingMachine machine, IPlotPower power, Guid id, CancellationToken cancellationToken) =>
@@ -761,7 +877,7 @@ public sealed class MachineService(
         {
             if (await place.KindAsync(owner, id, cancellationToken) is { } kind)
             {
-                machine = Processing.For(kind, await Processing.BiomeOfAsync(plots, registry, id, cancellationToken));
+                machine = (await Processing.OnPlotAsync(kind, plots, registry, id, cancellationToken));
                 break;
             }
         }
@@ -792,7 +908,7 @@ public sealed class ProcessingPorts(GameDb db, IProductionStats stats, IPlotPowe
 {
     public async Task<IMachinePort?> OpenAsync(Guid owner, Guid id, string kind, CancellationToken cancellationToken)
     {
-        if (!Processing.ByKind.ContainsKey(kind) || Processing.For(kind, await Processing.BiomeOfAsync(plots, registry, id, cancellationToken)) is not { } machine)
+        if (!Processing.ByKind.ContainsKey(kind) || (await Processing.OnPlotAsync(kind, plots, registry, id, cancellationToken)) is not { } machine)
         {
             return null;
         }
