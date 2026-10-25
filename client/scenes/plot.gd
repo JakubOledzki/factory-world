@@ -1010,9 +1010,9 @@ func _is_belt(cell: Vector2i) -> bool:
 	return _placed.has(cell) and _placed[cell]["kind"] in BELTS
 
 
-## Belts and roads lie flat: the player walks over them.
+## Belts and roads lie flat and inserters are low enough to step over: the player walks across them.
 func _walkable(cell: Vector2i) -> bool:
-	return _is_belt(cell) or (_placed.has(cell) and _placed[cell]["kind"] == ROAD)
+	return _is_belt(cell) or (_placed.has(cell) and (_placed[cell]["kind"] == ROAD or _placed[cell]["kind"] in INSERTERS))
 
 
 ## How fast the player walks where they stand: faster on a road.
