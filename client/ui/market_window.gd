@@ -65,7 +65,7 @@ func _init() -> void:
 		b.custom_minimum_size.x = 110 if UI.touch() else 140
 		top.add_child(b)
 		_tab_buttons.append(b)
-	var hint := UI.label("" if UI.touch() else "Ctrl + mysz na przedmiocie: opis", UI.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
+	var hint := UI.label("Przytrzymaj przedmiot: opis i ceny" if UI.touch() else "Ctrl + mysz na przedmiocie: opis i ceny", UI.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
 	hint.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(hint)
 	_search.custom_minimum_size.x = 260
