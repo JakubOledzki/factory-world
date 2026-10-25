@@ -114,17 +114,23 @@ const PLACED_SPRITES := {
 	"furniture_refinery": "refinery", "furniture_cracker": "cracker", "furniture_chemical_plant": "chemical_plant",
 	"power_gas_plant": "gas_plant", "power_diesel_generator": "diesel_generator", "logistics_pump": "pump",
 	"storage_tank": "tank", "logistics_road": "road",
+	"furniture_glassworks": "glassworks", "furniture_arc_furnace": "arc_furnace", "furniture_water_well": "water_well",
+	"furniture_desalinator": "desalinator", "furniture_drying_yard": "drying_yard", "furniture_cement_kiln": "cement_kiln",
+	"furniture_concrete_mixer": "concrete_mixer", "furniture_reed_fence": "reed_fence", "power_solar_panel": "solar_panel",
+	"power_solar_tower": "solar_tower", "power_battery": "battery",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
 ## Animals let out on a pasture, and their sprites there.
-const ANIMAL_SPRITES := {"animal_chicken": "chicken", "animal_sheep": "sheep", "animal_cow": "cow"}
+const ANIMAL_SPRITES := {"animal_chicken": "chicken", "animal_sheep": "sheep", "animal_cow": "cow", "animal_camel": "camel"}
 ## Placed objects that open the machine window.
 const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen",
 	"furniture_sawmill", "furniture_electric_sawmill", "furniture_industrial_sawmill",
 	"furniture_quarry", "furniture_crusher", "furniture_stonemason", "furniture_foundry",
 	"furniture_fishing_boat", "furniture_rowing_boat", "furniture_smokehouse", "furniture_cannery", "furniture_salt_pan",
-	"furniture_fish_farm", "furniture_distillery", "furniture_refinery", "furniture_cracker", "furniture_chemical_plant"]
+	"furniture_fish_farm", "furniture_distillery", "furniture_refinery", "furniture_cracker", "furniture_chemical_plant",
+	"furniture_glassworks", "furniture_arc_furnace", "furniture_water_well", "furniture_desalinator", "furniture_drying_yard",
+	"furniture_cement_kiln", "furniture_concrete_mixer"]
 ## Wells, which pump the oil or gas the survey found under the plot, and open the well window.
 const WELLS := ["furniture_pumpjack", "furniture_gas_well", "furniture_offshore_platform"]
 ## Asphalt road: walked over like a belt, and faster.
@@ -138,7 +144,7 @@ const TIDAL := "power_tidal_plant"
 ## What stands on the shore, right next to the water, and on which biome's (-1 for the sea or a lake).
 const SHORE := {"furniture_fishing_boat": 10, "furniture_rowing_boat": 11, "furniture_salt_pan": 10, "power_tidal_plant": 10,
 	"furniture_fish_farm": -1, "furniture_shipyard": -1, "furniture_port": -1, "furniture_breakwater": -1,
-	"furniture_offshore_platform": 10}
+	"furniture_offshore_platform": 10, "furniture_desalinator": 10}
 const LIGHTHOUSE := "furniture_lighthouse"
 const SHIPYARD := "furniture_shipyard"
 const PORT := "furniture_port"
@@ -151,6 +157,16 @@ const CABLE_STATION := "logistics_cable_station"
 ## Biomes with water to turn a wheel: mountains, coast and lakeshore.
 const WATER_BIOMES := [6, 10, 11]
 const MOUNTAINS := 6
+## The desert and its oases: the sun shines brighter there, sandstorms blow and palms grow in an oasis.
+const DESERT := 5
+const OASIS := 12
+const SANDY := [DESERT, OASIS]
+const PALMS := ["palm_0", "palm_1"]
+## Solar power, which burns nothing and gives power by day; the tower with mirrors stands on 3 × 3 tiles of sand only.
+const SOLAR := ["power_solar_panel", "power_solar_tower"]
+const SOLAR_TOWER := "power_solar_tower"
+const BATTERY := "power_battery"
+const REED_FENCE := "furniture_reed_fence"
 ## Forester's buildings of every level and how far their forest reaches from the building's tile;
 ## each covers 3 × 3 tiles (FOOTPRINT each way) and keeps a clearing FOREST_CLEARING tiles out.
 const FORESTERS := {"furniture_forester_hut": 5, "furniture_forester_lodge": 6, "furniture_forestry_station": 7}
@@ -174,7 +190,7 @@ const GENERATOR := "power_generator"
 ## Generators that burn fuel, which open the generator window.
 const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator"]
 ## Placed objects with nothing to open: a click shows the menu to pick them up.
-const MENU_ONLY := ["power_pole", "furniture_port", "furniture_lighthouse", "furniture_breakwater", ROAD,
+const MENU_ONLY := ["power_pole", "furniture_port", "furniture_lighthouse", "furniture_breakwater", ROAD, REED_FENCE,
 	"furniture_water_injector", "furniture_oil_separator"]
 const POLE := "power_pole"
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo", "storage_tank"]
@@ -200,7 +216,7 @@ const GROWN_TREES := ["tree_0", "tree_1", "tree_2"]
 ## Ground texture by biome id (see WorldData).
 const FLOORS := {
 	2: "forest", 3: "dry_grass", 4: "grass", 5: "sand", 6: "gravel", 7: "tundra",
-	8: "snow", 9: "concrete", 10: "dry_grass", 11: "grass",
+	8: "snow", 9: "concrete", 10: "dry_grass", 11: "grass", 12: "sand",
 }
 const MINIMAP_COLORS := {
 	NONE: Color(0, 0, 0, 0), TREE: Color("#2f5a2a"), ROCK: Color("#8a8580"), DUNE: Color("#c9a25a"),
@@ -324,6 +340,9 @@ var _subtitle: Label
 ## The sea forecast on the coast and the lakeshore: the storm blowing now or the next one.
 var _weather: Label
 var _next_weather := 0.0
+## Tints the plot by the sun: dim and blue at night, yellow in a sandstorm.
+var _daylight := CanvasModulate.new()
+var _daylight_target := Color.WHITE
 var _level: Label
 var _xp_bar: ProgressBar
 var _money: Label
@@ -396,6 +415,7 @@ func _exit_tree() -> void:
 func _build_world() -> void:
 	_ground = Node2D.new()
 	add_child(_ground)
+	add_child(_daylight)
 	_water_layer = TileMapLayer.new()
 	var water_set := TileSet.new()
 	water_set.tile_size = Vector2i(TILE)
@@ -467,6 +487,7 @@ func _tile_set(shadows: bool) -> TileSet:
 	for kind: int in SPRITES:
 		sprites.append_array(SPRITES[kind])
 	sprites.append_array(["sapling", "tree_young"])
+	sprites.append_array(PALMS)
 	sprites.append_array(ANIMAL_SPRITES.values())
 	sprites.append_array(PLACED_SPRITES.values())
 	for sprite in sprites:
@@ -614,9 +635,19 @@ func _tile(cell: Vector2i) -> int:
 
 
 func _variant(kind: int, cell: Vector2i) -> String:
-	var options: Array = SPRITES[kind]
+	var options: Array = PALMS if kind == TREE and _sandy() else SPRITES[kind]
 	var h := (cell.x * 73856093) ^ (cell.y * 19349663)
 	return options[absi(h) % options.size()]
+
+
+## Whether the plot lies on the sand of a desert or an oasis.
+func _sandy() -> bool:
+	return int(_plot.get("biome", -1)) in SANDY
+
+
+## Whether an object of `kind` stands on 3 × 3 tiles: a forester's building or a solar tower.
+func _big(kind: String) -> bool:
+	return FORESTERS.has(kind) or kind == SOLAR_TOWER
 
 
 func _cell_centre(cell: Vector2i) -> Vector2:
@@ -996,7 +1027,7 @@ func _can_place(cell: Vector2i) -> bool:
 	if _placing == "":
 		return false
 	# The player steps off a big building's ground before it goes up (_place_big), so standing there is fine.
-	var big := FORESTERS.has(_placing)
+	var big := _big(_placing)
 	for at in _footprint(_placing, cell):
 		if not _free_ground(at, not big):
 			return false
@@ -1013,6 +1044,8 @@ func _can_place(cell: Vector2i) -> bool:
 		return (biome == only if only >= 0 else biome in [COAST, LAKESHORE]) and _by_water(cell)
 	if _placing in HYDRO:
 		return biome in WATER_BIOMES
+	if _placing == SOLAR_TOWER:
+		return biome in SANDY
 	return true
 
 
@@ -1082,7 +1115,7 @@ func _place_big(cell: Vector2i) -> void:
 ## The tiles an object of `kind` standing on `cell` covers: 3 × 3 for a forester's building, else just its own.
 func _footprint(kind: String, cell: Vector2i) -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
-	var reach := FOOTPRINT if FORESTERS.has(kind) else 0
+	var reach := FOOTPRINT if _big(kind) else 0
 	for dy in range(-reach, reach + 1):
 		for dx in range(-reach, reach + 1):
 			cells.append(cell + Vector2i(dx, dy))
@@ -1103,7 +1136,7 @@ func _anchor(cell: Vector2i) -> Vector2i:
 
 ## The tile of a placed object the player gets to first: a big building is walked up to on its near side.
 func _approach(cell: Vector2i) -> Vector2i:
-	if not _placed.has(cell) or not FORESTERS.has(_placed[cell]["kind"]):
+	if not _placed.has(cell) or not _big(_placed[cell]["kind"]):
 		return cell
 	var best := cell
 	for at in _footprint(_placed[cell]["kind"], _anchor(cell)):
@@ -1179,6 +1212,12 @@ func _placed_label(cell: Vector2i) -> String:
 		return "%s: po asfalcie chodzisz szybciej. Kliknij, aby schować" % object["name"]
 	if object["kind"] in HYDRO:
 		return "%s (woda kręci nim bez opału): kliknij po więcej" % object["name"]
+	if object["kind"] in SOLAR:
+		return "%s (słońce daje prąd za dnia, bez opału): kliknij po więcej" % object["name"]
+	if object["kind"] == BATTERY:
+		return "%s (%s): kliknij po więcej" % [object["name"], _power.describe_battery(object["id"])]
+	if object["kind"] == REED_FENCE:
+		return "%s: chroni panele i wykopane wydmy przed burzą piaskową. Kliknij, aby schować" % object["name"]
 	if object["kind"] in DRILLS:
 		return "%s%s: kliknij, aby zobaczyć urobek" % [object["name"], _power_note(object["id"])]
 	return "%s%s: kliknij, aby użyć" % [object["name"], _power_note(object["id"]) if _power.runs_on_power(object["kind"]) else ""]
@@ -1203,15 +1242,15 @@ func _draw_marks() -> void:
 		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8) if ok else Color(1.0, 0.42, 0.35, 0.8))
 	var ground := _ground_cell()
 	if _hovered.x >= 0 and (_placed.has(_hovered) or _animals.has(_hovered)):
-		var big := _placed.has(_hovered) and FORESTERS.has(_placed[_hovered]["kind"])
+		var big := _placed.has(_hovered) and _big(_placed[_hovered]["kind"])
 		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8), 2.4 if big else 1.0)
-		if big:
+		if big and FORESTERS.has(_placed[_hovered]["kind"]):
 			_draw_forest(_placed[_hovered]["kind"], _hovered, int(_placed[_hovered].get("rotation", 0)))
 	if _placing != "" and ground.x >= 0:
 		if FORESTERS.has(_placing):
 			_draw_forest(_placing, ground, _place_rotation)
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8),
-			2.4 if FORESTERS.has(_placing) else 1.0)
+			2.4 if _big(_placing) else 1.0)
 		_draw_ghost(ground)
 	elif _releasing != "" and ground.x >= 0:
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_release(ground) else Color(1.0, 0.42, 0.35, 0.8))
@@ -1303,7 +1342,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_update_hover()
 			var cell := Vector2i((get_global_mouse_position() / TILE).floor())
 			if _placing != "":
-				if _can_place(cell) and FORESTERS.has(_placing):
+				if _can_place(cell) and _big(_placing):
 					_place_big(cell)
 				elif _can_place(cell):
 					_go_and(cell, _place_object, true)
@@ -1809,7 +1848,10 @@ func _plant_tree(cell: Vector2i) -> void:
 ## Starts letting an animal from the inventory out: a click on free ground puts it there.
 func _start_releasing(kind: String) -> void:
 	if not _pasture:
-		_show_toast("Na pustyni i lodowcu nie da się trzymać zwierząt.", UI.ERROR)
+		_show_toast("Na lodowcu nie da się trzymać zwierząt.", UI.ERROR)
+		return
+	if not _animal_kinds.get(kind, {}).get("lives", true):
+		_show_toast("Wielbłąd żyje tylko na pustyni i w oazie." if kind == "animal_camel" else "Na pustyni żyją tylko wielbłądy.", UI.ERROR)
 		return
 	_set_planting(false)
 	_stop_placing()
@@ -2049,6 +2091,12 @@ func _place_object(cell: Vector2i) -> void:
 		_show_toast("%s stoi przy kopalni. Podłącz je słupem do prądu, a samo zacznie wydobywać." % object["name"])
 	elif kind in HYDRO:
 		_show_toast("%s stoi na działce i daje prąd bez opału. Postaw obok słup energetyczny." % object["name"])
+	elif kind in SOLAR:
+		_show_toast("%s stoi na działce i za dnia daje prąd bez opału. Postaw obok słup, a nadwyżkę zbierze akumulator." % object["name"])
+	elif kind == BATTERY:
+		_show_toast("%s stoi na działce: postaw obok słup, a zbierze nadwyżkę prądu ze słońca i wody i odda ją, gdy zabraknie." % object["name"])
+	elif kind == REED_FENCE:
+		_show_toast("%s stoi na działce: osłoni przed burzą piaskową panele 3 pola wokół i wykopane wydmy 4 pola wokół." % object["name"])
 	elif kind in WELLS:
 		_show_toast("%s stoi na złożu i sam pompuje%s. Wyjmij urobek w jego oknie albo pompą do rury." % [object["name"],
 			", gdy podłączysz go słupem do prądu" if _power.runs_on_power(kind) else ""])
@@ -2085,7 +2133,7 @@ func _use_placed(cell: Vector2i) -> void:
 		_storage_window.open_at(_at, object["id"])
 	elif object["kind"] in ["furniture_workbench", "furniture_anvil", SHIPYARD]:
 		_crafting_window.open_at(object["id"], object["kind"])
-	elif object["kind"] in GENERATORS or object["kind"] in HYDRO:
+	elif object["kind"] in GENERATORS or object["kind"] in HYDRO or object["kind"] in SOLAR or object["kind"] == BATTERY:
 		_generator_window.open_at(_at, object["id"])
 	elif object["kind"] in WELLS:
 		_well_window.open_at(_at, object["id"])
@@ -2654,13 +2702,44 @@ func _process(delta: float) -> void:
 	_poll_station()
 
 
-## Once a second: whether a storm keeps the boats ashore now, or when the next one comes.
+## Once a second: whether a storm keeps the boats ashore now, or when the next one comes; on sand,
+## the sandstorm instead; everywhere, the light of the sun, which solar panels work by.
 func _update_weather() -> void:
+	_daylight.color = _daylight.color.lerp(_daylight_target, 0.05)
 	var now := Time.get_ticks_msec() / 1000.0
-	if now < _next_weather or not int(_plot.get("biome", -1)) in [COAST, LAKESHORE]:
+	if now < _next_weather or _plot.is_empty():
 		return
 	_next_weather = now + 1.0
 	var server := _server_now()
+	var sun: Dictionary = _plot.get("sun", {})
+	var day := true
+	var sun_change := 0.0
+	if not sun.is_empty():
+		var day_ms := float(sun["dayMs"])
+		var into := fposmod(server - float(sun["epoch"]), day_ms)
+		day = into < float(sun["daylightMs"])
+		sun_change = (float(sun["daylightMs"]) if day else day_ms) - into
+	var sandstorm := false
+	if _sandy():
+		_weather.visible = true
+		var light := "Dzień (zmierzch za %s)" % _clock_text(sun_change) if day else "Noc: panele nie dają prądu (świt za %s)" % _clock_text(sun_change)
+		_weather.text = light
+		_weather.add_theme_color_override("font_color", UI.MUTED)
+		for storm: Dictionary in _plot.get("sandstorms", []):
+			var start := float(storm["start"])
+			var end := float(storm["end"])
+			if end <= server:
+				continue
+			if start <= server:
+				sandstorm = true
+				_weather.text = "Burza piaskowa! Panele bez osłony dają ćwierć prądu, wydmy wracają (jeszcze %s) · %s" % [_clock_text(end - server), light]
+				_weather.add_theme_color_override("font_color", UI.ERROR)
+			else:
+				_weather.text = "%s · burza piaskowa za %s" % [light, _clock_text(start - server)]
+			break
+	_daylight_target = Color(1.0, 0.86, 0.62) if sandstorm else (Color.WHITE if day else Color(0.62, 0.66, 0.85))
+	if _sandy() or not int(_plot.get("biome", -1)) in [COAST, LAKESHORE]:
+		return
 	for storm: Dictionary in _plot.get("storms", []):
 		var start := float(storm["start"])
 		var end := float(storm["end"])

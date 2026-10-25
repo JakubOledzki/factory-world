@@ -527,5 +527,67 @@
  "road": {
   "anchorX": 56,
   "anchorY": 48
+ },
+ "glassworks": {
+  "anchorX": 64,
+  "anchorY": 88
+ },
+ "arc_furnace": {
+  "anchorX": 64,
+  "anchorY": 88
+ },
+ "water_well": {
+  "anchorX": 56,
+  "anchorY": 75
+ },
+ "desalinator": {
+  "anchorX": 64,
+  "anchorY": 64
+ },
+ "drying_yard": {
+  "anchorX": 64,
+  "anchorY": 66
+ },
+ "cement_kiln": {
+  "anchorX": 68,
+  "anchorY": 78
+ },
+ "concrete_mixer": {
+  "anchorX": 56,
+  "anchorY": 66
+ },
+ "reed_fence": {
+  "anchorX": 64,
+  "anchorY": 62
+ },
+ "solar_panel": {
+  "anchorX": 64,
+  "anchorY": 61,
+  "wireX": 83,
+  "wireY": 49
+ },
+ "solar_tower": {
+  "anchorX": 120,
+  "anchorY": 206,
+  "wireX": 149,
+  "wireY": 168
+ },
+ "battery": {
+  "anchorX": 64,
+  "anchorY": 62,
+  "wireX": 78,
+  "wireY": 38
+ },
+ "palm_0": {
+  "anchorX": 128,
+  "anchorY": 232
+ },
+ "palm_1": {
+  "anchorX": 128,
+  "anchorY": 207
+ },
+ "camel": {
+  "anchorX": 56,
+  "anchorY": 62
  }
 }

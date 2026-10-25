@@ -612,6 +612,14 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             fishingBonus = Coast.BonusPercent(biome),
             storm = StormJson(time.GetUtcNow()),
             storms = StormsJson(time.GetUtcNow(), 24),
+            // The sun over every plot (a day of dayMs from epoch, the first daylightMs of it light), and on sand the sandstorms to come.
+            sun = new
+            {
+                epoch = SeaWeather.Epoch.ToUnixTimeMilliseconds(),
+                dayMs = (long)Sun.DayLength.TotalMilliseconds,
+                daylightMs = (long)Sun.Daylight.TotalMilliseconds,
+            },
+            sandstorms = Oasis.Sandy((int)biome) ? SandstormsJson(time.GetUtcNow(), 12) : [],
             serverTime = time.GetUtcNow().ToUnixTimeMilliseconds(),
         });
     }
@@ -630,6 +638,21 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
         for (var i = 0; i < count; i++)
         {
             var (start, end) = SeaWeather.Next(at);
+            storms.Add(new { start = start.ToUnixTimeMilliseconds(), end = end.ToUnixTimeMilliseconds() });
+            at = end;
+        }
+
+        return storms;
+    }
+
+    /// <summary>The sandstorm blowing now (if any) and the next ones, <paramref name="count"/> in all.</summary>
+    public static IReadOnlyList<object> SandstormsJson(DateTimeOffset now, int count)
+    {
+        var storms = new List<object>();
+        var at = now;
+        for (var i = 0; i < count; i++)
+        {
+            var (start, end) = SandWeather.Next(at);
             storms.Add(new { start = start.ToUnixTimeMilliseconds(), end = end.ToUnixTimeMilliseconds() });
             at = end;
         }

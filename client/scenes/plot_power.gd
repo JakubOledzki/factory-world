@@ -10,9 +10,13 @@ const GENERATOR := "power_generator"
 const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator"]
 ## Water power: wired to a pole like a generator, but burns nothing.
 const HYDRO := ["power_water_wheel", "power_hydro_plant", "power_tidal_plant"]
+## Solar power and batteries: wired to a pole too; the sun gives power by day, a battery stores it.
+const SOLAR := ["power_solar_panel", "power_solar_tower"]
+const BATTERY := "power_battery"
 ## Sprites whose layout says where wires meet them, by kind.
 const WIRE_SPRITES := {"power_generator": "generator", "power_water_wheel": "water_wheel", "power_hydro_plant": "hydro_plant",
-	"power_tidal_plant": "tidal_plant", "power_gas_plant": "gas_plant", "power_diesel_generator": "diesel_generator"}
+	"power_tidal_plant": "tidal_plant", "power_gas_plant": "gas_plant", "power_diesel_generator": "diesel_generator",
+	"power_solar_panel": "solar_panel", "power_solar_tower": "solar_tower", "power_battery": "battery"}
 const POLE := "power_pole"
 const WIRE := Color(0.08, 0.07, 0.06, 0.9)
 const WIRE_SHINE := Color(0.62, 0.42, 0.25, 0.55)
@@ -53,7 +57,7 @@ func apply(summary: Dictionary) -> void:
 	_networks = {}
 	for network: Dictionary in summary.get("networks", []):
 		_networks[int(network["id"])] = network
-		for key: String in ["poles", "generators", "consumers", "hydro"]:
+		for key: String in ["poles", "generators", "consumers", "hydro", "solar", "batteries"]:
 			for id: String in network.get(key, []):
 				_network_of[id] = int(network["id"])
 	queue_redraw()
@@ -63,9 +67,25 @@ func apply(summary: Dictionary) -> void:
 func has_power() -> bool:
 	for cell: Vector2i in _placed:
 		var kind: String = _placed[cell]["kind"]
-		if kind == POLE or kind in GENERATORS or kind in HYDRO or demand.has(kind):
+		if kind == POLE or _source(kind) or demand.has(kind):
 			return true
 	return false
+
+
+## Whether an object of `kind` gives power to a network: a generator, water or solar power or a battery.
+func _source(kind: String) -> bool:
+	return kind in GENERATORS or kind in HYDRO or kind in SOLAR or kind == BATTERY
+
+
+## How full a battery's network is, as players read it.
+func describe_battery(id: String) -> String:
+	var n := network(id)
+	if n.is_empty():
+		return "bez sieci: postaw obok słup"
+	var capacity := float(n.get("bankCapacityKj", 0.0))
+	var rate := float(n.get("bankRateKw", 0.0))
+	var state := "ładuje się %s" % GeneratorWindow.kw(rate) if rate > 0.001 else ("oddaje %s" % GeneratorWindow.kw(-rate) if rate < -0.001 else "czeka")
+	return "naładowane %d%%, %s" % [roundi(100.0 * float(n.get("bankKj", 0.0)) / capacity) if capacity > 0.0 else 0, state]
 
 
 func runs_on_power(kind: String) -> bool:
@@ -141,7 +161,7 @@ func _draw() -> void:
 				_wire(_wire_point(all_poles[i]), _wire_point(all_poles[j]))
 	for cell: Vector2i in _placed:
 		var object: Dictionary = _placed[cell]
-		if object["kind"] in GENERATORS or object["kind"] in HYDRO:
+		if _source(object["kind"]):
 			for pole in all_poles:
 				if covers(pole, cell):
 					_wire(_wire_point(cell), _wire_point(pole))

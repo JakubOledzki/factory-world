@@ -1,15 +1,28 @@
 shader_type canvas_item;
 // Colours one strip of the world map. The texture holds one byte per plot: its biome id.
 
-uniform vec3 colors[12];
-// Plots in this strip of the map.
+uniform vec3 colors[13];
+// Plots in this strip of the map, and the column it starts at.
 uniform vec2 strip_size;
+uniform int strip_from = 0;
 // Screen pixels per plot.
 uniform float zoom = 1.0;
 
+// Whether the desert plot is an oasis: the server's hash (Oasis.Is), in 32-bit unsigned arithmetic.
+bool oasis(vec2 uv) {
+	uvec2 p = uvec2(floor(uv * strip_size)) + uvec2(uint(strip_from), 0u);
+	uint h = p.x * 374761393u + p.y * 668265263u;
+	h = (h ^ (h >> 13u)) * 1274126177u;
+	h ^= h >> 16u;
+	return h % 100u < 4u;
+}
+
 vec3 biome_color(sampler2D biomes, vec2 uv) {
 	int id = int(texture(biomes, uv).r * 255.0 + 0.5);
-	return colors[clamp(id, 0, 11)];
+	if (id == 5 && oasis(uv)) {
+		id = 12;
+	}
+	return colors[clamp(id, 0, 12)];
 }
 
 void fragment() {

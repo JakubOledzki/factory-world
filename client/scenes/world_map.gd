@@ -137,6 +137,7 @@ func _build_map() -> void:
 		material.shader = load("res://world/world_map.gdshader")
 		material.set_shader_parameter("colors", colors)
 		material.set_shader_parameter("strip_size", Vector2(columns, _data.height))
+		material.set_shader_parameter("strip_from", part * strip)
 		_materials.append(material)
 		for copy in [-1, 0, 1]:
 			var sprite := Sprite2D.new()

@@ -2515,6 +2515,417 @@ def render_oil(layout: dict, only=()):
         layout["road"] = render_sprite("road", 112, 96, Vector((0, 0, 0)), road)
 
 
+# --- Desert ---------------------------------------------------------------------------------------
+
+def desert_mats():
+    """The paint of the desert industry: sun-bleached render, adobe, glass, galvanised steel and the solar blue."""
+    return {
+        "render": ra.plain("des_render", (0.42, 0.34, 0.24), 0.9, variation=0.2, scale=8, bump=0.3),
+        "adobe": ra.plain("des_adobe", (0.36, 0.22, 0.11), 0.95, variation=0.3, scale=12, bump=0.5),
+        "brick": ra.plain("des_brick", (0.3, 0.11, 0.06), 0.9, variation=0.35, scale=10, bump=0.5),
+        "steel": ra.rusty_metal("des_steel", (0.32, 0.33, 0.34), rust=0.15),
+        "dark": ra.rusty_metal("des_dark", (0.05, 0.05, 0.055), rust=0.15),
+        "white": ra.plain("des_white", (0.65, 0.65, 0.62), 0.5, 0.2, variation=0.1, grime=0.6),
+        "orange": ra.plain("des_orange", (0.65, 0.25, 0.03), 0.45, 0.3, variation=0.15, grime=0.6),
+        "concrete": ra.plain("des_concrete", (0.32, 0.31, 0.29), 0.9, variation=0.15),
+        "glass": ra.plain("des_glass", (0.12, 0.35, 0.22), 0.05, variation=0.1, grime=0.05),
+        "cell": ra.plain("des_cell", (0.01, 0.03, 0.09), 0.15, 0.4, variation=0.08, grime=0.05),
+        "mirror": ra.plain("des_mirror", (0.8, 0.82, 0.85), 0.03, 1.0, variation=0.02, grime=0.05),
+        "copper": ra.plain("des_copper", (0.65, 0.28, 0.12), 0.35, 0.9, variation=0.15),
+        "water": water_mat("des_water"),
+        "reed": ra.plain("des_reed", (0.42, 0.33, 0.14), 0.85, variation=0.35, scale=20, bump=0.4),
+        "glow": ra.emission("des_glow", (1.0, 0.45, 0.08), 6.0),
+        "hot": ra.emission("des_hot", (1.0, 0.85, 0.5), 18.0),
+        "lamp": ra.emission("des_lamp", (0.3, 1.0, 0.25), 3.0),
+    }
+
+
+def build_glassworks():
+    """A glassworks: a domed brick furnace with a glowing mouth and a tall chimney, a bench of green bottles beside it."""
+    m = desert_mats()
+    ra.box("gw_floor", (1.7, 1.2, 0.06), (0, 0, 0.03), m["concrete"])
+    dome = ra.sphere("gw_dome", 0.5, (-0.2, 0.05, 0.2), m["brick"], scale=(1, 1, 0.9), segments=24)
+    ra.displace(dome, 0.01, 0.1, 1)
+    ra.cylinder("gw_base", 0.52, 0.22, (-0.2, 0.05, 0.14), m["render"], verts=28)
+    for a in (-0.6, 0.0, 0.6):
+        ra.cylinder("gw_mouth", 0.08, 0.06, (-0.2 + math.sin(a) * 0.45, 0.05 - math.cos(a) * 0.45, 0.42), m["glow"],
+                    rotation=(math.radians(90), 0, a), verts=16)
+    ra.cylinder("gw_chimney", 0.1, 1.3, (-0.25, 0.4, 0.95), m["brick"], verts=14)
+    ra.cylinder("gw_cap", 0.13, 0.05, (-0.25, 0.4, 1.6), m["dark"], verts=14)
+    ra.box("gw_bench", (0.5, 0.35, 0.04), (0.55, -0.15, 0.4), ra.wood("gw_bench", (0.2, 0.12, 0.06)))
+    for x in (0.4, 0.55):
+        for y in (-0.3, 0.0):
+            ra.box("gw_leg", (0.04, 0.04, 0.38), (x + 0.1, y, 0.2), m["dark"])
+    for k in range(4):
+        x, y = 0.38 + k * 0.1, -0.2 + (k % 2) * 0.1
+        ra.cylinder("gw_bottle", 0.035, 0.14, (x, y, 0.49), m["glass"], verts=12)
+        ra.cylinder("gw_neck", 0.013, 0.06, (x, y, 0.59), m["glass"], verts=8)
+    ra.box("gw_panes", (0.3, 0.04, 0.4), (0.55, 0.3, 0.25), m["glass"], rotation=(math.radians(-10), 0, 0))
+
+
+def build_arc_furnace():
+    """An arc furnace: a squat steel vessel with a domed lid, three graphite electrodes rising through it on a mast,
+    thick copper cables and a white-hot glow under the lid."""
+    m = desert_mats()
+    ra.box("af_pad", (1.6, 1.4, 0.08), (0, 0, 0.04), m["concrete"])
+    ra.cylinder("af_vessel", 0.5, 0.5, (0, 0, 0.33), m["steel"], verts=28)
+    ra.cylinder("af_band", 0.52, 0.06, (0, 0, 0.52), m["dark"], verts=28)
+    ra.sphere("af_lid", 0.5, (0, 0, 0.58), m["dark"], scale=(1, 1, 0.35), segments=24)
+    ra.torus("af_glow", 0.49, 0.025, (0, 0, 0.57), m["hot"])
+    for k in range(3):
+        a = k * math.tau / 3 + 0.4
+        x, y = math.cos(a) * 0.18, math.sin(a) * 0.18
+        ra.cylinder("af_electrode", 0.06, 0.9, (x, y, 1.05), ra.plain("af_graphite", (0.06, 0.06, 0.065), 0.4, 0.2), verts=12)
+        ra.box("af_clamp", (0.16, 0.16, 0.08), (x, y, 1.35), m["copper"])
+        pipe_run((x, y, 1.38), (0.75, 0.35 - k * 0.12, 1.1), 0.03, m["copper"], "af_cable")
+    ra.box("af_mast", (0.12, 0.12, 1.5), (0.6, 0.45, 0.75), m["orange"])
+    ra.box("af_arm", (0.7, 0.1, 0.1), (0.3, 0.3, 1.45), m["orange"], rotation=(0, 0, math.radians(-25)))
+    ra.box("af_transformer", (0.4, 0.35, 0.45), (0.55, -0.4, 0.3), ra.rusty_metal("af_tr", (0.12, 0.2, 0.14), rust=0.1), bevel=0.02)
+    ra.box("af_lamp", (0.05, 0.02, 0.05), (0.55, -0.58, 0.45), m["lamp"])
+
+
+def build_water_well():
+    """A deep water well: a pump head with a motor on a concrete ring, a pipe running to a small blue tank on legs."""
+    m = desert_mats()
+    blue = ra.rusty_metal("ww_blue", (0.05, 0.16, 0.4), rust=0.15)
+    ra.cylinder("ww_ring", 0.35, 0.18, (-0.3, 0, 0.09), m["concrete"], verts=24)
+    ra.cylinder("ww_hole", 0.27, 0.02, (-0.3, 0, 0.18), m["water"], verts=24)
+    ra.box("ww_head", (0.3, 0.25, 0.3), (-0.3, 0, 0.35), blue, bevel=0.03)
+    ra.cylinder("ww_motor", 0.1, 0.3, (-0.3, 0, 0.62), m["dark"], verts=14)
+    ra.cylinder("ww_fan", 0.11, 0.04, (-0.3, 0, 0.79), m["steel"], verts=14)
+    pipe_run((-0.15, 0, 0.35), (0.35, 0, 0.35), 0.035, m["steel"])
+    pipe_run((0.35, 0, 0.35), (0.35, 0, 0.85), 0.035, m["steel"])
+    for dx in (-0.15, 0.15):
+        for dy in (-0.15, 0.15):
+            ra.box("ww_leg", (0.04, 0.04, 0.7), (0.35 + dx, dy, 0.35), m["steel"])
+    ra.cylinder("ww_tank", 0.25, 0.35, (0.35, 0, 0.88), blue, verts=24)
+    ra.sphere("ww_top", 0.25, (0.35, 0, 1.05), blue, scale=(1, 1, 0.3), segments=20)
+
+
+def build_desalinator():
+    """A desalinator on the shore: an intake pipe out of the sea, a white plant of pressure vessels and a pile of salt."""
+    m = desert_mats()
+    ra.box("ds_sea", (1.8, 0.7, 0.02), (0, 0.55, 0.01), m["water"])
+    ra.box("ds_pad", (1.6, 0.9, 0.08), (0, -0.2, 0.04), m["concrete"])
+    pipe_run((-0.6, 0.85, 0.06), (-0.6, -0.05, 0.25), 0.05, m["steel"], "ds_intake")
+    ra.box("ds_house", (0.6, 0.55, 0.5), (-0.35, -0.3, 0.33), m["white"], bevel=0.02)
+    ra.box("ds_roof", (0.64, 0.6, 0.04), (-0.35, -0.3, 0.6), m["steel"])
+    for k in range(4):
+        ra.cylinder("ds_vessel", 0.06, 0.7, (0.15 + k * 0.15, -0.2, 0.2), m["white"], rotation=(0, math.radians(90), 0), verts=14)
+        ra.cylinder("ds_vessel2", 0.06, 0.7, (0.15 + k * 0.15, -0.2, 0.38), m["white"], rotation=(0, math.radians(90), 0), verts=14)
+    pipe_run((-0.05, -0.2, 0.3), (0.7, -0.2, 0.3), 0.025, m["steel"], "ds_header")
+    ra.cylinder("ds_tank", 0.16, 0.45, (0.6, -0.5, 0.3), ra.rusty_metal("ds_blue", (0.05, 0.16, 0.4), rust=0.1), verts=20)
+    salt = ra.sphere("ds_salt", 0.15, (0.15, -0.55, 0.06), ra.plain("ds_salt", (0.85, 0.82, 0.78), 0.6), scale=(1.3, 1, 0.6), segments=14)
+    ra.displace(salt, 0.02, 0.2, 1)
+
+
+def build_drying_yard():
+    """A drying yard: rows of sun-dried mud bricks on sand under a light reed awning on poles."""
+    m = desert_mats()
+    ra.box("dy_sand", (1.8, 1.4, 0.03), (0, 0, 0.015), sand_mat())
+    for r in range(3):
+        for c in range(6):
+            b = ra.box("dy_brick", (0.2, 0.1, 0.07), (-0.6 + c * 0.24, -0.45 + r * 0.25, 0.065), m["adobe"], bevel=0.01,
+                       rotation=(0, 0, random.uniform(-0.08, 0.08)))
+            ra.displace(b, 0.004, 0.1, 1)
+    ra.box("dy_stack", (0.3, 0.22, 0.35), (0.6, 0.45, 0.2), m["adobe"], bevel=0.01)
+    timber = ra.wood("dy_pole", (0.2, 0.13, 0.07))
+    for x in (-0.75, 0.75):
+        for y in (-0.55, 0.15):
+            ra.cylinder("dy_pole", 0.03, 1.0, (x, y, 0.5), timber, verts=8)
+    ra.box("dy_awning", (1.6, 0.8, 0.03), (0, -0.2, 1.0), m["reed"], rotation=(math.radians(6), 0, 0))
+    ra.box("dy_mould", (0.4, 0.2, 0.06), (0.25, 0.45, 0.06), timber)
+
+
+def build_cement_kiln():
+    """A cement kiln: a long rotary drum sloping on piers, a burner glowing at its low end and a grey silo at the high one."""
+    m = desert_mats()
+    ra.box("ck_pad", (1.8, 1.2, 0.08), (0, 0, 0.04), m["concrete"])
+    drum = ra.cylinder("ck_drum", 0.18, 1.4, (0, -0.1, 0.5), m["orange"], rotation=(0, math.radians(84), 0), verts=24)
+    for x in (-0.4, 0.35):
+        ra.box("ck_pier", (0.14, 0.3, 0.42 - x * 0.08), (x, -0.1, 0.2), m["concrete"])
+        ra.torus("ck_tyre", 0.2, 0.03, (x, -0.1, 0.5 + x * 0.1), m["dark"], rotation=(0, math.radians(84), 0))
+    ra.cylinder("ck_burner", 0.12, 0.08, (-0.72, -0.1, 0.43), m["glow"], rotation=(0, math.radians(84), 0), verts=16)
+    ra.box("ck_hood", (0.3, 0.4, 0.5), (-0.8, -0.1, 0.33), m["brick"], bevel=0.02)
+    ra.cylinder("ck_silo", 0.22, 0.9, (0.6, 0.35, 0.55), m["white"], verts=22)
+    ra.cylinder("ck_cone", 0.22, 0.2, (0.6, 0.35, 0.1), m["white"], radius2=0.05, verts=22)
+    ra.cylinder("ck_stack", 0.06, 0.9, (-0.85, 0.2, 0.8), m["steel"], verts=10)
+
+
+def build_concrete_mixer():
+    """A concrete mixer: a tilted orange drum with spiral ribs on a steel frame, a hopper and a chute."""
+    m = desert_mats()
+    ra.box("cm_pad", (1.4, 1.0, 0.06), (0, 0, 0.03), m["concrete"])
+    for x in (-0.35, 0.35):
+        ra.box("cm_frame", (0.08, 0.6, 0.08), (x, 0, 0.3), m["steel"])
+        ra.box("cm_post", (0.08, 0.08, 0.55), (x, 0, 0.3), m["steel"])
+    ra.cylinder("cm_drum", 0.3, 0.55, (0, 0, 0.62), m["orange"], rotation=(math.radians(60), 0, 0), verts=24, radius2=0.18)
+    ra.cylinder("cm_mouth", 0.17, 0.12, (0, -0.28, 0.82), m["dark"], rotation=(math.radians(60), 0, 0), verts=20, radius2=0.14)
+    for k in range(3):
+        ra.torus("cm_rib", 0.29 - k * 0.03, 0.015, (0, 0.05 - k * 0.1, 0.58 + k * 0.06), m["orange"], rotation=(math.radians(60), 0, 0))
+    ra.box("cm_motor", (0.25, 0.2, 0.2), (0.45, 0.25, 0.15), m["dark"], bevel=0.02)
+    ra.box("cm_chute", (0.12, 0.4, 0.03), (0, -0.45, 0.3), m["steel"], rotation=(math.radians(-25), 0, 0))
+    ra.box("cm_hopper", (0.3, 0.3, 0.25), (-0.45, 0.25, 0.25), m["steel"], bevel=0.02)
+
+
+def build_reed_fence():
+    """A reed fence: a row of bundled reeds lashed to two rails between posts, across the tile."""
+    m = desert_mats()
+    timber = ra.wood("rf_post", (0.2, 0.13, 0.07))
+    for x in (-0.85, 0.0, 0.85):
+        ra.cylinder("rf_post", 0.04, 0.9, (x, 0, 0.45), timber, verts=8)
+    for z in (0.3, 0.7):
+        ra.box("rf_rail", (1.8, 0.03, 0.03), (0, 0.04, z), timber)
+    for k in range(34):
+        x = -0.84 + k * 0.051
+        h = random.uniform(0.85, 1.05)
+        ra.cylinder("rf_reed", 0.024, h, (x, 0, h / 2), m["reed"], verts=6, rotation=(random.uniform(-0.04, 0.04), random.uniform(-0.04, 0.04), 0))
+
+
+def build_solar_panel():
+    """A solar panel: a dark blue array of cells in an aluminium frame, tilted to the sun on a steel stand."""
+    m = desert_mats()
+    tilt = math.radians(32)
+    for x in (-0.6, 0.6):
+        ra.box("sp_leg_front", (0.05, 0.05, 0.35), (x, -0.25, 0.18), m["steel"])
+        ra.box("sp_leg_back", (0.05, 0.05, 0.8), (x, 0.25, 0.4), m["steel"])
+    ra.box("sp_frame", (1.7, 1.05, 0.04), (0, 0, 0.58), m["steel"], rotation=(tilt, 0, 0))
+    ra.box("sp_cells", (1.62, 0.98, 0.02), (0, -0.012, 0.6), m["cell"], rotation=(tilt, 0, 0))
+    up = Vector((0, -math.sin(tilt), math.cos(tilt)))
+    along = Vector((0, math.cos(tilt), math.sin(tilt)))
+    for i in range(1, 6):
+        ra.box("sp_line", (0.012, 0.97, 0.005), Vector((-0.81 + i * 0.27, 0, 0.6)) + up * 0.013, m["white"], rotation=(tilt, 0, 0))
+    for j in range(1, 3):
+        ra.box("sp_line", (1.6, 0.012, 0.005), Vector((0, 0, 0.6)) + along * (-0.49 + j * 0.327) + up * 0.013, m["white"], rotation=(tilt, 0, 0))
+    ra.box("sp_box", (0.14, 0.08, 0.1), (0.6, 0.3, 0.2), m["dark"])
+
+
+def build_solar_tower():
+    """A solar tower on 3 × 3 tiles: a slim concrete tower with a white-hot receiver at the top, ringed by mirrors
+    on stands turned to it."""
+    m = desert_mats()
+    ra.box("st_ground", (5.8, 5.8, 0.02), (0, 0, 0.01), sand_mat())
+    ra.cylinder("st_tower", 0.3, 4.2, (0, 0.4, 2.1), m["concrete"], verts=20, radius2=0.22)
+    ra.cylinder("st_receiver", 0.34, 0.5, (0, 0.4, 4.45), m["hot"], verts=20)
+    ra.cylinder("st_crown", 0.4, 0.12, (0, 0.4, 4.76), m["dark"], verts=20)
+    ra.box("st_house", (0.9, 0.7, 0.5), (0.9, 1.2, 0.25), m["white"], bevel=0.02)
+    for ring, count in ((1.6, 10), (2.5, 16)):
+        for k in range(count):
+            a = k * math.tau / count + ring
+            x, y = math.cos(a) * ring, 0.4 + math.sin(a) * ring
+            if abs(x) > 2.7 or abs(y) > 2.7 or (x > 0.3 and y > 0.7 and x < 1.5 and y < 1.7):
+                continue
+            ra.cylinder("st_stand", 0.025, 0.4, (x, y, 0.2), m["steel"], verts=6)
+            face = Vector((-x, 0.4 - y, 4.4 - 0.45)).normalized()
+            mirror = ra.box("st_mirror", (0.5, 0.35, 0.02), (x, y, 0.45), m["mirror"])
+            mirror.rotation_mode = "QUATERNION"
+            mirror.rotation_quaternion = Vector((0, 0, 1)).rotation_difference((face + Vector((0, 0, 1))).normalized())
+
+
+def build_battery():
+    """A battery: a grey container of cells with a striped warning band, cooling vents and a green status lamp."""
+    m = desert_mats()
+    ra.box("bt_pad", (1.5, 0.9, 0.06), (0, 0, 0.03), m["concrete"])
+    ra.box("bt_box", (1.3, 0.7, 0.7), (0, 0, 0.41), ra.corrugated("bt_sheet", (0.36, 0.38, 0.4), 0.1), bevel=0.02)
+    for k in range(6):
+        ra.box("bt_stripe", (0.1, 0.71, 0.08), (-0.55 + k * 0.22, 0, 0.7), m["orange"] if k % 2 else m["dark"])
+    for k in range(4):
+        ra.box("bt_vent", (0.18, 0.02, 0.12), (-0.45 + k * 0.3, -0.36, 0.4), m["dark"])
+    ra.box("bt_lamp", (0.05, 0.02, 0.05), (0.55, -0.36, 0.6), m["lamp"])
+    ra.box("bt_terminal", (0.12, 0.12, 0.1), (0.45, 0.2, 0.81), m["copper"])
+
+
+def palm(height, lean, fronds, seed):
+    """A date palm: a ringed trunk leaning a little, a crown of long arching fronds and bunches of dates under them."""
+    random.seed(seed)
+    trunk = ra.plain("palm_trunk", (0.16, 0.11, 0.06), 0.9, variation=0.35, scale=25, bump=0.7)
+    leaves = foliage("palm_leaves", (0.06, 0.13, 0.03), 0.4)
+    top = Vector((lean, lean * 0.3, height))
+    segments = 9
+    for i in range(segments):
+        t0, t1 = i / segments, (i + 1) / segments
+        a = Vector((lean * t0 ** 1.6, lean * 0.3 * t0 ** 1.6, height * t0))
+        b = Vector((lean * t1 ** 1.6, lean * 0.3 * t1 ** 1.6, height * t1))
+        ring = pipe_run(a, b, 0.16 - 0.04 * t0, trunk, "palm_ring")
+        ring.scale = (1.0, 1.0, 1.0)
+    for k in range(fronds):
+        a = k * math.tau / fronds + random.uniform(-0.2, 0.2)
+        droop = random.uniform(0.35, 0.75)
+        for s in range(5):
+            t = (s + 0.5) / 5
+            r = 0.4 + t * 1.6
+            p = top + Vector((math.cos(a) * r, math.sin(a) * r, 0.25 - droop * t * t * 2.2))
+            leaf = ra.sphere("palm_frond", 0.3, p, leaves, scale=(1.4, 0.55, 0.12), segments=10)
+            leaf.rotation_euler = (0, droop * t * 1.2, a)
+    for k in range(3):
+        a = k * math.tau / 3 + 0.5
+        bunch = ra.sphere("palm_dates", 0.16, top + Vector((math.cos(a) * 0.22, math.sin(a) * 0.22, -0.35)),
+                          ra.plain("palm_date", (0.35, 0.12, 0.03), 0.5, variation=0.3, scale=40, bump=0.8), scale=(1, 1, 1.4), segments=12)
+        ra.displace(bunch, 0.04, 0.05, 1)
+    return meshes()
+
+
+DESERT = {
+    # name: (canvas width, height, camera target height, builder); the solar tower stands on 3 × 3 tiles.
+    "glassworks": (128, 144, 0.7, build_glassworks),
+    "arc_furnace": (128, 144, 0.7, build_arc_furnace),
+    "water_well": (112, 128, 0.5, build_water_well),
+    "desalinator": (128, 112, 0.35, build_desalinator),
+    "drying_yard": (128, 112, 0.45, build_drying_yard),
+    "cement_kiln": (136, 128, 0.6, build_cement_kiln),
+    "concrete_mixer": (112, 112, 0.45, build_concrete_mixer),
+    "reed_fence": (128, 104, 0.45, build_reed_fence),
+}
+
+# Power from the sun, wired to the pole that reaches it: where the wires meet each.
+DESERT_POWER = {
+    "solar_panel": (128, 104, 0.4, build_solar_panel, Vector((0.6, 0.3, 0.25))),
+    "solar_tower": (240, 304, 2.4, build_solar_tower, Vector((0.9, 1.2, 0.5))),
+    "battery": (128, 104, 0.45, build_battery, Vector((0.45, 0.2, 0.86))),
+}
+
+PALMS = {
+    "palm_0": (256, 320, 3.2, lambda: palm(5.2, 0.6, 9, 11)),
+    "palm_1": (256, 288, 2.8, lambda: palm(4.4, -0.5, 8, 12)),
+}
+
+
+def render_desert(layout: dict, only=()):
+    for name, (w, h, tz, build) in DESERT.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        make = seaward(build) if name == "desalinator" else crafted(build)
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), make, true_scale=True)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
+    for name, (w, h, tz, build, wire) in DESERT_POWER.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        target = Vector((0, 0, tz))
+        layout[name] = render_sprite(name, w, h, target, crafted(build), true_scale=True)
+        layout[name]["wireX"], layout[name]["wireY"] = anchor(w, h, target, wire)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"item_power_{name}.png")
+    for name, (w, h, tz, build) in PALMS.items():
+        if only and name not in only:
+            continue
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), build)
+
+
+def desert_icon_models():
+    """Icons of what the desert makes and gives up."""
+    def glass():
+        pane = ra.plain("ic_glass", (0.12, 0.35, 0.22), 0.05, variation=0.1, grime=0.05)
+        for k in range(3):
+            ra.box("pane", (0.36, 0.26, 0.025), (k * 0.02, -k * 0.02, 0.02 + k * 0.03), pane, bevel=0.005, rotation=(0, 0, 0.15 * k))
+
+    def window_pane():
+        frame = ra.wood("ic_frame", (0.35, 0.22, 0.1))
+        ra.box("frame", (0.34, 0.03, 0.42), (0, 0, 0.21), frame, bevel=0.01)
+        ra.box("pane", (0.3, 0.035, 0.38), (0, 0, 0.21), ra.plain("ic_pane", (0.45, 0.6, 0.7), 0.03, 0.2, variation=0.05, grime=0.0))
+        ra.box("bar", (0.02, 0.04, 0.38), (0, 0, 0.21), frame)
+
+    def bottles():
+        g = ra.plain("ic_bottle", (0.1, 0.32, 0.12), 0.05, variation=0.1, grime=0.05)
+        for k, (x, y) in enumerate(((-0.1, 0.02), (0.1, 0.04), (0, -0.08))):
+            ra.cylinder("bottle", 0.07, 0.24, (x, y, 0.12), g, verts=18)
+            ra.cylinder("shoulder", 0.07, 0.06, (x, y, 0.27), g, radius2=0.025, verts=18)
+            ra.cylinder("neck", 0.022, 0.07, (x, y, 0.33), g, verts=10)
+
+    def mirror():
+        frame = ra.plain("ic_mframe", (0.55, 0.38, 0.1), 0.35, 0.9)
+        ra.cylinder("frame", 0.2, 0.03, (0, 0, 0.2), frame, rotation=(math.radians(70), 0, 0), verts=32)
+        ra.cylinder("glass", 0.17, 0.035, (0, -0.005, 0.2), ra.plain("ic_mirror", (0.8, 0.82, 0.85), 0.03, 1.0, grime=0.0),
+                    rotation=(math.radians(70), 0, 0), verts=32)
+
+    def fiber():
+        jacket = ra.plain("ic_fiber", (0.75, 0.35, 0.05), 0.5)
+        for k in range(4):
+            ra.torus("coil", 0.16 - k * 0.012, 0.018, (0, 0, 0.03 + k * 0.035), jacket)
+        ra.sphere("tip", 0.02, (0.18, -0.05, 0.06), ra.emission("ic_light", (0.5, 0.9, 1.0), 8.0), segments=8)
+
+    def silicon():
+        mat = ra.plain("ic_silicon", (0.18, 0.2, 0.24), 0.25, 0.8, variation=0.2, bump=0.5)
+        for k in range(4):
+            a = k * 1.7
+            c = ra.sphere("chunk", 0.08, (math.cos(a) * 0.1, math.sin(a) * 0.08, 0.06 + (k == 3) * 0.08), mat, scale=(1, 0.8, 0.7), segments=6)
+            ra.displace(c, 0.02, 0.1, 1)
+
+    def wafer():
+        ra.cylinder("wafer", 0.2, 0.015, (0, 0, 0.02), ra.plain("ic_wafer", (0.2, 0.22, 0.35), 0.1, 0.9, variation=0.1, grime=0.0), verts=40)
+        for i in range(-3, 4):
+            ra.box("die", (0.3 * math.sqrt(max(0.0, 1 - (i / 4) ** 2)), 0.005, 0.004), (0, i * 0.05, 0.03), ra.plain("ic_die", (0.5, 0.45, 0.6), 0.2, 0.6))
+
+    def water():
+        blue = ra.plain("ic_jug", (0.15, 0.35, 0.65), 0.15, variation=0.05, grime=0.05)
+        ra.cylinder("jug", 0.13, 0.3, (0, 0, 0.15), blue, verts=24)
+        ra.cylinder("shoulder", 0.13, 0.06, (0, 0, 0.33), blue, radius2=0.05, verts=24)
+        ra.cylinder("cap", 0.05, 0.04, (0, 0, 0.38), ra.plain("ic_cap", (0.1, 0.25, 0.6), 0.4), verts=14)
+        ra.sphere("drop", 0.05, (0.17, -0.1, 0.06), ra.plain("ic_drop", (0.3, 0.6, 0.9), 0.05, grime=0.0), scale=(1, 1, 1.4), segments=12)
+
+    def lump(name, color):
+        def build():
+            mat = ra.plain(name, color, 0.9, variation=0.25, scale=10, bump=0.6)
+            c = ra.sphere("lump", 0.18, (0, 0, 0.08), mat, scale=(1.2, 1, 0.6), segments=16)
+            ra.displace(c, 0.03, 0.15, 2)
+        return build
+
+    def adobe():
+        mat = ra.plain("ic_adobe", (0.36, 0.22, 0.11), 0.95, variation=0.3, scale=12, bump=0.5)
+        for k, (x, y, z) in enumerate(((-0.11, 0, 0.04), (0.11, 0, 0.04), (0, 0, 0.12))):
+            ra.box("adobe", (0.21, 0.12, 0.08), (x, y, z), mat, bevel=0.01, rotation=(0, 0, 0.05 * k))
+
+    def cement():
+        cloth = ra.plain("ic_csack", (0.45, 0.44, 0.42), 0.95, variation=0.12, scale=12, bump=0.5)
+        body = ra.sphere("sack", 0.17, (0, 0, 0.13), cloth, scale=(1.2, 0.9, 0.85), segments=20)
+        ra.displace(body, 0.015, 0.2, 1)
+        ra.box("label", (0.18, 0.01, 0.1), (0, -0.155, 0.13), ra.plain("ic_clabel", (0.7, 0.15, 0.08), 0.6))
+
+    def concrete():
+        mat = ra.plain("ic_concrete", (0.33, 0.32, 0.3), 0.9, variation=0.2, scale=18, bump=0.4)
+        ra.box("block", (0.32, 0.2, 0.18), (0, 0, 0.09), mat, bevel=0.01)
+        for x in (-0.07, 0.07):
+            ra.box("hole", (0.08, 0.1, 0.005), (x, 0, 0.181), ra.plain("ic_hole", (0.06, 0.06, 0.06), 0.9))
+
+    def dates():
+        mat = ra.plain("ic_date", (0.33, 0.12, 0.03), 0.4, variation=0.3, bump=0.5)
+        for k in range(9):
+            a = k * 2.4
+            r = 0.04 + (k % 3) * 0.05
+            ra.sphere("date", 0.045, (math.cos(a) * r, math.sin(a) * r, 0.04 + (k > 6) * 0.05), mat, scale=(1, 1, 1.6), segments=10,
+                      ).rotation_euler = (random.uniform(-1, 1), random.uniform(-1, 1), 0)
+        ra.cylinder("stalk", 0.012, 0.3, (0, 0.05, 0.12), ra.plain("ic_stalk", (0.3, 0.22, 0.08), 0.8), rotation=(math.radians(70), 0, 0), verts=6)
+
+    def ammonite():
+        shell = ra.plain("ic_ammonite", (0.42, 0.33, 0.22), 0.6, variation=0.3, scale=14, bump=0.6)
+        for k in range(16):
+            t = k / 16
+            a = t * math.tau * 2.2
+            r = 0.03 + t * 0.16
+            ra.sphere("whorl", 0.025 + t * 0.06, (math.cos(a) * r * 0.6, 0, 0.18 + math.sin(a) * r * 0.6), shell, segments=10)
+
+    def coin():
+        gold = ra.plain("ic_coin", (0.75, 0.52, 0.12), 0.3, 1.0, variation=0.2, bump=0.4)
+        ra.cylinder("coin", 0.16, 0.03, (0, 0, 0.2), gold, rotation=(math.radians(70), 0, 0), verts=32)
+        ra.torus("rim", 0.15, 0.012, (0, -0.012, 0.2), gold, rotation=(math.radians(70), 0, 0))
+        ra.sphere("head", 0.06, (0, -0.02, 0.21), gold, scale=(0.8, 0.3, 1), segments=12)
+
+    def bone():
+        mat = ra.plain("ic_bone", (0.68, 0.6, 0.45), 0.7, variation=0.2, scale=20, bump=0.3)
+        ra.cylinder("shaft", 0.045, 0.38, (0, 0, 0.06), mat, rotation=(0, math.radians(90), math.radians(25)), verts=14)
+        for s in (-1, 1):
+            for d in (-1, 1):
+                ra.sphere("knob", 0.06, (s * 0.18 * math.cos(math.radians(25)) + d * 0.03, s * 0.18 * math.sin(math.radians(25)) - d * 0.04, 0.06),
+                          mat, segments=12)
+
+    return {
+        "item_glass": glass, "item_window_pane": window_pane, "item_glass_bottles": bottles, "item_mirror": mirror,
+        "item_optical_fiber": fiber, "item_silicon": silicon, "item_silicon_wafer": wafer, "item_water": water,
+        "item_clay": lump("ic_clay", (0.35, 0.16, 0.08)), "item_adobe_bricks": adobe, "item_cement": cement, "item_concrete": concrete,
+        "item_dates": dates, "item_ammonite": ammonite, "item_ancient_coin": coin, "item_dinosaur_bone": bone,
+    }
+
+
 # --- Power ----------------------------------------------------------------------------------------
 
 def build_generator():
@@ -3173,7 +3584,7 @@ def icon_models():
 
 def render_icons(only=()):
     ICONS.mkdir(parents=True, exist_ok=True)
-    for name, build in icon_models().items():
+    for name, build in {**icon_models(), **desert_icon_models()}.items():
         if only and name not in only:
             continue
         random.seed(zlib.crc32(name.encode()))
@@ -3185,7 +3596,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "office", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "office", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -3229,6 +3640,9 @@ if __name__ == "__main__":
     if "oil" in args or any(a in OIL or a in OIL_POWER or a in PIPES or a == "road" for a in args):
         # Names of oil sprites render just those.
         render_oil(layout, [a for a in args if a in OIL or a in OIL_POWER or a in PIPES or a == "road"])
+    if "desert" in args or any(a in DESERT or a in DESERT_POWER or a in PALMS for a in args):
+        # Names of desert sprites render just those.
+        render_desert(layout, [a for a in args if a in DESERT or a in DESERT_POWER or a in PALMS])
     if "logistics" in args or any(a in LOGISTICS for a in args):
         # Names of logistics sprites render just those.
         render_logistics(layout, [a for a in args if a in LOGISTICS])
