@@ -6,8 +6,8 @@ extends Node2D
 ## new pole is wired at once; how well each network is powered comes with the plot's logistics.
 
 const GENERATOR := "power_generator"
-## Generators that burn fuel: the steam generator, the gas power plant and the diesel generator.
-const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator"]
+## Generators that burn fuel: the steam generator, the gas power plant, the diesel generator and the fusion plant (on coolant).
+const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator", "power_fusion_plant"]
 ## Water power: wired to a pole like a generator, but burns nothing.
 const HYDRO := ["power_water_wheel", "power_hydro_plant", "power_tidal_plant"]
 ## Solar power and batteries: wired to a pole too; the sun gives power by day, a battery stores it.
@@ -20,7 +20,7 @@ const HEATER := "power_heater"
 const WIRE_SPRITES := {"power_generator": "generator", "power_water_wheel": "water_wheel", "power_hydro_plant": "hydro_plant",
 	"power_tidal_plant": "tidal_plant", "power_gas_plant": "gas_plant", "power_diesel_generator": "diesel_generator",
 	"power_solar_panel": "solar_panel", "power_solar_tower": "solar_tower", "power_battery": "battery",
-	"power_wind_turbine": "wind_turbine", "power_large_wind_turbine": "large_wind_turbine"}
+	"power_wind_turbine": "wind_turbine", "power_large_wind_turbine": "large_wind_turbine", "power_fusion_plant": "fusion_plant"}
 const POLE := "power_pole"
 const WIRE := Color(0.08, 0.07, 0.06, 0.9)
 const WIRE_SHINE := Color(0.62, 0.42, 0.25, 0.55)

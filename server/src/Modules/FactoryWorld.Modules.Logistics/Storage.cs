@@ -24,6 +24,8 @@ public static class Storages
         new(Items.IronChest, 24, 100),
         // A high-bay store in a city: racks up to the roof on one tile.
         new(Items.HighBay, 60, 200),
+        // An automated warehouse: robots stack 3 × 3 tiles of racks.
+        new(Items.AutomatedWarehouse, 120, 500),
         new(Items.WoodPile, 1, 400, new HashSet<string> { Items.Wood }),
         new(Items.Heap, 1, 1000, new HashSet<string>
         {

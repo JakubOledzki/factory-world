@@ -90,6 +90,64 @@ public static class TechTree
     public const string Beekeeping = "beekeeping";
     public const string ForestFoods = "forest_foods";
     public const string FireProtection = "fire_protection";
+
+    // The crafting tree: one technology for each of its items, named after it.
+    public const string Lubricant = "lubricant";
+    public const string ElectricWire = "electric_wire";
+    public const string GlassLaminate = "glass_laminate";
+    public const string Paint = "paint";
+    public const string CaseinGlue = "casein_glue";
+    public const string InsulationBoard = "insulation_board";
+    public const string Firebrick = "firebrick";
+    public const string PrecastConcrete = "precast_concrete";
+    public const string Coolant = "coolant";
+    public const string IridiumAlloy = "iridium_alloy";
+    public const string Provisions = "provisions";
+    public const string Bearing = "bearing";
+    public const string PaintedSheet = "painted_sheet";
+    public const string Coil = "coil";
+    public const string WiringHarness = "wiring_harness";
+    public const string RefractoryLining = "refractory_lining";
+    public const string CarbonComposite = "carbon_composite";
+    public const string SuperconductingWire = "superconducting_wire";
+    public const string RocketFuel = "rocket_fuel";
+    public const string Gearbox = "gearbox";
+    public const string Rotor = "rotor";
+    public const string MachineHousing = "machine_housing";
+    public const string CombustionChamber = "combustion_chamber";
+    public const string CompositePanel = "composite_panel";
+    public const string SuperconductingMagnet = "superconducting_magnet";
+    public const string Alternator = "alternator";
+    public const string ControlModule = "control_module";
+    public const string HydraulicActuator = "hydraulic_actuator";
+    public const string RocketNozzle = "rocket_nozzle";
+    public const string PressureVessel = "pressure_vessel";
+    public const string ComputingCore = "computing_core";
+    public const string RobotArm = "robot_arm";
+    public const string Turbopump = "turbopump";
+    public const string TurbineSet = "turbine_set";
+    public const string CryogenicTank = "cryogenic_tank";
+    public const string IndustrialRobot = "industrial_robot";
+    public const string NavigationSystem = "navigation_system";
+    public const string RocketEngine = "rocket_engine";
+    public const string PlasmaChamber = "plasma_chamber";
+    public const string Avionics = "avionics";
+    public const string PlasmaControl = "plasma_control";
+    public const string RocketStage = "rocket_stage";
+    public const string Satellite = "satellite";
+    public const string FusionReactor = "fusion_reactor";
+    public const string LaunchRocket = "launch_rocket";
+    public const string MachineShop = "machine_shop";
+    public const string RoboticHall = "robotic_hall";
+    public const string OxygenConverter = "oxygen_converter";
+    public const string RollingMill = "rolling_mill";
+    public const string ControlCenter = "control_center";
+    public const string ContinuousCaster = "continuous_caster";
+    public const string AutomatedWarehouse = "automated_warehouse";
+    public const string SteelCombine = "steel_combine";
+    public const string Megafactory = "megafactory";
+    public const string FusionPlant = "fusion_plant";
+
     public const string Megaprojects = CompanyTechs.Megaprojects;
     public const string CorporateFinance = CompanyTechs.CorporateFinance;
 
@@ -293,7 +351,173 @@ public static class TechTree
         new(FireProtection, "Ochrona lasu", "Strażnica chroni drzewa wokół siebie przed ogniem, a zakłady chemiczne robią z terpentyny środek na kornika.",
             [Silviculture, Charring], [(Items.Bricks, 20), (Items.IronIngot, 20), (Items.Turpentine, 5)], TimeSpan.FromMinutes(3), 60,
             [Items.FireStation, Items.Insecticide]),
-        new(Megaprojects, "Wielkie budowy", "Tylko dla spółek: członkowie razem stawiają platformę wiertniczą, port, pole lustrzane albo kolej międzykontynentalną.",
+        // The crafting tree, level by level: each technology unlocks one item and needs the technologies of its ingredients first.
+        new(Lubricant, "Smar techniczny", "Smaruje łożyska, przekładnie i siłowniki.",
+            [Refining], [(Items.Kerosene, 10), (Items.Wax, 5)], TimeSpan.FromMinutes(2), 20,
+            [Items.Lubricant]),
+        new(ElectricWire, "Przewód elektryczny", "Miedź w izolacji z tworzywa: z niej są cewki, wiązki i drut nadprzewodzący.",
+            [MachineShop], [(Items.CopperIngot, 5), (Items.Plastic, 5)], TimeSpan.FromMinutes(2), 20,
+            [Items.ElectricWire]),
+        new(GlassLaminate, "Laminat szklany", "Włókno szklane w żywicy: lekki i twardy, na cewki i kompozyty.",
+            [Petrochemistry], [(Items.Glass, 10), (Items.Resin, 5), (Items.Plastic, 5)], TimeSpan.FromMinutes(2), 20,
+            [Items.GlassLaminate]),
+        new(Paint, "Farba", "Terpentyna, olej i glina na pigment; chroni blachę przed rdzą.",
+            [Charring], [(Items.Turpentine, 5), (Items.SunflowerOil, 5), (Items.Clay, 5)], TimeSpan.FromMinutes(2), 20,
+            [Items.Paint]),
+        new(CaseinGlue, "Klej kazeinowy", "Klej z mleka i kalafonii: skleja kompozyty, wiązki i panele.",
+            [Charring], [(Items.Milk, 10), (Items.Rosin, 5)], TimeSpan.FromMinutes(2), 20,
+            [Items.CaseinGlue]),
+        new(InsulationBoard, "Płyta izolacyjna", "Wełna między sklejką: trzyma ciepło i zimno, na obudowy i zbiorniki.",
+            [Furniture], [(Items.Wool, 10), (Items.Plywood, 5)], TimeSpan.FromMinutes(2), 20,
+            [Items.InsulationBoard]),
+        new(Firebrick, "Cegła szamotowa", "Cegła z gliny i kwarcu, która wytrzymuje ogień pieców i dysz.",
+            [Metallurgy], [(Items.Clay, 10), (Items.Quartz, 5)], TimeSpan.FromMinutes(2), 20,
+            [Items.Firebrick]),
+        new(PrecastConcrete, "Prefabrykat żelbetowy", "Beton ze stalowym zbrojeniem: fundament wielkich budynków.",
+            [BuildingMaterials], [(Items.Concrete, 20), (Items.SteelIngot, 5)], TimeSpan.FromMinutes(2), 20,
+            [Items.PrecastConcrete]),
+        new(Coolant, "Płyn chłodniczy", "Schłodzony lodem glikol z gazu: chłodzi rdzenie, magnesy i reaktor.",
+            [Petrochemistry], [(Items.NaturalGas, 10), (Items.Water, 10), (Items.Ice, 10)], TimeSpan.FromMinutes(2), 20,
+            [Items.Coolant]),
+        new(IridiumAlloy, "Stop irydowy", "Iryd i żelazo meteorytowe z lodowca stopione ze stalą.",
+            [SiliconWorks], [(Items.Iridium, 5), (Items.MeteoricIron, 10), (Items.SteelIngot, 10)], TimeSpan.FromMinutes(2), 20,
+            [Items.IridiumAlloy]),
+        new(Provisions, "Prowiant", "Paczka jedzenia na długą drogę: dla załogi stacji orbitalnej.",
+            [Cooking], [(Items.CannedFish, 5), (Items.Bread, 10), (Items.Cardboard, 5)], TimeSpan.FromMinutes(2), 20,
+            [Items.Provisions]),
+        new(Bearing, "Łożysko", "Stalowe kulki w smarze: bez nich nic się nie kręci.",
+            [Lubricant, MachineShop], [(Items.SteelIngot, 5), (Items.Lubricant, 5)], TimeSpan.FromMinutes(3), 40,
+            [Items.Bearing]),
+        new(PaintedSheet, "Blacha lakierowana", "Stalowa blacha pomalowana na obudowy i zbiorniki.",
+            [Paint, MachineShop], [(Items.SteelIngot, 5), (Items.Paint, 5)], TimeSpan.FromMinutes(3), 40,
+            [Items.PaintedSheet]),
+        new(Coil, "Cewka", "Przewód nawinięty na laminat: serce wirnika i magnesu.",
+            [ElectricWire, GlassLaminate, MachineShop], [(Items.ElectricWire, 30), (Items.GlassLaminate, 5)], TimeSpan.FromMinutes(3), 40,
+            [Items.Coil]),
+        new(WiringHarness, "Wiązka kablowa", "Przewody związane w jedną wiązkę, która łączy maszynę w całość.",
+            [ElectricWire, CaseinGlue, MachineShop], [(Items.ElectricWire, 40), (Items.SyntheticRubber, 5), (Items.CaseinGlue, 5)], TimeSpan.FromMinutes(3), 40,
+            [Items.WiringHarness]),
+        new(RefractoryLining, "Okładzina ogniotrwała", "Wyłożenie z cegły szamotowej na komory spalania i plazmy.",
+            [Firebrick, PrecastConcrete, Stonemasonry], [(Items.Firebrick, 40), (Items.PrecastConcrete, 5)], TimeSpan.FromMinutes(3), 40,
+            [Items.RefractoryLining]),
+        new(CarbonComposite, "Kompozyt węglowy", "Laminat z węglem drzewnym: lżejszy od stali i równie mocny.",
+            [GlassLaminate, CaseinGlue, Petrochemistry], [(Items.GlassLaminate, 10), (Items.Charcoal, 10), (Items.CaseinGlue, 5)], TimeSpan.FromMinutes(3), 40,
+            [Items.CarbonComposite]),
+        new(SuperconductingWire, "Drut nadprzewodzący", "Drut ze stopu irydowego, który w zimnie przewodzi bez strat.",
+            [IridiumAlloy, ElectricWire, Coolant, MachineShop], [(Items.IridiumAlloy, 5), (Items.ElectricWire, 20), (Items.Coolant, 10)], TimeSpan.FromMinutes(3), 40,
+            [Items.SuperconductingWire]),
+        new(RocketFuel, "Paliwo rakietowe", "Schłodzona nafta: rakieta wynosi na orbitę satelitę na dwustu porcjach.",
+            [Coolant, Refining], [(Items.Kerosene, 15), (Items.Coolant, 5)], TimeSpan.FromMinutes(3), 40,
+            [Items.RocketFuel]),
+        new(Gearbox, "Przekładnia", "Koła zębate z brązu na łożyskach: zmienia obroty na siłę.",
+            [Bearing, Lubricant, MachineShop], [(Items.BronzeIngot, 6), (Items.Bearing, 6), (Items.Lubricant, 3)], TimeSpan.FromMinutes(4), 60,
+            [Items.Gearbox]),
+        new(Rotor, "Wirnik", "Cewki na stalowym wale: kręci się w prądnicy i turbopompie.",
+            [Coil, Bearing, MachineShop], [(Items.Coil, 6), (Items.Bearing, 6), (Items.SteelIngot, 6)], TimeSpan.FromMinutes(4), 60,
+            [Items.Rotor]),
+        new(MachineHousing, "Obudowa przemysłowa", "Szczelna, ocieplona skrzynia na prądnice i moduły sterujące.",
+            [PaintedSheet, InsulationBoard, MachineShop], [(Items.PaintedSheet, 12), (Items.InsulationBoard, 3), (Items.Gasket, 6)], TimeSpan.FromMinutes(4), 60,
+            [Items.MachineHousing]),
+        new(CombustionChamber, "Komora spalania", "Stalowa komora wyłożona szamotem, w której pali się paliwo rakietowe.",
+            [RefractoryLining, MachineShop], [(Items.RefractoryLining, 6), (Items.SteelIngot, 12), (Items.Gasket, 6)], TimeSpan.FromMinutes(4), 60,
+            [Items.CombustionChamber]),
+        new(CompositePanel, "Panel kompozytowy", "Lekka i sztywna płyta na kadłuby, zbiorniki i turbiny.",
+            [CarbonComposite, InsulationBoard, CaseinGlue, Assembly], [(Items.CarbonComposite, 9), (Items.InsulationBoard, 3), (Items.CaseinGlue, 3)], TimeSpan.FromMinutes(4), 60,
+            [Items.CompositePanel]),
+        new(SuperconductingMagnet, "Elektromagnes nadprzewodzący", "Magnes, który utrzymuje plazmę w reaktorze i satelitę na kursie.",
+            [SuperconductingWire, Coil, Coolant, MachineShop], [(Items.SuperconductingWire, 12), (Items.Coil, 6), (Items.Coolant, 6)], TimeSpan.FromMinutes(4), 60,
+            [Items.SuperconductingMagnet]),
+        new(Alternator, "Prądnica", "Wirnik w obudowie: zamienia obroty w prąd.",
+            [Rotor, MachineHousing, WiringHarness, Assembly], [(Items.Rotor, 3), (Items.MachineHousing, 3), (Items.WiringHarness, 3)], TimeSpan.FromMinutes(6), 80,
+            [Items.Alternator]),
+        new(ControlModule, "Moduł sterujący", "Płytki drukowane z wyświetlaczem w obudowie: mózg każdej maszyny.",
+            [WiringHarness, MachineHousing, Assembly], [(Items.CircuitBoard, 6), (Items.WiringHarness, 3), (Items.WindowPane, 3), (Items.MachineHousing, 3)], TimeSpan.FromMinutes(6), 80,
+            [Items.ControlModule]),
+        new(HydraulicActuator, "Siłownik hydrauliczny", "Tłok na przekładni, który podnosi i przesuwa ciężary.",
+            [Gearbox, Lubricant, MachineShop], [(Items.Gearbox, 3), (Items.Gasket, 6), (Items.Lubricant, 6), (Items.SteelIngot, 6)], TimeSpan.FromMinutes(6), 80,
+            [Items.HydraulicActuator]),
+        new(RocketNozzle, "Dysza rakietowa", "Rozszerzająca się dysza, przez którą komora spalania pcha rakietę.",
+            [CombustionChamber, Firebrick, MachineShop], [(Items.CombustionChamber, 3), (Items.SteelIngot, 6), (Items.Firebrick, 12)], TimeSpan.FromMinutes(6), 80,
+            [Items.RocketNozzle]),
+        new(PressureVessel, "Zbiornik ciśnieniowy", "Szczelny zbiornik z kompozytu i blachy na gaz pod ciśnieniem.",
+            [CompositePanel, PaintedSheet, Assembly], [(Items.CompositePanel, 6), (Items.PaintedSheet, 12), (Items.Gasket, 12)], TimeSpan.FromMinutes(6), 80,
+            [Items.PressureVessel]),
+        new(ComputingCore, "Rdzeń obliczeniowy", "Moduły sterujące połączone światłowodem: liczy za roboty i rakiety.",
+            [ControlModule, Coolant, Assembly], [(Items.ControlModule, 4), (Items.OpticalFiber, 8), (Items.SiliconWafer, 8), (Items.Coolant, 4)], TimeSpan.FromMinutes(8), 100,
+            [Items.ComputingCore]),
+        new(RobotArm, "Ramię robotyczne", "Ramię z siłownikami, które samo chwyta, przenosi i skręca.",
+            [HydraulicActuator, ControlModule, WiringHarness, Assembly], [(Items.HydraulicActuator, 4), (Items.ControlModule, 2), (Items.WiringHarness, 4)], TimeSpan.FromMinutes(8), 100,
+            [Items.RobotArm]),
+        new(Turbopump, "Turbopompa", "Pompa napędzana własną turbiną: tłoczy paliwo do silnika rakietowego.",
+            [Rotor, Gearbox, CombustionChamber, ControlModule, Assembly], [(Items.Rotor, 4), (Items.Gearbox, 2), (Items.CombustionChamber, 2), (Items.ControlModule, 2)], TimeSpan.FromMinutes(8), 100,
+            [Items.Turbopump]),
+        new(TurbineSet, "Turbozespół", "Turbina z prądnicą: zamienia ciepło reaktora w prąd.",
+            [CompositePanel, Alternator, Gearbox, Assembly], [(Items.CompositePanel, 8), (Items.Alternator, 2), (Items.Gearbox, 2)], TimeSpan.FromMinutes(8), 100,
+            [Items.TurbineSet]),
+        new(CryogenicTank, "Zbiornik kriogeniczny", "Zbiornik, który trzyma paliwo i chłodziwo w głębokim mrozie.",
+            [PressureVessel, InsulationBoard, Coolant, ControlModule, Assembly], [(Items.PressureVessel, 2), (Items.InsulationBoard, 8), (Items.Coolant, 8), (Items.ControlModule, 2)], TimeSpan.FromMinutes(8), 100,
+            [Items.CryogenicTank]),
+        new(IndustrialRobot, "Robot przemysłowy", "Dwa ramiona z własnym rdzeniem i prądnicą: pracuje bez przerwy.",
+            [RobotArm, ComputingCore, Alternator, Assembly], [(Items.RobotArm, 4), (Items.ComputingCore, 2), (Items.Alternator, 2)], TimeSpan.FromMinutes(12), 120,
+            [Items.IndustrialRobot]),
+        new(NavigationSystem, "System nawigacji", "Żyroskop laserowy z luster i rdzeń, który liczy kurs.",
+            [ComputingCore, Coil, Assembly], [(Items.ComputingCore, 2), (Items.Mirror, 8), (Items.Coil, 4), (Items.OpticalFiber, 8)], TimeSpan.FromMinutes(12), 120,
+            [Items.NavigationSystem]),
+        new(RocketEngine, "Silnik rakietowy", "Komora, dysza i turbopompy: cztery takie unoszą człon rakiety.",
+            [Turbopump, RocketNozzle, CombustionChamber, ControlModule, Assembly], [(Items.Turbopump, 4), (Items.RocketNozzle, 2), (Items.CombustionChamber, 2), (Items.ControlModule, 2)], TimeSpan.FromMinutes(12), 120,
+            [Items.RocketEngine]),
+        new(PlasmaChamber, "Komora plazmowa", "Pierścień magnesów, w którym płonie plazma reaktora fuzyjnego.",
+            [SuperconductingMagnet, RefractoryLining, PressureVessel, ComputingCore, Assembly], [(Items.SuperconductingMagnet, 16), (Items.RefractoryLining, 8), (Items.PressureVessel, 4), (Items.ComputingCore, 2)], TimeSpan.FromMinutes(12), 120,
+            [Items.PlasmaChamber]),
+        new(Avionics, "Awionika", "Nawigacja i rdzenie rakiety: prowadzą ją na orbitę.",
+            [NavigationSystem, ComputingCore, WiringHarness, RoboticHall], [(Items.NavigationSystem, 1), (Items.ComputingCore, 2), (Items.WiringHarness, 4)], TimeSpan.FromMinutes(20), 140,
+            [Items.Avionics]),
+        new(PlasmaControl, "Układ sterowania plazmą", "Rdzenie i magnesy, które co chwilę poprawiają kształt plazmy.",
+            [ComputingCore, SuperconductingMagnet, ControlModule, IndustrialRobot, RoboticHall], [(Items.ComputingCore, 2), (Items.SuperconductingMagnet, 4), (Items.ControlModule, 2), (Items.IndustrialRobot, 1)], TimeSpan.FromMinutes(20), 140,
+            [Items.PlasmaControl]),
+        new(RocketStage, "Człon rakiety", "Cztery silniki pod zbiornikami paliwa: rakieta ma dwa takie człony.",
+            [RocketEngine, CryogenicTank, Avionics, CompositePanel, RoboticHall], [(Items.RocketEngine, 4), (Items.CryogenicTank, 2), (Items.Avionics, 1), (Items.CompositePanel, 8)], TimeSpan.FromMinutes(30), 160,
+            [Items.RocketStage]),
+        new(Satellite, "Satelita", "Satelita z panelami słonecznymi: ładunek misji orbitalnej.",
+            [Avionics, CompositePanel, SuperconductingMagnet, RoboticHall], [(Items.SolarPanel, 8), (Items.Avionics, 1), (Items.CompositePanel, 4), (Items.SuperconductingMagnet, 1)], TimeSpan.FromMinutes(30), 160,
+            [Items.Satellite]),
+        new(FusionReactor, "Reaktor fuzyjny", "Dwie komory plazmowe z turbozespołami: serce elektrowni fuzyjnej.",
+            [PlasmaChamber, PlasmaControl, TurbineSet, CryogenicTank, RoboticHall], [(Items.PlasmaChamber, 2), (Items.PlasmaControl, 1), (Items.TurbineSet, 2), (Items.CryogenicTank, 2)], TimeSpan.FromMinutes(30), 160,
+            [Items.FusionReactor]),
+        new(LaunchRocket, "Rakieta nośna", "Dwa człony pod owiewką z kompozytu: wynosi satelitę z kosmodromu spółki.",
+            [RocketStage, Avionics, CompositePanel, RoboticHall], [(Items.RocketStage, 2), (Items.Avionics, 1), (Items.CompositePanel, 6)], TimeSpan.FromMinutes(45), 180,
+            [Items.LaunchRocket]),
+        new(MachineShop, "Warsztat mechaniczny", "Na prąd (40 kW): robi przewody, łożyska, cewki, przekładnie, wirniki, siłowniki i inne części maszyn.",
+            [Assembly], [(Items.SteelIngot, 6), (Items.ElectricMotor, 2), (Items.CopperIngot, 10)], TimeSpan.FromMinutes(2), 60,
+            [Items.MachineShop]),
+        new(RoboticHall, "Zrobotyzowana hala", "Na 3 × 3 polach, na prąd (300 kW): roboty składają awionikę, człony rakiet, satelity i reaktory fuzyjne.",
+            [IndustrialRobot, ComputingCore, PrecastConcrete], [(Items.IndustrialRobot, 3), (Items.ExpressBelt, 10), (Items.ComputingCore, 1), (Items.PrecastConcrete, 20)], TimeSpan.FromMinutes(20), 180,
+            [Items.RoboticHall]),
+        new(OxygenConverter, "Konwerter tlenowy", "Na 3 × 3 polach, na prąd (100 kW): przedmuchuje żelazo tlenem i robi 2 sztabki stali z 3 sztabek żelaza.",
+            [RefractoryLining, HydraulicActuator, ControlModule], [(Items.RefractoryLining, 8), (Items.HydraulicActuator, 2), (Items.ControlModule, 1), (Items.SteelIngot, 20)], TimeSpan.FromMinutes(8), 140,
+            [Items.OxygenConverter]),
+        new(RollingMill, "Walcownia", "Na 3 × 3 polach, na prąd (120 kW): walcuje blachę i ciągnie przewody dwa razy wydajniej niż warsztat.",
+            [Gearbox, Alternator, ControlModule, PrecastConcrete], [(Items.Gearbox, 4), (Items.Alternator, 2), (Items.ControlModule, 1), (Items.PrecastConcrete, 20)], TimeSpan.FromMinutes(8), 140,
+            [Items.RollingMill]),
+        new(ControlCenter, "Centrum sterowania", "Na prąd (60 kW): wszystkie maszyny przetwórcze na działce pracują o 20% szybciej. Jedno na działkę.",
+            [ComputingCore, ControlModule, MachineHousing], [(Items.ComputingCore, 4), (Items.ControlModule, 4), (Items.OpticalFiber, 20), (Items.MachineHousing, 1)], TimeSpan.FromMinutes(12), 160,
+            [Items.ControlCenter]),
+        new(ContinuousCaster, "Odlewnia ciągła", "Na 3 × 3 polach, na prąd (150 kW): odlewa brąz i stop irydowy wydajniej niż odlewnia i piec łukowy.",
+            [IndustrialRobot, RefractoryLining, Coolant], [(Items.IndustrialRobot, 1), (Items.RefractoryLining, 10), (Items.Coolant, 20), (Items.SteelIngot, 20)], TimeSpan.FromMinutes(20), 180,
+            [Items.ContinuousCaster]),
+        new(AutomatedWarehouse, "Magazyn zautomatyzowany", "Na 3 × 3 polach: 120 miejsc po 500 sztuk, roboty same układają wszystko, co przywiozą taśmy.",
+            [IndustrialRobot, ComputingCore, PrecastConcrete], [(Items.IndustrialRobot, 2), (Items.ComputingCore, 2), (Items.ExpressBelt, 20), (Items.PrecastConcrete, 30)], TimeSpan.FromMinutes(20), 180,
+            [Items.AutomatedWarehouse]),
+        new(SteelCombine, "Kombinat hutniczy", "Na 5 × 5 polach, na prąd (600 kW): robi wszystko, co konwerter, walcownia i odlewnia ciągła, trzy razy szybciej.",
+            [OxygenConverter, RollingMill, ContinuousCaster, ControlCenter], [(Items.OxygenConverter, 1), (Items.RollingMill, 1), (Items.ContinuousCaster, 1), (Items.ControlCenter, 1)], TimeSpan.FromMinutes(30), 200,
+            [Items.SteelCombine]),
+        new(Megafactory, "Megafabryka", "Na 5 × 5 polach, na prąd (1 MW): robi wszystko, co warsztat mechaniczny, hala montażowa i zrobotyzowana hala, trzy razy szybciej.",
+            [RoboticHall, ControlCenter, AutomatedWarehouse, PrecastConcrete], [(Items.RoboticHall, 1), (Items.ControlCenter, 1), (Items.AutomatedWarehouse, 1), (Items.PrecastConcrete, 50)], TimeSpan.FromMinutes(30), 200,
+            [Items.Megafactory]),
+        new(FusionPlant, "Elektrownia fuzyjna", "Na 3 × 3 polach: daje 5 MW, a za paliwo zużywa tylko płyn chłodniczy, jedną porcję na minutę pełnej mocy.",
+            [FusionReactor, PrecastConcrete, Alternator, IndustrialRobot], [(Items.FusionReactor, 1), (Items.PrecastConcrete, 25), (Items.Alternator, 2), (Items.IndustrialRobot, 1)], TimeSpan.FromMinutes(45), 220,
+            [Items.FusionPlant]),
+        new(Megaprojects, "Wielkie budowy", "Tylko dla spółek: członkowie razem stawiają platformę wiertniczą, port, pole lustrzane, kolej międzykontynentalną, a na końcu kosmodrom, misję i stację orbitalną.",
             [BuildingMaterials, Headquarters], [(Items.Concrete, 500), (Items.SteelIngot, 500), (Items.Blueprint, 10)], TimeSpan.FromMinutes(30), 300,
             [], CompanyOnly: true),
         new(CorporateFinance, "Finanse korporacyjne", "Tylko dla spółek: spółka wchodzi na giełdę, a gracze spoza niej kupują jej akcje.",
@@ -348,6 +572,10 @@ public sealed record CompanyResearch(
 public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterProgress progress, ICompanies companies, TimeProvider time)
     : ITechnologies, ICompanyTechnologies
 {
+    /// <summary>How long the research takes the player: the orbital station of their company shortens it.</summary>
+    private async Task<TimeSpan> DurationAsync(Guid player, Technology technology, CancellationToken cancellationToken) =>
+        technology.Time * CompanyPerks.ResearchFactor(await companies.ProjectsAsync(player, cancellationToken));
+
     public Task<ResearchState> StateAsync(Guid owner, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
@@ -400,7 +628,7 @@ public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterP
                 insert.Parameters.AddWithValue("owner", owner);
                 insert.Parameters.AddWithValue("technology", technology.Id);
                 insert.Parameters.AddWithValue("start", now);
-                insert.Parameters.AddWithValue("end", now + technology.Time);
+                insert.Parameters.AddWithValue("end", now + await DurationAsync(owner, technology, cancellationToken));
                 await insert.ExecuteNonQueryAsync(cancellationToken);
             }
 
@@ -666,7 +894,7 @@ public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterP
                 start.Parameters.AddWithValue("company", membership.Company);
                 start.Parameters.AddWithValue("technology", id);
                 start.Parameters.AddWithValue("start", now);
-                start.Parameters.AddWithValue("end", now + technology.Time);
+                start.Parameters.AddWithValue("end", now + await DurationAsync(owner, technology, cancellationToken));
                 await start.ExecuteNonQueryAsync(cancellationToken);
             }
 

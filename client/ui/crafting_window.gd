@@ -142,8 +142,8 @@ func _init() -> void:
 	side.add_child(_queue)
 	side.add_child(UI.label("Wytwarzanie trwa dalej, gdy odejdziesz. Stół i kowadło mają wspólną kolejkę; gotowe przedmioty trafiają do ekwipunku.",
 			UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
-	if not UI.touch():
-		side.add_child(UI.label("Przytrzymaj Ctrl i najedź myszą na przedmiot, aby zobaczyć jego opis.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	side.add_child(UI.label("Przytrzymaj palec na przedmiocie, aby zobaczyć jego opis i ceny na rynku." if UI.touch()
+			else "Przytrzymaj Ctrl i najedź myszą na przedmiot, aby zobaczyć jego opis i ceny na rynku.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	_pick_up_button = UI.button("Schowaj stół do ekwipunku", func() -> void: pick_up_requested.emit(workbench))
 	_pick_up_button.visible = false
 	side.add_child(_pick_up_button)

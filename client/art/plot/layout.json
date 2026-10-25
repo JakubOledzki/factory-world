@@ -787,5 +787,47 @@
  "tailor": {
   "anchorX": 64,
   "anchorY": 88
+ },
+ "machine_shop": {
+  "anchorX": 64,
+  "anchorY": 86
+ },
+ "robotic_hall": {
+  "anchorX": 128,
+  "anchorY": 153
+ },
+ "oxygen_converter": {
+  "anchorX": 128,
+  "anchorY": 201
+ },
+ "rolling_mill": {
+  "anchorX": 128,
+  "anchorY": 132
+ },
+ "control_center": {
+  "anchorX": 64,
+  "anchorY": 98
+ },
+ "continuous_caster": {
+  "anchorX": 128,
+  "anchorY": 180
+ },
+ "automated_warehouse": {
+  "anchorX": 128,
+  "anchorY": 180
+ },
+ "steel_combine": {
+  "anchorX": 192,
+  "anchorY": 283
+ },
+ "megafactory": {
+  "anchorX": 192,
+  "anchorY": 233
+ },
+ "fusion_plant": {
+  "anchorX": 128,
+  "anchorY": 155,
+  "wireX": 189,
+  "wireY": 168
  }
 }

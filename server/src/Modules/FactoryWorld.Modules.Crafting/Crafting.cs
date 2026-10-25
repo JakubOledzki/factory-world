@@ -173,6 +173,17 @@ public static class Workshop
         new(Items.RubberBoots, 1, TimeSpan.FromSeconds(40), [(Items.SyntheticRubber, 5)], 15, Items.Tailor),
         new(Items.WorkBoots, 1, TimeSpan.FromSeconds(50), [(Items.Wool, 3), (Items.SyntheticRubber, 3), (Items.SteelIngot, 1)], 18, Items.Tailor),
         new(Items.DressShoes, 1, TimeSpan.FromSeconds(50), [(Items.SyntheticRubber, 2), (Items.Wool, 2), (Items.Wax, 2)], 15, Items.Tailor),
+        // The crafting tree's buildings: the machine shop and the robotic hall, the steelworks, the megafactory and the fusion plant.
+        new(Items.MachineShop, 1, TimeSpan.FromSeconds(60), [(Items.SteelIngot, 6), (Items.ElectricMotor, 2), (Items.CopperIngot, 10)], 6),
+        new(Items.RoboticHall, 1, TimeSpan.FromSeconds(300), [(Items.IndustrialRobot, 3), (Items.ExpressBelt, 10), (Items.ComputingCore, 1), (Items.PrecastConcrete, 20)], 90),
+        new(Items.OxygenConverter, 1, TimeSpan.FromSeconds(120), [(Items.RefractoryLining, 8), (Items.HydraulicActuator, 2), (Items.ControlModule, 1), (Items.SteelIngot, 20)], 36),
+        new(Items.RollingMill, 1, TimeSpan.FromSeconds(120), [(Items.Gearbox, 4), (Items.Alternator, 2), (Items.ControlModule, 1), (Items.PrecastConcrete, 20)], 36),
+        new(Items.ControlCenter, 1, TimeSpan.FromSeconds(120), [(Items.ComputingCore, 4), (Items.ControlModule, 4), (Items.OpticalFiber, 20), (Items.MachineHousing, 1)], 60),
+        new(Items.ContinuousCaster, 1, TimeSpan.FromSeconds(300), [(Items.IndustrialRobot, 1), (Items.RefractoryLining, 10), (Items.Coolant, 20), (Items.SteelIngot, 20)], 90),
+        new(Items.AutomatedWarehouse, 1, TimeSpan.FromSeconds(300), [(Items.IndustrialRobot, 2), (Items.ComputingCore, 2), (Items.ExpressBelt, 20), (Items.PrecastConcrete, 30)], 90),
+        new(Items.SteelCombine, 1, TimeSpan.FromSeconds(300), [(Items.OxygenConverter, 2), (Items.RollingMill, 2), (Items.ContinuousCaster, 1), (Items.ControlCenter, 1)], 150),
+        new(Items.Megafactory, 1, TimeSpan.FromSeconds(300), [(Items.RoboticHall, 2), (Items.ControlCenter, 1), (Items.AutomatedWarehouse, 1), (Items.PrecastConcrete, 100)], 150),
+        new(Items.FusionPlant, 1, TimeSpan.FromSeconds(300), [(Items.FusionReactor, 1), (Items.PrecastConcrete, 50), (Items.Alternator, 4), (Items.IndustrialRobot, 2)], 240),
     ];
 
     public static Recipe? Find(string id) => Recipes.FirstOrDefault(r => r.Id == id);

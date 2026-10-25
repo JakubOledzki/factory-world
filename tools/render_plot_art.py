@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [logistics] [<sprite>...] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [tree] [logistics] [<sprite>...] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -4211,6 +4211,675 @@ def render_power(layout: dict, only=()):
         ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"item_power_{name}.png")
 
 
+# --- Crafting tree ------------------------------------------------------------------------------------
+
+def tree_mats():
+    """The paint of heavy industry: clean steel and white cladding, refractory brick, hazard yellow and the glow of molten metal."""
+    return {
+        "steel": ra.rusty_metal("tr_steel", (0.32, 0.33, 0.35), rust=0.06),
+        "dark": ra.rusty_metal("tr_dark", (0.05, 0.055, 0.06), rust=0.12),
+        "rusty": ra.rusty_metal("tr_rusty", (0.2, 0.17, 0.15), rust=0.45),
+        "white": ra.plain("tr_white", (0.7, 0.71, 0.7), 0.4, 0.1, variation=0.06, grime=0.35),
+        "grey": ra.plain("tr_grey", (0.35, 0.37, 0.4), 0.5, 0.3, variation=0.08, grime=0.35),
+        "blue": ra.plain("tr_blue", (0.06, 0.16, 0.38), 0.45, 0.2, variation=0.08, grime=0.3),
+        "concrete": ra.plain("tr_concrete", (0.32, 0.32, 0.31), 0.9, variation=0.15),
+        "firebrick": ra.plain("tr_firebrick", (0.55, 0.38, 0.22), 0.9, variation=0.3, scale=14, bump=0.4),
+        "yellow": ra.plain("tr_yellow", (0.75, 0.52, 0.04), 0.45, 0.1, variation=0.08, grime=0.3),
+        "orange": ra.plain("tr_orange", (0.8, 0.25, 0.03), 0.4, 0.1, variation=0.08, grime=0.2),
+        "glass": ra.plain("tr_glass", (0.05, 0.1, 0.14), 0.05, 0.3, variation=0.05, grime=0.1),
+        "copper": ra.plain("tr_copper", (0.65, 0.28, 0.12), 0.35, 0.9, variation=0.15),
+        "window": ra.emission("tr_window", (1.0, 0.72, 0.38), 3.0),
+        "screen": ra.emission("tr_screen", (0.3, 0.8, 1.0), 4.0),
+        "molten": ra.emission("tr_molten", (1.0, 0.45, 0.08), 6.0),
+        "plasma": ra.emission("tr_plasma", (0.75, 0.35, 1.0), 8.0),
+    }
+
+
+def robot_arm(prefix, at, m, scale=1.0, turn=0.0):
+    """An orange industrial robot: a round base, a raised upper arm, a forearm reaching forward and a gripper."""
+    x, y, z = at
+    s = scale
+    ra.cylinder(f"{prefix}_base", 0.22 * s, 0.14 * s, (x, y, z + 0.07 * s), m["dark"], verts=20)
+    ra.cylinder(f"{prefix}_turret", 0.15 * s, 0.2 * s, (x, y, z + 0.24 * s), m["orange"], verts=16)
+    ra.box(f"{prefix}_upper", (0.12 * s, 0.12 * s, 0.6 * s), (x + 0.12 * s * math.cos(turn), y + 0.12 * s * math.sin(turn), z + 0.6 * s),
+           m["orange"], bevel=0.02 * s, rotation=(0, math.radians(20), turn))
+    ra.box(f"{prefix}_fore", (0.5 * s, 0.1 * s, 0.1 * s), (x + 0.45 * s * math.cos(turn), y + 0.45 * s * math.sin(turn), z + 0.88 * s),
+           m["orange"], bevel=0.02 * s, rotation=(0, math.radians(-25), turn))
+    ra.box(f"{prefix}_grip", (0.08 * s, 0.12 * s, 0.1 * s), (x + 0.7 * s * math.cos(turn), y + 0.7 * s * math.sin(turn), z + 0.72 * s),
+           m["dark"], rotation=(0, 0, turn))
+
+
+def sawtooth(prefix, x0, x1, y0, y1, z, teeth, rise, m, mat, lit=0.5):
+    """A saw-tooth roof over a hall from x0 to x1 and y0 to y1, its glazed faces to the north."""
+    width = (x1 - x0) / teeth
+    for k in range(teeth):
+        x = x0 + k * width
+        ra.mesh_from(f"{prefix}_tooth", [(x, y0, z), (x + width, y0, z), (x + width, y1, z), (x, y1, z), (x + width, y0, z + rise), (x + width, y1, z + rise)],
+                     [(0, 1, 4), (3, 5, 2), (0, 4, 5, 3), (1, 2, 5, 4), (0, 3, 2, 1)], mat)
+        ra.box(f"{prefix}_skylight", (0.02, y1 - y0 - 0.1, rise * 0.8), (x + width - 0.02, (y0 + y1) / 2, z + rise * 0.5),
+               m["window"] if random.random() < lit else m["glass"])
+
+
+def build_machine_shop():
+    """A machine shop on one tile: a steel shed with a roller door, a lathe and a pillar drill out front, an extractor on the roof."""
+    m = tree_mats()
+    ra.box("ms_pad", (1.9, 1.8, 0.05), (0, 0, 0.025), m["concrete"])
+    ra.box("ms_shed", (1.5, 1.0, 1.0), (0, 0.25, 0.55), ra.corrugated("ms_cladding", (0.3, 0.34, 0.38), 0.15), bevel=0.02)
+    ra.mesh_from("ms_roof", [(-0.8, -0.3, 1.05), (0.8, -0.3, 1.05), (0.8, 0.8, 1.05), (-0.8, 0.8, 1.05), (-0.8, 0.25, 1.3), (0.8, 0.25, 1.3)],
+                 [(0, 1, 5, 4), (3, 4, 5, 2), (0, 4, 3), (1, 2, 5)], m["dark"])
+    ra.box("ms_door", (0.7, 0.03, 0.75), (-0.3, -0.26, 0.42), ra.corrugated("ms_roller", (0.55, 0.42, 0.08), 0.1))
+    ra.box("ms_window", (0.35, 0.02, 0.25), (0.45, -0.26, 0.65), m["window"])
+    # The lathe: a bed on two legs, the headstock and a chuck.
+    ra.box("ms_lathe_bed", (0.7, 0.16, 0.08), (-0.2, -0.6, 0.42), m["blue"])
+    for x in (-0.5, 0.1):
+        ra.box("ms_lathe_leg", (0.1, 0.14, 0.38), (x, -0.6, 0.2), m["blue"])
+    ra.box("ms_headstock", (0.18, 0.18, 0.18), (-0.48, -0.6, 0.55), m["blue"], bevel=0.02)
+    ra.cylinder("ms_chuck", 0.07, 0.06, (-0.36, -0.6, 0.55), m["steel"], rotation=(0, math.radians(90), 0), verts=14)
+    ra.cylinder("ms_work", 0.04, 0.35, (-0.17, -0.6, 0.55), m["copper"], rotation=(0, math.radians(90), 0), verts=12)
+    # The pillar drill.
+    ra.cylinder("ms_pillar", 0.03, 0.8, (0.5, -0.6, 0.4), m["steel"], verts=10)
+    ra.box("ms_drill_head", (0.16, 0.22, 0.16), (0.5, -0.66, 0.75), m["blue"], bevel=0.02)
+    ra.box("ms_drill_table", (0.2, 0.2, 0.03), (0.5, -0.66, 0.4), m["steel"])
+    ra.cylinder("ms_extractor", 0.1, 0.3, (0.4, 0.5, 1.35), m["steel"], verts=14)
+    ra.cylinder("ms_extractor_cap", 0.15, 0.06, (0.4, 0.5, 1.52), m["steel"], verts=14)
+
+
+def build_robotic_hall():
+    """A robotic hall on 3 × 3 tiles: a white, clean shed under saw-tooth glazing, robot arms at work on the open bay in front."""
+    m = tree_mats()
+    ra.box("rh_pad", (5.8, 5.8, 0.06), (0, 0, 0.03), m["concrete"])
+    ra.box("rh_hall", (5.2, 3.6, 2.0), (0, 0.9, 1.06), m["white"], bevel=0.03)
+    sawtooth("rh", -2.6, 2.6, -0.9, 2.7, 2.06, 5, 0.6, m, m["grey"], lit=0.6)
+    ra.box("rh_band", (5.22, 0.04, 0.3), (0, -0.91, 1.7), m["blue"])
+    ra.box("rh_glass", (3.6, 0.03, 1.1), (0.4, -0.91, 0.75), m["glass"])
+    for k in range(4):
+        ra.box("rh_lit", (0.7, 0.02, 0.8), (-0.9 + k * 0.9, -0.93, 0.75), m["window"] if k % 2 == 0 else m["glass"])
+    # The bay: a line of three arms over a moving belt, a rocket stage on the jig.
+    ra.box("rh_belt", (4.6, 0.5, 0.25), (0, -1.9, 0.18), m["dark"])
+    for k in range(3):
+        robot_arm(f"rh_arm{k}", (-1.6 + k * 1.6, -1.4, 0.06), m, scale=1.1, turn=math.radians(-90))
+    ra.cylinder("rh_stage", 0.3, 1.6, (0.8, -1.9, 0.6), m["white"], rotation=(0, math.radians(90), 0), verts=20)
+    ra.cylinder("rh_stage_band", 0.31, 0.12, (0.4, -1.9, 0.6), m["dark"], rotation=(0, math.radians(90), 0), verts=20)
+    for x in (-2.75, 2.75):
+        for y in (-2.75, -1.0):
+            ra.box("rh_post", (0.08, 0.08, 1.0), (x, y, 0.5), m["yellow"])
+    ra.cylinder("rh_vent", 0.2, 0.5, (-2.0, 2.2, 2.9), m["steel"], verts=16)
+
+
+def build_oxygen_converter():
+    """An oxygen converter on 3 × 3 tiles: a pear-shaped steel vessel hung on trunnions between two piers, its mouth glowing,
+    the oxygen lance coming down from a tower over it and a ladle car waiting on rails."""
+    m = tree_mats()
+    ra.box("oc_pad", (5.8, 5.8, 0.06), (0, 0, 0.03), m["concrete"])
+    for x in (-1.3, 1.3):
+        ra.box("oc_pier", (0.5, 1.2, 1.9), (x, 0.4, 0.98), m["firebrick"], bevel=0.03)
+        ra.cylinder("oc_trunnion", 0.18, 0.5, (x * 0.85, 0.4, 1.7), m["dark"], rotation=(0, math.radians(90), 0), verts=16)
+    ra.cylinder("oc_belly", 0.95, 1.4, (0, 0.4, 1.6), m["rusty"], verts=28)
+    ra.cylinder("oc_bottom", 0.95, 0.5, (0, 0.4, 0.65), m["rusty"], verts=28, radius2=0.95)
+    ra.cylinder("oc_cone", 0.95, 0.7, (0, 0.4, 2.65), m["rusty"], verts=28, radius2=0.45)
+    ra.cylinder("oc_ring", 1.0, 0.12, (0, 0.4, 1.7), m["dark"], verts=28)
+    ra.cylinder("oc_mouth", 0.42, 0.06, (0, 0.4, 3.01), m["molten"], verts=20)
+    # The lance tower and its hood.
+    ra.box("oc_tower", (0.5, 0.5, 4.4), (0, 2.3, 2.2), m["steel"])
+    ra.box("oc_hood", (1.2, 1.3, 0.5), (0, 1.0, 3.6), m["steel"], bevel=0.04)
+    ra.cylinder("oc_lance", 0.06, 0.8, (0, 0.6, 3.1), m["copper"], verts=10)
+    ra.cylinder("oc_flue", 0.3, 5.2, (1.2, 2.4, 2.6), m["steel"], verts=16)
+    ra.box("oc_flue_duct", (0.9, 0.35, 0.35), (0.7, 2.0, 3.8), m["steel"])
+    ra.cylinder("oc_oxygen", 0.35, 1.6, (-2.2, 2.0, 0.85), m["blue"], verts=20)
+    ra.sphere("oc_oxygen_top", 0.35, (-2.2, 2.0, 1.65), m["blue"], segments=16)
+    # The ladle car in front, glowing.
+    for y in (-1.95, -1.45):
+        ra.box("oc_rail", (5.4, 0.06, 0.05), (0, y, 0.09), m["steel"])
+    ra.box("oc_car", (1.0, 0.8, 0.25), (-0.6, -1.7, 0.25), m["dark"])
+    ra.cylinder("oc_ladle", 0.42, 0.55, (-0.6, -1.7, 0.65), m["firebrick"], verts=20, radius2=0.5)
+    ra.cylinder("oc_ladle_top", 0.45, 0.04, (-0.6, -1.7, 0.93), m["molten"], verts=20)
+
+
+def build_rolling_mill():
+    """A rolling mill on 3 × 3 tiles: a long, low hall with the roll stands run out in a row before it,
+    a glowing slab on the roller table and coils of sheet stacked at the end."""
+    m = tree_mats()
+    ra.box("rm_pad", (5.8, 5.8, 0.06), (0, 0, 0.03), m["concrete"])
+    ra.box("rm_hall", (5.4, 2.8, 1.8), (0, 1.3, 0.96), ra.corrugated("rm_cladding", (0.22, 0.3, 0.36), 0.2), bevel=0.02)
+    ra.mesh_from("rm_roof", [(-2.75, -0.15, 1.86), (2.75, -0.15, 1.86), (2.75, 2.75, 1.86), (-2.75, 2.75, 1.86), (-2.75, 1.3, 2.4), (2.75, 1.3, 2.4)],
+                 [(0, 1, 5, 4), (3, 4, 5, 2), (0, 4, 3), (1, 2, 5)], m["dark"])
+    for x, lit in ((-1.8, 0), (-0.6, 1), (0.6, 0), (1.8, 1)):
+        ra.box("rm_window", (0.8, 0.02, 0.35), (x, -0.06, 1.4), m["window"] if lit else m["glass"])
+    # The roller table and four roll stands.
+    ra.box("rm_table", (5.2, 0.7, 0.3), (0, -1.3, 0.2), m["dark"])
+    for k in range(12):
+        ra.cylinder("rm_roller", 0.06, 0.6, (-2.4 + k * 0.44, -1.3, 0.38), m["steel"], rotation=(math.radians(90), 0, 0), verts=10)
+    for k in range(4):
+        x = -1.5 + k * 1.0
+        for y in (-1.75, -0.85):
+            ra.box("rm_housing", (0.35, 0.18, 1.2), (x, y, 0.65), m["blue"], bevel=0.02)
+        ra.cylinder("rm_roll", 0.14, 0.75, (x, -1.3, 0.62), m["steel"], rotation=(math.radians(90), 0, 0), verts=16)
+        ra.box("rm_cap", (0.4, 1.1, 0.15), (x, -1.3, 1.3), m["yellow"])
+    ra.box("rm_slab", (1.4, 0.45, 0.06), (-2.0, -1.3, 0.47), m["molten"])
+    for k in range(3):
+        ra.cylinder("rm_coil", 0.3, 0.4, (1.3 + k * 0.65, -2.35, 0.33), m["steel"], rotation=(math.radians(90), 0, 0), verts=22)
+
+
+def build_control_center():
+    """A control center on one tile: a low block with a glass front full of lit screens, a radar dish and aerials on the roof."""
+    m = tree_mats()
+    ra.box("cc_pad", (1.8, 1.7, 0.05), (0, 0, 0.025), m["concrete"])
+    ra.box("cc_block", (1.5, 1.2, 0.9), (0, 0.15, 0.5), m["white"], bevel=0.02)
+    ra.box("cc_front", (1.3, 0.03, 0.55), (0, -0.46, 0.5), m["glass"])
+    for k in range(4):
+        ra.box("cc_screen", (0.22, 0.02, 0.16), (-0.45 + k * 0.3, -0.48, 0.58), m["screen"] if k % 3 else m["window"])
+    ra.box("cc_band", (1.52, 0.04, 0.12), (0, -0.46, 0.88), m["blue"])
+    ra.box("cc_roof", (1.55, 1.25, 0.06), (0, 0.15, 0.98), m["grey"])
+    ra.cylinder("cc_dish_post", 0.04, 0.4, (0.35, 0.35, 1.2), m["steel"], verts=10)
+    ra.sphere("cc_dish", 0.32, (0.35, 0.35, 1.45), m["white"], scale=(1, 1, 0.35), segments=20, keep=lambda co: co.z < 0.05)
+    for x in (-0.55, -0.35):
+        ra.cylinder("cc_aerial", 0.012, 0.7, (x, 0.5, 1.35), m["steel"], verts=6)
+    ra.sphere("cc_beacon", 0.04, (-0.55, 0.5, 1.72), ra.emission("cc_red", (1.0, 0.1, 0.05), 5.0), segments=8)
+
+
+def build_continuous_caster():
+    """A continuous caster on 3 × 3 tiles: a tower holding a ladle over the tundish, the curved strand bending
+    out of it under cooling sprays and glowing slabs cut off at the run-out table."""
+    m = tree_mats()
+    ra.box("cs_pad", (5.8, 5.8, 0.06), (0, 0, 0.03), m["concrete"])
+    for x in (-1.2, 0.4):
+        for y in (0.6, 2.0):
+            ra.box("cs_column", (0.25, 0.25, 3.6), (x, y, 1.8), m["steel"])
+    ra.box("cs_deck", (2.1, 1.9, 0.15), (-0.4, 1.3, 3.0), m["dark"])
+    ra.cylinder("cs_ladle", 0.6, 0.9, (-0.4, 1.3, 3.55), m["firebrick"], verts=24, radius2=0.7)
+    ra.cylinder("cs_ladle_top", 0.68, 0.05, (-0.4, 1.3, 4.0), m["molten"], verts=24)
+    ra.box("cs_tundish", (1.4, 0.5, 0.35), (-0.4, 1.3, 2.7), m["firebrick"])
+    # The strand: a quarter circle from under the tundish to the floor in front.
+    for k in range(10):
+        a = math.radians(9 * k + 4)
+        r = 2.3
+        ra.box("cs_strand", (0.5, 0.4, 0.22), (-0.4, 1.3 - r * (1 - math.cos(a)), 2.4 - r * math.sin(a)),
+               m["molten"] if k % 3 else m["dark"], rotation=(-a, 0, 0))
+    for k in range(6):
+        ra.cylinder("cs_spray", 0.05, 0.6, (-0.4, 0.8 - k * 0.3, 2.2 - k * 0.35), m["blue"], rotation=(0, math.radians(90), 0), verts=8)
+    ra.box("cs_runout", (4.6, 0.8, 0.3), (0.6, -1.6, 0.2), m["dark"])
+    for k in range(3):
+        ra.box("cs_slab", (0.9, 0.5, 0.15), (0.6 + k * 1.1, -1.6, 0.43), m["molten"] if k == 0 else m["rusty"])
+    ra.box("cs_pulpit", (1.0, 0.8, 1.0), (2.0, 1.6, 0.55), m["white"], bevel=0.02)
+    ra.box("cs_pulpit_glass", (0.8, 0.02, 0.35), (2.0, 1.19, 0.75), m["window"])
+    ra.cylinder("cs_steam", 0.2, 1.2, (1.8, 2.4, 1.6), m["steel"], verts=14)
+
+
+def build_automated_warehouse():
+    """An automated warehouse on 3 × 3 tiles: a tall, ribbed block of blue cladding, a loading dock with belts running in,
+    a yellow stacker crane over its open bay and a lit control window."""
+    m = tree_mats()
+    ra.box("aw_pad", (5.8, 5.8, 0.06), (0, 0, 0.03), m["concrete"])
+    ra.box("aw_block", (5.0, 4.0, 3.4), (0, 0.6, 1.76), ra.corrugated("aw_cladding", (0.08, 0.2, 0.42), 0.08), bevel=0.03)
+    for k in range(9):
+        ra.box("aw_rib", (0.06, 0.04, 3.4), (-2.4 + k * 0.6, -1.42, 1.76), m["grey"])
+    ra.box("aw_roof", (5.05, 4.05, 0.1), (0, 0.6, 3.5), m["grey"])
+    ra.box("aw_band", (5.02, 0.04, 0.35), (0, -1.43, 3.0), m["white"])
+    ra.box("aw_sign", (1.8, 0.02, 0.18), (0, -1.46, 3.0), m["screen"])
+    for x in (-1.6, 0.0, 1.6):
+        ra.box("aw_door", (0.9, 0.04, 1.0), (x, -1.43, 0.56), ra.corrugated("aw_roller", (0.55, 0.42, 0.08), 0.1))
+        ra.box("aw_belt", (0.5, 1.2, 0.2), (x, -2.1, 0.2), m["dark"])
+        ra.box("aw_crate", (0.32, 0.32, 0.25), (x, -2.3, 0.43), m["yellow"] if x else m["orange"], bevel=0.02)
+    # The stacker crane on the roof rails.
+    for x in (-2.2, 2.2):
+        ra.box("aw_rail", (0.08, 4.0, 0.08), (x, 0.6, 3.6), m["dark"])
+    ra.box("aw_crane", (4.6, 0.25, 0.25), (0, 0.2, 3.75), m["yellow"])
+    ra.box("aw_trolley", (0.4, 0.4, 0.3), (0.6, 0.2, 3.6), m["dark"])
+
+
+def build_steel_combine():
+    """A steel combine on 5 × 5 tiles: two converters in a tall steel house, a rolling hall and a caster tower,
+    chimneys and a glowing ladle on the rails between them, all on one heavy concrete apron."""
+    m = tree_mats()
+    ra.box("sc_pad", (9.8, 9.8, 0.08), (0, 0, 0.04), m["concrete"])
+    # The converter house at the back left, tall and rusty, with two glowing mouths.
+    ra.box("sc_house", (3.6, 3.0, 5.0), (-2.6, 2.6, 2.55), ra.corrugated("sc_house_cladding", (0.24, 0.2, 0.18), 0.45), bevel=0.03)
+    ra.mesh_from("sc_house_roof", [(-4.45, 1.05, 5.05), (-0.75, 1.05, 5.05), (-0.75, 4.15, 5.05), (-4.45, 4.15, 5.05), (-4.45, 2.6, 5.8), (-0.75, 2.6, 5.8)],
+                 [(0, 1, 5, 4), (3, 4, 5, 2), (0, 4, 3), (1, 2, 5)], m["dark"])
+    for x in (-3.4, -1.8):
+        ra.box("sc_mouth", (0.9, 0.03, 0.9), (x, 1.08, 1.0), m["molten"])
+    for x in (-3.6, -2.6, -1.6):
+        ra.box("sc_window", (0.5, 0.02, 0.4), (x, 1.08, 3.6), m["window"])
+    for k, x in enumerate((-3.8, -1.4)):
+        ra.cylinder("sc_chimney", 0.3, 3.4, (x, 3.6, 6.6), m["firebrick"] if k == 0 else m["steel"], verts=18)
+        ra.cylinder("sc_chimney_band", 0.33, 0.25, (x, 3.6, 7.9), m["white"], verts=18)
+    # The caster tower at the back right with its ladle.
+    for x in (1.2, 2.8):
+        for y in (2.0, 3.6):
+            ra.box("sc_column", (0.3, 0.3, 4.2), (x, y, 2.1), m["steel"])
+    ra.box("sc_deck", (2.0, 2.0, 0.2), (2.0, 2.8, 3.6), m["dark"])
+    ra.cylinder("sc_ladle", 0.7, 1.0, (2.0, 2.8, 4.2), m["firebrick"], verts=24, radius2=0.8)
+    ra.cylinder("sc_ladle_top", 0.78, 0.05, (2.0, 2.8, 4.71), m["molten"], verts=24)
+    ra.cylinder("sc_tank", 0.55, 2.4, (4.0, 3.6, 1.25), m["blue"], verts=20)
+    ra.sphere("sc_tank_top", 0.55, (4.0, 3.6, 2.45), m["blue"], segments=16)
+    # The rolling hall along the front, its roll stands out on the table before it.
+    ra.box("sc_hall", (8.6, 2.2, 2.2), (0, -0.4, 1.16), ra.corrugated("sc_hall_cladding", (0.2, 0.28, 0.34), 0.2), bevel=0.02)
+    sawtooth("sc_hall", -4.3, 4.3, -1.5, 0.7, 2.26, 8, 0.55, m, m["grey"], lit=0.5)
+    ra.box("sc_band", (8.62, 0.04, 0.3), (0, -1.52, 1.9), m["yellow"])
+    ra.box("sc_table", (9.0, 0.8, 0.3), (0, -2.6, 0.22), m["dark"])
+    for k in range(5):
+        x = -3.0 + k * 1.5
+        for y in (-3.1, -2.1):
+            ra.box("sc_stand", (0.4, 0.2, 1.3), (x, y, 0.72), m["blue"], bevel=0.02)
+        ra.cylinder("sc_roll", 0.16, 0.85, (x, -2.6, 0.66), m["steel"], rotation=(math.radians(90), 0, 0), verts=16)
+        ra.box("sc_cap", (0.45, 1.2, 0.15), (x, -2.6, 1.42), m["yellow"])
+    ra.box("sc_slab", (1.8, 0.5, 0.06), (-4.0, -2.6, 0.4), m["molten"])
+    # Rails and a ladle car between the house and the hall.
+    for y in (1.05, 1.5):
+        ra.box("sc_rail", (9.4, 0.06, 0.05), (0, y + 0.0, 0.1), m["steel"])
+    ra.box("sc_car", (1.2, 0.8, 0.3), (0.3, 1.27, 0.28), m["dark"])
+    ra.cylinder("sc_car_ladle", 0.45, 0.6, (0.3, 1.27, 0.7), m["firebrick"], verts=20, radius2=0.52)
+    ra.cylinder("sc_car_top", 0.5, 0.04, (0.3, 1.27, 1.0), m["molten"], verts=20)
+    for k in range(3):
+        ra.cylinder("sc_coil", 0.32, 0.45, (3.0 + k * 0.7, -3.95, 0.36), m["steel"], rotation=(math.radians(90), 0, 0), verts=22)
+
+
+def build_megafactory():
+    """A megafactory on 5 × 5 tiles: a vast white hall under rows of saw-tooth glazing and solar panels, a glass office front
+    with the company's blue band, robot arms on the loading apron and a rocket stage waiting on a lorry."""
+    m = tree_mats()
+    ra.box("mg_pad", (9.8, 9.8, 0.08), (0, 0, 0.04), m["concrete"])
+    ra.box("mg_hall", (9.2, 6.6, 2.8), (0, 1.3, 1.48), m["white"], bevel=0.04)
+    sawtooth("mg", -4.6, 4.6, -1.9, 4.5, 2.88, 9, 0.7, m, m["grey"], lit=0.6)
+    ra.box("mg_band", (9.22, 0.04, 0.45), (0, -1.91, 2.45), m["blue"])
+    ra.box("mg_sign", (3.0, 0.02, 0.22), (0, -1.94, 2.45), m["screen"])
+    # The office front: two storeys of glass, lit.
+    ra.box("mg_office", (3.4, 0.9, 2.2), (-2.6, -2.3, 1.18), m["glass"], bevel=0.02)
+    windows("mg_office", -4.2, -1.0, -2.76, 0.2, 2.1, 6, 2, {"window": m["window"], "glass": m["glass"]}, lit=0.7)
+    for x in (0.6, 2.0, 3.4):
+        ra.box("mg_door", (1.1, 0.04, 1.6), (x, -1.92, 0.88), ra.corrugated("mg_roller", (0.3, 0.32, 0.36), 0.1))
+    # The apron: three arms over a belt and a lorry with a rocket stage.
+    ra.box("mg_belt", (4.2, 0.6, 0.25), (2.0, -3.0, 0.2), m["dark"])
+    for k in range(3):
+        robot_arm(f"mg_arm{k}", (0.8 + k * 1.3, -2.45, 0.08), m, scale=1.3, turn=math.radians(-90))
+    ra.box("mg_lorry", (3.2, 0.8, 0.3), (-2.0, -4.1, 0.4), m["dark"])
+    ra.box("mg_cab", (0.8, 0.8, 0.8), (-4.0, -4.1, 0.75), m["orange"], bevel=0.06)
+    ra.box("mg_cab_glass", (0.02, 0.6, 0.3), (-4.41, -4.1, 0.95), m["glass"])
+    for x in (-3.8, -2.6, -0.8):
+        for y in (-4.5, -3.7):
+            ra.cylinder("mg_wheel", 0.2, 0.15, (x, y, 0.22), m["dark"], rotation=(math.radians(90), 0, 0), verts=16)
+    ra.cylinder("mg_stage", 0.42, 2.8, (-1.9, -4.1, 0.98), m["white"], rotation=(0, math.radians(90), 0), verts=22)
+    ra.cylinder("mg_stage_band", 0.43, 0.2, (-1.2, -4.1, 0.98), m["dark"], rotation=(0, math.radians(90), 0), verts=22)
+    ra.cylinder("mg_nozzle", 0.25, 0.4, (-0.35, -4.1, 0.98), m["dark"], rotation=(0, math.radians(90), 0), verts=18, radius2=0.4)
+    ra.cylinder("mg_vent", 0.3, 0.7, (3.6, 3.8, 3.8), m["steel"], verts=16)
+    ra.cylinder("mg_vent2", 0.3, 0.7, (-3.6, 3.8, 3.8), m["steel"], verts=16)
+
+
+def build_fusion_plant():
+    """A fusion plant on 3 × 3 tiles: a white reactor dome with a ring of violet plasma glowing through its glass band,
+    a cooling tower behind it, coolant tanks and the transformer the pole's wire comes to."""
+    m = tree_mats()
+    ra.box("fp_pad", (5.8, 5.8, 0.06), (0, 0, 0.03), m["concrete"])
+    ra.cylinder("fp_drum", 1.7, 1.2, (-0.4, 0.2, 0.66), m["white"], verts=40)
+    # The plasma glows through a glass band round the drum.
+    ra.cylinder("fp_glass", 1.72, 0.3, (-0.4, 0.2, 1.1), m["plasma"], verts=40)
+    ra.torus("fp_plasma", 1.3, 0.12, (-0.4, 0.2, 1.1), m["plasma"])
+    ra.sphere("fp_dome", 1.7, (-0.4, 0.2, 1.3), m["white"], scale=(1, 1, 0.6), segments=36, keep=lambda co: co.z > -0.02)
+    for k in range(8):
+        a = k * math.pi / 4
+        ra.box("fp_rib", (0.1, 0.1, 1.2), (-0.4 + 1.72 * math.cos(a), 0.2 + 1.72 * math.sin(a), 0.66), m["grey"])
+    ra.cylinder("fp_tower", 0.9, 2.6, (1.6, 1.8, 1.35), m["concrete"], verts=28, radius2=0.65)
+    ra.cylinder("fp_tower_lip", 0.68, 0.15, (1.6, 1.8, 2.7), m["grey"], verts=28)
+    for k in range(2):
+        ra.cylinder("fp_tank", 0.3, 1.3, (-2.3, 1.6 - k * 0.8, 0.7), m["blue"], verts=18)
+        ra.sphere("fp_tank_top", 0.3, (-2.3, 1.6 - k * 0.8, 1.35), m["blue"], segments=14)
+    ra.box("fp_transformer", (0.8, 0.6, 0.7), (1.9, -1.7, 0.4), m["grey"], bevel=0.02)
+    for k in range(3):
+        ra.cylinder("fp_bushing", 0.05, 0.4, (1.65 + k * 0.25, -1.7, 0.95), ra.plain("fp_porcelain", (0.75, 0.72, 0.65), 0.3), verts=10)
+    ra.box("fp_pipe", (2.0, 0.14, 0.14), (0.9, 1.0, 0.5), m["steel"], rotation=(0, 0, math.radians(35)))
+    ra.box("fp_band", (0.02, 1.2, 0.2), (1.3, 0.2, 0.9), m["screen"])
+
+
+TREE = {
+    # name: (canvas width, height, camera target height, builder); the machine shop and the control center stand on one tile,
+    # the steel combine and the megafactory on 5 × 5, the rest on 3 × 3.
+    "machine_shop": (128, 144, 0.6, build_machine_shop),
+    "robotic_hall": (256, 256, 1.1, build_robotic_hall),
+    "oxygen_converter": (256, 320, 1.8, build_oxygen_converter),
+    "rolling_mill": (256, 224, 0.9, build_rolling_mill),
+    "control_center": (128, 160, 0.8, build_control_center),
+    "continuous_caster": (256, 288, 1.6, build_continuous_caster),
+    "automated_warehouse": (256, 288, 1.6, build_automated_warehouse),
+    "steel_combine": (384, 448, 2.6, build_steel_combine),
+    "megafactory": (384, 384, 1.8, build_megafactory),
+}
+TREE_POWER = {
+    # name: (canvas width, height, camera target height, builder, where the wires meet it)
+    "fusion_plant": (256, 256, 1.2, build_fusion_plant, Vector((1.9, -1.7, 1.15))),
+}
+TREE_ICONS = {"automated_warehouse": "item_storage_automated_warehouse", "fusion_plant": "item_power_fusion_plant"}
+
+
+def render_tree(layout: dict, only=()):
+    for name, (w, h, tz, build) in TREE.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build), true_scale=True)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"{TREE_ICONS.get(name, 'furniture_' + name)}.png")
+    for name, (w, h, tz, build, wire) in TREE_POWER.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        target = Vector((0, 0, tz))
+        layout[name] = render_sprite(name, w, h, target, crafted(build), true_scale=True)
+        layout[name]["wireX"], layout[name]["wireY"] = anchor(w, h, target, wire)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"{TREE_ICONS[name]}.png")
+
+
+def tree_icon_models():
+    """Icons of the crafting tree, from lubricant to the launch rocket."""
+    # Each icon starts from a fresh scene, so the paint is made again for each (see fresh below).
+    m = {}
+    turn = (0, math.radians(90), 0)
+    lying = (math.radians(90), 0, 0)
+
+    def canister(color, label=(0.8, 0.8, 0.78)):
+        def build():
+            body = ra.plain(f"ic_can_{color}", color, 0.4, 0.3, variation=0.1)
+            ra.box("can", (0.24, 0.12, 0.32), (0, 0, 0.16), body, bevel=0.025)
+            ra.box("handle", (0.12, 0.04, 0.04), (-0.03, 0, 0.35), body)
+            ra.cylinder("spout", 0.025, 0.06, (0.08, 0, 0.35), m["dark"], verts=10)
+            ra.box("label", (0.14, 0.005, 0.1), (0, -0.062, 0.16), ra.plain(f"ic_can_label_{label}", label, 0.6))
+        return build
+
+    def drum(color, band=(0.05, 0.05, 0.05)):
+        def build():
+            ra.cylinder("drum", 0.14, 0.34, (0, 0, 0.17), ra.plain(f"ic_drum_{color}", color, 0.4, 0.4, variation=0.1), verts=24)
+            for z in (0.08, 0.26):
+                ra.cylinder("hoop", 0.145, 0.02, (0, 0, z), ra.plain(f"ic_drum_band_{band}", band, 0.4, 0.5), verts=24)
+        return build
+
+    def panel(color, stripes=None, thick=0.03, count=3):
+        def build():
+            mat = ra.plain(f"ic_panel_{color}", color, 0.45, 0.2, variation=0.1)
+            for k in range(count):
+                ra.box("sheet", (0.42, 0.3, thick), (k * 0.01, k * 0.01, thick / 2 + k * (thick + 0.004)), mat, bevel=0.004)
+            if stripes:
+                ra.box("stripe", (0.42, 0.04, 0.004), (0.02, 0.02, count * (thick + 0.004) + 0.001), ra.plain(f"ic_stripe_{stripes}", stripes, 0.5))
+        return build
+
+    def bricks_of(color):
+        def build():
+            mat = ra.plain(f"ic_brick_{color}", color, 0.9, variation=0.3, bump=0.4)
+            for k, (x, y, z) in enumerate([(-0.11, 0, 0.05), (0.11, 0, 0.05), (0, 0, 0.15)]):
+                ra.box("brick", (0.2, 0.1, 0.09), (x, y, z), mat, bevel=0.008)
+        return build
+
+    def wire_coil(color, core=None):
+        def build():
+            mat = ra.plain(f"ic_wire_{color}", color, 0.35, 0.6 if core is None else 0.2, variation=0.1)
+            for k in range(5):
+                ra.torus("turn", 0.13, 0.02, (0, 0, 0.03 + k * 0.035), mat)
+            ra.cylinder("core", 0.1, 0.2, (0, 0, 0.1), m["dark"] if core is None else ra.plain(f"ic_core_{core}", core, 0.3, 0.8), verts=20)
+        return build
+
+    def gear(at=(0, 0, 0.05), r=0.13, teeth=10, mat=None, depth=0.06):
+        mat = mat or m["steel"]
+        ra.cylinder("gear", r, depth, at, mat, verts=24)
+        for k in range(teeth):
+            a = 2 * math.pi * k / teeth
+            ra.box("tooth", (0.05, 0.035, depth), (at[0] + (r + 0.015) * math.cos(a), at[1] + (r + 0.015) * math.sin(a), at[2]), mat, rotation=(0, 0, a))
+        ra.cylinder("hub", r * 0.3, depth + 0.02, at, m["dark"], verts=12)
+
+    def bearing():
+        ra.torus("outer", 0.13, 0.04, (0, 0, 0.05), m["steel"])
+        ra.torus("inner", 0.07, 0.025, (0, 0, 0.05), m["steel"])
+        for k in range(8):
+            a = 2 * math.pi * k / 8
+            ra.sphere("ball", 0.025, (0.1 * math.cos(a), 0.1 * math.sin(a), 0.06), ra.plain("ic_ball", (0.8, 0.8, 0.82), 0.1, 1.0), segments=10)
+
+    def gearbox():
+        ra.box("case", (0.34, 0.24, 0.22), (0, 0.04, 0.12), m["blue"], bevel=0.02)
+        ra.cylinder("shaft_in", 0.03, 0.12, (-0.22, 0.04, 0.12), m["steel"], rotation=turn, verts=10)
+        ra.cylinder("shaft_out", 0.04, 0.12, (0.22, 0.04, 0.08), m["steel"], rotation=turn, verts=10)
+        gear((-0.06, -0.1, 0.16), 0.08, 8, m["copper"], 0.03)
+
+    def rotor():
+        ra.cylinder("shaft", 0.025, 0.46, (0, 0, 0.12), m["steel"], rotation=turn, verts=12)
+        ra.cylinder("core", 0.1, 0.24, (0, 0, 0.12), m["copper"], rotation=turn, verts=20)
+        for k in range(6):
+            ra.box("bar", (0.24, 0.012, 0.21), (0, 0, 0.12), m["dark"], rotation=(k * math.pi / 6, 0, 0))
+
+    def housing():
+        ra.box("housing", (0.36, 0.28, 0.24), (0, 0, 0.12), m["grey"], bevel=0.015)
+        for k in range(1, 5):
+            ra.box("fin", (0.01, 0.29, 0.2), (-0.14 + k * 0.07, 0, 0.12), m["dark"])
+        ra.box("plate", (0.1, 0.005, 0.05), (0.08, -0.145, 0.18), m["yellow"])
+
+    def chamber():
+        ra.cylinder("chamber", 0.12, 0.2, (0, 0, 0.2), m["copper"], verts=24)
+        ra.cylinder("throat", 0.12, 0.12, (0, 0, 0.04), m["copper"], verts=24, radius2=0.06)
+        ra.cylinder("flange", 0.15, 0.03, (0, 0, 0.31), m["steel"], verts=24)
+        for k in range(4):
+            a = k * math.pi / 2
+            ra.cylinder("pipe", 0.015, 0.25, (0.13 * math.cos(a), 0.13 * math.sin(a), 0.18), m["steel"], verts=8)
+
+    def composite_panel():
+        ra.box("panel", (0.42, 0.32, 0.04), (0, 0, 0.03), ra.plain("ic_carbon", (0.03, 0.03, 0.035), 0.25, 0.3, variation=0.2, scale=30))
+        ra.box("core", (0.4, 0.3, 0.01), (0, 0, 0.055), ra.plain("ic_honeycomb", (0.7, 0.55, 0.15), 0.6))
+        ra.box("top", (0.42, 0.32, 0.01), (0, 0, 0.065), m["white"])
+
+    def magnet():
+        ra.torus("coil", 0.13, 0.05, (0, 0, 0.09), ra.plain("ic_sc", (0.55, 0.45, 0.15), 0.25, 1.0))
+        ra.cylinder("jacket", 0.2, 0.06, (0, 0, 0.03), m["steel"], verts=28)
+        ra.cylinder("cryo", 0.03, 0.18, (0.12, 0.12, 0.22), m["blue"], verts=10)
+        ra.sphere("frost", 0.035, (0.12, 0.12, 0.32), ra.plain("ic_frost", (0.8, 0.88, 0.95), 0.3), segments=10)
+
+    def alternator():
+        ra.cylinder("body", 0.14, 0.3, (0, 0, 0.15), m["grey"], rotation=turn, verts=24)
+        for k in range(8):
+            ra.box("fin", (0.3, 0.012, 0.3), (0, 0, 0.15), m["dark"], rotation=(k * math.pi / 8, 0, 0))
+        ra.cylinder("pulley", 0.07, 0.04, (0.18, 0, 0.15), m["steel"], rotation=turn, verts=16)
+        ra.box("terminal", (0.08, 0.06, 0.05), (0, 0, 0.31), m["copper"])
+
+    def control_module():
+        ra.box("case", (0.34, 0.22, 0.12), (0, 0, 0.06), m["grey"], bevel=0.01)
+        ra.box("screen", (0.18, 0.005, 0.07), (-0.05, -0.112, 0.07), m["screen"])
+        for k in range(3):
+            ra.sphere("led", 0.012, (0.08 + k * 0.03, -0.112, 0.09), ra.emission(f"ic_led{k}", [(1, 0.2, 0.1), (0.2, 1, 0.3), (1, 0.8, 0.1)][k], 5), segments=8)
+        ra.box("plug", (0.06, 0.06, 0.04), (0, 0.12, 0.06), m["dark"])
+
+    def actuator():
+        ra.cylinder("barrel", 0.06, 0.32, (-0.06, 0, 0.08), m["yellow"], rotation=turn, verts=18)
+        ra.cylinder("rod", 0.025, 0.2, (0.18, 0, 0.08), ra.plain("ic_chrome", (0.8, 0.8, 0.82), 0.1, 1.0), rotation=turn, verts=12)
+        for x in (-0.23, 0.29):
+            ra.torus("eye", 0.03, 0.012, (x, 0, 0.08), m["steel"], rotation=lying)
+        ra.cylinder("hose", 0.012, 0.15, (-0.02, 0.05, 0.16), m["dark"], rotation=(0.3, 0, 0), verts=8)
+
+    def nozzle():
+        ra.cylinder("bell", 0.06, 0.32, (0, 0, 0.18), ra.plain("ic_nozzle", (0.2, 0.15, 0.12), 0.35, 0.8, variation=0.2), verts=28, radius2=0.16)
+        ra.cylinder("ring", 0.07, 0.03, (0, 0, 0.34), m["copper"], verts=20)
+
+    def vessel():
+        ra.cylinder("vessel", 0.11, 0.3, (0, 0, 0.12), m["steel"], rotation=turn, verts=24)
+        for x in (-0.15, 0.15):
+            ra.sphere("cap", 0.11, (x, 0, 0.12), m["steel"], scale=(0.5, 1, 1), segments=18)
+        ra.cylinder("gauge", 0.03, 0.02, (0, -0.11, 0.18), m["white"], rotation=lying, verts=12)
+        ra.cylinder("valve", 0.02, 0.06, (0.05, 0, 0.25), m["copper"], verts=8)
+
+    def computing_core():
+        ra.box("board", (0.36, 0.3, 0.03), (0, 0, 0.02), ra.plain("ic_board", (0.02, 0.2, 0.08), 0.5))
+        ra.box("chip", (0.14, 0.14, 0.04), (0, 0, 0.055), m["dark"], bevel=0.005)
+        ra.box("die", (0.08, 0.08, 0.005), (0, 0, 0.078), ra.plain("ic_die", (0.6, 0.5, 0.2), 0.2, 1.0))
+        for k in range(2):
+            ra.box("ram", (0.03, 0.22, 0.06), (0.12 + k * 0.04, 0, 0.06), m["blue"])
+            ra.box("cap", (0.03, 0.03, 0.05), (-0.13, -0.08 + k * 0.16, 0.06), m["copper"])
+
+    def robot_arm_icon():
+        robot_arm("ic_arm", (-0.12, 0, 0), m, scale=0.32, turn=0.0)
+
+    def turbopump():
+        ra.sphere("volute", 0.11, (0, 0, 0.12), m["steel"], scale=(1, 1, 0.8), segments=20)
+        ra.cylinder("inlet", 0.05, 0.12, (0, 0, 0.24), m["steel"], verts=14)
+        ra.cylinder("outlet", 0.035, 0.16, (0.14, 0, 0.1), m["steel"], rotation=turn, verts=12)
+        ra.cylinder("turbine", 0.07, 0.12, (-0.14, 0, 0.1), m["copper"], rotation=turn, verts=16)
+
+    def turbine_set():
+        ra.cylinder("turbine", 0.1, 0.26, (-0.1, 0, 0.12), m["steel"], rotation=turn, verts=22, radius2=0.14)
+        ra.cylinder("generator", 0.11, 0.2, (0.15, 0, 0.12), m["blue"], rotation=turn, verts=22)
+        ra.box("skid", (0.5, 0.2, 0.03), (0.02, 0, 0.015), m["dark"])
+
+    def cryo_tank():
+        ra.cylinder("tank", 0.09, 0.3, (0, 0, 0.17), m["white"], verts=24)
+        ra.sphere("top", 0.09, (0, 0, 0.32), m["white"], scale=(1, 1, 0.6), segments=18)
+        ra.cylinder("jacket", 0.095, 0.04, (0, 0, 0.12), m["blue"], verts=24)
+        ra.cylinder("valve", 0.015, 0.06, (0, 0, 0.39), m["copper"], verts=8)
+        ra.sphere("frost", 0.05, (0.06, -0.06, 0.04), ra.plain("ic_frost2", (0.8, 0.88, 0.95), 0.3), segments=10)
+
+    def industrial_robot():
+        robot_arm("ic_robot", (-0.1, 0, 0.0), m, scale=0.34, turn=0.0)
+        ra.box("controller", (0.1, 0.1, 0.16), (0.16, 0.12, 0.08), m["grey"])
+        ra.box("controller_screen", (0.06, 0.005, 0.04), (0.16, 0.069, 0.12), m["screen"])
+
+    def navigation():
+        ra.box("case", (0.3, 0.22, 0.1), (0, 0, 0.05), m["grey"], bevel=0.01)
+        ra.sphere("gyro", 0.07, (0, 0, 0.14), ra.plain("ic_gyro", (0.7, 0.55, 0.15), 0.2, 1.0), segments=16)
+        ra.torus("ring", 0.09, 0.008, (0, 0, 0.14), m["steel"], rotation=lying)
+        ra.cylinder("antenna", 0.008, 0.18, (0.11, 0.07, 0.19), m["steel"], verts=6)
+
+    def rocket_engine():
+        ra.cylinder("bell", 0.06, 0.24, (0, 0, 0.12), ra.plain("ic_bell", (0.2, 0.15, 0.12), 0.35, 0.8, variation=0.2), verts=28, radius2=0.14)
+        ra.cylinder("chamber", 0.06, 0.12, (0, 0, 0.3), m["copper"], verts=20)
+        ra.sphere("pump", 0.05, (0.07, 0.05, 0.36), m["steel"], segments=14)
+        ra.cylinder("pipe", 0.012, 0.18, (-0.06, 0.03, 0.3), m["steel"], verts=8)
+
+    def plasma_chamber():
+        ra.torus("vessel", 0.13, 0.06, (0, 0, 0.08), m["steel"])
+        ra.torus("glow", 0.13, 0.03, (0, 0, 0.13), m["plasma"])
+        for k in range(6):
+            a = k * math.pi / 3
+            ra.box("coil", (0.05, 0.03, 0.16), (0.13 * math.cos(a), 0.13 * math.sin(a), 0.08), m["copper"], rotation=(0, 0, a))
+
+    def avionics():
+        ra.box("rack", (0.3, 0.2, 0.22), (0, 0, 0.11), m["dark"], bevel=0.01)
+        for k in range(3):
+            ra.box("unit", (0.26, 0.005, 0.05), (0, -0.101, 0.05 + k * 0.065), m["grey"])
+            ra.box("lamp", (0.04, 0.003, 0.02), (0.08, -0.105, 0.05 + k * 0.065), m["screen"])
+
+    def plasma_control():
+        ra.box("console", (0.34, 0.2, 0.1), (0, 0, 0.05), m["white"], bevel=0.01)
+        ra.box("screen", (0.26, 0.02, 0.14), (0, 0.06, 0.17), m["dark"], rotation=(math.radians(-15), 0, 0))
+        ra.torus("display", 0.04, 0.008, (0, 0.045, 0.17), m["plasma"], rotation=(math.radians(75), 0, 0))
+        for k in range(4):
+            ra.cylinder("knob", 0.015, 0.02, (-0.1 + k * 0.065, -0.05, 0.11), m["orange"], verts=10)
+
+    def rocket_stage():
+        ra.cylinder("stage", 0.1, 0.42, (0, 0, 0.13), m["white"], rotation=turn, verts=24)
+        ra.cylinder("band", 0.102, 0.05, (0.08, 0, 0.13), m["dark"], rotation=turn, verts=24)
+        ra.cylinder("nozzle", 0.04, 0.08, (-0.25, 0, 0.13), m["dark"], rotation=(0, math.radians(-90), 0), verts=16, radius2=0.08)
+
+    def satellite():
+        ra.box("bus", (0.12, 0.12, 0.14), (0, 0, 0.12), ra.plain("ic_foil", (0.75, 0.55, 0.12), 0.25, 1.0, variation=0.3, bump=0.5))
+        for x in (-0.17, 0.17):
+            ra.box("wing", (0.2, 0.12, 0.008), (x, 0, 0.12), ra.plain("ic_cells", (0.03, 0.06, 0.2), 0.15, 0.4))
+        ra.sphere("dish", 0.06, (0, -0.02, 0.22), m["white"], scale=(1, 1, 0.35), segments=14, keep=lambda co: co.z < 0.0)
+
+    def fusion_reactor():
+        ra.cylinder("base", 0.17, 0.06, (0, 0, 0.03), m["grey"], verts=28)
+        ra.torus("vessel", 0.11, 0.06, (0, 0, 0.12), m["white"])
+        ra.torus("glow", 0.11, 0.035, (0, 0, 0.17), m["plasma"])
+        for k in range(8):
+            a = k * math.pi / 4
+            ra.box("coil", (0.04, 0.025, 0.16), (0.11 * math.cos(a), 0.11 * math.sin(a), 0.12), m["copper"], rotation=(0, 0, a))
+
+    def launch_rocket():
+        ra.cylinder("body", 0.045, 0.38, (0, 0, 0.21), m["white"], verts=20)
+        ra.cylinder("nose", 0.045, 0.1, (0, 0, 0.45), m["white"], verts=20, radius2=0.0)
+        ra.cylinder("band", 0.046, 0.03, (0, 0, 0.3), m["dark"], verts=20)
+        for k in range(2):
+            ra.cylinder("booster", 0.025, 0.24, ((k * 2 - 1) * 0.07, 0, 0.14), m["white"], verts=14)
+            ra.cylinder("booster_nose", 0.025, 0.05, ((k * 2 - 1) * 0.07, 0, 0.285), m["white"], verts=14, radius2=0.0)
+        ra.cylinder("nozzle", 0.03, 0.04, (0, 0, 0.0), m["dark"], verts=14, radius2=0.04)
+
+    def provisions():
+        ra.box("crate", (0.34, 0.24, 0.16), (0, 0, 0.08), ra.wood("ic_prov_wood", (0.3, 0.2, 0.1)), bevel=0.01)
+        for k in range(3):
+            ra.cylinder("tin", 0.045, 0.08, (-0.1 + k * 0.1, 0, 0.2), m["steel"], verts=16)
+            ra.cylinder("tin_label", 0.046, 0.04, (-0.1 + k * 0.1, 0, 0.2), ra.plain(f"ic_tin{k}", [(0.5, 0.05, 0.04), (0.1, 0.35, 0.1), (0.7, 0.5, 0.05)][k], 0.5), verts=16)
+
+    def iridium_alloy():
+        mat = ra.plain("ic_iralloy", (0.55, 0.58, 0.62), 0.15, 1.0, variation=0.08)
+        for k, (x, z) in enumerate([(-0.08, 0.04), (0.08, 0.04), (0.0, 0.11)]):
+            ra.cylinder("bar", 0.11, 0.07, (x, 0, z), mat, verts=6, radius2=0.08)
+
+    def harness():
+        for k, color in enumerate([(0.6, 0.05, 0.03), (0.05, 0.1, 0.5), (0.7, 0.6, 0.05), (0.05, 0.05, 0.05)]):
+            ra.cylinder("wire", 0.012, 0.42, (0, -0.03 + k * 0.02, 0.03), ra.plain(f"ic_harness{k}", color, 0.5), rotation=turn, verts=8)
+        for x in (-0.22, 0.22):
+            ra.box("plug", (0.06, 0.1, 0.05), (x, 0, 0.04), m["dark"])
+        ra.box("tie", (0.02, 0.1, 0.05), (0, 0, 0.04), m["white"])
+
+    def sheet_wire():
+        ra.cylinder("spool", 0.12, 0.08, (0, 0, 0.12), m["dark"], rotation=lying, verts=24)
+        ra.cylinder("wound", 0.1, 0.1, (0, 0, 0.12), ra.plain("ic_scwire", (0.45, 0.48, 0.55), 0.2, 1.0), rotation=lying, verts=24)
+        ra.cylinder("hub", 0.03, 0.12, (0, 0, 0.12), m["steel"], rotation=lying, verts=12)
+
+    def lining():
+        mat = ra.plain("ic_lining", (0.6, 0.45, 0.28), 0.9, variation=0.3, bump=0.4)
+        ra.box("plate", (0.4, 0.3, 0.04), (0, 0, 0.02), m["steel"])
+        for k in range(3):
+            for j in range(2):
+                ra.box("tile", (0.12, 0.13, 0.05), (-0.13 + k * 0.13, -0.07 + j * 0.14, 0.065), mat, bevel=0.005)
+
+    def fresh(build):
+        def make():
+            m.clear()
+            m.update(tree_mats())
+            build()
+        return make
+
+    models = {
+        "item_lubricant": canister((0.55, 0.38, 0.05)),
+        "item_electric_wire": wire_coil((0.55, 0.06, 0.04)),
+        "item_glass_laminate": panel((0.35, 0.5, 0.42), thick=0.02, count=4),
+        "item_paint": drum((0.08, 0.3, 0.55), (0.6, 0.6, 0.62)),
+        "item_casein_glue": canister((0.8, 0.78, 0.68), (0.3, 0.2, 0.1)),
+        "item_insulation_board": panel((0.75, 0.62, 0.35), stripes=(0.85, 0.82, 0.75), thick=0.06, count=2),
+        "item_firebrick": bricks_of((0.62, 0.48, 0.3)),
+        "item_precast_concrete": lambda: (ra.box("beam", (0.44, 0.16, 0.16), (0, 0, 0.08), m["concrete"], bevel=0.01),
+                                          [ra.cylinder("rebar", 0.012, 0.06, (x, y, 0.18), m["rusty"], verts=8) for x in (-0.18, 0.18) for y in (-0.05, 0.05)]),
+        "item_coolant": canister((0.1, 0.55, 0.7)),
+        "item_iridium_alloy": iridium_alloy,
+        "item_provisions": provisions,
+        "item_bearing": bearing,
+        "item_painted_sheet": panel((0.55, 0.08, 0.05), thick=0.015, count=5),
+        "item_coil": wire_coil((0.7, 0.32, 0.12), core=(0.2, 0.2, 0.22)),
+        "item_wiring_harness": harness,
+        "item_refractory_lining": lining,
+        "item_carbon_composite": panel((0.03, 0.03, 0.035), thick=0.015, count=4),
+        "item_superconducting_wire": sheet_wire,
+        "item_rocket_fuel": drum((0.75, 0.75, 0.72), (0.75, 0.25, 0.03)),
+        "item_gearbox": gearbox,
+        "item_rotor": rotor,
+        "item_machine_housing": housing,
+        "item_combustion_chamber": chamber,
+        "item_composite_panel": composite_panel,
+        "item_superconducting_magnet": magnet,
+        "item_alternator": alternator,
+        "item_control_module": control_module,
+        "item_hydraulic_actuator": actuator,
+        "item_rocket_nozzle": nozzle,
+        "item_pressure_vessel": vessel,
+        "item_computing_core": computing_core,
+        "item_robot_arm": robot_arm_icon,
+        "item_turbopump": turbopump,
+        "item_turbine_set": turbine_set,
+        "item_cryogenic_tank": cryo_tank,
+        "item_industrial_robot": industrial_robot,
+        "item_navigation_system": navigation,
+        "item_rocket_engine": rocket_engine,
+        "item_plasma_chamber": plasma_chamber,
+        "item_avionics": avionics,
+        "item_plasma_control": plasma_control,
+        "item_rocket_stage": rocket_stage,
+        "item_satellite": satellite,
+        "item_fusion_reactor": fusion_reactor,
+        "item_launch_rocket": launch_rocket,
+    }
+    return {name: fresh(build) for name, build in models.items()}
+
+
 # --- Icons ------------------------------------------------------------------------------------------
 
 def icon_models():
@@ -4802,7 +5471,7 @@ def icon_models():
 
 def render_icons(only=()):
     ICONS.mkdir(parents=True, exist_ok=True)
-    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models(), **city_icon_models(), **forest_icon_models()}.items():
+    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models(), **city_icon_models(), **forest_icon_models(), **tree_icon_models()}.items():
         if only and name not in only:
             continue
         random.seed(zlib.crc32(name.encode()))
@@ -4814,7 +5483,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "office", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "office", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -4872,6 +5541,10 @@ if __name__ == "__main__":
     if "forest" in args or any(a in forest for a in args):
         # Names of forest sprites render just those.
         render_forest(layout, [a for a in args if a in forest])
+    tree = {**TREE, **TREE_POWER}
+    if "tree" in args or any(a in tree for a in args):
+        # Names of crafting tree sprites render just those.
+        render_tree(layout, [a for a in args if a in tree])
     if "logistics" in args or any(a in LOGISTICS for a in args):
         # Names of logistics sprites render just those.
         render_logistics(layout, [a for a in args if a in LOGISTICS])

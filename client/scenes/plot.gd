@@ -170,6 +170,11 @@ const PLACED_SPRITES := {
 	"furniture_paper_mill": "paper_mill", "furniture_carpentry": "carpentry", "furniture_charcoal_kiln": "charcoal_kiln",
 	"furniture_tar_kiln": "tar_kiln", "furniture_beehive": "beehive", "furniture_fire_watchtower": "fire_watchtower",
 	"furniture_fire_station": "fire_station",
+	"furniture_machine_shop": "machine_shop", "furniture_robotic_hall": "robotic_hall",
+	"furniture_oxygen_converter": "oxygen_converter", "furniture_rolling_mill": "rolling_mill",
+	"furniture_control_center": "control_center", "furniture_continuous_caster": "continuous_caster",
+	"storage_automated_warehouse": "automated_warehouse", "furniture_steel_combine": "steel_combine",
+	"furniture_megafactory": "megafactory", "power_fusion_plant": "fusion_plant",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
@@ -186,7 +191,8 @@ const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_
 	"furniture_ice_core_drill", "furniture_polar_station", "furniture_ice_hotel", "furniture_viewpoint",
 	"furniture_assembly_hall", "furniture_multistorey_factory", "furniture_city_sorter", "furniture_design_office",
 	"furniture_laboratory", "furniture_service_workshop", "furniture_paper_mill", "furniture_carpentry", "furniture_charcoal_kiln",
-	"furniture_tar_kiln"]
+	"furniture_tar_kiln", "furniture_machine_shop", "furniture_robotic_hall", "furniture_oxygen_converter", "furniture_rolling_mill",
+	"furniture_continuous_caster", "furniture_steel_combine", "furniture_megafactory"]
 ## A beehive opens its own window; a fire watchtower and a fire station only stand guard over the forest.
 const BEEHIVE := "furniture_beehive"
 const WATCHTOWER := "furniture_fire_watchtower"
@@ -249,13 +255,20 @@ const CITY_HALF_WIDTH := 30
 const CITY_ROWS := 60
 const CITY_ONLY := ["furniture_multistorey_factory", "furniture_shop", "storage_high_bay", "furniture_freight_terminal",
 	"furniture_company_hq", "furniture_design_office", "furniture_laboratory", "furniture_service_workshop", "furniture_tailor"]
-const ONE_PER_PLOT := ["furniture_freight_terminal", "furniture_company_hq"]
+## Makes every machine on power on the plot 20% faster; opens nothing.
+const CONTROL_CENTER := "furniture_control_center"
+const ONE_PER_PLOT := ["furniture_freight_terminal", "furniture_company_hq", CONTROL_CENTER]
 const ASSEMBLY_HALL := "furniture_assembly_hall"
 const SHOP := "furniture_shop"
 ## Forester's buildings of every level and how far their forest reaches from the building's tile;
 ## each covers 3 × 3 tiles (FOOTPRINT each way) and keeps a clearing FOREST_CLEARING tiles out.
 const FORESTERS := {"furniture_forester_hut": 5, "furniture_forester_lodge": 6, "furniture_forestry_station": 7}
 const FOOTPRINT := 1
+## Buildings of the crafting tree on 3 × 3 tiles, and the two on 5 × 5 (HUGE_FOOTPRINT each way).
+const LARGE := ["furniture_robotic_hall", "furniture_oxygen_converter", "furniture_rolling_mill", "furniture_continuous_caster",
+	"storage_automated_warehouse", "power_fusion_plant"]
+const HUGE := ["furniture_steel_combine", "furniture_megafactory"]
+const HUGE_FOOTPRINT := 2
 const FOREST_CLEARING := 2
 ## How often (ms) the foresters are asked for, to draw the trees they plant and cut.
 const FORESTRY_POLL := 3000.0
@@ -273,14 +286,14 @@ const MACHINERY := [BELT, "logistics_fast_belt", "logistics_express_belt", INSER
 	"logistics_express_inserter", SPLITTER, CABLE_STATION, "logistics_pipe", "logistics_pump"]
 const GENERATOR := "power_generator"
 ## Generators that burn fuel, which open the generator window.
-const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator"]
+const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator", "power_fusion_plant"]
 ## Placed objects with nothing to open: a click shows the menu to pick them up.
 const MENU_ONLY := ["power_pole", "furniture_port", "furniture_lighthouse", "furniture_breakwater", ROAD, REED_FENCE,
 	"furniture_water_injector", "furniture_oil_separator", "furniture_dog_kennel", "furniture_snowmobile_garage", TRACK_FOUNDATION,
-	"furniture_freight_terminal", "furniture_company_hq", WATCHTOWER, FIRE_STATION]
+	"furniture_freight_terminal", "furniture_company_hq", WATCHTOWER, FIRE_STATION, CONTROL_CENTER]
 const POLE := "power_pole"
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo", "storage_tank",
-	"storage_high_bay"]
+	"storage_high_bay", "storage_automated_warehouse"]
 ## Where a rotation faces, as players read it: 0 south, 1 east, 2 north, 3 west.
 const DIRECTIONS := ["na południe", "na wschód", "na północ", "na zachód"]
 const DIRECTION_ARROWS := ["↓", "→", "↑", "←"]
@@ -485,6 +498,9 @@ var _crafting_window: CraftingWindow
 var _furnace_window: FurnaceWindow
 var _storage_window: StorageWindow
 var _splitter_window: SplitterWindow
+var _filter_window: FilterWindow
+## Small icons of the filtered item on every object with a filter, over everything standing on the plot.
+var _filter_marks: Node2D
 var _company_window: CompanyWindow
 var _stats_window: StatsWindow
 var _machine_window: MachineWindow
@@ -601,6 +617,10 @@ func _build_world() -> void:
 	_sorted.add_child(_others)
 
 	add_child(_power)
+	_filter_marks = Node2D.new()
+	_filter_marks.draw.connect(_draw_filters)
+	add_child(_filter_marks)
+	_logistics.filters_changed.connect(_on_filters_changed)
 
 	_camera.position_smoothing_enabled = true
 	_camera.position_smoothing_speed = 8.0
@@ -806,10 +826,17 @@ func _sandy() -> bool:
 	return int(_plot.get("biome", -1)) in SANDY
 
 
-## Whether an object of `kind` stands on 3 × 3 tiles: a forester's building, a solar tower, a large wind turbine, an ice hotel
-## or an assembly hall.
+## Whether an object of `kind` stands on more than one tile (see _reach).
 func _big(kind: String) -> bool:
-	return FORESTERS.has(kind) or kind in [SOLAR_TOWER, LARGE_WIND, ICE_HOTEL, ASSEMBLY_HALL]
+	return _reach(kind) > 0
+
+
+## How many tiles an object of `kind` covers each way from its own: 1 (3 × 3) for a forester's building, a solar tower,
+## a large wind turbine, an ice hotel, an assembly hall and the LARGE buildings; 2 (5 × 5) for the HUGE ones.
+func _reach(kind: String) -> int:
+	if kind in HUGE:
+		return HUGE_FOOTPRINT
+	return FOOTPRINT if FORESTERS.has(kind) or kind in LARGE or kind in [SOLAR_TOWER, LARGE_WIND, ICE_HOTEL, ASSEMBLY_HALL] else 0
 
 
 ## Whether a tile of a city plot can be built on: by the station only.
@@ -992,9 +1019,10 @@ func _is_belt(cell: Vector2i) -> bool:
 	return _placed.has(cell) and _placed[cell]["kind"] in BELTS
 
 
-## Belts and roads lie flat: the player walks over them.
+## Belts and roads lie flat, inserters are low enough to step over and a power pole is thin enough
+## to slip past: the player walks across them.
 func _walkable(cell: Vector2i) -> bool:
-	return _is_belt(cell) or (_placed.has(cell) and _placed[cell]["kind"] == ROAD)
+	return _is_belt(cell) or (_placed.has(cell) and (_placed[cell]["kind"] in [ROAD, POLE] or _placed[cell]["kind"] in INSERTERS))
 
 
 ## How fast the player walks where they stand: faster on a road.
@@ -1295,15 +1323,15 @@ func _in_footprint(kind: String, cell: Vector2i) -> bool:
 	return Vector2i(_player.floor_pos.floor()) in _footprint(kind, cell)
 
 
-## Puts up a 3 × 3 building: first walks to the nearest free tile just outside its ground, so the player
+## Puts up a big building: first walks to the nearest free tile just outside its ground, so the player
 ## is never walled in by it, then places it.
 func _place_big(cell: Vector2i) -> void:
 	_stop_work()
 	var kind := _placing
-	if not _in_footprint(kind, cell) and _near(cell, REACH + FOOTPRINT):
+	if not _in_footprint(kind, cell) and _near(cell, REACH + _reach(kind)):
 		_place_object(cell)
 		return
-	var reach := FOOTPRINT + 1
+	var reach := _reach(kind) + 1
 	var best := Vector2i(-1, -1)
 	for dy in range(-reach, reach + 1):
 		for dx in range(-reach, reach + 1):
@@ -1320,10 +1348,10 @@ func _place_big(cell: Vector2i) -> void:
 			_place_object(cell))
 
 
-## The tiles an object of `kind` standing on `cell` covers: 3 × 3 for a forester's building, else just its own.
+## The tiles an object of `kind` standing on `cell` covers: a square _reach(kind) tiles each way.
 func _footprint(kind: String, cell: Vector2i) -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
-	var reach := FOOTPRINT if _big(kind) else 0
+	var reach := _reach(kind)
 	for dy in range(-reach, reach + 1):
 		for dx in range(-reach, reach + 1):
 			cells.append(cell + Vector2i(dx, dy))
@@ -1392,7 +1420,7 @@ func _placed_label(cell: Vector2i) -> String:
 	if object["kind"] in INSERTERS:
 		var held := _logistics.held(cell)
 		var carrying := ", niesie: %s" % _item_name(held).to_lower() if held != "" else ""
-		return "%s %s%s%s: [R] obróć, kliknij, aby schować" % [object["name"], facing, carrying, _power_note(object["id"])]
+		return "%s %s%s%s%s: [R] obróć, kliknij, aby schować albo ustawić filtr" % [object["name"], facing, carrying, _filter_note(object["id"]), _power_note(object["id"])]
 	if object["kind"] == SPLITTER:
 		var filter := _logistics.splitter(object["id"])
 		var sorting := "na zmianę w lewo i w prawo" if (filter["items"] as Array).is_empty() \
@@ -1402,7 +1430,7 @@ func _placed_label(cell: Vector2i) -> String:
 	if not summary.is_empty():
 		var fill := "%d/%d miejsc" % [int(summary["usedSlots"]), int(summary["slots"])] if int(summary["slots"]) > 1 \
 			else "%d/%d" % [int(summary["stored"]), int(summary["capacity"])]
-		return "%s (%s): kliknij, aby otworzyć" % [object["name"], fill]
+		return "%s (%s)%s: kliknij, aby otworzyć" % [object["name"], fill, _filter_note(object["id"])]
 	if object["kind"] == COMPUTER:
 		return "%s: kliknij, aby otworzyć rynek" % object["name"]
 	if FORESTERS.has(object["kind"]):
@@ -1446,6 +1474,16 @@ func _placed_label(cell: Vector2i) -> String:
 	return "%s%s: kliknij, aby użyć" % [object["name"], _power_note(object["id"]) if _power.runs_on_power(object["kind"]) else ""]
 
 
+## The item an object's filter lets through, as a note after its name; "" without a filter.
+func _filter_note(id: String) -> String:
+	var only := _logistics.filter(id)
+	return ", filtr: %s" % _filter_name(only).to_lower() if only != "" else ""
+
+
+func _filter_name(item: String) -> String:
+	return _logistics.names.get(item, _item_name(item))
+
+
 ## How a machine that runs on power is doing, as a note after its name; "" with full power.
 func _power_note(id: String) -> String:
 	if _power.network(id).is_empty():
@@ -1466,14 +1504,14 @@ func _draw_marks() -> void:
 	var ground := _ground_cell()
 	if _hovered.x >= 0 and (_placed.has(_hovered) or _animals.has(_hovered)):
 		var big := _placed.has(_hovered) and _big(_placed[_hovered]["kind"])
-		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8), 2.4 if big else 1.0)
+		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8), 1.0 + 1.4 * _reach(_placed[_hovered]["kind"]) if big else 1.0)
 		if big and FORESTERS.has(_placed[_hovered]["kind"]):
 			_draw_forest(_placed[_hovered]["kind"], _hovered, int(_placed[_hovered].get("rotation", 0)))
 	if _placing != "" and ground.x >= 0:
 		if FORESTERS.has(_placing):
 			_draw_forest(_placing, ground, _place_rotation)
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8),
-			2.4 if _big(_placing) else 1.0)
+			1.0 + 1.4 * _reach(_placing))
 		_draw_ghost(ground)
 	elif _releasing != "" and ground.x >= 0:
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_release(ground) else Color(1.0, 0.42, 0.35, 0.8))
@@ -1600,7 +1638,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_stop_releasing()
 		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _achievements_window.visible \
 				or _mine_window.visible or _character_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _forester_window, _generator_window, _storage_window, _splitter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window]:
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _forester_window, _generator_window, _storage_window, _splitter_window, _filter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -2461,15 +2499,23 @@ func _use_placed(cell: Vector2i) -> void:
 		_market_window.open_at(object["id"])
 	elif object["kind"] in FURNACES:
 		_furnace_window.open_at(object["id"])
+		_offer_filter(_furnace_window, object, "machine")
 	elif object["kind"] in MACHINES:
 		_machine_window.open_at(object["id"], object["name"])
+		_offer_filter(_machine_window, object, "machine")
 	elif object["kind"] in STORAGES:
 		_storage_window.open_at(_at, object["id"])
+		_offer_filter(_storage_window, object, "storage")
 	elif object["kind"] in ["furniture_workbench", "furniture_anvil", SHIPYARD, "furniture_tailor"]:
 		_crafting_window.open_at(object["id"], object["kind"])
 	elif object["kind"] in GENERATORS or object["kind"] in HYDRO or object["kind"] in SOLAR or object["kind"] == BATTERY \
 			or object["kind"] in WIND or object["kind"] == HEATER:
 		_generator_window.open_at(_at, object["id"])
+		# Only generators that burn fuel take anything in.
+		if object["kind"] in GENERATORS:
+			_offer_filter(_generator_window, object, "machine")
+		else:
+			_generator_window.hide_filter_button()
 	elif object["kind"] in WELLS:
 		_well_window.open_at(_at, object["id"])
 	elif object["kind"] == SHOP:
@@ -2484,7 +2530,7 @@ func _use_placed(cell: Vector2i) -> void:
 
 func _using_window_open() -> bool:
 	return _crafting_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
-		or _splitter_window.visible or _generator_window.visible or _market_window.visible or _forester_window.visible \
+		or _splitter_window.visible or _filter_window.visible or _generator_window.visible or _market_window.visible or _forester_window.visible \
 		or _drill_window.visible or _well_window.visible or _shop_window.visible or _hive_window.visible
 
 
@@ -2500,6 +2546,7 @@ func _hide_placed_windows() -> void:
 	_hive_window.hide_window()
 	_storage_window.hide_window()
 	_splitter_window.hide_window()
+	_filter_window.hide_window()
 	_market_window.hide_window()
 
 
@@ -2572,6 +2619,13 @@ func _open_object_menu(cell: Vector2i) -> void:
 	_object_menu.add_item("Schowaj do ekwipunku", 1)
 	if _placed.has(cell) and _placed[cell]["kind"] == SPLITTER:
 		_object_menu.add_item("Ustaw, co idzie w którą stronę", 2)
+	if _placed.has(cell) and _placed[cell]["kind"] in INSERTERS:
+		var only := _logistics.filter(_placed[cell]["id"])
+		if only != "":
+			_object_menu.add_icon_item(UI.item_texture(only), "Filtr: %s (zmień)" % _filter_name(only).to_lower(), 3)
+			_object_menu.set_item_icon_max_width(_object_menu.get_item_count() - 1, 20)
+		else:
+			_object_menu.add_item("Ustaw filtr", 3)
 	_object_menu.reset_size()
 	var at := get_viewport().get_mouse_position() + Vector2(12, 4)
 	_object_menu.popup(Rect2i(Vector2i(at), Vector2i.ZERO))
@@ -2586,6 +2640,8 @@ func _on_object_chosen(choice: int) -> void:
 		_rotate_placed(cell)
 	elif choice == 2:
 		_open_splitter(cell)
+	elif choice == 3:
+		_open_filter(_placed[cell], "inserter")
 	else:
 		_go_and(cell, func(at: Vector2i) -> void:
 			if _placed.has(at):
@@ -2598,6 +2654,60 @@ func _open_splitter(cell: Vector2i) -> void:
 	_splitter_window.names = _logistics.names
 	_splitter_window.set_items(_items)
 	_splitter_window.open_at(_at, object["id"], int(object.get("rotation", 0)), _logistics.splitter(object["id"]))
+
+
+## Opens the filter of an inserter, a storage or a machine (`role` says which).
+func _open_filter(object: Dictionary, role: String) -> void:
+	if role == "inserter":
+		_hide_placed_windows()
+	elif not UI.touch():
+		# Beside the window of the storage or machine; on a phone, over it, as it would not fit beside.
+		_filter_window.position = Vector2(maxf(12.0, get_viewport_rect().size.x - 2 * 412.0), 64)
+	_filter_window.names = _logistics.names
+	_filter_window.set_items(_items)
+	var allowed: Array = []
+	var only: Variant = _logistics.storage(object["id"]).get("only")
+	if only != null:
+		allowed = (only as Array).map(func(i: Dictionary) -> String: return i["id"])
+	_filter_window.open_at(_at, object["id"], object["name"], _logistics.filter(object["id"]), role, allowed)
+	if _filter_window.names.is_empty():
+		# Names come with the plot's logistics when asked for.
+		var reply := await Net.request("logistics.get", {"x": _at.x, "y": _at.y, "names": true})
+		if reply["type"] == "logistics":
+			_logistics.apply(reply["payload"])
+			_filter_window.names = _logistics.names
+			_filter_window.set_items(_items)
+
+
+## The "Filtr" button on the title bar of the window of a storage or a machine that can have a filter.
+func _offer_filter(window: GameWindow, object: Dictionary, role: String) -> void:
+	window.show_filter_button(_logistics.filter(object["id"]), func() -> void: _open_filter(object, role))
+
+
+func _on_filters_changed() -> void:
+	_filter_marks.queue_redraw()
+	# The filter button of the open window shows the item set now.
+	for window: GameWindow in [_storage_window, _furnace_window, _machine_window, _generator_window]:
+		if window.visible and window.has_filter_button() and _using.x >= 0 and _placed.has(_using):
+			_offer_filter(window, _placed[_using], "storage" if window == _storage_window else "machine")
+
+
+## A small icon of the filtered item on each object with a filter: on its own tile, raised onto its front.
+func _draw_filters() -> void:
+	var filters := _logistics.filters()
+	if filters.is_empty():
+		return
+	var drawn := {}
+	for cell: Vector2i in _placed:
+		var object: Dictionary = _placed[cell]
+		if not filters.has(object["id"]) or drawn.has(object["id"]) or _anchor(cell) != cell:
+			continue
+		drawn[object["id"]] = true
+		var lift := 0.35 if object["kind"] in INSERTERS else 0.55 + 0.5 * _reach(object["kind"])
+		var at := _cell_centre(cell) - Vector2(0, TILE.y * lift)
+		_filter_marks.draw_circle(at, 12.0, Color(0.09, 0.08, 0.07, 0.85))
+		_filter_marks.draw_arc(at, 12.0, 0, TAU, 24, Color(0.96, 0.69, 0.25, 0.95), 1.5, true)
+		_filter_marks.draw_texture_rect(_logistics._icon(filters[object["id"]]), Rect2(at - Vector2(8, 8), Vector2(16, 16)), false)
 
 
 ## Turns a belt or inserter a quarter turn anticlockwise: south, east, north, west.
@@ -2620,7 +2730,8 @@ func _poll_logistics() -> void:
 		return
 	_polling_logistics = true
 	_next_logistics_poll = Time.get_ticks_msec() + LOGISTICS_POLL
-	var reply := await Net.request("logistics.get", {"x": _at.x, "y": _at.y})
+	# Item names once, for choosing filters.
+	var reply := await Net.request("logistics.get", {"x": _at.x, "y": _at.y, "names": _logistics.names.is_empty()})
 	_polling_logistics = false
 	if reply["type"] == "logistics":
 		_logistics.apply(reply["payload"])
@@ -3646,6 +3757,10 @@ func _build_windows() -> void:
 	_splitter_window.position = Vector2(1280 - 400 - 12, 64)
 	_splitter_window.applied.connect(_logistics.apply)
 	_splitter_window.failed.connect(_show_error)
+	_filter_window = FilterWindow.new()
+	_filter_window.position = Vector2(1280 - 400 - 12, 64)
+	_filter_window.applied.connect(_logistics.apply)
+	_filter_window.failed.connect(_show_error)
 	_mine_window = GameWindow.new("Kopalnia", 400)
 	_mine_window.position = Vector2(1280 - 400 - 12, 64)
 	_mine_box = VBoxContainer.new()
@@ -3710,6 +3825,7 @@ func _build_windows() -> void:
 	layer.add_child(_company_window)
 	layer.add_child(_storage_window)
 	layer.add_child(_splitter_window)
+	layer.add_child(_filter_window)
 	layer.add_child(_station_window)
 	layer.add_child(_crafting_window)
 	layer.add_child(_furnace_window)
@@ -3747,6 +3863,7 @@ func _reload_inventory() -> void:
 	_furnace_window.set_items(_items)
 	_storage_window.set_items(_items)
 	_splitter_window.set_items(_items)
+	_filter_window.set_items(_items)
 	_machine_window.set_items(_items)
 	_market_window.set_player(_items, _balance)
 	_generator_window.set_items(_items)

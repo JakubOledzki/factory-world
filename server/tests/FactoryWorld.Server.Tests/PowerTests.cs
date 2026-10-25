@@ -162,6 +162,62 @@ public sealed class PowerTests(ServerFactory factory) : IClassFixture<ServerFact
         Assert.Equal(30, contents[chest.Id].Items![0].Quantity);
     }
 
+    [Fact]
+    public void An_inserter_keeps_a_full_generator_fed_while_nobody_looks_at_the_plot()
+    {
+        var chest = Obj(Items.WoodenChest, 0, 0);
+        var inserter = Obj(Items.Inserter, 1, 0);
+        var generator = Obj(Items.Generator, 2, 0);
+        var pole = Obj(Items.Pole, 1, 1);
+        PlotObject[] objects = [chest, inserter, generator, pole];
+        var grid = Grid(objects, Fuelled(generator, Items.WoodPellets, PowerRules.MaxFuel));
+        var contents = new Dictionary<Guid, Contents> { [chest.Id] = new() { Items = [new() { Item = Items.WoodPellets, Quantity = 200 }] } };
+        var ports = new Dictionary<Guid, IMachinePort>
+        {
+            [chest.Id] = new StoragePort(Storages.Find(Items.WoodenChest)!, contents[chest.Id], () => { }),
+            [generator.Id] = grid.Port(generator.Id)!,
+        };
+
+        // The inserter alone draws 5 kW: a pellet (4,000 kJ) lasts 800 s, the full fire about 11 hours. A day later,
+        // in one catch-up, it still burns, refilled piece by piece as each one was lit.
+        var later = Start + TimeSpan.FromDays(1);
+        new PlotLogistics(objects, contents, ports, grid).Run(Start, later);
+
+        var fire = grid.Generator(generator.Id, later);
+        Assert.True(fire.Running);
+        Assert.InRange(fire.Fuel, PowerRules.MaxFuel - 1, PowerRules.MaxFuel);
+        Assert.InRange(contents[chest.Id].Items![0].Quantity, 90, 95);
+    }
+
+    [Fact]
+    public void A_busy_generator_is_fed_for_days_while_nobody_looks_at_the_plot()
+    {
+        var chest = Obj(Items.WoodenChest, 0, 0);
+        var inserter = Obj(Items.Inserter, 1, 0);
+        var generator = Obj(Items.Generator, 2, 0);
+        var pole = Obj(Items.Pole, 1, 1);
+        PlotObject[] mills = [Obj(Items.Mill, 0, 1), Obj(Items.Mill, 2, 1), Obj(Items.Mill, 1, 2)];
+        PlotObject[] objects = [chest, inserter, generator, pole, .. mills];
+        var grid = Grid(objects, Fuelled(generator, Items.WoodPellets, PowerRules.MaxFuel));
+        var contents = new Dictionary<Guid, Contents> { [chest.Id] = new() { Items = [new() { Item = Items.WoodPellets, Quantity = 7000 }] } };
+        var ports = new Dictionary<Guid, IMachinePort>
+        {
+            [chest.Id] = new StoragePort(Storages.Find(Items.WoodenChest)!, contents[chest.Id], () => { }),
+            [generator.Id] = grid.Port(generator.Id)!,
+        };
+
+        // Three mills and the inserter draw 95 kW: a pellet lasts about 42 s, so in three days the inserter swings
+        // thousands of times, far more than one catch-up's ticks of work without a pause.
+        var later = Start + TimeSpan.FromDays(3);
+        new PlotLogistics(objects, contents, ports, grid).Run(Start, later);
+
+        var fire = grid.Generator(generator.Id, later);
+        Assert.True(fire.Running);
+        Assert.InRange(fire.Fuel, PowerRules.MaxFuel - 1, PowerRules.MaxFuel);
+        // 3 days × 95 kW ÷ 4,000 kJ: 6,156 pellets lit.
+        Assert.InRange(contents[chest.Id].Items![0].Quantity, 835, 850);
+    }
+
     // --- In the game ---------------------------------------------------------------------------
 
     private async Task GiveAsync(GameClient client, string item, long quantity)

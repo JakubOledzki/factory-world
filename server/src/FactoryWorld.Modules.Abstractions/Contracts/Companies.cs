@@ -36,9 +36,26 @@ public static class CompanyPerks
 
     public const double RailwayFactor = 0.7;
 
+    /// <summary>The company's spaceport: the launch site the orbital mission needs.</summary>
+    public const string Spaceport = "spaceport";
+
+    /// <summary>The orbital mission: satellites guide trains and ships, members pay 20% less on every route.</summary>
+    public const string Orbit = "orbital_mission";
+
+    public const double OrbitFactor = 0.8;
+
+    /// <summary>The orbital station: research of members takes 20% less time.</summary>
+    public const string Station = "orbital_station";
+
+    public const double StationResearchFactor = 0.8;
+
     /// <summary>The fee factor for a member sending goods, by rail or sea.</summary>
     public static double FeeFactor(IReadOnlySet<string> projects, bool bySea) =>
-        (projects.Contains(Railway) ? RailwayFactor : 1) * (bySea && projects.Contains(Harbour) ? HarbourShipFactor : 1);
+        (projects.Contains(Railway) ? RailwayFactor : 1) * (bySea && projects.Contains(Harbour) ? HarbourShipFactor : 1)
+        * (projects.Contains(Orbit) ? OrbitFactor : 1);
+
+    /// <summary>What a member's research time is multiplied by.</summary>
+    public static double ResearchFactor(IReadOnlySet<string> projects) => projects.Contains(Station) ? StationResearchFactor : 1;
 }
 
 /// <summary>Technologies only a company can research, together; they open company features.</summary>
