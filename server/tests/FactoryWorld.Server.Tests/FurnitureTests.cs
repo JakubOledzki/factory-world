@@ -1,5 +1,9 @@
 using System.Text.Json;
+using FactoryWorld.Modules.Abstractions;
+using FactoryWorld.Modules.Abstractions.Contracts;
+using FactoryWorld.Modules.Market;
 using FactoryWorld.Modules.Recycling;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FactoryWorld.Server.Tests;
 
@@ -127,5 +131,96 @@ public sealed class FurnitureTests(ServerFactory factory) : IClassFixture<Server
         await client.SendAsync("garage.pickup", new { id = Find(placed, "furniture_gas_cylinder").GetProperty("id").GetGuid() });
         Assert.Equal("blocked", (await client.SendAsync("garage.place", new { kind = "furniture_gas_cylinder", x = 0, y = 10 })).ErrorCode());
         Assert.Equal("garage", (await client.SendAsync("garage.place", new { kind = "furniture_gas_cylinder", x = 1, y = 8 })).Type());
+    }
+
+    private async Task SqlAsync(string sql, Guid owner)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<GameDb>();
+        await db.InTransactionAsync(async () =>
+        {
+            await using var command = await db.CommandAsync(sql, CancellationToken.None);
+            command.Parameters.AddWithValue("owner", owner);
+            await command.ExecuteNonQueryAsync();
+            return 0;
+        }, CancellationToken.None);
+    }
+
+    /// <summary>Makes the player's garage look like one furnished before research tables existed.</summary>
+    private async Task WithoutResearchTableAsync(Guid owner)
+    {
+        await SqlAsync("DELETE FROM recycling.garage_objects WHERE owner_id = @owner AND kind = 'furniture_research_table'", owner);
+        await SqlAsync("UPDATE recycling.garages SET research_table = FALSE WHERE owner_id = @owner", owner);
+    }
+
+    private static int Count(JsonElement garage, string kind) =>
+        garage.Payload().GetProperty("objects").EnumerateArray().Count(o => o.GetProperty("kind").GetString() == kind);
+
+    [Fact]
+    public async Task A_new_garage_has_a_research_table_and_the_trader_sells_one_for_2000()
+    {
+        using var client = await factory.ConnectAsync();
+        await client.RegisterWithCharacterAsync();
+
+        var table = Find(await client.SendAsync("garage.get"), Items.ResearchTable);
+        Assert.Equal(1, table.GetProperty("x").GetInt32());
+        Assert.Equal(10, table.GetProperty("y").GetInt32());
+        Assert.Equal(200_000, NpcPrices.Sells[Items.ResearchTable]);
+        Assert.Equal("Stół badawczy", Items.Names[Items.ResearchTable]);
+    }
+
+    [Fact]
+    public async Task An_old_garage_gets_its_research_table_once()
+    {
+        using var client = await factory.ConnectAsync();
+        await client.RegisterWithCharacterAsync();
+        await client.SendAsync("garage.get");
+        await WithoutResearchTableAsync(client.AccountId);
+
+        var garage = await client.SendAsync("garage.get");
+        Assert.Equal(1, Count(garage, Items.ResearchTable));
+        Assert.Equal(10, Find(garage, Items.ResearchTable).GetProperty("y").GetInt32());
+
+        // Put away, it is not given again.
+        await client.SendAsync("garage.pickup", new { id = Find(garage, Items.ResearchTable).GetProperty("id").GetGuid() });
+        Assert.Equal(0, Count(await client.SendAsync("garage.get"), Items.ResearchTable));
+        Assert.Equal(1, (await client.InventoryAsync())[Items.ResearchTable]);
+    }
+
+    [Fact]
+    public async Task An_old_garage_gets_its_research_table_on_a_free_spot_when_its_own_is_taken()
+    {
+        using var client = await factory.ConnectAsync();
+        await client.RegisterWithCharacterAsync();
+        await client.SendAsync("garage.get");
+        await WithoutResearchTableAsync(client.AccountId);
+        // The pallet stands on the research table's spot.
+        await SqlAsync("UPDATE recycling.garage_objects SET x = 2, y = 10 WHERE owner_id = @owner AND kind = 'furniture_pallet'", client.AccountId);
+
+        var garage = await client.SendAsync("garage.get");
+        var placed = garage.Payload().GetProperty("objects").EnumerateArray()
+            .Select(o => new PlacedObject(o.GetProperty("id").GetGuid(), o.GetProperty("kind").GetString()!,
+                o.GetProperty("x").GetInt32(), o.GetProperty("y").GetInt32(), o.GetProperty("rotation").GetInt32()))
+            .ToList();
+        var table = placed.Single(o => o.Kind == Items.ResearchTable);
+        Assert.NotEqual((1, 10), (table.X, table.Y));
+        Assert.True(GarageLayout.InsideRoom(table.Kind, table.X, table.Y, table.Rotation));
+        Assert.DoesNotContain(placed, o => o != table && GarageLayout.Overlaps(o, table));
+    }
+
+    [Fact]
+    public void A_full_garage_has_no_free_spot_for_a_research_table()
+    {
+        var floor = new List<PlacedObject>();
+        for (var x = 0; x < GarageLayout.Width; x += 2)
+        {
+            for (var y = 0; y < GarageLayout.Depth; y += 2)
+            {
+                floor.Add(new PlacedObject(Guid.NewGuid(), "furniture_pallet", x, y));
+            }
+        }
+
+        Assert.Null(GarageLayout.FreeSpot(Items.ResearchTable, floor));
+        Assert.Equal((1, 10, 0), GarageLayout.FreeSpot(Items.ResearchTable, []));
     }
 }

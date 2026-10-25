@@ -197,6 +197,24 @@
     "anchorX": 33,
     "anchorY": 78
    }
+  ],
+  "furniture_research_table": [
+   {
+    "anchorX": 90,
+    "anchorY": 97
+   },
+   {
+    "anchorX": 56,
+    "anchorY": 111
+   },
+   {
+    "anchorX": 90,
+    "anchorY": 82
+   },
+   {
+    "anchorX": 56,
+    "anchorY": 121
+   }
   ]
  },
  "projection": {

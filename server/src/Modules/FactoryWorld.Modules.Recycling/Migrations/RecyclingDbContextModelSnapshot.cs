@@ -38,6 +38,10 @@ namespace FactoryWorld.Modules.Recycling.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("furnished");
 
+                    b.Property<bool>("HasResearchTable")
+                        .HasColumnType("boolean")
+                        .HasColumnName("research_table");
+
                     b.HasKey("OwnerId");
 
                     b.ToTable("garages", "recycling");
