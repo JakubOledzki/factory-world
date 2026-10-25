@@ -9,7 +9,11 @@ namespace FactoryWorld.Modules.Crafting;
 /// <summary>One batch of a processing machine: the ingredients it takes and what comes out.</summary>
 /// <param name="Id">The recipe's id, the same as the item it makes.</param>
 /// <param name="Xp">Experience for each item taken out of the machine.</param>
-public sealed record ProcessingRecipe(string Id, int Quantity, TimeSpan Time, IReadOnlyList<(string Item, int Quantity)> Ingredients, int Xp);
+public sealed record ProcessingRecipe(string Id, int Quantity, TimeSpan Time, IReadOnlyList<(string Item, int Quantity)> Ingredients, int Xp)
+{
+    /// <summary>What else each batch gives besides the product, e.g. the hide, tallow and bones of a slaughtered cow.</summary>
+    public IReadOnlyList<(string Item, int Quantity)> Extras { get; init; } = [];
+}
 
 /// <param name="Kind">The machine's item id.</param>
 /// <param name="Fired">Whether it burns fuel: one batch takes heat from the fire.</param>
@@ -60,6 +64,8 @@ public static class Processing
         [
             new(Items.Flour, 1, TimeSpan.FromSeconds(6), [(Items.Wheat, 2)], 1),
             new(Items.CornFlour, 1, TimeSpan.FromSeconds(6), [(Items.Corn, 2)], 1),
+            // Concentrate for work horses, of corn and the distillery's stillage.
+            new(Items.ConcentrateFeed, 2, TimeSpan.FromSeconds(8), [(Items.Corn, 2), (Items.Stillage, 1)], 1),
         ], Powered: true),
         new(Items.OilPress, false,
         [
@@ -76,6 +82,10 @@ public static class Processing
             new(Items.CornBread, 1, TimeSpan.FromSeconds(20), [(Items.CornFlour, 2)], 3),
             new(Items.CarrotCake, 1, TimeSpan.FromSeconds(30), [(Items.Flour, 2), (Items.Carrot, 3), (Items.SunflowerOil, 1)], 6),
             new(Items.Gingerbread, 2, TimeSpan.FromSeconds(30), [(Items.Flour, 2), (Items.Honey, 1)], 5),
+            // Of the dairy's cheese and butter: sandwiches for the road, cheesecake for banquets and provisions that keep.
+            new(Items.CheeseSandwich, 2, TimeSpan.FromSeconds(10), [(Items.Bread, 1), (Items.Cheese, 1)], 3),
+            new(Items.Cheesecake, 2, TimeSpan.FromSeconds(30), [(Items.Cheese, 2), (Items.Egg, 2), (Items.Flour, 1), (Items.Butter, 1)], 6),
+            new(Items.Provisions, 2, TimeSpan.FromSeconds(15), [(Items.Cheese, 2), (Items.Bread, 2), (Items.Cardboard, 1)], 2),
         ]),
         new(Items.Kitchen, true,
         [
@@ -90,6 +100,14 @@ public static class Processing
             new(Items.HerbalTea, 2, TimeSpan.FromSeconds(10), [(Items.Herbs, 2)], 2),
             // Provisions for the crew of an orbital station.
             new(Items.Provisions, 2, TimeSpan.FromSeconds(10), [(Items.CannedFish, 1), (Items.Bread, 2), (Items.Cardboard, 1)], 2),
+            // Meals that feed the works canteen and the character, and a roast for banquets.
+            new(Items.WorkersLunch, 2, TimeSpan.FromSeconds(20), [(Items.Bigos, 1), (Items.Bread, 1), (Items.Milk, 1)], 4),
+            new(Items.LumberjackGoulash, 1, TimeSpan.FromSeconds(25), [(Items.Meat, 2), (Items.Potato, 2), (Items.Cabbage, 1)], 5),
+            new(Items.MinersBreakfast, 1, TimeSpan.FromSeconds(15), [(Items.CheeseSandwich, 1), (Items.Egg, 1), (Items.HerbalTea, 1)], 4),
+            new(Items.RoastBeef, 2, TimeSpan.FromSeconds(30), [(Items.Meat, 3), (Items.Potato, 2), (Items.Butter, 1)], 6),
+            // Bones boiled into gelatin, and of it a culture medium that speeds research up.
+            new(Items.Gelatin, 1, TimeSpan.FromSeconds(15), [(Items.Bones, 4)], 1),
+            new(Items.CultureMedium, 1, TimeSpan.FromSeconds(15), [(Items.Gelatin, 1), (Items.Egg, 2), (Items.Water, 1)], 3),
         ]),
         // Sawmills of three levels: the plain one saws by hand, the electric and the industrial one run on
         // power, work faster and glue plywood from planks; the industrial one gets three planks from a log.
@@ -158,6 +176,9 @@ public static class Processing
         [
             new(Items.SmokedFish, 1, TimeSpan.FromSeconds(20), [(Items.Cod, 2)], 3),
             new(Items.SmokedSalmon, 1, TimeSpan.FromSeconds(25), [(Items.Salmon, 1)], 4),
+            // Meat dried in the smoke keeps; provisions packed of it go into big builds.
+            new(Items.DriedMeat, 2, TimeSpan.FromSeconds(30), [(Items.Meat, 3), (Items.Salt, 1)], 4),
+            new(Items.Provisions, 2, TimeSpan.FromSeconds(15), [(Items.DriedMeat, 1), (Items.Bread, 2), (Items.Cardboard, 1)], 2),
         ]),
         new(Items.Cannery, false,
         [
@@ -284,10 +305,14 @@ public static class Processing
         new(Items.IceHotel, true,
         [
             new(Items.Takings, 4, TimeSpan.FromSeconds(60), [], 2),
+            // A restaurant: guests pay far more for a roast.
+            new(Items.DiningTakings, 10, TimeSpan.FromSeconds(60), [(Items.RoastBeef, 1)], 3),
         ], Aurora: true),
         new(Items.Viewpoint, false,
         [
             new(Items.Takings, 1, TimeSpan.FromSeconds(60), [], 1),
+            // A café with cheesecake.
+            new(Items.DiningTakings, 8, TimeSpan.FromSeconds(120), [(Items.Cheesecake, 1)], 2),
         ], Aurora: true),
         // Cities: an assembly hall puts together what the other biomes make; a multi-storey factory does the same twice as fast on one tile.
         new(Items.AssemblyHall, false, Assembly, Powered: true),
@@ -353,6 +378,32 @@ public static class Processing
             // Paint and casein glue.
             new(Items.Paint, 3, TimeSpan.FromSeconds(10), [(Items.Turpentine, 1), (Items.SunflowerOil, 1), (Items.Clay, 1)], 2),
             new(Items.CaseinGlue, 2, TimeSpan.FromSeconds(10), [(Items.Milk, 2), (Items.Rosin, 1)], 2),
+            // Lubricant rendered of tallow and wax, without kerosene.
+            new(Items.Lubricant, 2, TimeSpan.FromSeconds(10), [(Items.Tallow, 2), (Items.Wax, 1)], 2),
+        ]),
+        // Husbandry for the rest of the game. A slaughterhouse cuts a cow into meat and gives its hide, tallow and bones too.
+        new(Items.Slaughterhouse, false,
+        [
+            new(Items.Meat, 12, TimeSpan.FromSeconds(60), [(Items.Cow, 1)], 10) { Extras = [(Items.Hide, 1), (Items.Tallow, 4), (Items.Bones, 6)] },
+        ]),
+        // A dairy makes cheese, butter and casein of milk, and of casein a plastic (galalith) and casein paint.
+        new(Items.Dairy, false,
+        [
+            new(Items.Cheese, 1, TimeSpan.FromSeconds(20), [(Items.Milk, 4)], 3),
+            new(Items.Butter, 1, TimeSpan.FromSeconds(15), [(Items.Milk, 3)], 2),
+            new(Items.Casein, 2, TimeSpan.FromSeconds(15), [(Items.Milk, 4)], 2),
+            new(Items.Plastic, 3, TimeSpan.FromSeconds(10), [(Items.Casein, 1), (Items.Water, 1)], 2),
+            new(Items.Paint, 3, TimeSpan.FromSeconds(10), [(Items.Casein, 1), (Items.Clay, 1), (Items.SunflowerOil, 1)], 2),
+        ]),
+        // A fired potato distillery: ethanol burns in diesel generators and snowmobiles, the stillage left goes into horse feed.
+        new(Items.PotatoDistillery, true,
+        [
+            new(Items.Ethanol, 2, TimeSpan.FromSeconds(15), [(Items.Potato, 4)], 2) { Extras = [(Items.Stillage, 1)] },
+        ]),
+        // A biogas plant ferments manure into gas and leaves fertiliser.
+        new(Items.BiogasPlant, false,
+        [
+            new(Items.NaturalGas, 2, TimeSpan.FromSeconds(30), [(Items.Manure, 4), (Items.Water, 1)], 2) { Extras = [(Items.Fertilizer, 1)] },
         ]),
     ];
 
@@ -464,16 +515,22 @@ public static class Processing
     /// <summary>How much faster a machine on power works on a plot with a control center.</summary>
     public const double ControlBonus = 1.2;
 
+    /// <summary>How much faster a foundry works on a plot with a leather bellows.</summary>
+    public const double BellowsBonus = 1.15;
+
     /// <summary>The machine of <paramref name="kind"/> as it works on a plot of <paramref name="biome"/>: its recipes shorter by its <see cref="Bonus"/>
-    /// (and by <see cref="ControlBonus"/> on power when the plot has a control center), and off the glacier with a block of ice more for a machine that has to be cooled.</summary>
-    public static ProcessingMachine? For(string kind, int biome, bool controlled = false)
+    /// (by <see cref="ControlBonus"/> on power when the plot has a control center, by <see cref="BellowsBonus"/> for a foundry with bellows and by
+    /// <see cref="Canteens.Bonus"/> for a crew the plot's canteen <paramref name="fed"/>), and off the glacier with a block of ice more for a machine that has to be cooled.</summary>
+    public static ProcessingMachine? For(string kind, int biome, bool controlled = false, bool bellows = false, bool fed = false)
     {
         if (!ByKind.TryGetValue(kind, out var machine))
         {
             return null;
         }
 
-        var (bonus, iced) = (Bonus(kind, biome) * (controlled && machine.Powered ? ControlBonus : 1), Iced(kind, biome));
+        var bonus = Bonus(kind, biome) * (controlled && machine.Powered ? ControlBonus : 1) * (bellows && kind == Items.Foundry ? BellowsBonus : 1)
+            * (fed && Canteens.Eats(kind) ? Canteens.Bonus : 1);
+        var iced = Iced(kind, biome);
         return bonus == 1 && !iced ? machine : Variants.GetOrAdd((kind, bonus, iced), _ => machine with
         {
             Recipes = machine.Recipes.Select(r => r with
@@ -495,9 +552,10 @@ public static class Processing
     public static async Task<int> BiomeOfAsync(IPlotObjects plots, IPlotRegistry registry, Guid id, CancellationToken cancellationToken) =>
         await plots.PlotOfAsync(id, cancellationToken) is { } at ? (await registry.FindAsync(at.X, at.Y, cancellationToken))?.Biome ?? 0 : 0;
 
-    /// <summary>The machine of <paramref name="kind"/> as it works where the object <paramref name="id"/> stands: by the plot's biome and its control center.</summary>
+    /// <summary>The machine of <paramref name="kind"/> as it works where the object <paramref name="id"/> stands at <paramref name="now"/>: by the plot's biome,
+    /// its control center, its bellows and whether its canteen has food.</summary>
     public static async Task<ProcessingMachine?> OnPlotAsync(
-        string kind, IPlotObjects plots, IPlotRegistry registry, Guid id, CancellationToken cancellationToken)
+        string kind, GameDb db, IPlotObjects plots, IPlotRegistry registry, Guid id, DateTimeOffset now, CancellationToken cancellationToken)
     {
         if (await plots.PlotOfAsync(id, cancellationToken) is not { } at)
         {
@@ -505,8 +563,9 @@ public static class Processing
         }
 
         var biome = (await registry.FindAsync(at.X, at.Y, cancellationToken))?.Biome ?? 0;
-        var controlled = (await plots.ObjectsAsync(at.X, at.Y, cancellationToken)).Any(o => o.Kind == Items.ControlCenter);
-        return For(kind, biome, controlled);
+        var objects = await plots.ObjectsAsync(at.X, at.Y, cancellationToken);
+        var fed = Canteens.Eats(kind) && await Canteens.FedAsync(db, objects, now, cancellationToken);
+        return For(kind, biome, objects.Any(o => o.Kind == Items.ControlCenter), objects.Any(o => o.Kind == Items.Bellows), fed);
     }
 
     /// <summary>The clock a machine works by: its own time on the power grid, the boats' time that stands still in a storm, or plain time.</summary>
@@ -525,6 +584,11 @@ public static class Processing
         for (var i = 0; i < recipe.Ingredients.Count; i++)
         {
             n = Math.Min(n, s.Input(i) / recipe.Ingredients[i].Quantity);
+        }
+
+        for (var i = 0; i < recipe.Extras.Count; i++)
+        {
+            n = Math.Min(n, (MaxOutput - s.Extra(i)) / recipe.Extras[i].Quantity);
         }
 
         if (machine.Fired)
@@ -553,7 +617,13 @@ public static class Processing
             inputs[i] -= n * recipe.Ingredients[i].Quantity;
         }
 
-        var after = s with { Inputs = inputs, Output = s.Output + n * recipe.Quantity };
+        var extras = new int[recipe.Extras.Count];
+        for (var i = 0; i < extras.Length; i++)
+        {
+            extras[i] = s.Extra(i) + n * recipe.Extras[i].Quantity;
+        }
+
+        var after = s with { Inputs = inputs, Output = s.Output + n * recipe.Quantity, Extras = extras };
         if (machine.Fired)
         {
             var perFuel = FuelBatches(s.FuelItem);
@@ -581,12 +651,19 @@ public static class Processing
 /// <param name="Heat">Batches left from fuel already burning.</param>
 /// <param name="Output">Products made from the recipe, waiting to be taken out.</param>
 /// <param name="StartedAt">When the batch being made now started; null while the machine stands idle.</param>
+/// <param name="Extras">How much of each of the recipe's <see cref="ProcessingRecipe.Extras"/> waits to be taken out, in the recipe's order.</param>
 public sealed record MachineState(
-    string? Recipe, IReadOnlyList<int> Inputs, string? FuelItem, int Fuel, int Heat, int Output, DateTimeOffset? StartedAt)
+    string? Recipe, IReadOnlyList<int> Inputs, string? FuelItem, int Fuel, int Heat, int Output, DateTimeOffset? StartedAt,
+    IReadOnlyList<int>? Extras = null)
 {
     public static readonly MachineState Empty = new(null, [], null, 0, 0, 0, null);
 
     public int Input(int i) => i < Inputs.Count ? Inputs[i] : 0;
+
+    public int Extra(int i) => Extras is { } extras && i < extras.Count ? extras[i] : 0;
+
+    /// <summary>Whether anything made waits in the machine: the product or what came with it.</summary>
+    public bool HasOutput => Output > 0 || (Extras?.Any(e => e > 0) ?? false);
 }
 
 /// <param name="MachineTime">The machine's own time at <paramref name="ServerTime"/>, which <see cref="MachineState.StartedAt"/> is in.</param>
@@ -603,7 +680,7 @@ internal static class MachineRows
     {
         await using var command = await db.CommandAsync(
             """
-            SELECT kind, recipe, inputs, fuel_item, fuel, heat, output, started_at
+            SELECT kind, recipe, inputs, fuel_item, fuel, heat, output, started_at, extras
             FROM crafting.machines WHERE object_id = @id FOR UPDATE
             """, cancellationToken);
         command.Parameters.AddWithValue("id", id);
@@ -616,18 +693,18 @@ internal static class MachineRows
         return (reader.GetString(0), new MachineState(
             reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetFieldValue<int[]>(2),
             reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetInt32(4), reader.GetInt32(5), reader.GetInt32(6),
-            reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7)));
+            reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7), reader.GetFieldValue<int[]>(8)));
     }
 
     public static async Task WriteAsync(GameDb db, Guid owner, Guid id, string kind, MachineState s, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync(
             """
-            INSERT INTO crafting.machines (object_id, owner_id, kind, recipe, inputs, fuel_item, fuel, heat, output, started_at)
-            VALUES (@id, @owner, @kind, @recipe, @inputs, @fuelItem, @fuel, @heat, @output, @started)
+            INSERT INTO crafting.machines (object_id, owner_id, kind, recipe, inputs, fuel_item, fuel, heat, output, started_at, extras)
+            VALUES (@id, @owner, @kind, @recipe, @inputs, @fuelItem, @fuel, @heat, @output, @started, @extras)
             ON CONFLICT (object_id) DO UPDATE SET
                 recipe = @recipe, inputs = @inputs, fuel_item = @fuelItem, fuel = @fuel, heat = @heat,
-                output = @output, started_at = @started
+                output = @output, started_at = @started, extras = @extras
             """, cancellationToken);
         command.Parameters.AddWithValue("id", id);
         command.Parameters.AddWithValue("owner", owner);
@@ -638,6 +715,7 @@ internal static class MachineRows
         command.Parameters.AddWithValue("fuel", s.Fuel);
         command.Parameters.AddWithValue("heat", s.Heat);
         command.Parameters.AddWithValue("output", s.Output);
+        command.Parameters.AddWithValue("extras", (s.Extras ?? []).ToArray());
         command.Parameters.Add(new NpgsqlParameter("started", NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = (object?)s.StartedAt ?? DBNull.Value });
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
@@ -650,6 +728,14 @@ internal static class MachineRows
             if (s.Output > 0)
             {
                 yield return (recipe.Id, s.Output);
+            }
+
+            for (var i = 0; i < recipe.Extras.Count; i++)
+            {
+                if (s.Extra(i) > 0)
+                {
+                    yield return (recipe.Extras[i].Item, s.Extra(i));
+                }
             }
 
             for (var i = 0; i < recipe.Ingredients.Count; i++)
@@ -822,7 +908,22 @@ public sealed class MachineService(
     private async Task<(MachineState, XpGain?)> TakeOutputAsync(
         Guid owner, ProcessingMachine machine, MachineState state, List<(string, int)> taken, CancellationToken cancellationToken)
     {
-        if (machine.Recipe(state.Recipe) is not { } recipe || state.Output == 0)
+        if (machine.Recipe(state.Recipe) is not { } recipe || !state.HasOutput)
+        {
+            return (state, null);
+        }
+
+        for (var i = 0; i < recipe.Extras.Count; i++)
+        {
+            if (state.Extra(i) > 0)
+            {
+                await inventory.ReceiveAsync(owner, recipe.Extras[i].Item, state.Extra(i), cancellationToken);
+                taken.Add((recipe.Extras[i].Item, state.Extra(i)));
+            }
+        }
+
+        state = state with { Extras = new int[recipe.Extras.Count] };
+        if (state.Output == 0)
         {
             return (state, null);
         }
@@ -877,7 +978,7 @@ public sealed class MachineService(
         {
             if (await place.KindAsync(owner, id, cancellationToken) is { } kind)
             {
-                machine = (await Processing.OnPlotAsync(kind, plots, registry, id, cancellationToken));
+                machine = await Processing.OnPlotAsync(kind, db, plots, registry, id, time.GetUtcNow(), cancellationToken);
                 break;
             }
         }
@@ -904,11 +1005,11 @@ public sealed class MachineService(
 }
 
 /// <summary>Processing machines as inserters see them: ingredients of the chosen recipe and fuel go in, products come out.</summary>
-public sealed class ProcessingPorts(GameDb db, IProductionStats stats, IPlotPower power, IPlotObjects plots, IPlotRegistry registry) : IMachinePorts
+public sealed class ProcessingPorts(GameDb db, IProductionStats stats, IPlotPower power, IPlotObjects plots, IPlotRegistry registry, TimeProvider time) : IMachinePorts
 {
     public async Task<IMachinePort?> OpenAsync(Guid owner, Guid id, string kind, CancellationToken cancellationToken)
     {
-        if (!Processing.ByKind.ContainsKey(kind) || (await Processing.OnPlotAsync(kind, plots, registry, id, cancellationToken)) is not { } machine)
+        if (!Processing.ByKind.ContainsKey(kind) || (await Processing.OnPlotAsync(kind, db, plots, registry, id, time.GetUtcNow(), cancellationToken)) is not { } machine)
         {
             return null;
         }
@@ -929,8 +1030,26 @@ public sealed class ProcessingPorts(GameDb db, IProductionStats stats, IPlotPowe
         public string? Output(DateTimeOffset now, Func<string, bool> wanted)
         {
             Advance(now);
+            if (Recipe is not { } recipe)
+            {
+                return null;
+            }
+
             // Money is no good on a belt: tourists' takings are taken out by hand.
-            return Recipe is { } recipe && state.Output > 0 && !Items.IsMoney(recipe.Id) && wanted(recipe.Id) ? recipe.Id : null;
+            if (state.Output > 0 && !Items.IsMoney(recipe.Id) && wanted(recipe.Id))
+            {
+                return recipe.Id;
+            }
+
+            for (var i = 0; i < recipe.Extras.Count; i++)
+            {
+                if (state.Extra(i) > 0 && wanted(recipe.Extras[i].Item))
+                {
+                    return recipe.Extras[i].Item;
+                }
+            }
+
+            return null;
         }
 
         public void Take(string item, DateTimeOffset now)
@@ -940,6 +1059,18 @@ public sealed class ProcessingPorts(GameDb db, IProductionStats stats, IPlotPowe
             {
                 // Room again for what was waiting on a full machine.
                 state = Processing.Start(machine, state with { Output = state.Output - 1 }, clock.At(now));
+                _changed = true;
+            }
+            else if (Recipe is { } recipe && recipe.Extras.ToList().FindIndex(e => e.Item == item) is var extra and >= 0 && state.Extra(extra) > 0)
+            {
+                var extras = new int[recipe.Extras.Count];
+                for (var i = 0; i < extras.Length; i++)
+                {
+                    extras[i] = state.Extra(i);
+                }
+
+                extras[extra]--;
+                state = Processing.Start(machine, state with { Extras = extras }, clock.At(now));
                 _changed = true;
             }
         }
@@ -1055,6 +1186,7 @@ public abstract class MachineHandler(IServiceScopeFactory scopes) : IMessageHand
                 quantity = r.Quantity,
                 seconds = r.Time.TotalSeconds,
                 ingredients = r.Ingredients.Select(i => new { id = i.Item, name = Items.Names[i.Item], quantity = i.Quantity }),
+                extras = r.Extras.Select(e => new { id = e.Item, name = Items.Names[e.Item], quantity = e.Quantity }),
                 xp = r.Xp,
                 locked = locked.GetValueOrDefault(r.Id),
             }),
@@ -1066,6 +1198,8 @@ public abstract class MachineHandler(IServiceScopeFactory scopes) : IMessageHand
                 need = ingredient.Quantity,
             }) ?? [],
             output = recipe is null || s.Output == 0 ? null : new { id = recipe.Id, name = Items.Names[recipe.Id], quantity = s.Output },
+            // What came with the product, e.g. hide and bones out of a slaughterhouse.
+            extras = recipe?.Extras.Select((e, i) => new { id = e.Item, name = Items.Names[e.Item], quantity = s.Extra(i) }).Where(e => e.quantity > 0).ToList() ?? [],
             fired = machine.Fired,
             fuel = s.FuelItem is { } fuel && s.Fuel > 0 ? new { id = fuel, name = Items.Names[fuel], quantity = s.Fuel } : null,
             heat = s.Heat,

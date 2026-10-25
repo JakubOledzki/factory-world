@@ -89,11 +89,11 @@ public interface IEquipment
     Task GiveToolAsync(Guid accountId, string tool, CancellationToken cancellationToken);
 }
 
-/// <summary>The clothes a character wears, and what they help with.</summary>
+/// <summary>The clothes a character wears and the level it has reached, and what they help with.</summary>
 public interface IOutfit
 {
-    /// <summary>What the player gets in an industry (<see cref="Industries"/>), in percent: the worn clothes
-    /// and every <see cref="IPlayerBonuses"/> (e.g. the garage's upgrades) together; 0 without any.</summary>
+    /// <summary>What the player gets in an industry (<see cref="Industries"/>), in percent: the worn clothes, the
+    /// level, the last meal and every <see cref="IPlayerBonuses"/> (e.g. the garage's upgrades) together; 0 without any.</summary>
     Task<int> BonusAsync(Guid accountId, string industry, CancellationToken cancellationToken);
 
     /// <summary>The clothes worn by slot (<see cref="ClothingSlots.All"/>); empty when the account has no character.</summary>

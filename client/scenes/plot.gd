@@ -175,11 +175,15 @@ const PLACED_SPRITES := {
 	"furniture_control_center": "control_center", "furniture_continuous_caster": "continuous_caster",
 	"storage_automated_warehouse": "automated_warehouse", "furniture_steel_combine": "steel_combine",
 	"furniture_megafactory": "megafactory", "power_fusion_plant": "fusion_plant",
+	"furniture_canteen": "canteen", "furniture_slaughterhouse": "slaughterhouse", "furniture_dairy": "dairy",
+	"furniture_potato_distillery": "potato_distillery", "furniture_biogas_plant": "biogas_plant", "furniture_stable": "stable",
+	"furniture_bellows": "bellows", "furniture_farmstead": "farmstead", "furniture_manor_farm": "manor_farm",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
 ## Animals let out on a pasture, and their sprites there.
-const ANIMAL_SPRITES := {"animal_chicken": "chicken", "animal_sheep": "sheep", "animal_cow": "cow", "animal_camel": "camel"}
+const ANIMAL_SPRITES := {"animal_chicken": "chicken", "animal_sheep": "sheep", "animal_cow": "cow", "animal_camel": "camel",
+	"animal_horse": "horse"}
 ## Placed objects that open the machine window.
 const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen",
 	"furniture_sawmill", "furniture_electric_sawmill", "furniture_industrial_sawmill",
@@ -192,7 +196,13 @@ const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_
 	"furniture_assembly_hall", "furniture_multistorey_factory", "furniture_city_sorter", "furniture_design_office",
 	"furniture_laboratory", "furniture_service_workshop", "furniture_paper_mill", "furniture_carpentry", "furniture_charcoal_kiln",
 	"furniture_tar_kiln", "furniture_machine_shop", "furniture_robotic_hall", "furniture_oxygen_converter", "furniture_rolling_mill",
-	"furniture_continuous_caster", "furniture_steel_combine", "furniture_megafactory"]
+	"furniture_continuous_caster", "furniture_steel_combine", "furniture_megafactory",
+	"furniture_slaughterhouse", "furniture_dairy", "furniture_potato_distillery", "furniture_biogas_plant"]
+## A works canteen opens its own window and feeds the crews of the plot's machines; a stable lets horses out on the plot,
+## a bellows blows the plot's furnaces: neither opens anything.
+const CANTEEN := "furniture_canteen"
+const STABLE := "furniture_stable"
+const BELLOWS := "furniture_bellows"
 ## A beehive opens its own window; a fire watchtower and a fire station only stand guard over the forest.
 const BEEHIVE := "furniture_beehive"
 const WATCHTOWER := "furniture_fire_watchtower"
@@ -257,16 +267,20 @@ const CITY_ONLY := ["furniture_multistorey_factory", "furniture_shop", "storage_
 	"furniture_company_hq", "furniture_design_office", "furniture_laboratory", "furniture_service_workshop", "furniture_tailor"]
 ## Makes every machine on power on the plot 20% faster; opens nothing.
 const CONTROL_CENTER := "furniture_control_center"
-const ONE_PER_PLOT := ["furniture_freight_terminal", "furniture_company_hq", CONTROL_CENTER]
+const ONE_PER_PLOT := ["furniture_freight_terminal", "furniture_company_hq", CONTROL_CENTER, CANTEEN, STABLE, BELLOWS]
 const ASSEMBLY_HALL := "furniture_assembly_hall"
 const SHOP := "furniture_shop"
 ## Forester's buildings of every level and how far their forest reaches from the building's tile;
 ## each covers 3 × 3 tiles (FOOTPRINT each way) and keeps a clearing FOREST_CLEARING tiles out.
 const FORESTERS := {"furniture_forester_hut": 5, "furniture_forester_lodge": 6, "furniture_forestry_station": 7}
 const FOOTPRINT := 1
+## Farmer's buildings of both levels and how far their fields reach, like the foresters'; they stand on fertile land only
+## (farmland, oasis) and keep the same clearing and path free.
+const FARMSTEADS := {"furniture_farmstead": 4, "furniture_manor_farm": 5}
+const FERTILE := [3, 12]
 ## Buildings of the crafting tree on 3 × 3 tiles, and the two on 5 × 5 (HUGE_FOOTPRINT each way).
 const LARGE := ["furniture_robotic_hall", "furniture_oxygen_converter", "furniture_rolling_mill", "furniture_continuous_caster",
-	"storage_automated_warehouse", "power_fusion_plant"]
+	"storage_automated_warehouse", "power_fusion_plant", CANTEEN, "furniture_biogas_plant"]
 const HUGE := ["furniture_steel_combine", "furniture_megafactory"]
 const HUGE_FOOTPRINT := 2
 const FOREST_CLEARING := 2
@@ -310,7 +324,11 @@ const SPROUT_UNTIL := 0.6
 ## Fertiliser sown with a crop makes it ripen this many times as fast; the crop menu numbers those choices from FERTILIZED.
 const FERTILIZER := "fertilizer"
 const FERTILIZER_SPEED := 2.0
+## Manure from the animals: a crop sown on it ripens a quarter sooner (in 3/4 of the time).
+const MANURE := "manure"
+const MANURE_SPEED := 4.0 / 3.0
 const FERTILIZED := 100
+const MANURED := 200
 ## A planted tree shows as a sapling until this much of its growing time is left, then young;
 ## grown, it looks like one of the conifers of the forest.
 const SAPLING_UNTIL := 0.5
@@ -407,6 +425,11 @@ var _next_logistics_poll := 0.0
 var _polling_logistics := false
 ## The plot's foresters by id, as the server last sent them.
 var _foresters := {}
+## The plot's farmsteads by id, as the server last told, and the fields they sow (cell → true).
+var _farmsteads := {}
+var _farm_fields := {}
+var _next_farm_poll := 0.0
+var _polling_farms := false
 var _next_forestry_poll := 0.0
 var _polling_forestry := false
 
@@ -506,6 +529,8 @@ var _company_window: CompanyWindow
 var _stats_window: StatsWindow
 var _machine_window: MachineWindow
 var _forester_window: ForesterWindow
+var _farmstead_window: FarmsteadWindow
+var _canteen_window: CanteenWindow
 var _market_window: MarketWindow
 ## "Rynek [M]" in the bar: shown while a computer stands on the plot.
 var _market_button: Button
@@ -837,7 +862,7 @@ func _big(kind: String) -> bool:
 func _reach(kind: String) -> int:
 	if kind in HUGE:
 		return HUGE_FOOTPRINT
-	return FOOTPRINT if FORESTERS.has(kind) or kind in LARGE or kind in [SOLAR_TOWER, LARGE_WIND, ICE_HOTEL, ASSEMBLY_HALL] else 0
+	return FOOTPRINT if FORESTERS.has(kind) or FARMSTEADS.has(kind) or kind in LARGE or kind in [SOLAR_TOWER, LARGE_WIND, ICE_HOTEL, ASSEMBLY_HALL] else 0
 
 
 ## Whether a tile of a city plot can be built on: by the station only.
@@ -1274,6 +1299,8 @@ func _can_place(cell: Vector2i) -> bool:
 		return biome == GLACIER
 	if _placing in POLAR_ONLY:
 		return biome in POLAR
+	if FARMSTEADS.has(_placing):
+		return biome in FERTILE
 	return true
 
 
@@ -1440,6 +1467,16 @@ func _placed_label(cell: Vector2i) -> String:
 			return "%s: kliknij, aby otworzyć" % object["name"]
 		var full := ", pełny" if forester.get("full", false) else ""
 		return "%s (drewno %d/%d%s, drzew %d): kliknij, aby otworzyć" % [object["name"], int(forester["wood"]), int(forester["capacity"]), full, int(forester["trees"])]
+	if FARMSTEADS.has(object["kind"]):
+		var farm: Dictionary = _farmsteads.get(object["id"], {})
+		if farm.is_empty():
+			return "%s: kliknij, aby otworzyć" % object["name"]
+		var full := ", pełna" if farm.get("full", false) else ""
+		return "%s (plony %d/%d%s, grządek %d): kliknij, aby otworzyć" % [object["name"], int(farm["crops"]), int(farm["capacity"]), full, int(farm["fields"])]
+	if object["kind"] == CANTEEN:
+		return "%s: kliknij, aby wydać jedzenie załogom" % object["name"]
+	if object["kind"] in [STABLE, BELLOWS]:
+		return object["name"]
 	if object["kind"] == POLE:
 		return "Słup energetyczny (%s): kliknij po więcej" % _power.describe(object["id"])
 	if object["kind"] in GENERATORS:
@@ -1506,10 +1543,10 @@ func _draw_marks() -> void:
 	if _hovered.x >= 0 and (_placed.has(_hovered) or _animals.has(_hovered)):
 		var big := _placed.has(_hovered) and _big(_placed[_hovered]["kind"])
 		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8), 1.0 + 1.4 * _reach(_placed[_hovered]["kind"]) if big else 1.0)
-		if big and FORESTERS.has(_placed[_hovered]["kind"]):
+		if big and (FORESTERS.has(_placed[_hovered]["kind"]) or FARMSTEADS.has(_placed[_hovered]["kind"])):
 			_draw_forest(_placed[_hovered]["kind"], _hovered, int(_placed[_hovered].get("rotation", 0)))
 	if _placing != "" and ground.x >= 0:
-		if FORESTERS.has(_placing):
+		if FORESTERS.has(_placing) or FARMSTEADS.has(_placing):
 			_draw_forest(_placing, ground, _place_rotation)
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8),
 			1.0 + 1.4 * _reach(_placing))
@@ -1574,12 +1611,14 @@ func _draw_ring(at: Vector2, color: Color, size := 1.0) -> void:
 	_marks.draw_set_transform(Vector2.ZERO)
 
 
-## The square a forester keeps its forest in, on the ground, with its clearing and the path from its door left free.
+## The square a forester keeps its forest in (or a farmstead its fields), on the ground, with its clearing and the path
+## from its door left free.
 func _draw_forest(kind: String, cell: Vector2i, rotation: int) -> void:
-	var r: int = FORESTERS[kind]
+	var r: int = FORESTERS[kind] if FORESTERS.has(kind) else FARMSTEADS[kind]
 	var area := Rect2(Vector2(cell - Vector2i(r, r)) * TILE, Vector2(2 * r + 1, 2 * r + 1) * TILE)
-	_marks.draw_rect(area, Color(0.45, 0.85, 0.35, 0.10))
-	_marks.draw_rect(area, Color(0.45, 0.85, 0.35, 0.7), false, 2.0)
+	var tint := Color(0.45, 0.85, 0.35) if FORESTERS.has(kind) else Color(0.9, 0.75, 0.3)
+	_marks.draw_rect(area, Color(tint, 0.10))
+	_marks.draw_rect(area, Color(tint, 0.7), false, 2.0)
 	var c := FOREST_CLEARING
 	var clearing := Rect2(Vector2(cell - Vector2i(c, c)) * TILE, Vector2(2 * c + 1, 2 * c + 1) * TILE)
 	var facing := PlotLogistics.facing(rotation)
@@ -1639,7 +1678,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_stop_releasing()
 		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _achievements_window.visible \
 				or _mine_window.visible or _character_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _research_window, _furnace_window, _machine_window, _forester_window, _generator_window, _storage_window, _splitter_window, _filter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window]:
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _research_window, _furnace_window, _machine_window, _forester_window, _farmstead_window, _canteen_window, _generator_window, _storage_window, _splitter_window, _filter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -2015,6 +2054,15 @@ func _open_crop_menu(cell: Vector2i) -> void:
 			var minutes := roundi(float(crop["growSeconds"]) / 60.0 / FERTILIZER_SPEED)
 			_crop_menu.add_icon_item(UI.texture("icons/item_" + FERTILIZER),
 				"%s z nawozem  ·  %d min" % [crop["name"], maxi(1, minutes)], FERTILIZED + i)
+	if _count(MANURE) > 0:
+		_crop_menu.add_separator("Na oborniku (masz %d)" % _count(MANURE))
+		for i in CROPS.size():
+			var crop: Dictionary = _crops.get(CROPS[i], {})
+			if crop.is_empty():
+				continue
+			var minutes := roundi(float(crop["growSeconds"]) / 60.0 / MANURE_SPEED)
+			_crop_menu.add_icon_item(UI.texture("icons/item_" + MANURE),
+				"%s na oborniku  ·  %d min" % [crop["name"], maxi(1, minutes)], MANURED + i)
 	_crop_menu.reset_size()
 	var at := get_viewport().get_mouse_position() + Vector2(12, 4)
 	_crop_menu.popup(Rect2i(Vector2i(at), Vector2i.ZERO))
@@ -2023,16 +2071,18 @@ func _open_crop_menu(cell: Vector2i) -> void:
 func _on_crop_chosen(index: int) -> void:
 	var cell := _menu_cell
 	_menu_cell = Vector2i(-1, -1)
-	var fertilize := index >= FERTILIZED
-	var crop: String = CROPS[index - FERTILIZED if fertilize else index]
-	_go_and(cell, func(at: Vector2i) -> void: _plant(at, crop, fertilize))
+	var manure := index >= MANURED
+	var fertilize := not manure and index >= FERTILIZED
+	var crop: String = CROPS[index - MANURED if manure else index - FERTILIZED if fertilize else index]
+	_go_and(cell, func(at: Vector2i) -> void: _plant(at, crop, fertilize, manure))
 
 
-func _plant(cell: Vector2i, crop: String, fertilize := false) -> void:
+func _plant(cell: Vector2i, crop: String, fertilize := false, manure := false) -> void:
 	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
-	var reply := await Net.request("plot.plant", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y, "crop": crop, "fertilize": fertilize})
+	var reply := await Net.request("plot.plant", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y, "crop": crop,
+		"fertilize": fertilize, "manure": manure})
 	_apply_field(reply)
-	if fertilize:
+	if fertilize or manure:
 		_reload_inventory()
 
 
@@ -2443,6 +2493,15 @@ func _place_object(cell: Vector2i) -> void:
 	elif FORESTERS.has(kind):
 		_show_toast("%s stoi na działce i już sadzi las wokół siebie. Drewno wyjmiesz ręcznie albo podajnikiem." % object["name"])
 		_poll_forestry()
+	elif FARMSTEADS.has(kind):
+		_show_toast("%s stoi na działce i już obsiewa pole wokół siebie. Plony wyjmiesz ręcznie albo podajnikiem." % object["name"])
+		_poll_farmsteads()
+	elif kind == CANTEEN:
+		_show_toast("%s stoi na działce. Wydaj w niej jedzenie, a maszyny na opał i na prąd przyspieszą o 20%%." % object["name"])
+	elif kind == STABLE:
+		_show_toast("%s stoi na działce: teraz wypuścisz tu konia, a stacja wyśle wozy konne." % object["name"])
+	elif kind == BELLOWS:
+		_show_toast("%s stoi na działce: piece i odlewnia pracują tu o 15%% szybciej." % object["name"])
 	elif kind in DRILLS:
 		_show_toast("%s stoi przy kopalni. Podłącz je słupem do prądu, a samo zacznie wydobywać." % object["name"])
 	elif kind in HYDRO:
@@ -2529,11 +2588,16 @@ func _use_placed(cell: Vector2i) -> void:
 		_drill_window.open_at(_at, object["id"])
 	elif FORESTERS.has(object["kind"]):
 		_forester_window.open_at(_at, object["id"])
+	elif FARMSTEADS.has(object["kind"]):
+		_farmstead_window.open_at(_at, object["id"])
+	elif object["kind"] == CANTEEN:
+		_canteen_window.open_at(object["id"])
 
 
 func _using_window_open() -> bool:
 	return _crafting_window.visible or _research_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
 		or _splitter_window.visible or _filter_window.visible or _generator_window.visible or _market_window.visible or _forester_window.visible \
+		or _farmstead_window.visible or _canteen_window.visible \
 		or _drill_window.visible or _well_window.visible or _shop_window.visible or _hive_window.visible
 
 
@@ -2543,6 +2607,8 @@ func _hide_placed_windows() -> void:
 	_furnace_window.hide_window()
 	_machine_window.hide_window()
 	_forester_window.hide_window()
+	_farmstead_window.hide_window()
+	_canteen_window.hide_window()
 	_generator_window.hide_window()
 	_drill_window.hide_window()
 	_well_window.hide_window()
@@ -2593,10 +2659,12 @@ func _pick_up_placed(id: String) -> void:
 	var shown := false
 	var forester := _foresters.has(id)
 	_foresters.erase(id)
+	var farm := _farmsteads.has(id)
+	_farmsteads.erase(id)
 	for cell: Vector2i in _placed.keys():
 		if _placed[cell]["id"] == id:
 			if not shown:
-				_show_toast("%s: schowano do ekwipunku%s." % [_placed[cell]["name"], ", a z nim jego las" if forester else ""])
+				_show_toast("%s: schowano do ekwipunku%s." % [_placed[cell]["name"], ", a z nim jego las" if forester else ", a z nią jej pola" if farm else ""])
 				shown = true
 			_placed.erase(cell)
 			_astar.set_point_solid(cell, _tile(cell) in SOLID)
@@ -2613,6 +2681,8 @@ func _pick_up_placed(id: String) -> void:
 	if forester:
 		# Its forest went with it: the trees it planted are gone from the plot.
 		_poll_forestry()
+	if farm:
+		_poll_farmsteads()
 
 
 func _open_object_menu(cell: Vector2i) -> void:
@@ -2801,6 +2871,52 @@ func _apply_forestry(forestry: Dictionary) -> void:
 		_forester_window.show_state(forestry)
 
 
+func _has_farmsteads() -> bool:
+	for cell: Vector2i in _placed:
+		if FARMSTEADS.has(_placed[cell]["kind"]):
+			return true
+	return false
+
+
+## Asks for the farmsteads and the fields they sow as the server has them now.
+func _poll_farmsteads() -> void:
+	if _polling_farms:
+		return
+	_polling_farms = true
+	_next_farm_poll = Time.get_ticks_msec() + FORESTRY_POLL
+	var reply := await Net.request("farmstead.get", {"x": _at.x, "y": _at.y})
+	_polling_farms = false
+	if reply["type"] == "farmsteads":
+		_apply_farmsteads(reply["payload"])
+
+
+## Draws what the farmsteads did: fields tilled and sown, ripe ones reaped and sown again.
+func _apply_farmsteads(farms: Dictionary) -> void:
+	_clock_offset = float(farms["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
+	_farmsteads = {}
+	for farm: Dictionary in farms.get("farmsteads", []):
+		_farmsteads[farm["id"]] = farm
+	var seen := {}
+	for field: Dictionary in farms.get("fields", []):
+		var cell := Vector2i(field["tileX"], field["tileY"])
+		seen[cell] = true
+		var known: Dictionary = _fields.get(cell, {})
+		if not known.is_empty() and known["crop"] == field["crop"] and known["readyAt"] != null and float(known["readyAt"]) == float(field["readyAt"]):
+			continue
+		_fields[cell] = {"crop": field["crop"], "readyAt": field["readyAt"]}
+		if _hovered == cell:
+			_hovered = Vector2i(-1, -1)
+		_draw_cell(cell)
+	# Fields of a farmstead picked up go with it.
+	for cell: Vector2i in _farm_fields.keys():
+		if not seen.has(cell):
+			_fields.erase(cell)
+			_draw_cell(cell)
+	_farm_fields = seen
+	if _farmstead_window.visible:
+		_farmstead_window.show_state(farms)
+
+
 ## Orders from a workbench are done: they are in the inventory now.
 func _on_crafted(done: Array, xp: Variant) -> void:
 	var at := _cell_centre(_using) if _using.x >= 0 else _player.position
@@ -2827,7 +2943,7 @@ func _on_furnace_changed(taken: Array, xp: Variant) -> void:
 	_gain(xp, at, taken.size() * 0.25)
 	_reload_inventory()
 	# Tourists' takings go straight to the wallet.
-	if taken.any(func(item: Dictionary) -> bool: return item["id"] == "tourist_takings"):
+	if taken.any(func(item: Dictionary) -> bool: return item["id"] in ["tourist_takings", "dining_takings"]):
 		_reload_balance()
 
 
@@ -3161,6 +3277,8 @@ func _process(delta: float) -> void:
 		_poll_logistics()
 	if _has_foresters() and Time.get_ticks_msec() >= _next_forestry_poll:
 		_poll_forestry()
+	if (_has_farmsteads() or not _farm_fields.is_empty()) and Time.get_ticks_msec() >= _next_farm_poll:
+		_poll_farmsteads()
 	_poll_station()
 	if Time.get_ticks_msec() >= _next_presence_poll:
 		_poll_presence()
@@ -3788,6 +3906,17 @@ func _build_windows() -> void:
 	_forester_window.inventory_changed.connect(_on_furnace_changed)
 	_forester_window.failed.connect(_show_error)
 	_forester_window.pick_up_requested.connect(_pick_up_placed)
+	_farmstead_window = FarmsteadWindow.new()
+	_farmstead_window.position = Vector2(1280 - 420 - 12, 64)
+	_farmstead_window.updated.connect(_apply_farmsteads)
+	_farmstead_window.inventory_changed.connect(_on_furnace_changed)
+	_farmstead_window.failed.connect(_show_error)
+	_farmstead_window.pick_up_requested.connect(_pick_up_placed)
+	_canteen_window = CanteenWindow.new()
+	_canteen_window.position = Vector2(1280 - 400 - 12, 64)
+	_canteen_window.inventory_changed.connect(func() -> void: _reload_inventory())
+	_canteen_window.failed.connect(_show_error)
+	_canteen_window.pick_up_requested.connect(_pick_up_placed)
 	_generator_window = GeneratorWindow.new()
 	_generator_window.position = Vector2(1280 - 400 - 12, 64)
 	_generator_window.inventory_changed.connect(func(_taken: Array, _xp: Variant) -> void:
@@ -3843,6 +3972,8 @@ func _build_windows() -> void:
 	layer.add_child(_furnace_window)
 	layer.add_child(_machine_window)
 	layer.add_child(_forester_window)
+	layer.add_child(_farmstead_window)
+	layer.add_child(_canteen_window)
 	_market_window = MarketWindow.new()
 	_market_window.traded.connect(_on_traded)
 	_market_window.failed.connect(_show_error)
@@ -3889,6 +4020,7 @@ func _refresh_station() -> void:
 	_station_window.port = _placed.values().any(func(object: Dictionary) -> bool: return object["kind"] == PORT)
 	_station_window.sled = _biome() in POLAR and _placed.values().any(func(object: Dictionary) -> bool:
 		return object["kind"] in ["furniture_dog_kennel", "furniture_snowmobile_garage"])
+	_station_window.horse = not _biome() in POLAR and _placed.values().any(func(object: Dictionary) -> bool: return object["kind"] == STABLE)
 	await _station_window.refresh()
 	_show_trains()
 

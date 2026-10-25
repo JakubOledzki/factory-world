@@ -471,7 +471,7 @@ public sealed class PlotService(
             {
                 // Snow dug away, maybe off something it buried; it comes back only with the next blizzard's avalanches.
                 pace(HarvestRules.TimeFor(current, await RequireToolAsync(player, Items.Shovel, cancellationToken), biome)
-                     / await SpeedAsync(player, Industries.Mining, cancellationToken));
+                     / await SpeedAsync(player, Industries.Mining, cancellationToken, (x, y, tileX, tileY)));
                 await MarkHarvestedAsync(x, y, tileX, tileY, always: true, cancellationToken);
                 return await GiveAsync(player, current, PlotLayout.Yield(current, Random.Shared.Next(100), biome), cancellationToken);
             }
@@ -495,7 +495,7 @@ public sealed class PlotService(
             }
 
             pace(HarvestRules.TimeFor(obj, PlotLayout.ToolFor(obj) is { } tool ? await RequireToolAsync(player, tool, cancellationToken) : null, biome)
-                 / await SpeedAsync(player, HarvestRules.Industry(obj), cancellationToken));
+                 / await SpeedAsync(player, HarvestRules.Industry(obj), cancellationToken, (x, y, tileX, tileY)));
             if (obj == TileObject.Water)
             {
                 // The water is never fished out; a storm at sea or on a lake keeps everyone ashore but those on a breakwater.
@@ -580,7 +580,7 @@ public sealed class PlotService(
         // The bark beetle may be in a tree of a monoculture planted by hand.
         var infested = tree.ByHand && (await pests.StateAsync(x, y, cancellationToken)).Infested.Contains((tileX, tileY));
         pace(HarvestRules.TimeFor(tree.Kind.Tile, await RequireToolAsync(player, Items.Axe, cancellationToken))
-             / await SpeedAsync(player, Industries.Forestry, cancellationToken));
+             / await SpeedAsync(player, Industries.Forestry, cancellationToken, (x, y, tileX, tileY)));
         await using (var delete = await db.CommandAsync(
             "DELETE FROM world.plot_trees WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty", cancellationToken))
         {
@@ -595,9 +595,24 @@ public sealed class PlotService(
         return await GiveAsync(player, tree.Kind.Tile, Trees.Yield(tree.Kind, Random.Shared.Next(100), Random.Shared.Next(1000), infested), cancellationToken);
     }
 
-    /// <summary>How many times faster the player's clothes make work in an industry (1 for none).</summary>
-    public async Task<double> SpeedAsync(Guid player, string? industry, CancellationToken cancellationToken) =>
-        industry is null ? 1 : Industries.Speed(await outfit.BonusAsync(player, industry, cancellationToken));
+    /// <summary>How many times faster the player's clothes and last meal make work in an industry (1 for none); for forestry and mining
+    /// on a plot (<paramref name="at"/>, with the tile when the work has one), faster still with a fed work horse at hand.</summary>
+    public async Task<double> SpeedAsync(Guid player, string? industry, CancellationToken cancellationToken, (int X, int Y, int? TileX, int? TileY)? at = null)
+    {
+        if (industry is null)
+        {
+            return 1;
+        }
+
+        var speed = Industries.Speed(await outfit.BonusAsync(player, industry, cancellationToken));
+        if (industry is Industries.Forestry or Industries.Mining && at is { } plot
+            && await Husbandry.HorseAtWorkAsync(db, plot.X, plot.Y, plot.TileX is { } tx && plot.TileY is { } ty ? (tx, ty) : null, time.GetUtcNow(), cancellationToken))
+        {
+            speed *= Husbandry.HorseBonus;
+        }
+
+        return speed;
+    }
 
     /// <summary>The tool in the player's tool bar that does the work of <paramref name="tool"/>: a chainsaw does an axe's,
     /// and a bronze or steel pickaxe an iron one's, faster, so the fastest goes first.</summary>

@@ -16,6 +16,7 @@ public static class NpcContracts
     private static readonly string[] Bakers = ["Piekarnia „Złoty Kłos”", "Bar mleczny „Pod Kogutem”", "Stołówka szkolna nr 7"];
     private static readonly string[] Shops = ["Sklep „Społem”", "Targowisko miejskie", "Gospoda „Pod Lipą”"];
     private static readonly string[] Factories = ["Zakłady „Taśmex”", "Fabryka mebli „Dąb”", "Magazyny portowe w Gdyni"];
+    private static readonly string[] Caterers = ["Catering „Biesiada”", "Restauracja „Pod Złotym Prosiakiem”", "Hotel „Polonia”"];
 
     public static readonly IReadOnlyList<NpcTemplate> Templates =
     [
@@ -42,6 +43,13 @@ public static class NpcContracts
         new(Items.Planks, 20, 100, 10, 250, 8, Builders),
         new(Items.Beams, 5, 30, 5, 1200, 12, Builders),
         new(Items.Plywood, 5, 20, 5, 1000, 24, Factories),
+        // Catering: weddings, works dinners and banquets want what the dairy, the slaughterhouse and the kitchen make.
+        new(Items.Cheese, 5, 20, 5, 2000, 12, Caterers),
+        new(Items.Butter, 5, 20, 5, 1500, 12, Caterers),
+        new(Items.Meat, 10, 40, 5, 1300, 12, Caterers),
+        new(Items.WorkersLunch, 5, 20, 5, 1700, 12, Caterers),
+        new(Items.RoastBeef, 3, 12, 1, 4000, 24, Caterers),
+        new(Items.Cheesecake, 3, 12, 1, 4100, 24, Caterers),
     ];
 
     /// <summary>A new order, for none of the items in <paramref name="taken"/> (the player's other NPC orders).</summary>

@@ -40,6 +40,11 @@ internal static class MachineProduction
 
         var first = started + recipe.Time;
         entries.AddRange(ProductionEntry.Batches(recipe.Id, recipe.Quantity, true, first, recipe.Time, n));
+        foreach (var (item, quantity) in recipe.Extras)
+        {
+            entries.AddRange(ProductionEntry.Batches(item, quantity, true, first, recipe.Time, n));
+        }
+
         foreach (var (item, quantity) in recipe.Ingredients)
         {
             entries.AddRange(ProductionEntry.Batches(item, quantity, false, first, recipe.Time, n));
@@ -102,7 +107,7 @@ public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, IPlotOb
         var stored = new List<(Guid Id, ProcessingMachine Machine, MachineState State)>();
         await using (var machines = await db.CommandAsync(
             """
-            SELECT object_id, kind, recipe, inputs, fuel_item, fuel, heat, output, started_at
+            SELECT object_id, kind, recipe, inputs, fuel_item, fuel, heat, output, started_at, extras
             FROM crafting.machines WHERE owner_id = @owner
             """, cancellationToken))
         {
@@ -118,14 +123,14 @@ public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, IPlotOb
                 stored.Add((reader.GetGuid(0), machine, new MachineState(
                     reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetFieldValue<int[]>(3),
                     reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetInt32(5), reader.GetInt32(6), reader.GetInt32(7),
-                    reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8))));
+                    reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8), reader.GetFieldValue<int[]>(9))));
             }
         }
 
         // Machines on power work in their own time; one at work with no power at all stalls for it.
         foreach (var (id, plain, state) in stored)
         {
-            var machine = (await Processing.OnPlotAsync(plain.Kind, plots, registry, id, cancellationToken))!;
+            var machine = (await Processing.OnPlotAsync(plain.Kind, db, plots, registry, id, now, cancellationToken))!;
             var clock = await Processing.ClockAsync(machine, power, id, cancellationToken);
             var status = Machine(id, machine, Processing.Advance(machine, state, clock.At(now)));
             statuses.Add(status.Activity == MachineActivity.Working && machine.Powered && clock.Speed(now) <= 0
@@ -162,7 +167,7 @@ public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, IPlotOb
             return new(id, machine.Kind, recipe.Id, MachineActivity.Working, []);
         }
 
-        if (s.Output + recipe.Quantity > Processing.MaxOutput)
+        if (s.Output + recipe.Quantity > Processing.MaxOutput || recipe.Extras.Where((e, i) => s.Extra(i) + e.Quantity > Processing.MaxOutput).Any())
         {
             return new(id, machine.Kind, recipe.Id, MachineActivity.OutputFull, []);
         }

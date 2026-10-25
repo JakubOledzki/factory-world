@@ -164,6 +164,35 @@ public sealed class Equipment(GameDb db, IInventory inventory) : IEquipment
         return outfit;
     }
 
+    /// <summary>Eats a meal from the inventory (see <see cref="Items.Meals"/>): it helps until <paramref name="now"/> and its time, in place of the one before.</summary>
+    public Task EatAsync(Guid accountId, string item, DateTimeOffset now, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            if (!Items.Meals.TryGetValue(item, out var meal))
+            {
+                throw new GameException("not_a_meal", "This is not something to eat on the go.");
+            }
+
+            _ = await RequireAsync(accountId, cancellationToken);
+            await inventory.RemoveAsync(accountId, item, 1, cancellationToken);
+            await using var update = await db.CommandAsync(
+                """UPDATE characters.characters SET "Meal" = @meal, "MealUntil" = @until WHERE "AccountId" = @account""", cancellationToken);
+            update.Parameters.AddWithValue("meal", item);
+            update.Parameters.AddWithValue("until", now + meal.Time);
+            update.Parameters.AddWithValue("account", accountId);
+            await update.ExecuteNonQueryAsync(cancellationToken);
+        }, cancellationToken);
+
+    /// <summary>The meal that still helps the character at <paramref name="now"/>, or null.</summary>
+    public async Task<string?> MealAsync(Guid accountId, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            """SELECT "Meal" FROM characters.characters WHERE "AccountId" = @account AND "MealUntil" > @now""", cancellationToken);
+        command.Parameters.AddWithValue("account", accountId);
+        command.Parameters.AddWithValue("now", now);
+        return await command.ExecuteScalarAsync(cancellationToken) is string meal && Items.Meals.ContainsKey(meal) ? meal : null;
+    }
+
     /// <summary>Takes the backpack off into the inventory, with the tools in the slots only it gave.</summary>
     public Task TakeOffBackpackAsync(Guid accountId, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -253,14 +282,17 @@ public sealed class InventorySize(GameDb db) : IInventorySize
     }
 }
 
-/// <summary>What the worn clothes give: the bonuses of each piece, added up per industry, and the
-/// player's other bonuses (the garage's upgrades) on top.</summary>
-public sealed class Outfit(Equipment equipment, IEnumerable<IPlayerBonuses> others) : IOutfit
+/// <summary>What the worn clothes give, the bonuses of each piece added up per industry, with the level's on top
+/// (<see cref="LevelBonuses"/>), what the last meal gives while it lasts and the player's other bonuses (the
+/// garage's upgrades).</summary>
+public sealed class Outfit(Equipment equipment, ICharacterXp xp, TimeProvider time, IEnumerable<IPlayerBonuses> others) : IOutfit
 {
     public async Task<int> BonusAsync(Guid accountId, string industry, CancellationToken cancellationToken)
     {
         var percent = Bonuses(await equipment.OutfitAsync(accountId, false, cancellationToken) ?? new Dictionary<string, string>())
-            .GetValueOrDefault(industry);
+                .GetValueOrDefault(industry)
+            + LevelBonuses.For(Leveling.LevelForXp(await xp.XpAsync(accountId, cancellationToken) ?? 0)).GetValueOrDefault(industry)
+            + (await equipment.MealAsync(accountId, time.GetUtcNow(), cancellationToken) is { } meal ? Items.Meals[meal].Bonuses.GetValueOrDefault(industry) : 0);
         foreach (var bonus in others)
         {
             percent += await bonus.PercentAsync(accountId, industry, cancellationToken);

@@ -19,13 +19,13 @@ public static class PowerRules
     public const double GeneratorKw = 100;
 
     /// <summary>Generators of every kind: what each gives at most (kW) and what it burns. The steam generator burns
-    /// wood and coal, the gas power plant natural gas, the diesel generator diesel or petrol, the fusion plant coolant.</summary>
+    /// wood and coal, the gas power plant natural gas, the diesel generator diesel, petrol or ethanol, the fusion plant coolant.</summary>
     public static readonly IReadOnlyDictionary<string, (double Kw, IReadOnlySet<string> Burns)> Generators =
         new Dictionary<string, (double, IReadOnlySet<string>)>
         {
             [Items.Generator] = (GeneratorKw, new HashSet<string> { Items.Coal, Items.Charcoal, Items.Wood, Items.WoodPellets }),
             [Items.GasPlant] = (300, new HashSet<string> { Items.NaturalGas }),
-            [Items.DieselGenerator] = (150, new HashSet<string> { Items.Diesel, Items.Gasoline }),
+            [Items.DieselGenerator] = (150, new HashSet<string> { Items.Diesel, Items.Gasoline, Items.Ethanol }),
             [Items.FusionPlant] = (5000, new HashSet<string> { Items.Coolant }),
         };
 
@@ -97,6 +97,8 @@ public static class PowerRules
         [Items.NaturalGas] = 60_000,
         [Items.Diesel] = 60_000,
         [Items.Gasoline] = 45_000,
+        // Ethanol from the potato distillery: 0.8 of petrol.
+        [Items.Ethanol] = 36_000,
         [Items.Coolant] = 300_000,
     };
 

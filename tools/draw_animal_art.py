@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draws the art of husbandry with Pillow alone (no Blender): the hen, the sheep, the cow and the camel that
+"""Draws the art of husbandry with Pillow alone (no Blender): the hen, the sheep, the cow, the camel and the work horse that
 stand on a plot (client/art/plot/, with their shadows and anchors in layout.json) and the icons of
 the animals, their products and the shears (client/art/icons/).
 
@@ -163,12 +163,42 @@ def draw_camel(draw, cx, cy, k=1.0):
     draw.line((cx + 17 * s, cy - 28 * s, cx + 20 * s, cy - 18 * s), fill=shade(CAMEL, 0.6), width=2 * S)
 
 
+HORSE = (122, 74, 40)
+MANE = (40, 26, 18)
+
+
+def draw_horse(draw, cx, cy, k=1.0):
+    """A bay work horse seen from the front left: a heavy body, a dark mane and tail, white socks and a collar; tall, so
+    drawn a little smaller to keep its head on the sprite."""
+    s = S * k * 0.85
+    for lx in (-14, 11):
+        draw.rounded_rectangle((cx + lx * s, cy - 20 * s, cx + (lx + 5) * s, cy), radius=2 * s, fill=shade(HORSE, 0.6))
+    for lx in (-18, 7):
+        draw.rounded_rectangle((cx + lx * s, cy - 19 * s, cx + (lx + 5) * s, cy + 1 * s), radius=2 * s, fill=shade(HORSE, 0.8))
+        draw.rounded_rectangle((cx + lx * s, cy - 5 * s, cx + (lx + 5) * s, cy + 1 * s), radius=2 * s, fill=(222, 214, 200))
+    # Tail behind.
+    draw.polygon([(cx + 19 * s, cy - 34 * s), (cx + 26 * s, cy - 22 * s), (cx + 22 * s, cy - 12 * s), (cx + 18 * s, cy - 26 * s)], fill=MANE, outline=OUTLINE)
+    blob(draw, (cx - 22 * s, cy - 40 * s, cx + 22 * s, cy - 16 * s), HORSE, OUTLINE, light=0.18)
+    # The neck rising forward, the mane along it, and the long head.
+    draw.polygon([(cx - 18 * s, cy - 34 * s), (cx - 27 * s, cy - 52 * s), (cx - 19 * s, cy - 56 * s), (cx - 8 * s, cy - 36 * s)],
+                 fill=shade(HORSE, 0.95), outline=OUTLINE)
+    draw.polygon([(cx - 19 * s, cy - 56 * s), (cx - 8 * s, cy - 36 * s), (cx - 5 * s, cy - 38 * s), (cx - 15 * s, cy - 57 * s)], fill=MANE)
+    blob(draw, (cx - 38 * s, cy - 60 * s, cx - 20 * s, cy - 48 * s), HORSE, OUTLINE, light=0.16)
+    draw.ellipse((cx - 39 * s, cy - 56 * s, cx - 31 * s, cy - 48 * s), fill=shade(HORSE, 0.7), outline=OUTLINE, width=S)
+    draw.ellipse((cx - 28 * s, cy - 58 * s, cx - 25 * s, cy - 55 * s), fill=(10, 8, 8))
+    draw.polygon([(cx - 24 * s, cy - 60 * s), (cx - 22 * s, cy - 66 * s), (cx - 20 * s, cy - 59 * s)], fill=shade(HORSE, 0.85), outline=OUTLINE)
+    # A blaze down the face and the collar of a work horse.
+    draw.line((cx - 33 * s, cy - 59 * s, cx - 36 * s, cy - 51 * s), fill=(232, 226, 214), width=2 * S)
+    draw.ellipse((cx - 22 * s, cy - 42 * s, cx - 8 * s, cy - 30 * s), outline=(70, 44, 24), width=3 * S)
+
+
 ANIMALS = {
     # name: (draw, shadow radii)
     "sheep": (draw_sheep, (22, 7)),
     "cow": (draw_cow, (30, 8)),
     "chicken": (draw_hen, (12, 4)),
     "camel": (draw_camel, (28, 8)),
+    "horse": (draw_horse, (30, 8)),
 }
 
 
@@ -194,7 +224,7 @@ def save_icon(img, name):
 def render_icons():
     for name, (paint, _) in ANIMALS.items():
         img, draw = icon()
-        k = {"sheep": 1.05, "cow": 0.8, "chicken": 1.6, "camel": 0.85}[name]
+        k = {"sheep": 1.05, "cow": 0.8, "chicken": 1.6, "camel": 0.85, "horse": 0.9}[name]
         paint(draw, 34 * S if name != "chicken" else 36 * S, 52 * S, k)
         save_icon(img, f"animal_{name}")
 

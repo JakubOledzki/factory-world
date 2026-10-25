@@ -830,6 +830,46 @@
   "wireX": 189,
   "wireY": 168
  },
+ "stable": {
+  "anchorX": 56,
+  "anchorY": 76
+ },
+ "canteen": {
+  "anchorX": 120,
+  "anchorY": 149
+ },
+ "slaughterhouse": {
+  "anchorX": 56,
+  "anchorY": 80
+ },
+ "dairy": {
+  "anchorX": 56,
+  "anchorY": 75
+ },
+ "potato_distillery": {
+  "anchorX": 56,
+  "anchorY": 89
+ },
+ "biogas_plant": {
+  "anchorX": 120,
+  "anchorY": 139
+ },
+ "bellows": {
+  "anchorX": 56,
+  "anchorY": 62
+ },
+ "farmstead": {
+  "anchorX": 120,
+  "anchorY": 174
+ },
+ "manor_farm": {
+  "anchorX": 120,
+  "anchorY": 177
+ },
+ "horse": {
+  "anchorX": 56,
+  "anchorY": 62
+ },
  "research_table": {
   "anchorX": 64,
   "anchorY": 70

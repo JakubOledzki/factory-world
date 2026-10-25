@@ -206,6 +206,20 @@ func _render_hall() -> void:
 		row.add_child(pick)
 		row.add_child(UI.button("Ustaw", func() -> void: _set_policy(int(tax.value), pick.get_item_metadata(pick.selected)), true))
 		_body.add_child(row)
+	# A festival with fine dishes from the mayor's inventory: the town pays more for what it wants for a day.
+	var festival: Variant = hall.get("festivalUntil")
+	if festival != null:
+		_body.add_child(UI.label("Trwa festyn: miasto płaci o %d%% więcej jeszcze %s." % [int(hall["festivalPercent"]), _left(int(festival))],
+			UI.GOOD, HORIZONTAL_ALIGNMENT_LEFT, true))
+	elif hall["isMayor"]:
+		var feast := HBoxContainer.new()
+		feast.add_theme_constant_override("separation", 6)
+		var note := UI.label("Festyn: %d × pieczeń lub sernik z ekwipunku, a przez %d h miasto płaci o %d%% więcej." % [
+			int(hall["festivalDishes"]), int(hall["festivalHours"]), int(hall["festivalPercent"])], UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
+		note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		feast.add_child(note)
+		feast.add_child(UI.button("Wyprawiaj festyn", _festival, true))
+		_body.add_child(feast)
 	_body.add_child(HSeparator.new())
 	_body.add_child(UI.label("Wybory na przyszły tydzień (koniec za %s). Głosują i mogą wygrać właściciele działek w mieście." \
 		% _left(int(hall["weekEndsAt"])), UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
@@ -247,6 +261,12 @@ func _buy_service(id: String) -> void:
 		toast.emit("Kupiono: %d× %s" % [int(result["quantity"]), result["name"]])
 		inventory_changed.emit()
 		balance_changed.emit()
+
+
+func _festival() -> void:
+	if _apply(await Net.request("city.festival", {"x": plot.x, "y": plot.y})):
+		toast.emit("Festyn trwa! Miasto płaci więcej przez całą dobę.")
+		inventory_changed.emit()
 
 
 func _vote(candidate: String) -> void:

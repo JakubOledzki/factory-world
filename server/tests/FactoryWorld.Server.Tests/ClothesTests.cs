@@ -42,6 +42,29 @@ public sealed class ClothesTests(ServerFactory factory) : IClassFixture<ServerFa
         character.GetProperty("outfit").EnumerateObject().ToDictionary(o => o.Name, o => o.Value.GetProperty("id").GetString()!);
 
     [Fact]
+    public async Task Every_fifth_level_adds_a_bonus_on_top_of_the_clothes()
+    {
+        using var client = await PlayerAsync(0, Items.FlannelJacket);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<ICharacterProgress>().AddXpAsync(client.AccountId, Leveling.TotalXpForLevel(10), CancellationToken.None);
+        }
+
+        var dressed = (await client.SendAsync("character.equip", new { item = Items.FlannelJacket })).Payload();
+
+        // Levels 5 and 10: forestry and mining 5% each; the jacket adds 20% to forestry.
+        Assert.Equal(new Dictionary<string, int> { ["forestry"] = 25, ["mining"] = 5 }, Bonuses(dressed));
+        Assert.Equal(5, dressed.GetProperty("levelBonuses").GetProperty("forestry").GetInt32());
+        Assert.Equal(LevelBonuses.All.Count, dressed.GetProperty("levelRewards").GetArrayLength());
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var outfit = scope.ServiceProvider.GetRequiredService<IOutfit>();
+            Assert.Equal(25, await outfit.BonusAsync(client.AccountId, Industries.Forestry, CancellationToken.None));
+            Assert.Equal(0, await outfit.BonusAsync(client.AccountId, Industries.Farming, CancellationToken.None));
+        }
+    }
+
+    [Fact]
     public async Task Clothes_go_on_their_slot_add_up_their_bonuses_and_come_off_into_the_inventory()
     {
         using var client = await PlayerAsync(0, Items.FlannelJacket, Items.WorkBoots, Items.Oilskin);
@@ -166,7 +189,7 @@ public sealed class ClothesTests(ServerFactory factory) : IClassFixture<ServerFa
     [Fact]
     public void Every_piece_of_clothing_is_sewn_at_the_tailors_researched_in_tailoring_and_bought_by_the_trader()
     {
-        Assert.Equal(14, Items.Clothes.Count);
+        Assert.Equal(15, Items.Clothes.Count);
         Assert.All(ClothingSlots.All, slot => Assert.Contains(Items.Clothes.Values, g => g.Slot == slot));
         var tailoring = TechTree.ById[TechTree.Tailoring];
         Assert.Contains(Items.Tailor, tailoring.Unlocks);
