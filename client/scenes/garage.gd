@@ -37,6 +37,7 @@ const ACTIONS := {
 	"world_map": [KEY_N],
 	"tool": [KEY_Q],
 	"achievements": [KEY_O],
+	"character": [KEY_C],
 }
 
 var _garage := {}
@@ -94,6 +95,8 @@ var _inventory_window: GameWindow
 var _market_window: MarketWindow
 var _contracts_window: ContractsWindow
 var _achievements_window: AchievementsWindow
+var _character_window: CharacterWindow
+var _portrait: CharacterPreview
 var _crafting_window: CraftingWindow
 var _company_window: CompanyWindow
 var _furnace_window: FurnaceWindow
@@ -159,7 +162,7 @@ func _build_room() -> void:
 	add_child(_sorted)
 
 	var layout := RoomProjection.layout()
-	_player = GaragePlayer.new(Game.character.get("appearance", {}), Game.appearance_options)
+	_player = GaragePlayer.new(Game.look(), Game.appearance_options)
 	_player.light = ROOM_LIGHT
 	_shadows.add_child(_player.shadow)
 	_sorted.add_child(_player)
@@ -442,6 +445,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		else:
 			for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _sorter_window, _stats_window, _company_window, _achievements_window]:
 				window.hide_window()
+			_character_window.hide_window()
 	elif event.is_action_pressed("rotate") and _placing != "":
 		_turn_ghost(1)
 	elif event.is_action_pressed("interact"):
@@ -468,6 +472,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_company_window.toggle()
 	elif event.is_action_pressed("achievements"):
 		_achievements_window.toggle()
+	elif event.is_action_pressed("character"):
+		_character_window.toggle()
 	elif event.is_action_pressed("world_map"):
 		Game.open_world_map()
 	elif event.is_action_pressed("tool"):
@@ -621,12 +627,19 @@ func _build_hud() -> void:
 	row.add_theme_constant_override("separation", 10)
 	parts[1].add_child(row)
 
-	var portrait := CharacterPreview.new()
-	portrait.options = Game.appearance_options
-	portrait.appearance = Game.character.get("appearance", {})
-	portrait.region = Rect2(0.15, 0.06, 0.7, 0.22)
-	portrait.display_scale = 0.6
-	row.add_child(portrait)
+	# The panel opens the character: clothes and a new look.
+	hud.mouse_filter = Control.MOUSE_FILTER_STOP
+	hud.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	hud.tooltip_text = "Postać: ubrania i wygląd  [C]"
+	hud.gui_input.connect(_on_portrait_input.bind(hud))
+	_portrait = CharacterPreview.new()
+	_portrait.options = Game.appearance_options
+	_portrait.appearance = Game.look()
+	_portrait.region = Rect2(0.15, 0.06, 0.7, 0.22)
+	_portrait.display_scale = 0.4
+	_portrait.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(_portrait)
+	Game.character_changed.connect(_on_character_changed)
 
 	var info := VBoxContainer.new()
 	info.add_theme_constant_override("separation", 2)
@@ -645,6 +658,7 @@ func _build_hud() -> void:
 	_xp_bar.theme_type_variation = "XpBar"
 	_xp_bar.show_percentage = false
 	_xp_bar.custom_minimum_size = Vector2(160, 10)
+	_xp_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	info.add_child(_xp_bar)
 	_xp_text = UI.label("", UI.MUTED)
 	_xp_text.add_theme_font_size_override("font_size", 13)
@@ -762,6 +776,14 @@ func _build_windows() -> void:
 	_stats_window.failed.connect(_show_error)
 	_achievements_window = AchievementsWindow.new()
 	_achievements_window.failed.connect(_show_error)
+	_character_window = CharacterWindow.new()
+	_character_window.position = Vector2(280, 60)
+	_character_window.failed.connect(_show_error)
+	_character_window.balance_changed.connect(func() -> void:
+		var wallet := await Net.request("wallet.get")
+		if wallet["type"] == "wallet":
+			_set_balance(int(wallet["payload"]["balanceCents"])))
+	add_child(_character_window)
 	for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _sorter_window, _stats_window, _company_window, _achievements_window]:
 		add_child(window)
 
@@ -1193,6 +1215,18 @@ func _show_toast(text: String, color := UI.TEXT) -> void:
 	_toast_tween = create_tween()
 	_toast_tween.tween_interval(3.0)
 	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.6)
+
+
+func _on_portrait_input(event: InputEvent, panel: Control) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_character_window.toggle()
+		panel.accept_event()
+
+
+## New clothes or a new look: the portrait and the character walking about follow.
+func _on_character_changed() -> void:
+	_portrait.appearance = Game.look()
+	_player.set_look(Game.look(), Game.appearance_options)
 
 
 func _show_error(reply: Dictionary) -> void:

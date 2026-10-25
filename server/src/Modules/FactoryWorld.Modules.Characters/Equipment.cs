@@ -33,14 +33,27 @@ public sealed class Equipment(GameDb db, IInventory inventory) : IEquipment
         }, cancellationToken);
 
     /// <summary>Takes a tool from the inventory into a slot of the tool bar (the first free one when
-    /// <paramref name="slot"/> is null, the first one when none is free) or puts a backpack on.
-    /// What was there goes back to the inventory.</summary>
+    /// <paramref name="slot"/> is null, the first one when none is free), puts a backpack on or
+    /// a piece of clothing in its slot. What was there goes back to the inventory.</summary>
     public Task EquipAsync(Guid accountId, string item, int? slot, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
             if (Items.IsBackpack(item))
             {
                 await WearAsync(accountId, item, cancellationToken);
+                return;
+            }
+
+            if (Items.Clothes.TryGetValue(item, out var garment))
+            {
+                var on = await OutfitAsync(accountId, true, cancellationToken) ?? throw new GameException("no_character", "Create a character first.");
+                await inventory.RemoveAsync(accountId, item, 1, cancellationToken);
+                if (on.GetValueOrDefault(garment.Slot) is { } off)
+                {
+                    await inventory.AddAsync(accountId, off, 1, cancellationToken);
+                }
+
+                await SetAsync(accountId, ClothesColumn(garment.Slot), item, cancellationToken);
                 return;
             }
 
@@ -84,6 +97,55 @@ public sealed class Equipment(GameDb db, IInventory inventory) : IEquipment
             await inventory.AddAsync(accountId, tool, 1, cancellationToken);
             await SetAsync(accountId, Slots[slot], null, cancellationToken);
         }, cancellationToken);
+
+    /// <summary>Takes the clothes off a slot (one of <see cref="ClothingSlots.All"/>) into the inventory.</summary>
+    public Task TakeOffAsync(Guid accountId, string slot, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            if (!ClothingSlots.All.Contains(slot))
+            {
+                throw new GameException("bad_slot", "Clothes are worn on the head, body, legs or feet.");
+            }
+
+            var on = await OutfitAsync(accountId, true, cancellationToken) ?? throw new GameException("no_character", "Create a character first.");
+            if (on.GetValueOrDefault(slot) is not { } worn)
+            {
+                return;
+            }
+
+            await inventory.AddAsync(accountId, worn, 1, cancellationToken);
+            await SetAsync(accountId, ClothesColumn(slot), null, cancellationToken);
+        }, cancellationToken);
+
+    /// <summary>The column of a clothing slot.</summary>
+    private static string ClothesColumn(string slot) => "Clothes" + char.ToUpperInvariant(slot[0]) + slot[1..];
+
+    private static readonly string OutfitColumns = string.Join(", ", ClothingSlots.All.Select(s => $"\"{ClothesColumn(s)}\""));
+
+    /// <summary>The clothes worn by slot, or null when the account has no character; locked with <paramref name="forUpdate"/>.</summary>
+    public async Task<IReadOnlyDictionary<string, string>?> OutfitAsync(Guid accountId, bool forUpdate, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            $"""SELECT {OutfitColumns} FROM characters.characters WHERE "AccountId" = @account{(forUpdate ? " FOR UPDATE" : "")}""",
+            cancellationToken);
+        command.Parameters.AddWithValue("account", accountId);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        if (!await reader.ReadAsync(cancellationToken))
+        {
+            return null;
+        }
+
+        var outfit = new Dictionary<string, string>();
+        for (var i = 0; i < ClothingSlots.All.Count; i++)
+        {
+            if (!reader.IsDBNull(i))
+            {
+                outfit[ClothingSlots.All[i]] = reader.GetString(i);
+            }
+        }
+
+        return outfit;
+    }
 
     /// <summary>Takes the backpack off into the inventory, with the tools in the slots only it gave.</summary>
     public Task TakeOffBackpackAsync(Guid accountId, CancellationToken cancellationToken) =>
@@ -146,7 +208,7 @@ public sealed class Equipment(GameDb db, IInventory inventory) : IEquipment
         return new Worn([Text(0), Text(1), Text(2)], Text(3));
     }
 
-    /// <param name="column">One of <see cref="Slots"/> or "Backpack".</param>
+    /// <param name="column">One of <see cref="Slots"/>, "Backpack" or a clothing slot's column.</param>
     private async Task SetAsync(Guid accountId, string column, string? item, CancellationToken cancellationToken)
     {
         await using var update = await db.CommandAsync(
@@ -172,4 +234,19 @@ public sealed class InventorySize(GameDb db) : IInventorySize
             ? Items.InventorySlots + b.ExtraSlots
             : Items.InventorySlots;
     }
+}
+
+/// <summary>What the worn clothes give: the bonuses of each piece, added up per industry.</summary>
+public sealed class Outfit(Equipment equipment) : IOutfit
+{
+    public async Task<int> BonusAsync(Guid accountId, string industry, CancellationToken cancellationToken) =>
+        Bonuses(await equipment.OutfitAsync(accountId, false, cancellationToken) ?? new Dictionary<string, string>())
+            .GetValueOrDefault(industry);
+
+    /// <summary>Percent per industry the clothes give together; industries they do not help left out.</summary>
+    public static IReadOnlyDictionary<string, int> Bonuses(IReadOnlyDictionary<string, string> outfit) =>
+        outfit.Values.Where(Items.IsClothing)
+            .SelectMany(c => Items.Clothes[c].Bonuses)
+            .GroupBy(b => b.Key)
+            .ToDictionary(g => g.Key, g => g.Sum(b => b.Value));
 }

@@ -182,7 +182,7 @@ public sealed class MineService(
                 throw new GameException("mine_empty", "The mine is worked out; it fills up again in a while.");
             }
 
-            pace(before.Time / Items.Pickaxes[pickaxe]);
+            pace(before.Time / Items.Pickaxes[pickaxe] / await plots.SpeedAsync(player, Industries.Mining, cancellationToken));
             var (after, items) = await DigAsync(player, x, y, biome, before, 1, cancellationToken);
             var xp = await progress.AddXpAsync(player, Mining.XpPerLoad, cancellationToken);
             return new MineLoad(after, items, xp);

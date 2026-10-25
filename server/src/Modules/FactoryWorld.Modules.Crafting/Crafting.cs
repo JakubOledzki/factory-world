@@ -7,7 +7,7 @@ namespace FactoryWorld.Modules.Crafting;
 
 /// <summary>Something made at a workbench or an anvil: what it takes, how long, and what comes out.</summary>
 /// <param name="Id">The recipe's id, the same as the item it makes.</param>
-/// <param name="Station">Where it is made: <see cref="Items.Workbench"/> or <see cref="Items.Anvil"/>.</param>
+/// <param name="Station">Where it is made: <see cref="Items.Workbench"/>, <see cref="Items.Anvil"/>, <see cref="Items.Shipyard"/> or <see cref="Items.Tailor"/>.</param>
 public sealed record Recipe(
     string Id, int Quantity, TimeSpan Time, IReadOnlyList<(string Item, int Quantity)> Ingredients, int Xp, string Station = Items.Workbench);
 
@@ -157,6 +157,22 @@ public static class Workshop
         new(Items.FireStation, 1, TimeSpan.FromSeconds(90), [(Items.Bricks, 40), (Items.IronIngot, 20), (Items.Planks, 20), (Items.CopperIngot, 5)], 40),
         new(Items.Candles, 2, TimeSpan.FromSeconds(10), [(Items.Wax, 1)], 2),
         new(Items.MeteoritePickaxe, 1, TimeSpan.FromSeconds(40), [(Items.MeteoricIron, 4), (Items.Iridium, 1), (Items.Wood, 2)], 20, Items.Anvil),
+        // Clothes, sewn at a tailor's in town.
+        new(Items.Tailor, 1, TimeSpan.FromSeconds(90), [(Items.Planks, 20), (Items.IronIngot, 10), (Items.Wool, 20), (Items.Glass, 5)], 35),
+        new(Items.MinerHelmet, 1, TimeSpan.FromSeconds(60), [(Items.SteelIngot, 3), (Items.Plastic, 2), (Items.Glass, 1), (Items.CopperIngot, 1)], 20, Items.Tailor),
+        new(Items.SouWester, 1, TimeSpan.FromSeconds(40), [(Items.Wool, 3), (Items.SyntheticRubber, 2)], 12, Items.Tailor),
+        new(Items.StrawHat, 1, TimeSpan.FromSeconds(30), [(Items.Wheat, 20)], 8, Items.Tailor),
+        new(Items.Beanie, 1, TimeSpan.FromSeconds(30), [(Items.Wool, 6)], 8, Items.Tailor),
+        new(Items.FlannelJacket, 1, TimeSpan.FromSeconds(60), [(Items.Wool, 12), (Items.Wood, 2)], 18, Items.Tailor),
+        new(Items.SmithApron, 1, TimeSpan.FromSeconds(60), [(Items.Wool, 6), (Items.SyntheticRubber, 3), (Items.IronIngot, 2)], 20, Items.Tailor),
+        new(Items.Oilskin, 1, TimeSpan.FromSeconds(75), [(Items.Wool, 6), (Items.SyntheticRubber, 6)], 25, Items.Tailor),
+        new(Items.SuitJacket, 1, TimeSpan.FromSeconds(90), [(Items.Wool, 16), (Items.SilverIngot, 1)], 30, Items.Tailor),
+        new(Items.Overalls, 1, TimeSpan.FromSeconds(50), [(Items.Wool, 10), (Items.IronIngot, 2)], 15, Items.Tailor),
+        new(Items.WorkTrousers, 1, TimeSpan.FromSeconds(50), [(Items.Wool, 10), (Items.Plastic, 4), (Items.SyntheticRubber, 1)], 18, Items.Tailor),
+        new(Items.SuitTrousers, 1, TimeSpan.FromSeconds(60), [(Items.Wool, 12)], 20, Items.Tailor),
+        new(Items.RubberBoots, 1, TimeSpan.FromSeconds(40), [(Items.SyntheticRubber, 5)], 15, Items.Tailor),
+        new(Items.WorkBoots, 1, TimeSpan.FromSeconds(50), [(Items.Wool, 3), (Items.SyntheticRubber, 3), (Items.SteelIngot, 1)], 18, Items.Tailor),
+        new(Items.DressShoes, 1, TimeSpan.FromSeconds(50), [(Items.SyntheticRubber, 2), (Items.Wool, 2), (Items.Wax, 2)], 15, Items.Tailor),
         // The crafting tree's buildings: the machine shop and the robotic hall, the steelworks, the megafactory and the fusion plant.
         new(Items.MachineShop, 1, TimeSpan.FromSeconds(60), [(Items.SteelIngot, 6), (Items.ElectricMotor, 2), (Items.CopperIngot, 10)], 6),
         new(Items.RoboticHall, 1, TimeSpan.FromSeconds(300), [(Items.IndustrialRobot, 3), (Items.ExpressBelt, 10), (Items.ComputingCore, 1), (Items.PrecastConcrete, 20)], 90),
@@ -207,7 +223,8 @@ public sealed record CraftingState(
     XpGain? Xp);
 
 public sealed class CraftingService(
-    GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, IProductionStats stats, ITechnologies technologies, TimeProvider time)
+    GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, IProductionStats stats, ITechnologies technologies,
+    IOutfit outfit, TimeProvider time)
 {
     /// <summary>The queue as it is now, after handing out every order that is done.</summary>
     public Task<CraftingState> StateAsync(Guid owner, CancellationToken cancellationToken) =>
@@ -252,7 +269,8 @@ public sealed class CraftingService(
                 insert.Parameters.AddWithValue("owner", owner);
                 insert.Parameters.AddWithValue("recipe", recipe.Id);
                 insert.Parameters.AddWithValue("start", start);
-                insert.Parameters.AddWithValue("end", start + recipe.Time);
+                // Clothes for the trade (an apron, work trousers) make it go faster.
+                insert.Parameters.AddWithValue("end", start + recipe.Time / Industries.Speed(await outfit.BonusAsync(owner, Industries.Crafting, cancellationToken)));
                 await insert.ExecuteNonQueryAsync(cancellationToken);
             }
 
@@ -376,6 +394,7 @@ public abstract class CraftingHandler(IServiceScopeFactory scopes) : IMessageHan
         var owner = client.RequireAccount();
         var state = await RunAsync(scope.ServiceProvider.GetRequiredService<CraftingService>(), owner, payload, cancellationToken);
         var locked = await scope.ServiceProvider.GetRequiredService<ITechnologies>().LockedAsync(owner, cancellationToken);
+        var speed = Industries.Speed(await scope.ServiceProvider.GetRequiredService<IOutfit>().BonusAsync(owner, Industries.Crafting, cancellationToken));
         return new Reply("crafting", new
         {
             recipes = Workshop.Recipes.Select(r => new
@@ -383,7 +402,7 @@ public abstract class CraftingHandler(IServiceScopeFactory scopes) : IMessageHan
                 id = r.Id,
                 name = Items.Names[r.Id],
                 quantity = r.Quantity,
-                seconds = r.Time.TotalSeconds,
+                seconds = r.Time.TotalSeconds / speed,
                 ingredients = r.Ingredients.Select(i => new { id = i.Item, name = Items.Names[i.Item], quantity = i.Quantity }),
                 xp = r.Xp,
                 // The technology still to research before the recipe can be ordered, or null.

@@ -22,11 +22,13 @@ public sealed class CharactersModule : IGameModule
         services.AddScoped<Equipment>();
         services.AddScoped<IEquipment>(provider => provider.GetRequiredService<Equipment>());
         services.AddScoped<IInventorySize, InventorySize>();
+        services.AddScoped<IOutfit, Outfit>();
         services.AddSingleton<IMessageHandler, OptionsHandler>();
         services.AddSingleton<IMessageHandler, GetCharacterHandler>();
         services.AddSingleton<IMessageHandler, CreateCharacterHandler>();
         services.AddSingleton<IMessageHandler, EquipHandler>();
         services.AddSingleton<IMessageHandler, UnequipHandler>();
+        services.AddSingleton<IMessageHandler, RestyleHandler>();
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>

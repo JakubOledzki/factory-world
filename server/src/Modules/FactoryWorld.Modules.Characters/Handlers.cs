@@ -9,7 +9,10 @@ public sealed record CreateCharacterRequest(string Name, Appearance Appearance);
 
 public sealed record EquipRequest(string Item, int? Slot);
 
-public sealed record UnequipRequest(int? Slot, bool Backpack);
+/// <param name="Clothing">A clothing slot to take the clothes off (see <see cref="ClothingSlots.All"/>).</param>
+public sealed record UnequipRequest(int? Slot, bool Backpack, string? Clothing = null);
+
+public sealed record RestyleRequest(Appearance Appearance);
 
 internal static class CharacterView
 {
@@ -34,6 +37,15 @@ internal static class CharacterView
                 toolSlots = Items.Backpacks[b].ToolSlots,
             } : null,
             inventorySlots = Items.InventorySlots + (c.Backpack is { } worn ? Items.Backpacks[worn].ExtraSlots : 0),
+            outfit = c.Outfit.ToDictionary(o => o.Key, o => new
+            {
+                id = o.Value,
+                name = Items.Names[o.Value],
+                bonuses = Items.Clothes[o.Value].Bonuses,
+            }),
+            // Percent per industry from all the clothes worn.
+            bonuses = Outfit.Bonuses(c.Outfit),
+            restyleCents = CharacterRules.RestyleCents,
         };
     }
 }
@@ -53,6 +65,11 @@ public sealed class OptionsHandler : IMessageHandler
             hairColors = AppearanceCatalog.HairColors,
             shirtStyles = AppearanceCatalog.ShirtStyles,
             clothColors = AppearanceCatalog.ClothColors,
+            faceStyles = AppearanceCatalog.FaceStyles,
+            eyeColors = AppearanceCatalog.EyeColors,
+            facialHairStyles = AppearanceCatalog.FacialHairStyles,
+            clothingSlots = ClothingSlots.All,
+            industries = Industries.All,
         }));
 }
 
@@ -104,7 +121,7 @@ public sealed class EquipHandler(IServiceScopeFactory scopes) : IMessageHandler
     }
 }
 
-/// <summary>Puts the tool from a slot of the tool bar (the first one by default) back into the inventory, or takes the backpack off.</summary>
+/// <summary>Puts the tool from a slot of the tool bar (the first one by default) back into the inventory, or takes the backpack or clothes off.</summary>
 public sealed class UnequipHandler(IServiceScopeFactory scopes) : IMessageHandler
 {
     public string Type => "character.unequip";
@@ -118,12 +135,37 @@ public sealed class UnequipHandler(IServiceScopeFactory scopes) : IMessageHandle
         {
             await equipment.TakeOffBackpackAsync(client.RequireAccount(), cancellationToken);
         }
+        else if (request.Clothing is { } slot)
+        {
+            await equipment.TakeOffAsync(client.RequireAccount(), slot, cancellationToken);
+        }
         else
         {
             await equipment.UnequipAsync(client.RequireAccount(), request.Slot ?? 0, cancellationToken);
         }
 
         var character = await scope.ServiceProvider.GetRequiredService<CharacterService>().FindAsync(client.RequireAccount(), cancellationToken);
+        return new Reply("character", CharacterView.From(character!));
+    }
+}
+
+/// <summary>Changes the look of an existing character (face, hair, colours) for <see cref="CharacterRules.RestyleCents"/>.</summary>
+public sealed class RestyleHandler(IServiceScopeFactory scopes) : IMessageHandler
+{
+    public string Type => "character.restyle";
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<RestyleRequest>(payload);
+        if (request.Appearance is null)
+        {
+            throw new GameException("bad_payload", "Appearance is missing.");
+        }
+
+        await using var scope = scopes.CreateAsyncScope();
+        var characters = scope.ServiceProvider.GetRequiredService<CharacterService>();
+        await characters.RestyleAsync(client.RequireAccount(), request.Appearance, cancellationToken);
+        var character = await characters.FindAsync(client.RequireAccount(), cancellationToken);
         return new Reply("character", CharacterView.From(character!));
     }
 }

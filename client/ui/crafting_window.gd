@@ -21,8 +21,9 @@ signal researched(finished: Array, xp: Variant)
 const WORKBENCH := "furniture_workbench"
 const ANVIL := "furniture_anvil"
 const SHIPYARD := "furniture_shipyard"
-const STATION_TITLES := {ANVIL: "Kowadło", SHIPYARD: "Stocznia"}
-const STATION_PICK_UP := {ANVIL: "Schowaj kowadło do ekwipunku", SHIPYARD: "Schowaj stocznię do ekwipunku"}
+const TAILOR := "furniture_tailor"
+const STATION_TITLES := {ANVIL: "Kowadło", SHIPYARD: "Stocznia", TAILOR: "Pracownia krawiecka"}
+const STATION_PICK_UP := {ANVIL: "Schowaj kowadło do ekwipunku", SHIPYARD: "Schowaj stocznię do ekwipunku", TAILOR: "Schowaj pracownię do ekwipunku"}
 
 ## The workbench or anvil the window was opened at (its object id in the garage or on the plot).
 var workbench := ""
@@ -161,7 +162,7 @@ func _open_tab(tab: int) -> void:
 		_research.set_items(_items)
 
 
-## Opens the window at a workbench or, with `kind` ANVIL or SHIPYARD, at an anvil or a shipyard.
+## Opens the window at a workbench or, with `kind` ANVIL, SHIPYARD or TAILOR, at an anvil, a shipyard or a tailor's.
 func open_at(id: String, kind := WORKBENCH) -> void:
 	workbench = id
 	if kind != station:
@@ -171,7 +172,7 @@ func open_at(id: String, kind := WORKBENCH) -> void:
 	set_title(STATION_TITLES.get(kind, "Stół warsztatowy"))
 	_pick_up_button.text = STATION_PICK_UP.get(kind, "Schowaj stół do ekwipunku")
 	_pick_up_button.visible = can_pick_up
-	# Research is done at the workbench; the anvil only forges, the shipyard only builds boats.
+	# Research is done at the workbench; the anvil only forges, the shipyard only builds boats, the tailor only sews.
 	for b in _tab_buttons:
 		b.visible = bench
 	if not bench:

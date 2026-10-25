@@ -784,6 +784,10 @@
   "anchorX": 72,
   "anchorY": 108
  },
+ "tailor": {
+  "anchorX": 64,
+  "anchorY": 88
+ },
  "machine_shop": {
   "anchorX": 64,
   "anchorY": 86

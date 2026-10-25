@@ -82,6 +82,7 @@ public static class TechTree
     public const string WasteManagement = "waste_management";
     public const string FreightHub = "freight_hub";
     public const string Headquarters = "headquarters";
+    public const string Tailoring = "tailoring";
     public const string Silviculture = "silviculture";
     public const string Papermaking = "papermaking";
     public const string Furniture = "furniture";
@@ -326,6 +327,9 @@ public static class TechTree
         new(Headquarters, "Siedziba spółki", "Siedziba w mieście pozwala spółce przyjąć 30 członków zamiast 20 i potraja jej wspólny magazyn.",
             [CityServices], [(Items.Concrete, 40), (Items.MarbleSlabs, 20), (Items.Blueprint, 2)], TimeSpan.FromMinutes(5), 100,
             [Items.CompanyHq]),
+        new(Tailoring, "Krawiectwo", "Pracownia krawiecka w mieście szyje ubrania, które przyspieszają pracę w leśnictwie, górnictwie, rolnictwie, rybołówstwie i rzemiośle albo poprawiają ceny u handlarza.",
+            [], [(Items.Wool, 40), (Items.Planks, 20), (Items.IronIngot, 10)], TimeSpan.FromMinutes(3), 60,
+            [Items.Tailor, .. Items.Clothes.Keys]),
         new(Silviculture, "Hodowla lasu", "Sadzonki świerku, brzozy, dębu i lipy u handlarza i wieża obserwacyjna, z której widać pożar, zanim się rozprzestrzeni.",
             [ForestryIndustry], [(Items.Sapling, 20), (Items.Wood, 40)], TimeSpan.FromSeconds(90), 30,
             [Items.SaplingSpruce, Items.SaplingBirch, Items.SaplingOak, Items.SaplingLinden, Items.Watchtower]),

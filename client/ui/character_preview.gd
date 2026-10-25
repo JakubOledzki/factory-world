@@ -1,21 +1,10 @@
 class_name CharacterPreview
 extends Control
-## Draws the player character's portrait from 3D renders (see tools/render_art.py): a grey
-## shading image per hair and shirt style, tinted by a shader with the colours picked in the editor.
+## Draws the player character's portrait from 3D renders (see CharacterLayers): the body tinted
+## with the colours picked in the editor, the face, the facial hair and the clothes worn.
 
-const SHADER := preload("res://ui/character_tint.gdshader")
-## Shader uniform, appearance key and palette for each tinted part.
-const TINTS := [
-	["skin", "skinTone", "skinTones"],
-	["shirt", "shirtColor", "clothColors"],
-	["pants", "pantsColor", "clothColors"],
-	["hair", "hairColor", "hairColors"],
-	["shoes", "shoesColor", "clothColors"],
-]
-
-static var _meta: Dictionary
-
-## Indexes into the palettes: skinTone, hairStyle, hairColor, shirtStyle, shirtColor, pantsColor, shoesColor.
+## Indexes into the palettes (skinTone, hairStyle, hairColor, shirtStyle, shirtColor, pantsColor,
+## shoesColor, faceStyle, eyeColor, facialHair) and the clothes worn by slot under "outfit".
 var appearance := {}:
 	set(value):
 		appearance = value
@@ -43,36 +32,20 @@ var region := Rect2(0, 0, 1, 1):
 var light := Color.WHITE:
 	set(value):
 		light = value
-		(material as ShaderMaterial).set_shader_parameter("light", Vector3(light.r, light.g, light.b))
+		_layers.light = light
 
-var _shade: Texture2D
+var _layers := CharacterLayers.new()
 
 
 func _init() -> void:
-	material = ShaderMaterial.new()
-	material.shader = SHADER
+	add_child(_layers)
+	resized.connect(_resize)
 	_resize()
 
 
 ## Image sizes and the feet position inside them, written by the renderer.
 static func meta() -> Dictionary:
-	if _meta.is_empty():
-		_meta = JSON.parse_string(FileAccess.get_file_as_string("res://art/character/meta.json"))
-	return _meta
-
-
-## Points a tint shader at the images of a hair and shirt style ("portrait" or "walk") and
-## sets the colours picked in the editor; returns the shading texture to draw.
-static func apply_tints(shader: ShaderMaterial, kind: String, appearance: Dictionary, options: Dictionary) -> Texture2D:
-	var prefix := "res://art/character/%s/h%d_s%d" % [kind, appearance.get("hairStyle", 0), appearance.get("shirtStyle", 0)]
-	shader.set_shader_parameter("mask_a", load(prefix + "_mask_a.png"))
-	shader.set_shader_parameter("mask_b", load(prefix + "_mask_b.png"))
-	for tint: Array in TINTS:
-		var colors: Array = options.get(tint[2], [])
-		var index: int = appearance.get(tint[1], 0)
-		var c := Color(colors[index]) if index >= 0 and index < colors.size() else Color.MAGENTA
-		shader.set_shader_parameter(tint[0], Vector3(c.r, c.g, c.b))
-	return load(prefix + ".png")
+	return CharacterLayers.meta()
 
 
 func _region_px() -> Rect2:
@@ -84,20 +57,12 @@ func _region_px() -> Rect2:
 func _resize() -> void:
 	var src := _region_px()
 	custom_minimum_size = src.size * display_scale
-	size = custom_minimum_size
-	queue_redraw()
+	_layers.source = src
+	# Centred in whatever room the container gives.
+	_layers.target = Rect2(((size - custom_minimum_size) / 2).max(Vector2.ZERO).floor(), src.size * display_scale)
 
 
 func _update() -> void:
 	if appearance.is_empty() or options.is_empty():
 		return
-	_shade = apply_tints(material, "portrait", appearance, options)
-	queue_redraw()
-
-
-func _draw() -> void:
-	if _shade == null:
-		return
-	var src := _region_px()
-	draw_texture_rect_region(_shade, Rect2(Vector2.ZERO, src.size * display_scale), src)
-
+	_layers.set_look("portrait", appearance, options)

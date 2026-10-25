@@ -1,10 +1,12 @@
+using System.Text.Json;
 using FactoryWorld.Modules.Abstractions;
+using FactoryWorld.Modules.Abstractions.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
 namespace FactoryWorld.Modules.Characters;
 
-public sealed class CharacterService(CharactersDbContext db, TimeProvider time)
+public sealed class CharacterService(CharactersDbContext db, GameDb gameDb, IWallet wallet, TimeProvider time)
 {
     public Task<Character?> FindAsync(Guid accountId, CancellationToken cancellationToken) =>
         db.Characters.AsNoTracking().SingleOrDefaultAsync(c => c.AccountId == accountId, cancellationToken);
@@ -47,4 +49,27 @@ public sealed class CharacterService(CharactersDbContext db, TimeProvider time)
 
         return character;
     }
+
+    /// <summary>A new look for the character: the player pays <see cref="CharacterRules.RestyleCents"/>, or nothing changes.</summary>
+    public Task RestyleAsync(Guid accountId, Appearance appearance, CancellationToken cancellationToken) =>
+        gameDb.InTransactionAsync(async () =>
+        {
+            if (!AppearanceCatalog.IsValid(appearance))
+            {
+                throw new GameException("invalid_appearance", "Unknown appearance option.");
+            }
+
+            var character = await FindAsync(accountId, cancellationToken) ?? throw new GameException("no_character", "Create a character first.");
+            if (character.Appearance == appearance)
+            {
+                throw new GameException("same_look", "That is how the character looks already.");
+            }
+
+            await wallet.DebitAsync(accountId, CharacterRules.RestyleCents, "new look", cancellationToken);
+            await using var update = await gameDb.CommandAsync(
+                """UPDATE characters.characters SET "Appearance" = @look::jsonb WHERE "AccountId" = @account""", cancellationToken);
+            update.Parameters.AddWithValue("look", JsonSerializer.Serialize(appearance));
+            update.Parameters.AddWithValue("account", accountId);
+            await update.ExecuteNonQueryAsync(cancellationToken);
+        }, cancellationToken);
 }

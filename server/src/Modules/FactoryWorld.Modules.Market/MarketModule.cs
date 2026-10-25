@@ -306,6 +306,21 @@ public static class NpcPrices
         [Items.DesignOffice] = 20_000,
         [Items.Laboratory] = 60_000,
         [Items.ServiceWorkshop] = 25_000,
+        [Items.Tailor] = 30_000,
+        [Items.MinerHelmet] = 16_000,
+        [Items.SouWester] = 7500,
+        [Items.StrawHat] = 2000,
+        [Items.Beanie] = 4000,
+        [Items.FlannelJacket] = 8000,
+        [Items.SmithApron] = 14_000,
+        [Items.Oilskin] = 20_000,
+        [Items.SuitJacket] = 22_000,
+        [Items.Overalls] = 9000,
+        [Items.WorkTrousers] = 11_000,
+        [Items.SuitTrousers] = 8500,
+        [Items.RubberBoots] = 13_000,
+        [Items.WorkBoots] = 14_000,
+        [Items.DressShoes] = 7500,
         [Items.SaplingSpruce] = 100,
         [Items.SaplingBirch] = 100,
         [Items.SaplingOak] = 250,
@@ -425,7 +440,8 @@ public sealed class MarketPrices : IMarketPrices
 public sealed record TradeRequest(string Item, int Quantity);
 
 public sealed class MarketService(
-    GameDb db, IInventory inventory, IWallet wallet, TraderMarket trader, ITechnologies technologies, IEnumerable<IForestCertificate> certificates)
+    GameDb db, IInventory inventory, IWallet wallet, TraderMarket trader, ITechnologies technologies, IEnumerable<IForestCertificate> certificates,
+    IOutfit outfit)
 {
     /// <summary>The player buys from the NPC: money out, items in, both or neither.</summary>
     public Task<long> BuyAsync(Guid owner, string item, int quantity, CancellationToken cancellationToken)
@@ -462,6 +478,9 @@ public sealed class MarketService(
             {
                 price = price * (100 + ForestCertificate.BonusPercent) / 100;
             }
+
+            // A suit makes the trader pay a few percent more.
+            price = price * (100 + await outfit.BonusAsync(owner, Industries.Trade, cancellationToken)) / 100;
 
             return await wallet.CreditAsync(owner, price * quantity, $"sell {quantity} {item}", cancellationToken);
         }, cancellationToken);

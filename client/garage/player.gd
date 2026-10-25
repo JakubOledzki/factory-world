@@ -1,7 +1,7 @@
 class_name GaragePlayer
 extends Node2D
 ## The player's character walking around the garage, drawn from the walk atlas
-## (rows: down, left, right, up; columns: idle, step A, step B) and tinted like the portrait.
+## (rows: down, left, right, up; columns: idle, step A, step B) in layers like the portrait.
 
 ## Metres per second.
 const SPEED := 2.4
@@ -17,29 +17,36 @@ const ROWS := {"down": 0, "left": 1, "right": 2, "up": 3}
 var light := Color.WHITE:
 	set(value):
 		light = value
-		(material as ShaderMaterial).set_shader_parameter("light", Vector3(light.r, light.g, light.b))
+		_body.light = light
 
 var floor_pos := Vector2.ZERO
 var facing := "down"
 var walking := false
 var shadow := Sprite2D.new()
 
-var _shade: Texture2D
+var _body := CharacterLayers.new()
 var _frame := Vector2.ZERO
 var _feet := Vector2.ZERO
 var _time := 0.0
 
 
 func _init(appearance: Dictionary, options: Dictionary) -> void:
-	material = ShaderMaterial.new()
-	material.shader = CharacterPreview.SHADER
-	_shade = CharacterPreview.apply_tints(material, "walk", appearance, options)
-	var m: Dictionary = CharacterPreview.meta()["walk"]
+	var m: Dictionary = CharacterLayers.meta()["walk"]
 	_frame = Vector2(m["frameWidth"], m["frameHeight"])
 	_feet = Vector2(m["feetX"], m["feetY"])
+	add_child(_body)
+	_body.target = Rect2(-_feet, _frame)
+	set_look(appearance, options)
 	shadow.texture = load("res://art/character/shadow.png")
 	shadow.centered = false
 	shadow.offset = -_feet
+
+
+## Dresses the character again, e.g. after the player changed clothes.
+func set_look(appearance: Dictionary, options: Dictionary) -> void:
+	_body.set_look("walk", appearance, options)
+	_body.light = light
+	queue_redraw()
 
 
 func move_to(pos: Vector2) -> void:
@@ -74,4 +81,4 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	var column: int = CYCLE[int(_time * STEPS_PER_SECOND) % CYCLE.size()] if walking else 0
 	var source := Rect2(Vector2(column, ROWS[facing]) * _frame, _frame)
-	draw_texture_rect_region(_shade, Rect2(-_feet, _frame), source)
+	_body.source = source

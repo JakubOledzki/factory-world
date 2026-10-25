@@ -1,26 +1,12 @@
 extends Control
 ## Character editor, shown once after registering.
 
-## Editor rows: label, appearance key and how many options it has.
-const ROWS := [
-	["Skóra", "skinTone", "skinTones"],
-	["Fryzura", "hairStyle", "hairStyles"],
-	["Kolor włosów", "hairColor", "hairColors"],
-	["Koszulka", "shirtStyle", "shirtStyles"],
-	["Kolor koszulki", "shirtColor", "clothColors"],
-	["Spodnie", "pantsColor", "clothColors"],
-	["Buty", "shoesColor", "clothColors"],
-]
-
-const HAIR_STYLES := ["łysy", "krótkie", "nastroszone", "długie", "kucyk", "kręcone"]
-const SHIRT_STYLES := ["t-shirt", "bezrękawnik", "bluza"]
-
 var _appearance := {
 	"skinTone": 1, "hairStyle": 1, "hairColor": 1, "shirtStyle": 0,
-	"shirtColor": 7, "pantsColor": 8, "shoesColor": 1,
+	"shirtColor": 7, "pantsColor": 8, "shoesColor": 1, "faceStyle": 0, "eyeColor": 0, "facialHair": 0,
 }
 var _preview: CharacterPreview
-var _values := {}
+var _rows := AppearanceRows.new()
 var _name: LineEdit
 var _error: Label
 var _create: Button
@@ -35,25 +21,14 @@ func _ready() -> void:
 	box.add_child(columns)
 
 	_preview = CharacterPreview.new()
-	_preview.display_scale = 0.9
+	_preview.display_scale = 0.6
 	_preview.options = Game.appearance_options
 	_preview.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	columns.add_child(_preview)
 
-	var rows := GridContainer.new()
-	rows.columns = 4
-	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	columns.add_child(rows)
-	for row: Array in ROWS:
-		var key: String = row[1]
-		rows.add_child(UI.label(row[0], UI.MUTED))
-		rows.add_child(UI.button("<", _step.bind(key, -1)))
-		var value := UI.label("", Color.WHITE, HORIZONTAL_ALIGNMENT_CENTER)
-		value.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		value.custom_minimum_size.x = 140
-		_values[key] = value
-		rows.add_child(value)
-		rows.add_child(UI.button(">", _step.bind(key, 1)))
+	_rows.set_appearance(_appearance)
+	_rows.changed.connect(_refresh)
+	columns.add_child(_rows)
 
 	_name = UI.line_edit("Nazwa postaci (3–16 znaków)")
 	_name.max_length = 16
@@ -65,7 +40,7 @@ func _ready() -> void:
 
 	var buttons := HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
-	buttons.add_child(UI.button("Losuj", _randomize))
+	buttons.add_child(UI.button("Losuj", _rows.randomize_look))
 	_create = UI.button("Stwórz postać", _submit, true)
 	buttons.add_child(_create)
 	box.add_child(buttons)
@@ -73,35 +48,8 @@ func _ready() -> void:
 	_refresh()
 
 
-func _count(key: String) -> int:
-	for row: Array in ROWS:
-		if row[1] == key:
-			var option: Variant = Game.appearance_options.get(row[2], 1)
-			return option.size() if option is Array else int(option)
-	return 1
-
-
-func _step(key: String, delta: int) -> void:
-	_appearance[key] = posmod(_appearance[key] + delta, _count(key))
-	_refresh()
-
-
-func _randomize() -> void:
-	for row: Array in ROWS:
-		_appearance[row[1]] = randi() % _count(row[1])
-	_refresh()
-
-
 func _refresh() -> void:
-	for row: Array in ROWS:
-		var key: String = row[1]
-		var index: int = _appearance[key]
-		var text := "%d / %d" % [index + 1, _count(key)]
-		if key == "hairStyle" and index < HAIR_STYLES.size():
-			text = HAIR_STYLES[index]
-		elif key == "shirtStyle" and index < SHIRT_STYLES.size():
-			text = SHIRT_STYLES[index]
-		_values[key].text = text
+	_appearance = _rows.appearance.duplicate()
 	_preview.appearance = _appearance.duplicate()
 
 
