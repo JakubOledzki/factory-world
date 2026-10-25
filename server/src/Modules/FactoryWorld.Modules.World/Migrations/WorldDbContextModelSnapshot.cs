@@ -50,6 +50,73 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("beach_finds", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.ForestLedgerRow", b =>
+                {
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("player_id");
+
+                    b.Property<int>("Day")
+                        .HasColumnType("integer")
+                        .HasColumnName("day");
+
+                    b.Property<int>("Cut")
+                        .HasColumnType("integer")
+                        .HasColumnName("cut");
+
+                    b.Property<int>("Planted")
+                        .HasColumnType("integer")
+                        .HasColumnName("planted");
+
+                    b.HasKey("PlayerId", "Day");
+
+                    b.ToTable("forest_ledger", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.HiveRow", b =>
+                {
+                    b.Property<Guid>("ObjectId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<int>("Honey")
+                        .HasColumnType("integer")
+                        .HasColumnName("honey");
+
+                    b.Property<int>("Made")
+                        .HasColumnType("integer")
+                        .HasColumnName("made");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<double>("Progress")
+                        .HasColumnType("double precision")
+                        .HasColumnName("progress");
+
+                    b.Property<int>("Wax")
+                        .HasColumnType("integer")
+                        .HasColumnName("wax");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("ObjectId");
+
+                    b.ToTable("hives", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.OilFieldRow", b =>
                 {
                     b.Property<int>("X")
@@ -216,6 +283,45 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plot_fields", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotFireRow", b =>
+                {
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.Property<DateTimeOffset>("CheckedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("checked_at");
+
+                    b.Property<DateTimeOffset?>("LastAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_at");
+
+                    b.Property<int>("LastBurnt")
+                        .HasColumnType("integer")
+                        .HasColumnName("last_burnt");
+
+                    b.Property<bool>("LastStopped")
+                        .HasColumnType("boolean")
+                        .HasColumnName("last_stopped");
+
+                    b.Property<int>("LastX")
+                        .HasColumnType("integer")
+                        .HasColumnName("last_x");
+
+                    b.Property<int>("LastY")
+                        .HasColumnType("integer")
+                        .HasColumnName("last_y");
+
+                    b.HasKey("X", "Y");
+
+                    b.ToTable("plot_fires", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.PlotForesterRow", b =>
                 {
                     b.Property<Guid>("ObjectId")
@@ -359,6 +465,25 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plot_objects", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotSprayRow", b =>
+                {
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.Property<DateTimeOffset>("Until")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("until");
+
+                    b.HasKey("X", "Y");
+
+                    b.ToTable("plot_sprays", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.PlotTree", b =>
                 {
                     b.Property<int>("X")
@@ -384,6 +509,14 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.Property<DateTimeOffset>("ReadyAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("ready_at");
+
+                    b.Property<string>("Species")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasDefaultValue("pine")
+                        .HasColumnName("species");
 
                     b.HasKey("X", "Y", "TileX", "TileY");
 

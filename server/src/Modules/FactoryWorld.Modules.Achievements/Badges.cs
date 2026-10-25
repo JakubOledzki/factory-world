@@ -29,6 +29,10 @@ public static class Stats
     public const string Bridges = "bridges";
     public const string CityDeliveries = "city_deliveries";
     public const string CityTrash = "city_trash";
+    public const string OakWood = "oak_wood";
+    public const string Mushrooms = "mushrooms";
+    public const string Honey = "honey";
+    public const string Furniture = "furniture";
 
     /// <summary>Everything the player made by hand or with machines: gathered, mined, smelted, crafted, grown, processed.</summary>
     public const string Produced = "produced";
@@ -57,6 +61,10 @@ public static class Badges
         new("forest_king", "Las", "Król lasu", "Zbierz 1000 drewna.", Stats.Wood, 1000),
         new("gardener", "Las", "Ogrodnik", "Posadź 10 sadzonek.", Stats.TreesPlanted, 10),
         new("forester", "Las", "Leśnik", "Posadź 100 sadzonek.", Stats.TreesPlanted, 100),
+        new("old_oak", "Las", "Dąb Bartek", "Zetnij pierwszy dąb.", Stats.OakWood, 1),
+        new("mushroom_picker", "Las", "Grzybiarz", "Zbierz 100 grzybów.", Stats.Mushrooms, 100),
+        new("beekeeper", "Las", "Pszczelarz", "Wybierz z uli 100 słoików miodu.", Stats.Honey, 100),
+        new("cabinetmaker", "Las", "Meblarz", "Zrób w stolarni 20 mebli.", Stats.Furniture, 20),
 
         new("first_dig", "Górnictwo", "Pierwszy urobek", "Wydobądź coś w kopalni.", Stats.Mined, 1),
         new("miner", "Górnictwo", "Górnik", "Wydobądź 100 jednostek w kopalniach.", Stats.Mined, 100),

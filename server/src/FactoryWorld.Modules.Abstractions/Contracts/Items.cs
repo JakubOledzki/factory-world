@@ -319,6 +319,45 @@ public static class Items
     public const string Laboratory = "furniture_laboratory";
     public const string ServiceWorkshop = "furniture_service_workshop";
 
+    // Forestry: trees of five kinds with their own saplings, what the forest floor gives, paper, furniture, charcoal,
+    // resin and what is made of it, honey, and the fight against fires and the bark beetle.
+    public const string SaplingSpruce = "sapling_spruce";
+    public const string SaplingBirch = "sapling_birch";
+    public const string SaplingOak = "sapling_oak";
+    public const string SaplingLinden = "sapling_linden";
+    public const string OakWood = "oak_wood";
+    public const string Resin = "resin";
+    public const string Pulp = "pulp";
+    public const string Paper = "paper";
+    public const string Cardboard = "cardboard";
+    public const string Chair = "chair";
+    public const string Table = "table";
+    public const string Wardrobe = "wardrobe";
+    public const string OakDresser = "oak_dresser";
+    public const string Charcoal = "charcoal";
+    public const string Mushrooms = "mushrooms";
+    public const string Berries = "berries";
+    public const string Herbs = "herbs";
+    public const string MushroomSoup = "mushroom_soup";
+    public const string BerryPierogi = "berry_pierogi";
+    public const string HerbalTea = "herbal_tea";
+    public const string Honey = "honey";
+    public const string Wax = "wax";
+    public const string Gingerbread = "gingerbread";
+    public const string Candles = "candles";
+    public const string Tar = "tar";
+    public const string Turpentine = "turpentine";
+    public const string Rosin = "rosin";
+    public const string Insecticide = "insecticide";
+
+    public const string PaperMill = "furniture_paper_mill";
+    public const string Carpentry = "furniture_carpentry";
+    public const string CharcoalKiln = "furniture_charcoal_kiln";
+    public const string TarKiln = "furniture_tar_kiln";
+    public const string Beehive = "furniture_beehive";
+    public const string Watchtower = "furniture_fire_watchtower";
+    public const string FireStation = "furniture_fire_station";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -367,7 +406,7 @@ public static class Items
         [SilverIngot] = "Sztabka srebra",
         [GoldIngot] = "Sztabka złota",
         [Nails] = "Gwoździe",
-        [Sapling] = "Sadzonka drzewa",
+        [Sapling] = "Sadzonka sosny",
         [Chicken] = "Kura",
         [Sheep] = "Owca",
         [Cow] = "Krowa",
@@ -568,6 +607,41 @@ public static class Items
         [DesignOffice] = "Biuro projektowe",
         [Laboratory] = "Laboratorium",
         [ServiceWorkshop] = "Warsztat serwisowy",
+        [SaplingSpruce] = "Sadzonka świerku",
+        [SaplingBirch] = "Sadzonka brzozy",
+        [SaplingOak] = "Sadzonka dębu",
+        [SaplingLinden] = "Sadzonka lipy",
+        [OakWood] = "Drewno dębowe",
+        [Resin] = "Żywica",
+        [Pulp] = "Masa celulozowa",
+        [Paper] = "Papier",
+        [Cardboard] = "Karton",
+        [Chair] = "Krzesło",
+        [Table] = "Stół",
+        [Wardrobe] = "Szafa",
+        [OakDresser] = "Komoda dębowa",
+        [Charcoal] = "Węgiel drzewny",
+        [Mushrooms] = "Grzyby",
+        [Berries] = "Jagody",
+        [Herbs] = "Zioła",
+        [MushroomSoup] = "Zupa grzybowa",
+        [BerryPierogi] = "Pierogi z jagodami",
+        [HerbalTea] = "Herbata ziołowa",
+        [Honey] = "Miód",
+        [Wax] = "Wosk",
+        [Gingerbread] = "Piernik",
+        [Candles] = "Świece",
+        [Tar] = "Smoła",
+        [Turpentine] = "Terpentyna",
+        [Rosin] = "Kalafonia",
+        [Insecticide] = "Środek na kornika",
+        [PaperMill] = "Papiernia",
+        [Carpentry] = "Stolarnia",
+        [CharcoalKiln] = "Mielerz",
+        [TarKiln] = "Smolarnia",
+        [Beehive] = "Ul",
+        [Watchtower] = "Wieża obserwacyjna",
+        [FireStation] = "Strażnica",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
@@ -668,6 +742,15 @@ public static class Items
 
     /// <summary>City offices that sell a service to any player who comes by, for their owner.</summary>
     public static bool IsService(string id) => id is DesignOffice or Laboratory or ServiceWorkshop;
+
+    /// <summary>The saplings of each kind of tree; the plain sapling grows a pine.</summary>
+    public static bool IsSapling(string id) => id is Sapling or SaplingSpruce or SaplingBirch or SaplingOak or SaplingLinden;
+
+    /// <summary>What the forest certificate makes dearer at the trader.</summary>
+    public static bool IsTimber(string id) => id is Wood or OakWood or Planks or Beams;
+
+    /// <summary>Coal and charcoal, which furnaces burn alike.</summary>
+    public static bool IsCoal(string id) => id is Coal or Charcoal;
 
     /// <summary>Fossils the dunes give up now and then, a collection of three.</summary>
     public static bool IsFossil(string id) => id is Ammonite or AncientCoin or DinosaurBone;

@@ -127,7 +127,7 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
 
         Assert.Equal(PlotLayout.Size * PlotLayout.Size, tiles.Length);
         Assert.Equal(20, plot.GetProperty("tileMeters").GetInt32());
-        Assert.True(tiles.Count(t => t == (byte)TileObject.Tree) > tiles.Length / 5, "A forest is full of trees.");
+        Assert.True(tiles.Count(Trees.IsTree) > tiles.Length / 5, "A forest is full of trees.");
         Assert.All(Enumerable.Range(0, PlotLayout.Size), x => Assert.Equal((byte)TileObject.Rail, tiles[PlotLayout.RailRow * PlotLayout.Size + x]));
         Assert.Contains((byte)TileObject.Station, tiles);
         var spawn = plot.GetProperty("spawn");

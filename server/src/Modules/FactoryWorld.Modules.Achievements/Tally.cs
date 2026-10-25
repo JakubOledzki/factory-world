@@ -34,9 +34,19 @@ public static class Tally
 
                 foreach (var (item, quantity) in Stacks(reply, "items"))
                 {
-                    if (item == Items.Wood)
+                    if (item is Items.Wood or Items.OakWood)
                     {
                         Add(counts, Stats.Wood, quantity);
+                    }
+
+                    if (item == Items.OakWood)
+                    {
+                        Add(counts, Stats.OakWood, quantity);
+                    }
+
+                    if (item == Items.Mushrooms)
+                    {
+                        Add(counts, Stats.Mushrooms, quantity);
                     }
 
                     if (Items.IsFossil(item))
@@ -115,6 +125,22 @@ public static class Tally
                     if (item == Items.Takings)
                     {
                         Add(counts, Stats.Tourists, quantity);
+                    }
+
+                    if (item is Items.Chair or Items.Table or Items.Wardrobe or Items.OakDresser)
+                    {
+                        Add(counts, Stats.Furniture, quantity);
+                    }
+                }
+
+                break;
+            case "hive.take":
+                foreach (var (item, quantity) in Stacks(reply, "taken"))
+                {
+                    Add(counts, Stats.Produced, quantity);
+                    if (item == Items.Honey)
+                    {
+                        Add(counts, Stats.Honey, quantity);
                     }
                 }
 

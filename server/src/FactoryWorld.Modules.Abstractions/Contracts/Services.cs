@@ -263,3 +263,16 @@ public interface IMarketPrices
     /// <summary>The usual price the trader pays for one piece, in cents, or null when it buys none.</summary>
     long? BuysCents(string item);
 }
+
+/// <summary>The forest certificate: a player who planted at least as many trees as they cut over the last week, and
+/// enough of them, sells timber dearer.</summary>
+public interface IForestCertificate
+{
+    Task<bool> CertifiedAsync(Guid player, CancellationToken cancellationToken);
+}
+
+public static class ForestCertificate
+{
+    /// <summary>How much more the trader pays a certified player for timber, in percent.</summary>
+    public const int BonusPercent = 15;
+}

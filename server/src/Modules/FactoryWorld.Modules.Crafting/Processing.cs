@@ -49,6 +49,7 @@ public static class Processing
     public static readonly IReadOnlyDictionary<string, int> Fuels = new Dictionary<string, int>
     {
         [Items.Coal] = 4,
+        [Items.Charcoal] = 4,
         [Items.Wood] = 1,
         [Items.WoodPellets] = 2,
     };
@@ -74,6 +75,7 @@ public static class Processing
             new(Items.Bread, 1, TimeSpan.FromSeconds(20), [(Items.Flour, 2)], 3),
             new(Items.CornBread, 1, TimeSpan.FromSeconds(20), [(Items.CornFlour, 2)], 3),
             new(Items.CarrotCake, 1, TimeSpan.FromSeconds(30), [(Items.Flour, 2), (Items.Carrot, 3), (Items.SunflowerOil, 1)], 6),
+            new(Items.Gingerbread, 2, TimeSpan.FromSeconds(30), [(Items.Flour, 2), (Items.Honey, 1)], 5),
         ]),
         new(Items.Kitchen, true,
         [
@@ -83,6 +85,9 @@ public static class Processing
             new(Items.ScrambledEggs, 2, TimeSpan.FromSeconds(15), [(Items.Egg, 3), (Items.SunflowerOil, 1)], 3),
             new(Items.FriedCarp, 1, TimeSpan.FromSeconds(15), [(Items.Carp, 1), (Items.SunflowerOil, 1)], 3),
             new(Items.FishSoup, 2, TimeSpan.FromSeconds(20), [(Items.Pike, 1), (Items.Potato, 2), (Items.Carrot, 1)], 4),
+            new(Items.MushroomSoup, 2, TimeSpan.FromSeconds(20), [(Items.Mushrooms, 3), (Items.Potato, 1)], 4),
+            new(Items.BerryPierogi, 2, TimeSpan.FromSeconds(25), [(Items.Flour, 2), (Items.Berries, 3)], 4),
+            new(Items.HerbalTea, 2, TimeSpan.FromSeconds(10), [(Items.Herbs, 2)], 2),
         ]),
         // Sawmills of three levels: the plain one saws by hand, the electric and the industrial one run on
         // power, work faster and glue plywood from planks; the industrial one gets three planks from a log.
@@ -191,6 +196,7 @@ public static class Processing
             new(Items.SyntheticRubber, 1, TimeSpan.FromSeconds(10), [(Items.Kerosene, 1), (Items.Sulfur, 1)], 3),
             new(Items.Fertilizer, 3, TimeSpan.FromSeconds(10), [(Items.NaturalGas, 2)], 2),
             new(Items.Tyres, 1, TimeSpan.FromSeconds(20), [(Items.SyntheticRubber, 4), (Items.SteelIngot, 1)], 8),
+            new(Items.Insecticide, 2, TimeSpan.FromSeconds(10), [(Items.Turpentine, 1), (Items.NaturalGas, 1)], 3),
         ], Powered: true),
         // The desert: a fired glassworks melts sand into glass (30% faster on sand) and blows bottles from waste glass;
         // an arc furnace on power makes silicon from quartz and cuts it into wafers for solar panels.
@@ -290,6 +296,32 @@ public static class Processing
         [
             new(Items.Gasket, 4, TimeSpan.FromSeconds(20), [(Items.SteelIngot, 1), (Items.SyntheticRubber, 1)], 3),
         ], Powered: true),
+        // Forestry: a paper mill on power pulps pellets into paper and presses waste paper into cardboard; a carpenter's shop makes
+        // furniture, the oak dresser of oak wood; a charcoal kiln chars wood slowly in its own fire; a fired tar kiln boils resin.
+        new(Items.PaperMill, false,
+        [
+            new(Items.Pulp, 2, TimeSpan.FromSeconds(12), [(Items.WoodPellets, 3), (Items.Water, 1)], 2),
+            new(Items.Paper, 3, TimeSpan.FromSeconds(8), [(Items.Pulp, 2)], 2),
+            // Cardboard is pressed from waste paper.
+            new(Items.Cardboard, 2, TimeSpan.FromSeconds(8), [(Items.WastePaper, 3)], 2),
+        ], Powered: true),
+        new(Items.Carpentry, false,
+        [
+            new(Items.Chair, 1, TimeSpan.FromSeconds(20), [(Items.Planks, 4), (Items.Nails, 2)], 3),
+            new(Items.Table, 1, TimeSpan.FromSeconds(30), [(Items.Planks, 6), (Items.Beams, 2), (Items.Nails, 4)], 5),
+            new(Items.Wardrobe, 1, TimeSpan.FromSeconds(45), [(Items.Plywood, 4), (Items.Planks, 4), (Items.Nails, 6)], 8),
+            new(Items.OakDresser, 1, TimeSpan.FromSeconds(60), [(Items.OakWood, 6), (Items.Nails, 4), (Items.Rosin, 1)], 12),
+        ]),
+        new(Items.CharcoalKiln, false,
+        [
+            new(Items.Charcoal, 2, TimeSpan.FromSeconds(60), [(Items.Wood, 4)], 2),
+        ]),
+        new(Items.TarKiln, true,
+        [
+            new(Items.Tar, 2, TimeSpan.FromSeconds(20), [(Items.Resin, 3)], 2),
+            new(Items.Turpentine, 1, TimeSpan.FromSeconds(15), [(Items.Resin, 2)], 3),
+            new(Items.Rosin, 2, TimeSpan.FromSeconds(15), [(Items.Resin, 2)], 2),
+        ]),
     ];
 
     /// <summary>What an assembly hall puts together.</summary>

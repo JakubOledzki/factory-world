@@ -339,7 +339,7 @@ public sealed class ForestryIndustryTests(ServerFactory factory) : IClassFixture
         await GiveAsync(client, Items.ForesterHut, 1);
         var hut = await PlaceAsync(client, x, y, Items.ForesterHut, tx, ty);
         var wild = Enumerable.Range(-5, 11).SelectMany(dy => Enumerable.Range(-5, 11).Select(dx => (dx, dy)))
-            .Count(t => Foresters.Plants(Hut, 0, t.dx, t.dy) && tiles[(ty + t.dy) * PlotLayout.Size + tx + t.dx] == (byte)TileObject.Tree);
+            .Count(t => Foresters.Plants(Hut, 0, t.dx, t.dy) && Trees.IsTree(tiles[(ty + t.dy) * PlotLayout.Size + tx + t.dx]));
         Assert.True(wild > 0);
 
         factory.Time.Advance(TimeSpan.FromSeconds(6 * Math.Min(wild, 5)));

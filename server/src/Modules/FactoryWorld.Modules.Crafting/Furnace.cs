@@ -176,7 +176,7 @@ public sealed class FurnaceService(
             var (state, level) = await OpenAsync(owner, id, cancellationToken);
             var taken = new List<(string, int)>();
             XpGain? xp = null;
-            if (item == Items.Coal)
+            if (Items.IsCoal(item))
             {
                 if (state.Fuel + quantity > level.MaxFuel)
                 {
@@ -351,7 +351,7 @@ public sealed class FurnacePorts(GameDb db, IProductionStats stats) : IMachinePo
         public bool Accepts(string item, DateTimeOffset now)
         {
             Advance(now);
-            if (item == Items.Coal)
+            if (Items.IsCoal(item))
             {
                 return state.Fuel < level.MaxFuel;
             }
@@ -364,7 +364,7 @@ public sealed class FurnacePorts(GameDb db, IProductionStats stats) : IMachinePo
 
         public void Put(string item, DateTimeOffset now)
         {
-            state = item == Items.Coal
+            state = Items.IsCoal(item)
                 ? state with { Fuel = state.Fuel + 1 }
                 : state with { Input = item, InputQuantity = state.InputQuantity + 1 };
             state = Smelting.Start(state, now);

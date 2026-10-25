@@ -69,6 +69,9 @@ public sealed class PlotTree
 
     /// <summary>The forester's building that planted it, or null for a tree a player planted.</summary>
     public Guid? ForesterId { get; set; }
+
+    /// <summary>The kind of tree, see <see cref="Trees"/>.</summary>
+    public string Species { get; set; } = Trees.Pine;
 }
 
 /// <summary>An animal a player let out on a plot; fed, it gives its product at <see cref="ReadyAt"/>.</summary>
@@ -328,6 +331,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(t => t.TileY).HasColumnName("tile_y");
             e.Property(t => t.ReadyAt).HasColumnName("ready_at");
             e.Property(t => t.ForesterId).HasColumnName("forester_id");
+            e.Property(t => t.Species).HasColumnName("species").HasMaxLength(16).HasDefaultValue(Trees.Pine);
             e.HasIndex(t => t.ForesterId);
         });
         model.Entity<PlotAnimalRow>(e =>
@@ -563,6 +567,50 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(p => p.MayorId).HasColumnName("mayor_id");
             e.Property(p => p.TaxPercent).HasColumnName("tax_percent");
             e.Property(p => p.Bonus).HasColumnName("bonus").HasMaxLength(16);
+        });
+        model.Entity<PlotFireRow>(e =>
+        {
+            e.ToTable("plot_fires");
+            e.HasKey(f => new { f.X, f.Y });
+            e.Property(f => f.X).HasColumnName("x");
+            e.Property(f => f.Y).HasColumnName("y");
+            e.Property(f => f.CheckedAt).HasColumnName("checked_at");
+            e.Property(f => f.LastAt).HasColumnName("last_at");
+            e.Property(f => f.LastX).HasColumnName("last_x");
+            e.Property(f => f.LastY).HasColumnName("last_y");
+            e.Property(f => f.LastBurnt).HasColumnName("last_burnt");
+            e.Property(f => f.LastStopped).HasColumnName("last_stopped");
+        });
+        model.Entity<PlotSprayRow>(e =>
+        {
+            e.ToTable("plot_sprays");
+            e.HasKey(s => new { s.X, s.Y });
+            e.Property(s => s.X).HasColumnName("x");
+            e.Property(s => s.Y).HasColumnName("y");
+            e.Property(s => s.Until).HasColumnName("until");
+        });
+        model.Entity<HiveRow>(e =>
+        {
+            e.ToTable("hives");
+            e.HasKey(h => h.ObjectId);
+            e.Property(h => h.ObjectId).HasColumnName("object_id");
+            e.Property(h => h.X).HasColumnName("x");
+            e.Property(h => h.Y).HasColumnName("y");
+            e.Property(h => h.OwnerId).HasColumnName("owner_id");
+            e.Property(h => h.Honey).HasColumnName("honey");
+            e.Property(h => h.Wax).HasColumnName("wax");
+            e.Property(h => h.Made).HasColumnName("made");
+            e.Property(h => h.Progress).HasColumnName("progress");
+            e.Property(h => h.At).HasColumnName("at");
+        });
+        model.Entity<ForestLedgerRow>(e =>
+        {
+            e.ToTable("forest_ledger");
+            e.HasKey(l => new { l.PlayerId, l.Day });
+            e.Property(l => l.PlayerId).HasColumnName("player_id");
+            e.Property(l => l.Day).HasColumnName("day");
+            e.Property(l => l.Planted).HasColumnName("planted");
+            e.Property(l => l.Cut).HasColumnName("cut");
         });
     }
 }
@@ -868,6 +916,17 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<StationService>();
         services.AddScoped<FarmService>();
         services.AddScoped<ForestService>();
+        services.AddScoped<ForestLedger>();
+        services.AddScoped<IForestCertificate>(provider => provider.GetRequiredService<ForestLedger>());
+        services.AddScoped<IPlayerRanking, GreenestRanking>();
+        services.AddScoped<PestService>();
+        services.AddScoped<FireService>();
+        services.AddScoped<BeeService>();
+        services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<BeeService>());
+        services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<BeeService>());
+        services.AddSingleton<IMessageHandler, GetHiveHandler>();
+        services.AddSingleton<IMessageHandler, TakeFromHiveHandler>();
+        services.AddSingleton<IMessageHandler, SprayHandler>();
         services.AddScoped<HusbandryService>();
         services.AddScoped<MineService>();
         services.AddScoped<SurveyService>();

@@ -41,6 +41,7 @@ public static class PlotObjects
         Items.IceCoreDrill, Items.PolarStation, Items.IceHotel, Items.Viewpoint, Items.DogKennel, Items.SnowmobileGarage, Items.TrackFoundation,
         Items.AssemblyHall, Items.MultistoreyFactory, Items.Shop, Items.HighBay, Items.CitySorter, Items.FreightTerminal, Items.CompanyHq,
         Items.DesignOffice, Items.Laboratory, Items.ServiceWorkshop,
+        Items.PaperMill, Items.Carpentry, Items.CharcoalKiln, Items.TarKiln, Items.Beehive, Items.Watchtower, Items.FireStation,
     };
 
     /// <summary>What stands on the glacier only, or on the glacier and the tundra.</summary>
@@ -109,6 +110,11 @@ public static class PlotObjects
         if (kind is Items.FreightTerminal or Items.CompanyHq && others.Any(o => o.Kind == kind))
         {
             throw new GameException("has_one", "A plot has room for one of these.");
+        }
+
+        if (kind == Items.Beehive && !Bees.Fly(biome))
+        {
+            throw new GameException("no_bees", "No bees fly on the glacier or in the mountains.");
         }
 
         Coast.RequireSite(kind, x, y, biome, tileX, tileY);

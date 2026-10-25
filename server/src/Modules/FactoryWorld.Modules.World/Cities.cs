@@ -119,6 +119,11 @@ public static class CityRules
         (Items.CircuitBoard, 2, 10), (Items.ElectricMotor, 2, 5), (Items.Tyres, 2, 3),
         (Items.WashingMachine, 3, 3), (Items.OpticalFiber, 3, 10), (Items.Amber, 3, 5), (Items.Mirror, 3, 8),
         (Items.Car, 4, 2),
+        // Forestry: paper, furniture, honey and what the forest floor gives.
+        (Items.Paper, 0, 40), (Items.Honey, 0, 20), (Items.Charcoal, 0, 30), (Items.MushroomSoup, 0, 15), (Items.BerryPierogi, 0, 15),
+        (Items.Cardboard, 1, 30), (Items.Chair, 1, 8), (Items.Table, 1, 5), (Items.Candles, 1, 15), (Items.Gingerbread, 1, 15), (Items.HerbalTea, 1, 20),
+        (Items.Wardrobe, 2, 3), (Items.Turpentine, 2, 10),
+        (Items.OakDresser, 3, 2),
     ];
 
     /// <summary>A town pays this many times the trader's price for what it wants, and more at each level.</summary>

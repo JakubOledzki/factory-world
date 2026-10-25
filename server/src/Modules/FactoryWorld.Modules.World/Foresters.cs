@@ -454,7 +454,7 @@ public sealed class ForesterService(
                 {
                     continue;
                 }
-                else if (tiles[tile.Y * PlotLayout.Size + tile.X] == (byte)TileObject.Tree)
+                else if (Trees.IsTree(tiles[tile.Y * PlotLayout.Size + tile.X]))
                 {
                     patch.Wild.Add(tile);
                 }
@@ -563,7 +563,7 @@ public sealed class ForesterService(
         }
 
         await SaveAsync(x, y, forests, cancellationToken);
-        var trees = (await PlantedAsync(x, y, cancellationToken)).Select(t => new PlantedTree(t.Key.X, t.Key.Y, t.Value)).ToList();
+        var trees = await ForestService.ReadAsync(db, x, y, cancellationToken);
         var cleared = new List<(int, int)>();
         if (forests.Count > 0)
         {
@@ -575,7 +575,7 @@ public sealed class ForesterService(
             while (await reader.ReadAsync(cancellationToken))
             {
                 var tile = (X: reader.GetInt32(0), Y: reader.GetInt32(1));
-                if (natural[tile.Y * PlotLayout.Size + tile.X] == (byte)TileObject.Tree
+                if (Trees.IsTree(natural[tile.Y * PlotLayout.Size + tile.X])
                     && forests.Any(f => Foresters.Claims(f.Patch.ForesterLevel, tile.X - f.Object.TileX, tile.Y - f.Object.TileY)))
                 {
                     cleared.Add(tile);

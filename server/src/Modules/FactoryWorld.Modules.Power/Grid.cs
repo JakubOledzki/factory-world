@@ -23,7 +23,7 @@ public static class PowerRules
     public static readonly IReadOnlyDictionary<string, (double Kw, IReadOnlySet<string> Burns)> Generators =
         new Dictionary<string, (double, IReadOnlySet<string>)>
         {
-            [Items.Generator] = (GeneratorKw, new HashSet<string> { Items.Coal, Items.Wood, Items.WoodPellets }),
+            [Items.Generator] = (GeneratorKw, new HashSet<string> { Items.Coal, Items.Charcoal, Items.Wood, Items.WoodPellets }),
             [Items.GasPlant] = (300, new HashSet<string> { Items.NaturalGas }),
             [Items.DieselGenerator] = (150, new HashSet<string> { Items.Diesel, Items.Gasoline }),
         };
@@ -35,7 +35,7 @@ public static class PowerRules
         Generators.TryGetValue(kind, out var g) ? g.Burns.Contains(fuel) : Items.IsHeater(kind) && HeaterFuels.Contains(fuel);
 
     /// <summary>What a heater burns: wood, coal and pellets, like a steam generator.</summary>
-    public static readonly IReadOnlySet<string> HeaterFuels = new HashSet<string> { Items.Coal, Items.Wood, Items.WoodPellets };
+    public static readonly IReadOnlySet<string> HeaterFuels = new HashSet<string> { Items.Coal, Items.Charcoal, Items.Wood, Items.WoodPellets };
 
     /// <summary>What each water power plant gives (kW), before the biome's bonus.</summary>
     public static readonly IReadOnlyDictionary<string, double> Hydro = new Dictionary<string, double>
@@ -89,6 +89,7 @@ public static class PowerRules
     public static readonly IReadOnlyDictionary<string, double> Fuels = new Dictionary<string, double>
     {
         [Items.Coal] = 20_000,
+        [Items.Charcoal] = 18_000,
         [Items.Wood] = 5_000,
         [Items.WoodPellets] = 4_000,
         [Items.NaturalGas] = 60_000,
@@ -129,6 +130,7 @@ public static class PowerRules
         [Items.DesignOffice] = 30,
         [Items.Laboratory] = 60,
         [Items.ServiceWorkshop] = 40,
+        [Items.PaperMill] = 60,
     };
 
     public static bool Covers(PlotObject pole, int tileX, int tileY) =>

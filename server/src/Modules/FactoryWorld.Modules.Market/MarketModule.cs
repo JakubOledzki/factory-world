@@ -26,6 +26,10 @@ public static class NpcPrices
         [Items.Trash] = 100,
         [Items.SortingMachine] = 100_000,
         [Items.Sapling] = 200,
+        [Items.SaplingSpruce] = 200,
+        [Items.SaplingBirch] = 200,
+        [Items.SaplingOak] = 500,
+        [Items.SaplingLinden] = 300,
         [Items.Nails] = 500,
         [Items.Workbench] = 50_000,
         [Items.Anvil] = 50_000,
@@ -306,6 +310,42 @@ public static class NpcPrices
         [Items.DesignOffice] = 20_000,
         [Items.Laboratory] = 60_000,
         [Items.ServiceWorkshop] = 25_000,
+        [Items.SaplingSpruce] = 100,
+        [Items.SaplingBirch] = 100,
+        [Items.SaplingOak] = 250,
+        [Items.SaplingLinden] = 150,
+        [Items.OakWood] = 600,
+        [Items.Resin] = 300,
+        [Items.Pulp] = 300,
+        [Items.Paper] = 250,
+        [Items.Cardboard] = 350,
+        [Items.Chair] = 1500,
+        [Items.Table] = 3000,
+        [Items.Wardrobe] = 6000,
+        [Items.OakDresser] = 12_000,
+        // Charcoal is worth what coal is: a furnace hands what it burns back as coal.
+        [Items.Charcoal] = 400,
+        [Items.Mushrooms] = 150,
+        [Items.Berries] = 80,
+        [Items.Herbs] = 120,
+        [Items.MushroomSoup] = 900,
+        [Items.BerryPierogi] = 800,
+        [Items.HerbalTea] = 400,
+        [Items.Honey] = 500,
+        [Items.Wax] = 300,
+        [Items.Gingerbread] = 1500,
+        [Items.Candles] = 600,
+        [Items.Tar] = 500,
+        [Items.Turpentine] = 900,
+        [Items.Rosin] = 500,
+        [Items.Insecticide] = 1500,
+        [Items.PaperMill] = 60_000,
+        [Items.Carpentry] = 20_000,
+        [Items.CharcoalKiln] = 6000,
+        [Items.TarKiln] = 15_000,
+        [Items.Beehive] = 3000,
+        [Items.Watchtower] = 8000,
+        [Items.FireStation] = 40_000,
     };
 
     static NpcPrices()
@@ -330,7 +370,8 @@ public sealed class MarketPrices : IMarketPrices
 
 public sealed record TradeRequest(string Item, int Quantity);
 
-public sealed class MarketService(GameDb db, IInventory inventory, IWallet wallet, TraderMarket trader, ITechnologies technologies)
+public sealed class MarketService(
+    GameDb db, IInventory inventory, IWallet wallet, TraderMarket trader, ITechnologies technologies, IEnumerable<IForestCertificate> certificates)
 {
     /// <summary>The player buys from the NPC: money out, items in, both or neither.</summary>
     public Task<long> BuyAsync(Guid owner, string item, int quantity, CancellationToken cancellationToken)
@@ -362,8 +403,27 @@ public sealed class MarketService(GameDb db, IInventory inventory, IWallet walle
         return db.InTransactionAsync(async () =>
         {
             await inventory.RemoveAsync(owner, item, quantity, cancellationToken);
+            // Timber from a forest kept for good pays more.
+            if (Items.IsTimber(item) && await CertifiedAsync(owner, cancellationToken))
+            {
+                price = price * (100 + ForestCertificate.BonusPercent) / 100;
+            }
+
             return await wallet.CreditAsync(owner, price * quantity, $"sell {quantity} {item}", cancellationToken);
         }, cancellationToken);
+    }
+
+    private async Task<bool> CertifiedAsync(Guid owner, CancellationToken cancellationToken)
+    {
+        foreach (var certificate in certificates)
+        {
+            if (await certificate.CertifiedAsync(owner, cancellationToken))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static long Price(IReadOnlyDictionary<string, long> prices, string item, int quantity, string notTraded)

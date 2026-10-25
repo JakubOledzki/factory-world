@@ -36,6 +36,15 @@ public enum TileObject : byte
 
     /// <summary>Snow an avalanche left in a blizzard, dug away with a shovel; whatever stands under it is buried until then.</summary>
     Snowdrift = 14,
+
+    /// <summary>Trees of other kinds than the pine (<see cref="Tree"/>), see <see cref="Trees"/>.</summary>
+    SpruceTree = 15,
+    BirchTree = 16,
+    OakTree = 17,
+    LindenTree = 18,
+
+    /// <summary>Mushrooms on the floor of an old forest, picked by hand; they come up again after <see cref="Forestry.MushroomRegrow"/>.</summary>
+    Mushrooms = 19,
 }
 
 /// <summary>
@@ -108,6 +117,8 @@ public static class PlotLayout
         }
 
         Coast.AddWater(tiles, seed, biome);
+        Trees.Assign(tiles, seed, biome);
+        Forestry.AddMushrooms(tiles, seed, biome);
         for (var x = 0; x < Size; x++)
         {
             tiles[RailRow * Size + x] = (byte)TileObject.Rail;
@@ -167,7 +178,7 @@ public static class PlotLayout
     }
 
     /// <summary>Whether an object can be gathered: a bush and what the sea threw up are picked up by hand, the rest needs <see cref="ToolFor"/>.</summary>
-    public static bool Gatherable(TileObject obj) => obj is TileObject.Bush or TileObject.Flotsam || ToolFor(obj) is not null;
+    public static bool Gatherable(TileObject obj) => obj is TileObject.Bush or TileObject.Flotsam or TileObject.Mushrooms || ToolFor(obj) is not null;
 
     /// <summary>Beams a bridge over a crevasse takes.</summary>
     public const int BridgeBeams = 3;
@@ -175,7 +186,7 @@ public static class PlotLayout
     /// <summary>Which tool a player needs to gather an object, or null when none does (or it cannot be gathered).</summary>
     public static string? ToolFor(TileObject obj) => obj switch
     {
-        TileObject.Tree => Items.Axe,
+        _ when Trees.IsTree(obj) => Items.Axe,
         TileObject.Rock or TileObject.IceBlock or TileObject.Meteorite => Items.Pickaxe,
         TileObject.Dune or TileObject.Snowdrift => Items.Shovel,
         TileObject.Water => Items.FishingRod,
@@ -212,7 +223,9 @@ public static class PlotLayout
     public static IReadOnlyList<(string Item, int Quantity)> Yield(TileObject obj, int roll, Biome biome = Biome.Ocean, int rare = 999) => obj switch
     {
         TileObject.Tree when biome == Biome.Oasis => [(Items.Wood, 1), (Items.Dates, 2)],
-        TileObject.Tree => roll < Forestry.SaplingChance ? [(Items.Wood, 1), (Items.Sapling, 1)] : [(Items.Wood, 1)],
+        _ when Trees.ByTile.TryGetValue(obj, out var kind) => Trees.Yield(kind, roll, rare),
+        TileObject.Mushrooms => roll < Forestry.HerbChance ? [(Items.Mushrooms, 2), (Items.Herbs, 1)] : [(Items.Mushrooms, 2)],
+        TileObject.Bush => Forestry.BushYield(biome, roll),
         TileObject.Dune => [(Items.Sand, Oasis.Sandy((int)biome) ? 4 : 3), .. Dug(roll, rare)],
         TileObject.IceBlock => [(Items.Ice, 2)],
         TileObject.Snowdrift => [(Items.Ice, 1)],
@@ -278,7 +291,7 @@ public static class HarvestRules
     /// breaks faster in the mountains and with a better pickaxe.</summary>
     public static TimeSpan TimeFor(TileObject obj, string? tool = null, Biome biome = Biome.Ocean) => obj switch
     {
-        TileObject.Tree => tool == Items.Chainsaw ? SawTime : ChopTime,
+        _ when Trees.IsTree(obj) => tool == Items.Chainsaw ? SawTime : ChopTime,
         TileObject.Water => Coast.FishTime(biome),
         TileObject.Rock or TileObject.IceBlock => Time / (Mining.Speed(biome) * Items.Pickaxes.GetValueOrDefault(tool ?? "", 1)),
         // A meteorite is twice as hard as a rock.
@@ -293,7 +306,7 @@ public sealed record Harvest(TileObject Object, IReadOnlyList<(string Item, int 
 
 public sealed class PlotService(
     GameDb db, WorldMap map, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats,
-    IEnumerable<ICompanyPlots> companies, BeachService beach, TimeProvider time)
+    IEnumerable<ICompanyPlots> companies, BeachService beach, PestService pests, ForestLedger ledger, TimeProvider time)
 {
     /// <summary>The tiles of a plot as they are now; only its owner and members of its company may enter.</summary>
     public async Task<byte[]> TilesAsync(Guid player, int x, int y, CancellationToken cancellationToken)
@@ -313,14 +326,15 @@ public sealed class PlotService(
         var dug = new HashSet<int>();
         await using (var command = await db.CommandAsync(
             """
-            SELECT h.tile_x, h.tile_y, COALESCE(h.harvested_at >= @storm, false), COALESCE(h.harvested_at < @storm
+            SELECT h.tile_x, h.tile_y, COALESCE(h.harvested_at >= @storm, false), (COALESCE(h.harvested_at < @storm, false) OR h.harvested_at < @picked)
                 AND NOT EXISTS (SELECT 1 FROM world.plot_objects o WHERE o.x = h.x AND o.y = h.y
                     AND ((o.tile_x = h.tile_x AND o.tile_y = h.tile_y)
                         OR (o.kind = ANY(@large) AND abs(o.tile_x - h.tile_x) <= 1 AND abs(o.tile_y - h.tile_y) <= 1)
                         OR (o.kind = @fence AND abs(o.tile_x - h.tile_x) <= @shelter AND abs(o.tile_y - h.tile_y) <= @shelter)))
                 AND NOT EXISTS (SELECT 1 FROM world.plot_fields f WHERE f.x = h.x AND f.y = h.y AND f.tile_x = h.tile_x AND f.tile_y = h.tile_y)
                 AND NOT EXISTS (SELECT 1 FROM world.plot_trees t WHERE t.x = h.x AND t.y = h.y AND t.tile_x = h.tile_x AND t.tile_y = h.tile_y)
-                AND NOT EXISTS (SELECT 1 FROM world.plot_animals a WHERE a.x = h.x AND a.y = h.y AND a.tile_x = h.tile_x AND a.tile_y = h.tile_y), false)
+                AND NOT EXISTS (SELECT 1 FROM world.plot_animals a WHERE a.x = h.x AND a.y = h.y AND a.tile_x = h.tile_x AND a.tile_y = h.tile_y),
+                COALESCE(h.harvested_at < @storm, false)
             FROM world.plot_harvests h WHERE h.x = @x AND h.y = @y
             """, cancellationToken))
         {
@@ -330,13 +344,18 @@ public sealed class PlotService(
             command.Parameters.AddWithValue("large", Footprints.Large);
             command.Parameters.AddWithValue("fence", Items.ReedFence);
             command.Parameters.AddWithValue("shelter", PlotLayout.FenceShelter);
+            command.Parameters.AddWithValue("picked", time.GetUtcNow() - Forestry.MushroomRegrow);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
                 // A rock broken before the mines came may have stood where a mine is now, and the
                 // lake or sea came over what had been gathered on the shore.
                 var at = reader.GetInt32(1) * PlotLayout.Size + reader.GetInt32(0);
-                var regrown = reader.GetBoolean(3) && tiles[at] is (byte)TileObject.Dune or (byte)TileObject.IceBlock;
+                // Sand and ice come back with the storm; mushrooms come up again by themselves.
+                // Gathered before the storm or long enough ago, with nothing standing there since.
+                var due = reader.GetBoolean(3);
+                var regrown = due && ((reader.GetBoolean(4) && tiles[at] is (byte)TileObject.Dune or (byte)TileObject.IceBlock)
+                    || tiles[at] == (byte)TileObject.Mushrooms);
                 if (reader.GetBoolean(2))
                 {
                     dug.Add(at);
@@ -420,9 +439,9 @@ public sealed class PlotService(
                 throw new GameException("nothing_here", "There is nothing to gather here.");
             }
 
-            if (await PlantedReadyAtAsync(x, y, tileX, tileY, cancellationToken) is { } readyAt)
+            if (await PlantedAtAsync(x, y, tileX, tileY, cancellationToken) is { } planted)
             {
-                return await CutPlantedAsync(player, x, y, tileX, tileY, readyAt, pace, cancellationToken);
+                return await CutPlantedAsync(player, x, y, tileX, tileY, planted, pace, cancellationToken);
             }
 
             var obj = (TileObject)PlotLayout.Generate(x, y, biome)[tileY * PlotLayout.Size + tileX];
@@ -471,8 +490,13 @@ public sealed class PlotService(
                 return await GiveAsync(player, obj, Coast.Catch(biome, Random.Shared.Next(100)), cancellationToken);
             }
 
-            // A dune the sandstorm blew back is dug again, and ice frozen again after a blizzard is cut again.
-            await MarkHarvestedAsync(x, y, tileX, tileY, obj is TileObject.Dune or TileObject.IceBlock && current == obj, cancellationToken);
+            // A dune the sandstorm blew back is dug again, ice frozen again after a blizzard is cut again, and mushrooms come up again.
+            await MarkHarvestedAsync(x, y, tileX, tileY, obj is TileObject.Dune or TileObject.IceBlock or TileObject.Mushrooms && current == obj, cancellationToken);
+            if (Trees.IsTree(obj))
+            {
+                await ledger.RecordAsync(player, 0, 1, cancellationToken);
+            }
+
             return await GiveAsync(player, obj, PlotLayout.Yield(obj, Random.Shared.Next(100), biome, Random.Shared.Next(1000)), cancellationToken);
         }, cancellationToken);
 
@@ -510,27 +534,35 @@ public sealed class PlotService(
         }
     }
 
-    /// <summary>When the tree planted on a tile is grown (locked until the transaction ends), or null when none is.</summary>
-    private async Task<DateTimeOffset?> PlantedReadyAtAsync(int x, int y, int tileX, int tileY, CancellationToken cancellationToken)
+    /// <summary>The tree planted on a tile: when it is grown, its kind and whether a player planted it by hand (locked until the
+    /// transaction ends), or null when none is.</summary>
+    private async Task<(DateTimeOffset ReadyAt, TreeKind Kind, bool ByHand)?> PlantedAtAsync(int x, int y, int tileX, int tileY, CancellationToken cancellationToken)
     {
         await using var select = await db.CommandAsync(
-            "SELECT ready_at FROM world.plot_trees WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty FOR UPDATE", cancellationToken);
+            "SELECT ready_at, species, forester_id IS NULL FROM world.plot_trees WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty FOR UPDATE",
+            cancellationToken);
         select.Parameters.AddWithValue("x", x);
         select.Parameters.AddWithValue("y", y);
         select.Parameters.AddWithValue("tx", tileX);
         select.Parameters.AddWithValue("ty", tileY);
-        return await select.ExecuteScalarAsync(cancellationToken) is DateTime at ? new DateTimeOffset(at, TimeSpan.Zero) : null;
+        await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken)
+            ? (reader.GetFieldValue<DateTimeOffset>(0), Trees.Of(reader.GetString(1)), reader.GetBoolean(2))
+            : null;
     }
 
     private async Task<Harvest> CutPlantedAsync(
-        Guid player, int x, int y, int tileX, int tileY, DateTimeOffset readyAt, Action<TimeSpan> pace, CancellationToken cancellationToken)
+        Guid player, int x, int y, int tileX, int tileY, (DateTimeOffset ReadyAt, TreeKind Kind, bool ByHand) tree, Action<TimeSpan> pace,
+        CancellationToken cancellationToken)
     {
-        if (readyAt > time.GetUtcNow())
+        if (tree.ReadyAt > time.GetUtcNow())
         {
             throw new GameException("not_grown", "The tree has not grown yet.");
         }
 
-        pace(HarvestRules.TimeFor(TileObject.Tree, await RequireToolAsync(player, Items.Axe, cancellationToken)));
+        // The bark beetle may be in a tree of a monoculture planted by hand.
+        var infested = tree.ByHand && (await pests.StateAsync(x, y, cancellationToken)).Infested.Contains((tileX, tileY));
+        pace(HarvestRules.TimeFor(tree.Kind.Tile, await RequireToolAsync(player, Items.Axe, cancellationToken)));
         await using (var delete = await db.CommandAsync(
             "DELETE FROM world.plot_trees WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty", cancellationToken))
         {
@@ -541,7 +573,8 @@ public sealed class PlotService(
             await delete.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        return await GiveAsync(player, TileObject.Tree, cancellationToken);
+        await ledger.RecordAsync(player, 0, 1, cancellationToken);
+        return await GiveAsync(player, tree.Kind.Tile, Trees.Yield(tree.Kind, Random.Shared.Next(100), Random.Shared.Next(1000), infested), cancellationToken);
     }
 
     /// <summary>The tool in the player's tool bar that does the work of <paramref name="tool"/>: a chainsaw does an axe's,
@@ -561,9 +594,6 @@ public sealed class PlotService(
 
         return held.Contains(tool) ? tool : throw new GameException("wrong_tool", $"You need {Items.Names[tool]} in your hand.");
     }
-
-    private Task<Harvest> GiveAsync(Guid player, TileObject obj, CancellationToken cancellationToken) =>
-        GiveAsync(player, obj, PlotLayout.Yield(obj, Random.Shared.Next(100)), cancellationToken);
 
     private async Task<Harvest> GiveAsync(Guid player, TileObject obj, IReadOnlyList<(string Item, int Quantity)> items, CancellationToken cancellationToken)
     {
@@ -639,6 +669,12 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
     {
         var request = Payload.Read<EnterRequest>(payload);
         await using var scope = scopes.CreateAsyncScope();
+        var rights = await scope.ServiceProvider.GetRequiredService<PlotService>()
+            .RightsAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
+        // A fire since the last visit burns its trees before anyone sees them; only those who may enter start the watch.
+        var fire = rights.Contains(PlotRight.Work)
+            ? await scope.ServiceProvider.GetRequiredService<FireService>().CatchUpAsync(request.X, request.Y, cancellationToken)
+            : null;
         var tiles = await scope.ServiceProvider.GetRequiredService<PlotService>()
             .TilesAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
         var tools = await scope.ServiceProvider.GetRequiredService<IEquipment>().ToolsAsync(client.RequireAccount(), cancellationToken);
@@ -648,8 +684,8 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
         var biome = map.BiomeAt(request.X, request.Y);
         var mines = await scope.ServiceProvider.GetRequiredService<MineService>().MinesAsync(request.X, request.Y, biome, cancellationToken);
         var objects = await scope.ServiceProvider.GetRequiredService<PlotObjectService>().ObjectsAsync(request.X, request.Y, cancellationToken);
-        var rights = await scope.ServiceProvider.GetRequiredService<PlotService>()
-            .RightsAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
+        var pests = await scope.ServiceProvider.GetRequiredService<PestService>().StateAsync(request.X, request.Y, cancellationToken);
+        var certificate = await scope.ServiceProvider.GetRequiredService<ForestLedger>().JsonAsync(client.RequireAccount(), cancellationToken);
         var cities = scope.ServiceProvider.GetRequiredService<CityService>();
         object? city = null;
         if (cities.TownOf(request.X, request.Y) is { } town)
@@ -692,6 +728,14 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             sawSeconds = HarvestRules.SawTime.TotalSeconds,
             treeGrowSeconds = Forestry.GrowTime(biome)?.TotalSeconds,
             trees = trees.Select(PlantTreeHandler.TreeJson),
+            // The kinds of tree with their saplings and growing times here, the bark beetle in a monoculture planted by hand,
+            // the last forest fire (if recent) with what keeps fires small, and the player's forest certificate.
+            treeKinds = PlantTreeHandler.KindsJson(biome),
+            pests = PestService.Json(pests),
+            fire = fire is null ? null : FireService.Json(fire),
+            fires = FireService.RulesJson(biome),
+            certificate,
+            mushroomRegrowSeconds = Forestry.MushroomRegrow.TotalSeconds,
             objects = objects.Select(PlaceOnPlotHandler.ObjectJson),
             placeable = PlotObjects.Placeable,
             fertile = Farming.Fertile(biome),

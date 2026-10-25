@@ -147,6 +147,15 @@ public static class Workshop
         new(Items.DesignOffice, 1, TimeSpan.FromSeconds(60), [(Items.Planks, 30), (Items.Glass, 10), (Items.Bricks, 20)], 30),
         new(Items.Laboratory, 1, TimeSpan.FromSeconds(120), [(Items.Glass, 20), (Items.GlassBottles, 20), (Items.SteelIngot, 15), (Items.CopperIngot, 10)], 50),
         new(Items.ServiceWorkshop, 1, TimeSpan.FromSeconds(60), [(Items.Bricks, 30), (Items.IronIngot, 20), (Items.SteelIngot, 10)], 30),
+        // Forestry.
+        new(Items.PaperMill, 1, TimeSpan.FromSeconds(120), [(Items.Beams, 20), (Items.IronIngot, 30), (Items.CopperIngot, 10), (Items.Bricks, 20)], 50),
+        new(Items.Carpentry, 1, TimeSpan.FromSeconds(60), [(Items.Planks, 30), (Items.IronIngot, 10), (Items.Nails, 20)], 25),
+        new(Items.CharcoalKiln, 1, TimeSpan.FromSeconds(40), [(Items.Stone, 40), (Items.Wood, 10)], 15),
+        new(Items.TarKiln, 1, TimeSpan.FromSeconds(60), [(Items.Bricks, 20), (Items.IronIngot, 10), (Items.Stone, 20)], 25),
+        new(Items.Beehive, 1, TimeSpan.FromSeconds(20), [(Items.Planks, 10), (Items.Nails, 5)], 8),
+        new(Items.Watchtower, 1, TimeSpan.FromSeconds(45), [(Items.Beams, 12), (Items.Planks, 10), (Items.Nails, 10)], 15),
+        new(Items.FireStation, 1, TimeSpan.FromSeconds(90), [(Items.Bricks, 40), (Items.IronIngot, 20), (Items.Planks, 20), (Items.CopperIngot, 5)], 40),
+        new(Items.Candles, 2, TimeSpan.FromSeconds(10), [(Items.Wax, 1)], 2),
         new(Items.MeteoritePickaxe, 1, TimeSpan.FromSeconds(40), [(Items.MeteoricIron, 4), (Items.Iridium, 1), (Items.Wood, 2)], 20, Items.Anvil),
     ];
 

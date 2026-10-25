@@ -82,6 +82,13 @@ public static class TechTree
     public const string WasteManagement = "waste_management";
     public const string FreightHub = "freight_hub";
     public const string Headquarters = "headquarters";
+    public const string Silviculture = "silviculture";
+    public const string Papermaking = "papermaking";
+    public const string Furniture = "furniture";
+    public const string Charring = "charring";
+    public const string Beekeeping = "beekeeping";
+    public const string ForestFoods = "forest_foods";
+    public const string FireProtection = "fire_protection";
 
     public static readonly IReadOnlyList<Technology> Technologies =
     [
@@ -262,6 +269,27 @@ public static class TechTree
         new(Headquarters, "Siedziba spółki", "Siedziba w mieście pozwala spółce przyjąć 30 członków zamiast 20 i potraja jej wspólny magazyn.",
             [CityServices], [(Items.Concrete, 40), (Items.MarbleSlabs, 20), (Items.Blueprint, 2)], TimeSpan.FromMinutes(5), 100,
             [Items.CompanyHq]),
+        new(Silviculture, "Hodowla lasu", "Sadzonki świerku, brzozy, dębu i lipy u handlarza i wieża obserwacyjna, z której widać pożar, zanim się rozprzestrzeni.",
+            [ForestryIndustry], [(Items.Sapling, 20), (Items.Wood, 40)], TimeSpan.FromSeconds(90), 30,
+            [Items.SaplingSpruce, Items.SaplingBirch, Items.SaplingOak, Items.SaplingLinden, Items.Watchtower]),
+        new(Papermaking, "Papiernictwo", "Papiernia na prąd robi masę celulozową z pelletu i wody, z niej papier, a z makulatury karton.",
+            [Woodworking], [(Items.WoodPellets, 40), (Items.IronIngot, 20), (Items.CopperIngot, 10)], TimeSpan.FromMinutes(3), 60,
+            [Items.PaperMill, Items.Pulp, Items.Paper, Items.Cardboard]),
+        new(Furniture, "Meblarstwo", "Stolarnia robi krzesła, stoły i szafy, a z drewna dębowego komody, na które czekają miasta.",
+            [ForestryIndustry], [(Items.Planks, 40), (Items.Nails, 30)], TimeSpan.FromMinutes(2), 40,
+            [Items.Carpentry, Items.Chair, Items.Table, Items.Wardrobe, Items.OakDresser]),
+        new(Charring, "Węglarstwo i smolarstwo", "Mielerz wypala z drewna węgiel drzewny, który pali się jak kopalny, a smolarnia warzy z żywicy smołę, terpentynę i kalafonię.",
+            [ForestryIndustry], [(Items.Wood, 60), (Items.Stone, 40)], TimeSpan.FromMinutes(2), 40,
+            [Items.CharcoalKiln, Items.Charcoal, Items.TarKiln, Items.Tar, Items.Turpentine, Items.Rosin]),
+        new(Beekeeping, "Pszczelarstwo", "Ul daje miód i wosk, szybciej przy kwitnących lipach; z miodu pieczesz pierniki, z wosku robisz świece.",
+            [], [(Items.Planks, 20), (Items.Sapling, 5)], TimeSpan.FromSeconds(90), 30,
+            [Items.Beehive, Items.Gingerbread, Items.Candles]),
+        new(ForestFoods, "Leśna spiżarnia", "Kuchnia gotuje zupę grzybową, pierogi z jagodami i herbatę z ziół zebranych w lesie.",
+            [Cooking], [(Items.Mushrooms, 20), (Items.Berries, 20)], TimeSpan.FromSeconds(90), 30,
+            [Items.MushroomSoup, Items.BerryPierogi, Items.HerbalTea]),
+        new(FireProtection, "Ochrona lasu", "Strażnica chroni drzewa wokół siebie przed ogniem, a zakłady chemiczne robią z terpentyny środek na kornika.",
+            [Silviculture, Charring], [(Items.Bricks, 20), (Items.IronIngot, 20), (Items.Turpentine, 5)], TimeSpan.FromMinutes(3), 60,
+            [Items.FireStation, Items.Insecticide]),
     ];
 
     public static readonly IReadOnlyDictionary<string, Technology> ById = Technologies.ToDictionary(t => t.Id);
