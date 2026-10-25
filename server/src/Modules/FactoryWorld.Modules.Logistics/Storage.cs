@@ -22,6 +22,10 @@ public static class Storages
     [
         new(Items.WoodenChest, 8, 100),
         new(Items.IronChest, 24, 100),
+        // A logistics depot: steel racks of 48 slots, twice as deep as a chest's.
+        new(Items.LogisticsDepot, 48, 200),
+        // A port of drones keeps a little of what they fly in and out.
+        new(Items.DronePort, 8, 100),
         // A high-bay store in a city: racks up to the roof on one tile.
         new(Items.HighBay, 60, 200),
         // An automated warehouse: robots stack 3 × 3 tiles of racks.

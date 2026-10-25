@@ -320,6 +320,9 @@ public interface ITechnologies
 
     /// <summary>Fails with <c>locked</c> while the item is still to be researched.</summary>
     Task RequireUnlockedAsync(Guid player, string item, CancellationToken cancellationToken);
+
+    /// <summary>Every technology the player has researched, by themselves or with their company.</summary>
+    Task<IReadOnlySet<string>> ResearchedAsync(Guid player, CancellationToken cancellationToken);
 }
 
 /// <summary>What the trader usually pays for items, before its events move the prices.</summary>

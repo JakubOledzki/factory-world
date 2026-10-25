@@ -244,6 +244,36 @@ public sealed class ResearchTests(ServerFactory factory) : IClassFixture<ServerF
     }
 
     [Fact]
+    public async Task Faster_belts_and_inserters_are_researched_in_the_logistics_branch()
+    {
+        using var client = await PlayerAsync();
+        var bench = await GarageObjectAsync(client, Items.Workbench);
+        var recipes = (await client.SendAsync("crafting.get")).Payload().GetProperty("recipes").EnumerateArray()
+            .ToDictionary(r => r.GetProperty("id").GetString()!);
+        Assert.Equal("Szybka logistyka", recipes[Items.FastBelt].GetProperty("locked").GetString());
+        Assert.Equal("Szybka logistyka", recipes[Items.FastInserter].GetProperty("locked").GetString());
+        Assert.Equal("Ekspresowa logistyka", recipes[Items.ExpressBelt].GetProperty("locked").GetString());
+        Assert.Equal("Ekspresowa logistyka", recipes[Items.ExpressInserter].GetProperty("locked").GetString());
+        Assert.Equal("logistics", TechTree.BranchOf[TechTree.FastLogistics].Id);
+        Assert.Equal("logistics", TechTree.BranchOf[TechTree.ExpressLogistics].Id);
+
+        await ResearchAsync(client, TechTree.Logistics);
+        await ResearchAsync(client, TechTree.Automation);
+        await GiveAsync(client, Items.Belt, 2);
+        await GiveAsync(client, Items.IronIngot, 3);
+        await GiveAsync(client, Items.CopperIngot, 1);
+        Assert.Equal("locked", (await client.SendAsync("crafting.craft", new { workbench = bench, recipe = Items.FastBelt })).ErrorCode());
+
+        await ResearchAsync(client, TechTree.FastLogistics);
+        Assert.Equal("crafting", (await client.SendAsync("crafting.craft", new { workbench = bench, recipe = Items.FastBelt })).Type());
+        var tree = await TechnologiesAsync(client);
+        Assert.Equal("locked", tree[TechTree.ExpressLogistics].GetProperty("status").GetString());
+
+        await ResearchAsync(client, TechTree.Metallurgy);
+        Assert.Equal("available", (await TechnologiesAsync(client))[TechTree.ExpressLogistics].GetProperty("status").GetString());
+    }
+
+    [Fact]
     public async Task Carrot_cake_bakes_only_after_confectionery()
     {
         using var client = await PlayerAsync();

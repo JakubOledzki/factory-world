@@ -35,6 +35,10 @@ public static class Workshop
         new(Items.FastInserter, 1, TimeSpan.FromSeconds(20), [(Items.Inserter, 1), (Items.IronIngot, 2), (Items.CopperIngot, 2)], 8),
         new(Items.ExpressInserter, 1, TimeSpan.FromSeconds(25), [(Items.FastInserter, 1), (Items.CopperIngot, 3), (Items.SilverIngot, 1)], 12),
         new(Items.Splitter, 1, TimeSpan.FromSeconds(20), [(Items.Belt, 2), (Items.IronIngot, 4), (Items.CopperIngot, 2)], 6),
+        new(Items.UndergroundBelt, 2, TimeSpan.FromSeconds(20), [(Items.Belt, 4), (Items.IronIngot, 8), (Items.Stone, 10)], 8),
+        new(Items.LongInserter, 1, TimeSpan.FromSeconds(20), [(Items.Inserter, 1), (Items.IronIngot, 3), (Items.CopperIngot, 2)], 8),
+        new(Items.LogisticsDepot, 1, TimeSpan.FromSeconds(40), [(Items.SteelIngot, 20), (Items.IronIngot, 20), (Items.Beams, 10)], 15),
+        new(Items.DronePort, 1, TimeSpan.FromSeconds(60), [(Items.SteelIngot, 20), (Items.CircuitBoard, 10), (Items.CopperIngot, 20), (Items.ElectricMotor, 4)], 25),
         new(Items.WoodenChest, 1, TimeSpan.FromSeconds(10), [(Items.Wood, 10), (Items.Nails, 5)], 3),
         new(Items.IronChest, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 8)], 6),
         new(Items.WoodPile, 1, TimeSpan.FromSeconds(5), [(Items.Wood, 4)], 1),
@@ -74,6 +78,7 @@ public static class Workshop
         new(Items.WaterWheel, 1, TimeSpan.FromSeconds(60), [(Items.Wood, 30), (Items.IronIngot, 20), (Items.Nails, 10)], 25),
         new(Items.HydroPlant, 1, TimeSpan.FromSeconds(180), [(Items.SteelIngot, 30), (Items.Bricks, 60), (Items.CopperIngot, 30), (Items.Quartz, 5)], 100),
         new(Items.CableStation, 1, TimeSpan.FromSeconds(20), [(Items.SteelIngot, 4), (Items.CopperIngot, 4), (Items.IronIngot, 6)], 8),
+        new(Items.ExpressCableStation, 1, TimeSpan.FromSeconds(30), [(Items.CableStation, 1), (Items.SteelIngot, 6), (Items.Bearing, 4)], 12),
         new(Items.Dynamite, 3, TimeSpan.FromSeconds(15), [(Items.Sulfur, 2), (Items.Coal, 1), (Items.Sand, 1)], 4),
         new(Items.MineSupport, 1, TimeSpan.FromSeconds(20), [(Items.SteelIngot, 2), (Items.Beams, 2)], 6),
         // The coast: the rod is forged, boats and fish farms are built at the shipyard on the shore.

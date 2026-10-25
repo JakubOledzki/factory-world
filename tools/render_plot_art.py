@@ -20,7 +20,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import render_art as ra  # noqa: E402  (imports bpy first)
 import bpy  # noqa: E402
-from mathutils import Vector  # noqa: E402
+from mathutils import Matrix, Vector  # noqa: E402
 from PIL import Image, ImageChops, ImageFilter  # noqa: E402
 
 OUT = ra.ART / "plot"
@@ -1013,7 +1013,7 @@ def render_crafting(layout: dict, only=()):
 # --- Logistics --------------------------------------------------------------------------------------
 
 # Paint of belts and inserters by level, as in the factory games people know: yellow, red, blue.
-TIER_PAINT = {"": (0.5, 0.33, 0.03), "fast": (0.45, 0.05, 0.03), "express": (0.04, 0.14, 0.45)}
+TIER_PAINT = {"": (0.5, 0.33, 0.03), "fast": (0.45, 0.05, 0.03), "express": (0.04, 0.14, 0.45), "long": (0.06, 0.26, 0.05)}
 
 
 def belt_frame(s=1.0, along_x=True, length=2.0, tier=""):
@@ -1100,7 +1100,7 @@ def splitter(s=1.0):
     ra.cylinder("splitter_lamp", 0.06 * s, 0.06 * s, Vector((0, 0, 0.64 * s)), ra.emission("splitter_lamp", (0.3, 1.0, 0.25), 3.0), verts=12)
 
 
-def inserter(s=1.0, arm=False, tier=""):
+def inserter(s=1.0, arm=False, tier="", reach=1.0):
     """The base of an inserter: a steel foot and a turret painted by level; the game draws the arm
     swinging from the tile behind it to the tile in front. With `arm` (for its icon) the arm is modelled too."""
     paint = ra.plain("inserter_paint" + tier, (0.55, 0.36, 0.03) if tier == "" else TIER_PAINT[tier], 0.45, 0.4, variation=0.2, grime=0.7)
@@ -1112,9 +1112,10 @@ def inserter(s=1.0, arm=False, tier=""):
     ra.box("inserter_lamp", (0.08 * s, 0.03 * s, 0.05 * s), Vector((0, -0.24 * s, 0.5 * s)),
            ra.emission("inserter_lamp", (0.3, 1.0, 0.25), 3.0))
     if arm:
-        ra.box("inserter_arm", (0.1 * s, 0.75 * s, 0.08 * s), Vector((0, 0.3 * s, 0.75 * s)), paint, bevel=0.02 * s,
-               rotation=(math.radians(-25), 0, 0))
-        ra.box("inserter_hand", (0.22 * s, 0.08 * s, 0.14 * s), Vector((0, 0.66 * s, 0.6 * s)), steel, bevel=0.02 * s)
+        # A long-armed one's arm reaches further (`reach` times as far).
+        ra.box("inserter_arm", (0.1 * s, 0.75 * s * reach, 0.08 * s), Vector((0, 0.3 * s * reach, 0.75 * s - 0.1 * s * (reach - 1))), paint,
+               bevel=0.02 * s, rotation=(math.radians(-25 / reach), 0, 0))
+        ra.box("inserter_hand", (0.22 * s, 0.08 * s, 0.14 * s), Vector((0, 0.66 * s * reach, 0.6 * s)), steel, bevel=0.02 * s)
 
 
 def wooden_chest(s=1.0):
@@ -1206,6 +1207,123 @@ def grain_silo(s=1.0):
            rotation=(0, 0, math.radians(-25)))
 
 
+def turned(build, angle):
+    """Builds a model and turns it all about the vertical axis through the tile's middle."""
+    def make():
+        build()
+        objs = meshes()
+        rot = Matrix.Rotation(angle, 4, "Z")
+        for o in objs:
+            o.location = rot @ o.location
+            o.rotation_euler.z += angle
+        return objs
+    return make
+
+
+def tunnel_portal(s=1.0):
+    """The portal of an underground belt: a squat concrete housing on the back half of the tile, its
+    dark mouth to the east (+x) where the belt runs in or out, a steel lintel striped yellow and black
+    and a hatch on the roof. The game draws the belt under it."""
+    concrete = ra.plain("tunnel_concrete", (0.3, 0.29, 0.27), 0.9, variation=0.3, scale=9, bump=0.4)
+    steel = ra.rusty_metal("tunnel_steel", (0.15, 0.15, 0.16), 0.3)
+    yellow = ra.plain("tunnel_yellow", TIER_PAINT[""], 0.5, 0.3, variation=0.2, grime=0.8)
+    black = ra.plain("tunnel_black", (0.02, 0.02, 0.02), 0.6)
+    mouth = ra.plain("tunnel_mouth", (0.004, 0.004, 0.005), 1.0, variation=0.0, grime=0.0)
+    w, d, h = 1.05, 1.15, 0.62
+    x0 = -0.45
+    ra.box("tunnel_housing", (w * s, d * s, h * s), Vector((x0 * s, 0, h / 2 * s)), concrete, bevel=0.05 * s)
+    # The mouth over the band, and the band sloping down into the dark.
+    ra.box("tunnel_mouth", (0.06 * s, 0.86 * s, 0.4 * s), Vector(((x0 + w / 2 - 0.02) * s, 0, 0.24 * s)), mouth)
+    ra.box("tunnel_ramp", (0.5 * s, 0.86 * s, 0.04 * s), Vector(((x0 + w / 2 + 0.15) * s, 0, 0.16 * s)), black,
+           rotation=(0, math.radians(14), 0))
+    for y in (-0.47, 0.47):
+        ra.box("tunnel_cheek", (0.5 * s, 0.1 * s, 0.34 * s), Vector(((x0 + w / 2 + 0.2) * s, y * s, 0.17 * s)), concrete, bevel=0.02 * s)
+    ra.box("tunnel_lintel", (0.1 * s, (d + 0.02) * s, 0.12 * s), Vector(((x0 + w / 2 + 0.01) * s, 0, (h - 0.1) * s)), steel, bevel=0.01 * s)
+    for k in range(6):
+        y = (-d / 2 + 0.1 + k * (d - 0.2) / 5)
+        ra.box("tunnel_stripe", (0.012 * s, 0.09 * s, 0.11 * s), Vector(((x0 + w / 2 + 0.065) * s, y * s, (h - 0.1) * s)),
+               yellow if k % 2 == 0 else black, rotation=(math.radians(35), 0, 0))
+    ra.box("tunnel_roof", ((w - 0.12) * s, (d - 0.12) * s, 0.05 * s), Vector((x0 * s, 0, (h + 0.02) * s)), steel, bevel=0.01 * s)
+    ra.box("tunnel_hatch", (0.36 * s, 0.36 * s, 0.05 * s), Vector(((x0 - 0.15) * s, 0, (h + 0.06) * s)), yellow, bevel=0.01 * s)
+    ra.cylinder("tunnel_lamp", 0.04 * s, 0.05 * s, Vector(((x0 + 0.25) * s, 0.35 * s, (h + 0.07) * s)),
+                ra.emission("tunnel_lamp", (1.0, 0.6, 0.1), 3.0), verts=10)
+
+
+def logistics_depot(s=1.0):
+    """A logistics depot: a steel pallet rack two shelves high, blue uprights and orange beams, full of
+    crates and sacks, under a corrugated roof."""
+    blue = ra.rusty_metal("depot_blue", (0.05, 0.13, 0.32), 0.2)
+    orange = ra.plain("depot_orange", (0.6, 0.22, 0.02), 0.5, 0.4, variation=0.2, grime=0.6)
+    roof = ra.corrugated("depot_roof", (0.38, 0.39, 0.4), 0.2)
+    crate = ra.wood("depot_crate", (0.3, 0.18, 0.08))
+    box_m = ra.plain("depot_box", (0.42, 0.3, 0.17), 0.85, variation=0.25)
+    sack = ra.plain("depot_sack", (0.5, 0.45, 0.33), 0.95, variation=0.3)
+    w, d, h = 1.7, 1.1, 1.55
+    for x in (-w / 2, 0, w / 2):
+        for y in (-d / 2, d / 2):
+            ra.box("depot_upright", (0.07 * s, 0.07 * s, h * s), Vector((x * s, y * s, h / 2 * s)), blue, bevel=0.01 * s)
+    for z in (0.08, 0.72):
+        for y in (-d / 2, d / 2):
+            ra.box("depot_beam", (w * s, 0.06 * s, 0.1 * s), Vector((0, y * s, (z + 0.05) * s)), orange, bevel=0.01 * s)
+        ra.box("depot_deck", ((w - 0.05) * s, (d - 0.05) * s, 0.03 * s), Vector((0, 0, (z + 0.11) * s)), ra.wood("depot_deck", (0.2, 0.12, 0.06)))
+    rnd = random.Random(8)
+    for z in (0.19, 0.83):
+        for x in (-0.45, 0.42):
+            kind = rnd.random()
+            if kind < 0.4:
+                ra.box("depot_crate", (0.62 * s, 0.75 * s, 0.45 * s), Vector((x * s, 0, (z + 0.225) * s)), crate, bevel=0.02 * s)
+            elif kind < 0.75:
+                for k in range(3):
+                    ra.box("depot_carton", (0.34 * s, 0.34 * s, 0.26 * s),
+                           Vector(((x + (k - 1) * 0.2) * s, rnd.uniform(-0.15, 0.15) * s, (z + 0.13 + (0.26 if k == 1 else 0)) * s)), box_m,
+                           bevel=0.01 * s, rotation=(0, 0, rnd.uniform(-0.2, 0.2)))
+            else:
+                for k in range(2):
+                    b = ra.sphere("depot_sack", 0.24 * s, Vector(((x + (k - 0.5) * 0.3) * s, 0, (z + 0.16) * s)), sack, scale=(1.1, 0.8, 0.6), segments=14)
+                    ra.displace(b, 0.02 * s, 0.2, 1)
+    ra.box("depot_roof", ((w + 0.3) * s, (d + 0.3) * s, 0.05 * s), Vector((0, 0, (h + 0.03) * s)), roof, rotation=(math.radians(-6), 0, 0))
+    ra.box("depot_sign", (0.5 * s, 0.02 * s, 0.16 * s), Vector((0, (-d / 2 - 0.05) * s, (h - 0.15) * s)), orange, bevel=0.01 * s)
+
+
+def drone(s=1.0, at=Vector((0, 0, 0))):
+    """A quadcopter: a dark body with a green lamp, four arms and four rotors."""
+    body = ra.plain("drone_body", (0.04, 0.045, 0.05), 0.4, 0.3, grime=0.2)
+    rotor = ra.plain("drone_rotor", (0.6, 0.62, 0.64), 0.4, 0.5, grime=0.1)
+    ra.box("drone_body", (0.32 * s, 0.24 * s, 0.1 * s), at + Vector((0, 0, 0.05 * s)), body, bevel=0.03 * s)
+    for a in range(4):
+        ang = math.radians(45 + 90 * a)
+        tip = Vector((math.cos(ang) * 0.3 * s, math.sin(ang) * 0.3 * s, 0.08 * s))
+        ra.box("drone_arm", (0.3 * s, 0.03 * s, 0.025 * s), at + tip * 0.5, body, rotation=(0, 0, ang))
+        ra.cylinder("drone_rotor", 0.13 * s, 0.01 * s, at + tip + Vector((0, 0, 0.03 * s)), rotor, verts=20)
+        ra.cylinder("drone_motor", 0.025 * s, 0.05 * s, at + tip, body, verts=10)
+    ra.cylinder("drone_lamp", 0.025 * s, 0.02 * s, at + Vector((0, -0.12 * s, 0.07 * s)), ra.emission("drone_lamp", (0.3, 1.0, 0.25), 4.0),
+                rotation=(math.radians(90), 0, 0), verts=10)
+    for x in (-0.1, 0.1):
+        ra.box("drone_skid", (0.02 * s, 0.26 * s, 0.02 * s), at + Vector((x * s, 0, 0)), body)
+
+
+def drone_port(s=1.0):
+    """A drone port: a concrete pad with a yellow ring and an H, lamps at its corners, a charging cabinet
+    with an antenna at the back, and a drone resting on the pad."""
+    concrete = ra.plain("port_concrete", (0.28, 0.28, 0.27), 0.9, variation=0.25, scale=10, bump=0.3)
+    yellow = ra.plain("port_yellow", (0.7, 0.5, 0.03), 0.5, variation=0.15, grime=0.4)
+    steel = ra.rusty_metal("port_steel", (0.2, 0.21, 0.23), 0.2)
+    green = ra.emission("port_lamp", (0.3, 1.0, 0.25), 3.0)
+    ra.box("port_pad", (1.5 * s, 1.5 * s, 0.1 * s), Vector((0, 0, 0.05 * s)), concrete, bevel=0.03 * s)
+    ra.torus("port_ring", 0.55 * s, 0.025 * s, Vector((0, 0, 0.1 * s)), yellow)
+    for x in (-0.15, 0.15):
+        ra.box("port_h", (0.07 * s, 0.5 * s, 0.01 * s), Vector((x * s, 0, 0.105 * s)), yellow)
+    ra.box("port_h", (0.3 * s, 0.07 * s, 0.01 * s), Vector((0, 0, 0.105 * s)), yellow)
+    for x in (-0.68, 0.68):
+        for y in (-0.68, 0.68):
+            ra.cylinder("port_corner", 0.035 * s, 0.05 * s, Vector((x * s, y * s, 0.12 * s)), green, verts=10)
+    ra.box("port_cabinet", (0.5 * s, 0.22 * s, 0.7 * s), Vector((0.4 * s, 0.62 * s, 0.45 * s)), steel, bevel=0.02 * s)
+    ra.box("port_screen", (0.22 * s, 0.01 * s, 0.14 * s), Vector((0.4 * s, 0.505 * s, 0.6 * s)), ra.emission("port_screen", (0.2, 0.6, 1.0), 2.0))
+    ra.cylinder("port_mast", 0.02 * s, 0.7 * s, Vector((0.6 * s, 0.68 * s, 1.15 * s)), steel, verts=8)
+    ra.sphere("port_beacon", 0.045 * s, Vector((0.6 * s, 0.68 * s, 1.52 * s)), ra.emission("port_beacon", (1.0, 0.2, 0.1), 4.0), segments=10)
+    drone(s, Vector((-0.05 * s, -0.05 * s, 0.11 * s)))
+
+
 LOGISTICS = {
     # name: (canvas width, height, camera target height, builder)
     "belt_ew": (72, 64, 0.1, crafted(lambda: belt_frame(along_x=True))),
@@ -1231,6 +1349,16 @@ for _tier in ("fast", "express"):
         **{f"belt_{c}_{_tier}": (72, 72, 0.1, crafted(lambda t=_tier, c=c: belt_curve(c, tier=t))) for c in ("ne", "es", "sw", "nw")},
         f"inserter_{_tier}": (64, 64, 0.3, crafted(lambda t=_tier: inserter(tier=t))),
     })
+
+# The long-armed inserter, painted green; the portals of underground belts by the way their mouth
+# faces; the logistics depot and the drone port.
+LOGISTICS.update({
+    "inserter_long": (64, 64, 0.3, crafted(lambda: inserter(tier="long"))),
+    **{f"tunnel_{c}": (72, 72, 0.3, turned(tunnel_portal, a)) for c, a in
+       (("e", 0.0), ("n", math.pi / 2), ("w", math.pi), ("s", -math.pi / 2))},
+    "logistics_depot": (80, 120, 0.8, crafted(logistics_depot)),
+    "drone_port": (72, 96, 0.5, crafted(drone_port)),
+})
 
 
 def render_logistics(layout: dict, only=()):
@@ -1693,11 +1821,12 @@ def build_hydro_plant():
         ra.cylinder("hydro_insulator", 0.04, 0.22, (x, 0.3, 1.35), porcelain, verts=10)
 
 
-def build_cable_station():
+def build_cable_station(paint=(0.45, 0.05, 0.03)):
     """A cable station: a steel lattice tower astride the belt with a big bull wheel on top, its rope
-    running off towards the next station, and a little gondola hanging at the platform."""
+    running off towards the next station, and a little gondola hanging at the platform. The express
+    one is painted blue."""
     steel = ra.rusty_metal("cable_steel", (0.2, 0.2, 0.22), rust=0.3)
-    red = ra.rusty_metal("cable_red", (0.45, 0.05, 0.03), rust=0.2)
+    red = ra.rusty_metal("cable_paint", paint, rust=0.2)
     dark = ra.rusty_metal("cable_dark", (0.06, 0.06, 0.07), rust=0.3)
     for x in (-0.55, 0.55):
         for y in (-0.55, 0.55):
@@ -1739,6 +1868,11 @@ def render_mountain(layout: dict, only=()):
         random.seed(zlib.crc32(b"cable_station"))
         layout["cable_station"] = render_sprite("cable_station", 80, 160, Vector((0, 0, 1.15)), crafted(build_cable_station))
         ra.icon_from(Image.open(OUT / "cable_station.png").convert("RGBA"), ICONS / "item_logistics_cable_station.png")
+    if not only or "cable_station_express" in only:
+        random.seed(zlib.crc32(b"cable_station_express"))
+        layout["cable_station_express"] = render_sprite("cable_station_express", 80, 160, Vector((0, 0, 1.15)),
+                                                        crafted(lambda: build_cable_station(TIER_PAINT["express"])))
+        ra.icon_from(Image.open(OUT / "cable_station_express.png").convert("RGBA"), ICONS / "item_logistics_express_cable_station.png")
 
 
 # --- Coast -----------------------------------------------------------------------------------------
@@ -5462,6 +5596,10 @@ def icon_models():
         "item_logistics_fast_inserter": lambda: inserter(0.4, arm=True, tier="fast"),
         "item_logistics_express_inserter": lambda: inserter(0.4, arm=True, tier="express"),
         "item_logistics_splitter": lambda: (belt_frame(0.4, True, 1.6), belt_frame(0.4, False, 1.6), splitter(0.6)),
+        "item_logistics_long_inserter": lambda: inserter(0.36, arm=True, tier="long", reach=1.6),
+        "item_logistics_underground_belt": lambda: (belt_frame(0.3, True, 1.2), turned(lambda: tunnel_portal(0.42), math.radians(-30))()),
+        "item_logistics_drone_port": lambda: drone_port(0.42),
+        "item_storage_logistics_depot": lambda: logistics_depot(0.26),
         "item_storage_wooden_chest": lambda: wooden_chest(0.38),
         "item_storage_iron_chest": lambda: iron_chest(0.36),
         "item_storage_wood_pile": lambda: wood_pile(0.3),
@@ -6022,9 +6160,9 @@ if __name__ == "__main__":
     if "power" in args or any(a in POWER for a in args):
         # Names of power sprites render just those.
         render_power(layout, [a for a in args if a in POWER])
-    if "mountain" in args or any(a in MOUNTAIN or a == "cable_station" for a in args):
+    if "mountain" in args or any(a in MOUNTAIN or a.startswith("cable_station") for a in args):
         # Names of mountain industry sprites render just those.
-        render_mountain(layout, [a for a in args if a in MOUNTAIN or a == "cable_station"])
+        render_mountain(layout, [a for a in args if a in MOUNTAIN or a.startswith("cable_station")])
     if "coast" in args or any(a in COAST or a.startswith("flotsam_") or a == "water" for a in args):
         # Names of coast sprites render just those.
         render_coast(layout, [a for a in args if a in COAST or a.startswith("flotsam_") or a == "water"])

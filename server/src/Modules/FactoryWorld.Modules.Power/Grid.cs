@@ -108,6 +108,8 @@ public static class PowerRules
         [Items.Inserter] = 5,
         [Items.FastInserter] = 8,
         [Items.ExpressInserter] = 12,
+        [Items.LongInserter] = 7,
+        [Items.DronePort] = 30,
         [Items.Mill] = 30,
         [Items.OilPress] = 30,
         [Items.ElectricSawmill] = 40,

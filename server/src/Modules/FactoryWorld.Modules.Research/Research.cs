@@ -11,9 +11,11 @@ namespace FactoryWorld.Modules.Research;
 /// <param name="Cost">Items used up when the research starts.</param>
 /// <param name="Unlocks">Items (workbench recipes, machines, machine recipes) the player may make and buy once it is done.</param>
 /// <param name="CompanyOnly">Only a company researches it, for all its members (<see cref="CompanyTechs"/>).</param>
+/// <param name="Icon">The item whose icon it shows when it unlocks none (e.g. <see cref="GripperTechs"/>).</param>
 public sealed record Technology(
     string Id, string Name, string Description, IReadOnlyList<string> Requires,
-    IReadOnlyList<(string Item, int Quantity)> Cost, TimeSpan Time, int Xp, IReadOnlyList<string> Unlocks, bool CompanyOnly = false);
+    IReadOnlyList<(string Item, int Quantity)> Cost, TimeSpan Time, int Xp, IReadOnlyList<string> Unlocks, bool CompanyOnly = false,
+    string? Icon = null);
 
 /// <summary>
 /// The technology tree. A new player can make the workbench, the stone furnace and nails, and
@@ -27,6 +29,15 @@ public static class TechTree
     public const string Logistics = "logistics";
     public const string Automation = "automation";
     public const string Sorting = "sorting";
+    public const string FastLogistics = "fast_logistics";
+    public const string ExpressLogistics = "express_logistics";
+    public const string UndergroundBelts = "underground_belts";
+    public const string LongInserters = "long_inserters";
+    public const string LogisticsDepot = "logistics_depot";
+    public const string BiggerGrippers = GripperTechs.Bigger;
+    public const string IndustrialGrippers = GripperTechs.Industrial;
+    public const string ExpressCable = "express_cable";
+    public const string Drones = "drones";
     public const string Storage = "storage";
     public const string Milling = "milling";
     public const string OilPressing = "oil_pressing";
@@ -190,6 +201,33 @@ public static class TechTree
         new(Sorting, "Sortowanie", "Rozdzielacz dzieli taśmę na dwie i odsyła wybrane przedmioty na jedną stronę.",
             [Automation], [(Items.Belt, 10), (Items.Inserter, 4), (Items.CopperIngot, 10)], TimeSpan.FromMinutes(3), 60,
             [Items.Splitter]),
+        new(FastLogistics, "Szybka logistyka", "Szybki taśmociąg wozi przedmioty 2 razy szybciej, a szybki podajnik na prąd obraca ramię 2 razy szybciej.",
+            [Automation], [(Items.Belt, 20), (Items.Inserter, 5), (Items.IronIngot, 50), (Items.CopperIngot, 30)], TimeSpan.FromMinutes(4), 80,
+            [Items.FastBelt, Items.FastInserter]),
+        new(ExpressLogistics, "Ekspresowa logistyka", "Ekspresowy taśmociąg wozi przedmioty 3 razy szybciej, a ekspresowy podajnik obraca ramię 4 razy szybciej.",
+            [FastLogistics, Metallurgy], [(Items.FastBelt, 20), (Items.FastInserter, 5), (Items.SteelIngot, 30), (Items.TinIngot, 20), (Items.SilverIngot, 10)], TimeSpan.FromMinutes(6), 120,
+            [Items.ExpressBelt, Items.ExpressInserter]),
+        new(UndergroundBelts, "Taśmociągi podziemne", "Taśmociąg podziemny chowa przedmioty pod ziemię i wynosi je na następnym takim samym przed nim, do 4 pól dalej, więc linie mogą się krzyżować.",
+            [Automation], [(Items.Belt, 20), (Items.IronIngot, 40), (Items.Stone, 50)], TimeSpan.FromMinutes(3), 60,
+            [Items.UndergroundBelt]),
+        new(LongInserters, "Długoramienne podajniki", "Długoramienny podajnik bierze przedmioty 2 pola za sobą i odkłada je 2 pola przed sobą, ponad tym, co stoi obok.",
+            [FastLogistics], [(Items.FastInserter, 4), (Items.IronIngot, 40), (Items.CopperIngot, 30)], TimeSpan.FromMinutes(4), 80,
+            [Items.LongInserter]),
+        new(BiggerGrippers, "Większe chwytaki", "Twoje podajniki biorą naraz po 2 sztuki tego samego przedmiotu.",
+            [FastLogistics], [(Items.Inserter, 10), (Items.IronIngot, 60), (Items.CopperIngot, 40)], TimeSpan.FromMinutes(5), 100,
+            [], Icon: Items.FastInserter),
+        new(IndustrialGrippers, "Chwytaki przemysłowe", "Twoje podajniki biorą naraz po 3 sztuki tego samego przedmiotu.",
+            [BiggerGrippers, ExpressLogistics], [(Items.FastInserter, 10), (Items.SteelIngot, 40), (Items.SilverIngot, 10)], TimeSpan.FromMinutes(8), 150,
+            [], Icon: Items.ExpressInserter),
+        new(LogisticsDepot, "Magazyn logistyczny", "Magazyn logistyczny ma 48 miejsc po 200 sztuk: duży bufor, z którego podajniki biorą i do którego odkładają.",
+            [Storage, Metallurgy], [(Items.IronChest, 4), (Items.SteelIngot, 30), (Items.Beams, 20)], TimeSpan.FromMinutes(4), 80,
+            [Items.LogisticsDepot]),
+        new(ExpressCable, "Ekspresowa kolejka linowa", "Ekspresowa stacja kolejki linowej wiezie przedmioty 1,5 raza szybciej i do 48 pól dalej.",
+            [CableTransport, ExpressLogistics], [(Items.CableStation, 2), (Items.SteelIngot, 40), (Items.CopperIngot, 40)], TimeSpan.FromMinutes(6), 120,
+            [Items.ExpressCableStation]),
+        new(Drones, "Drony transportowe", "Drony przenoszą przedmioty z portów bez filtra do portów, które mają ustawiony filtr na dany przedmiot, po całej działce, bez taśm.",
+            [ExpressLogistics, LogisticsDepot, Assembly], [(Items.CircuitBoard, 20), (Items.ElectricMotor, 6), (Items.SteelIngot, 60)], TimeSpan.FromMinutes(10), 200,
+            [Items.DronePort]),
         new(GrainStorage, "Silosy zbożowe", "Silos mieści 2000 pszenicy, kukurydzy albo słonecznika.",
             [Storage, Milling], [(Items.Wheat, 100), (Items.IronIngot, 20)], TimeSpan.FromMinutes(2), 40,
             [Items.GrainSilo]),
@@ -584,7 +622,9 @@ public static class TechTree
     /// </summary>
     public static readonly IReadOnlyList<Branch> Branches =
     [
-        new("logistics", "Logistyka", Items.Belt, [Logistics, Automation, Storage, Sorting, CableTransport]),
+        new("logistics", "Logistyka", Items.Belt,
+            [Logistics, Automation, Storage, Sorting, FastLogistics, UndergroundBelts, LongInserters, BiggerGrippers, ExpressLogistics,
+             IndustrialGrippers, LogisticsDepot, CableTransport, ExpressCable, Drones]),
         new("mining", "Górnictwo", Items.IronOre,
             [Stonemasonry, Metallurgy, MiningAutomation, Crushing, Explosives, DeepMining, MeteoriteTools]),
         new("forestry", "Leśnictwo", Items.Wood,
@@ -820,6 +860,12 @@ public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterP
 
     public async Task<IReadOnlyDictionary<string, string>> LockedAsync(Guid player, CancellationToken cancellationToken)
     {
+        var done = await ResearchedAsync(player, cancellationToken);
+        return TechTree.ByItem.Where(p => !done.Contains(p.Value.Id)).ToDictionary(p => p.Key, p => p.Value.Name);
+    }
+
+    public async Task<IReadOnlySet<string>> ResearchedAsync(Guid player, CancellationToken cancellationToken)
+    {
         await using var command = await db.CommandAsync(
             "SELECT technology FROM research.technologies WHERE owner_id = @owner AND finishes_at <= @now", cancellationToken);
         command.Parameters.AddWithValue("owner", player);
@@ -838,7 +884,7 @@ public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterP
             done.UnionWith(await CompanyDoneAsync(membership.Company, cancellationToken));
         }
 
-        return TechTree.ByItem.Where(p => !done.Contains(p.Value.Id)).ToDictionary(p => p.Key, p => p.Value.Name);
+        return done;
     }
 
     public async Task RequireUnlockedAsync(Guid player, string item, CancellationToken cancellationToken)
@@ -1126,6 +1172,8 @@ public abstract class ResearchHandler(IServiceScopeFactory scopes) : IMessageHan
                 seconds = t.Time.TotalSeconds,
                 xp = t.Xp,
                 unlocks = t.Unlocks.Select(u => new { id = u, name = Items.Names[u] }),
+                // The item whose icon it shows when it unlocks none, or null.
+                icon = t.Icon,
                 status = state.Status(t) switch
                 {
                     ResearchStatus.Done => "done",

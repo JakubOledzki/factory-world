@@ -134,6 +134,10 @@ const PLACED_SPRITES := {
 	"furniture_workbench": "workbench", "furniture_anvil": "anvil", "furniture_research_table": "research_table", "furniture_furnace": "furnace",
 	"furniture_brick_furnace": "brick_furnace", "furniture_blast_furnace": "blast_furnace",
 	"logistics_fast_inserter": "inserter_fast", "logistics_express_inserter": "inserter_express",
+	"logistics_long_inserter": "inserter_long", "logistics_express_cable_station": "cable_station_express",
+	"storage_logistics_depot": "logistics_depot", "logistics_drone_port": "drone_port",
+	# Drawn by the way its opening faces, see PlotLogistics.tunnel_sprite.
+	"logistics_underground_belt": "tunnel_n",
 	"furniture_mill": "mill", "furniture_oil_press": "oil_press", "furniture_pickling_barrel": "pickling_barrel",
 	"furniture_bakery": "bakery", "furniture_kitchen": "kitchen", "logistics_inserter": "inserter", "logistics_splitter": "splitter",
 	"storage_wooden_chest": "wooden_chest", "storage_iron_chest": "iron_chest", "storage_wood_pile": "wood_pile",
@@ -230,6 +234,10 @@ const COAST := 10
 const LAKESHORE := 11
 const QUARRY := "furniture_quarry"
 const CABLE_STATION := "logistics_cable_station"
+## Cable stations of both levels, and how far their cable reaches.
+const CABLE_STATIONS := {CABLE_STATION: 24, "logistics_express_cable_station": 48}
+const UNDERGROUND := "logistics_underground_belt"
+const DRONE_PORT := "logistics_drone_port"
 ## Biomes with water to turn a wheel: mountains, coast and lakeshore.
 const WATER_BIOMES := [6, 10, 11]
 const MOUNTAINS := 6
@@ -292,12 +300,13 @@ const SPLITTER := "logistics_splitter"
 ## Belts and inserters of every level: plain, fast and express.
 ## Pipes and pumps are the belts and inserters of fluids, and go with them.
 const BELTS := [BELT, "logistics_fast_belt", "logistics_express_belt", "logistics_pipe"]
-const INSERTERS := [INSERTER, "logistics_fast_inserter", "logistics_express_inserter", "logistics_pump"]
+const INSERTERS := [INSERTER, "logistics_fast_inserter", "logistics_express_inserter", "logistics_long_inserter", "logistics_pump"]
 ## Furnaces of every level, which open the furnace window.
 const FURNACES := ["furniture_furnace", "furniture_brick_furnace", "furniture_blast_furnace"]
 ## Belts, inserters and splitters: turned with R and laid one after another.
 const MACHINERY := [BELT, "logistics_fast_belt", "logistics_express_belt", INSERTER, "logistics_fast_inserter",
-	"logistics_express_inserter", SPLITTER, CABLE_STATION, "logistics_pipe", "logistics_pump"]
+	"logistics_express_inserter", "logistics_long_inserter", SPLITTER, UNDERGROUND, CABLE_STATION, "logistics_express_cable_station",
+	"logistics_pipe", "logistics_pump"]
 const GENERATOR := "power_generator"
 ## Generators that burn fuel, which open the generator window.
 const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator", "power_fusion_plant"]
@@ -307,7 +316,7 @@ const MENU_ONLY := ["power_pole", "furniture_port", "furniture_lighthouse", "fur
 	"furniture_freight_terminal", "furniture_company_hq", WATCHTOWER, FIRE_STATION, CONTROL_CENTER]
 const POLE := "power_pole"
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo", "storage_tank",
-	"storage_high_bay", "storage_automated_warehouse"]
+	"storage_high_bay", "storage_automated_warehouse", "storage_logistics_depot", DRONE_PORT]
 ## Where a rotation faces, as players read it: 0 south, 1 east, 2 north, 3 west.
 const DIRECTIONS := ["na południe", "na wschód", "na północ", "na zachód"]
 const DIRECTION_ARROWS := ["↓", "→", "↑", "←"]
@@ -684,6 +693,7 @@ func _tile_set(shadows: bool) -> TileSet:
 	sprites.append_array(PALMS)
 	sprites.append_array(ANIMAL_SPRITES.values())
 	sprites.append_array(PLACED_SPRITES.values())
+	sprites.append_array(PlotLogistics.TUNNEL_SPRITES.filter(func(t: String) -> bool: return t != PLACED_SPRITES[UNDERGROUND]))
 	for sprite in sprites:
 		_add_source(set, sprite, sprite + ("_shadow" if shadows else ""), not shadows)
 	if not shadows:
@@ -755,6 +765,7 @@ func _apply_plot(plot: Dictionary) -> void:
 	for object: Dictionary in plot.get("objects", []):
 		_put_placed(object)
 	_logistics.set_objects(_placed)
+	_draw_tunnels()
 	_power.set_objects(_placed)
 
 	# The ground: the biome's texture repeated over the plot, squashed to the 45° view.
@@ -909,6 +920,13 @@ func _update_chunks(force := false) -> void:
 					_draw_cell(chunk * CHUNK + Vector2i(x, y))
 
 
+## Redraws the underground belts on the tiles drawn now: placing or picking one up may pair others anew.
+func _draw_tunnels() -> void:
+	for cell: Vector2i in _placed:
+		if _placed[cell]["kind"] == UNDERGROUND and _chunks.has(Vector2i((Vector2(cell) / CHUNK).floor())):
+			_draw_cell(cell)
+
+
 func _draw_cell(cell: Vector2i) -> void:
 	if _tile(cell) == WATER:
 		_water_layer.set_cell(cell, _water_source, Vector2i.ZERO)
@@ -948,6 +966,8 @@ func _sprite_at(cell: Vector2i) -> String:
 			return ""  # A 3 × 3 building is drawn once, on its own tile.
 		if _placed[cell]["kind"] == ROAD:
 			return ""  # flat on the ground, with the fields
+		if _placed[cell]["kind"] == UNDERGROUND:
+			return _logistics.tunnel_sprite(cell, int(_placed[cell].get("rotation", 0)))
 		return PLACED_SPRITES.get(_placed[cell]["kind"], "")  # "" for a belt
 	if _animals.has(cell):
 		return ANIMAL_SPRITES.get(_animals[cell]["kind"], "")
@@ -1047,10 +1067,10 @@ func _is_belt(cell: Vector2i) -> bool:
 	return _placed.has(cell) and _placed[cell]["kind"] in BELTS
 
 
-## Belts and roads lie flat, inserters are low enough to step over and a power pole is thin enough
-## to slip past: the player walks across them.
+## Belts and roads lie flat, inserters and the low portals of underground belts are low enough to step
+## over and a power pole is thin enough to slip past: the player walks across them.
 func _walkable(cell: Vector2i) -> bool:
-	return _is_belt(cell) or (_placed.has(cell) and (_placed[cell]["kind"] in [ROAD, POLE] or _placed[cell]["kind"] in INSERTERS))
+	return _is_belt(cell) or (_placed.has(cell) and (_placed[cell]["kind"] in [ROAD, POLE, UNDERGROUND] or _placed[cell]["kind"] in INSERTERS))
 
 
 ## How fast the player walks where they stand: faster on a road.
@@ -1445,11 +1465,18 @@ func _placed_label(cell: Vector2i) -> String:
 	var facing: String = DIRECTIONS[int(object.get("rotation", 0)) & 3]
 	if object["kind"] in BELTS:
 		return "%s %s: [R] obróć, kliknij, aby schować" % [object["name"], facing]
-	if object["kind"] == CABLE_STATION:
-		return "%s %s: wiezie po linie do następnej stacji przed nią (do 24 pól). [R] obróć, kliknij, aby schować" % [object["name"], facing]
+	if CABLE_STATIONS.has(object["kind"]):
+		return "%s %s: wiezie po linie do następnej stacji przed nią (do %d pól). [R] obróć, kliknij, aby schować" \
+			% [object["name"], facing, CABLE_STATIONS[object["kind"]]]
+	if object["kind"] == UNDERGROUND:
+		var role := _logistics.tunnel_role(cell)
+		var doing := "chowa przedmioty pod ziemię" if role == "down" else ("wynosi przedmioty spod ziemi" if role == "up" \
+			else "postaw drugi taki sam przed nim, do 4 pól dalej")
+		return "%s %s, %s: [R] obróć, kliknij, aby schować" % [object["name"], facing, doing]
 	if object["kind"] in INSERTERS:
 		var held := _logistics.held(cell)
-		var carrying := ", niesie: %s" % _item_name(held).to_lower() if held != "" else ""
+		var count := _logistics.held_count(cell)
+		var carrying := ", niesie: %s%s" % [_item_name(held).to_lower(), " ×%d" % count if count > 1 else ""] if held != "" else ""
 		return "%s %s%s%s%s: [R] obróć, kliknij, aby schować albo ustawić filtr" % [object["name"], facing, carrying, _filter_note(object["id"]), _power_note(object["id"])]
 	if object["kind"] == SPLITTER:
 		var filter := _logistics.splitter(object["id"])
@@ -1590,7 +1617,7 @@ func _draw_power_reach() -> void:
 ## What is being placed, see-through on the tile under the mouse, with the way it will face.
 func _draw_ghost(cell: Vector2i) -> void:
 	var sprite: String = PlotLogistics.BELT_SPRITES[_place_rotation] + PlotLogistics.tier_suffix(_placing) if _placing in BELTS \
-		else PLACED_SPRITES.get(_placing, "")
+		else PlotLogistics.TUNNEL_SPRITES[(_place_rotation + 2) & 3] if _placing == UNDERGROUND else PLACED_SPRITES.get(_placing, "")
 	if sprite == "" or not _layout.has(sprite):
 		return
 	var texture: Texture2D = load("res://art/plot/%s.png" % sprite)
@@ -2486,6 +2513,7 @@ func _place_object(cell: Vector2i) -> void:
 		_astar.set_point_solid(covered, not _walkable(covered))
 		_draw_cell(covered)
 	_logistics.set_objects(_placed)
+	_draw_tunnels()
 	_update_market_button()
 	_power.set_objects(_placed)
 	if kind in MACHINERY:
@@ -2674,6 +2702,7 @@ func _pick_up_placed(id: String) -> void:
 				_hovered = Vector2i(-1, -1)
 			_draw_cell(cell)
 	_logistics.set_objects(_placed)
+	_draw_tunnels()
 	_power.set_objects(_placed)
 	_hide_placed_windows()
 	_update_market_button()
@@ -2795,6 +2824,7 @@ func _rotate_placed(cell: Vector2i) -> void:
 		return
 	_placed[cell] = reply["payload"]["object"]
 	_logistics.set_objects(_placed)
+	_draw_tunnels()
 	_power.set_objects(_placed)
 	_draw_cell(cell)
 	_poll_logistics()
