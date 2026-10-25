@@ -995,7 +995,8 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<SurveyService>();
         services.AddScoped<PlotObjectService>();
         services.AddScoped<IPlacedObjects>(provider => provider.GetRequiredService<PlotObjectService>());
-        services.AddScoped<IPlotObjects, PlotObjectsQuery>();
+        services.AddScoped<PlotObjectsQuery>();
+        services.AddScoped<IPlotObjects>(sp => sp.GetRequiredService<PlotObjectsQuery>());
         services.AddScoped<IPlotRegistry, PlotRegistry>();
         services.AddSingleton<IMessageHandler, InfoHandler>();
         services.AddSingleton<IMessageHandler, AreaHandler>();

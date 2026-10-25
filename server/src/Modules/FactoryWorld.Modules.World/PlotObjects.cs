@@ -140,7 +140,7 @@ public interface IPlacedHook
 
 public sealed class PlotObjectService(
     GameDb db, PlotService plots, IInventory inventory, IEnumerable<IMachineContents> machines, IEnumerable<IPlotAutomation> automation,
-    IEnumerable<IPlacedHook> placing, BeachService beach, OilService oil, IEnumerable<ICompanyPlots> companies)
+    IEnumerable<IPlacedHook> placing, BeachService beach, OilService oil, IEnumerable<ICompanyPlots> companies, PlotObjectsQuery query)
     : IPlacedObjects
 {
     public async Task<IReadOnlyList<PlacedOnPlot>> ObjectsAsync(int x, int y, CancellationToken cancellationToken)
@@ -226,7 +226,9 @@ public sealed class PlotObjectService(
             insert.Parameters.AddWithValue("owner", player);
             insert.Parameters.AddWithValue("kind", kind);
             insert.Parameters.AddWithValue("rotation", rotation);
-            if (await insert.ExecuteNonQueryAsync(cancellationToken) == 0)
+            var inserted = await insert.ExecuteNonQueryAsync(cancellationToken);
+            query.Forget();
+            if (inserted == 0)
             {
                 throw new GameException("blocked", "Something stands here.");
             }
@@ -260,6 +262,7 @@ public sealed class PlotObjectService(
             update.Parameters.AddWithValue("x", x);
             update.Parameters.AddWithValue("y", y);
             await using var reader = await update.ExecuteReaderAsync(cancellationToken);
+            query.Forget();
             if (!await reader.ReadAsync(cancellationToken))
             {
                 throw new GameException("no_object", "There is no such object on this plot.");
@@ -304,7 +307,9 @@ public sealed class PlotObjectService(
             delete.Parameters.AddWithValue("y", y);
             delete.Parameters.AddWithValue("player", player);
             delete.Parameters.AddWithValue("owner", owner);
-            var kind = await delete.ExecuteScalarAsync(cancellationToken) as string
+            var deleted = await delete.ExecuteScalarAsync(cancellationToken) as string;
+            query.Forget();
+            var kind = deleted
                 ?? throw new GameException(owner ? "no_object" : "not_yours", "There is no such object of yours on this plot.");
             foreach (var machine in machines)
             {
@@ -352,10 +357,21 @@ public sealed class PlotObjectService(
 
 /// <summary>The objects on plots for other modules; apart from <see cref="PlotObjectService"/>, which
 /// brings the plot's machinery up to now first and so needs those modules itself.</summary>
+/// <remarks>Within one transaction a plot's objects are read once: bringing a plot's machinery up to now asks
+/// for them for every machine on it. <see cref="PlotObjectService"/> forgets them when it changes them.</remarks>
 public sealed class PlotObjectsQuery(GameDb db, PlotService plots) : IPlotObjects
 {
+    private int _readIn;
+    private readonly Dictionary<(int X, int Y), IReadOnlyList<PlotObject>> _objects = [];
+    private readonly Dictionary<Guid, (int X, int Y)> _plotOf = [];
+
     public async Task<IReadOnlyList<PlotObject>> ObjectsAsync(int x, int y, CancellationToken cancellationToken)
     {
+        if (Remembered() && _objects.TryGetValue((x, y), out var known))
+        {
+            return known;
+        }
+
         await using var command = await db.CommandAsync(
             "SELECT id, kind, tile_x, tile_y, rotation, owner_id FROM world.plot_objects WHERE x = @x AND y = @y", cancellationToken);
         command.Parameters.AddWithValue("x", x);
@@ -365,6 +381,15 @@ public sealed class PlotObjectsQuery(GameDb db, PlotService plots) : IPlotObject
         while (await reader.ReadAsync(cancellationToken))
         {
             objects.Add(new PlotObject(reader.GetGuid(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4), reader.GetGuid(5)));
+        }
+
+        if (Remembered())
+        {
+            _objects[(x, y)] = objects;
+            foreach (var o in objects)
+            {
+                _plotOf[o.Id] = (x, y);
+            }
         }
 
         return objects;
@@ -386,10 +411,39 @@ public sealed class PlotObjectsQuery(GameDb db, PlotService plots) : IPlotObject
 
     public async Task<(int X, int Y)?> PlotOfAsync(Guid id, CancellationToken cancellationToken)
     {
+        if (Remembered() && _plotOf.TryGetValue(id, out var known))
+        {
+            return known;
+        }
+
         await using var command = await db.CommandAsync("SELECT x, y FROM world.plot_objects WHERE id = @id", cancellationToken);
         command.Parameters.AddWithValue("id", id);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? (reader.GetInt32(0), reader.GetInt32(1)) : null;
+    }
+
+    /// <summary>Objects were put on a plot, turned or taken off it: they are read again.</summary>
+    internal void Forget()
+    {
+        _objects.Clear();
+        _plotOf.Clear();
+    }
+
+    /// <summary>Whether what was read can be used again: only in the transaction it was read in.</summary>
+    private bool Remembered()
+    {
+        if (db.Transaction is null)
+        {
+            return false;
+        }
+
+        if (_readIn != db.TransactionNumber)
+        {
+            Forget();
+            _readIn = db.TransactionNumber;
+        }
+
+        return true;
     }
 }
 

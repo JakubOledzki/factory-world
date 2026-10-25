@@ -117,49 +117,109 @@ public sealed record FurnaceReply(Guid Id, FurnaceLevel Level, FurnaceState Stat
 /// <summary>Rows of <c>crafting.furnaces</c>; a furnace gets one when it is first used.</summary>
 internal static class FurnaceRows
 {
+    private const string Columns = "input_item, input_quantity, fuel, heat, output_item, output_quantity, started_at, kind";
+
+    private const string Write =
+        """
+        INSERT INTO crafting.furnaces (object_id, owner_id, kind, input_item, input_quantity, fuel, heat, output_item, output_quantity, started_at)
+        VALUES (@id, @owner, @kind, @input, @inputQuantity, @fuel, @heat, @output, @outputQuantity, @started)
+        ON CONFLICT (object_id) DO UPDATE SET
+            input_item = @input, input_quantity = @inputQuantity, fuel = @fuel, heat = @heat,
+            output_item = @output, output_quantity = @outputQuantity, started_at = @started
+        """;
+
+    internal static (Type, Guid) Key(Guid id) => (typeof(FurnaceRows), id);
+
     /// <summary>The furnace's contents and its kind, which the row keeps so it can be emptied after the object is gone.</summary>
     public static async Task<(FurnaceState State, FurnaceLevel Level)?> ReadAsync(GameDb db, Guid id, CancellationToken cancellationToken)
     {
-        await using var command = await db.CommandAsync(
-            """
-            SELECT input_item, input_quantity, fuel, heat, output_item, output_quantity, started_at, kind
-            FROM crafting.furnaces WHERE object_id = @id FOR UPDATE
-            """, cancellationToken);
-        command.Parameters.AddWithValue("id", id);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
+        if (db.TakeReadAhead<(FurnaceState, FurnaceLevel)?>(Key(id), out var known))
         {
-            return null;
+            return known;
         }
 
+        await using var command = await db.CommandAsync($"SELECT {Columns} FROM crafting.furnaces WHERE object_id = @id FOR UPDATE", cancellationToken);
+        command.Parameters.AddWithValue("id", id);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? Row(reader) : null;
+    }
+
+    /// <summary>Reads (and locks) the rows of these furnaces in one query, for <see cref="ReadAsync"/> to take one by one.</summary>
+    public static async Task ReadAheadAsync(GameDb db, IReadOnlyList<Guid> ids, CancellationToken cancellationToken)
+    {
+        if (ids.Count < 2 || db.Transaction is null)
+        {
+            return;
+        }
+
+        // Locked in the order of their ids, like any other transaction locking several of them.
+        await using var command = await db.CommandAsync(
+            $"SELECT object_id, {Columns} FROM crafting.furnaces WHERE object_id = ANY(@ids) ORDER BY object_id FOR UPDATE", cancellationToken);
+        command.Parameters.AddWithValue("ids", ids.ToArray());
+        var found = new Dictionary<Guid, (FurnaceState, FurnaceLevel)>();
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                found[reader.GetGuid(0)] = Row(reader, 1);
+            }
+        }
+
+        foreach (var id in ids)
+        {
+            db.ReadAhead(Key(id), found.TryGetValue(id, out var row) ? row : null);
+        }
+    }
+
+    private static (FurnaceState State, FurnaceLevel Level) Row(NpgsqlDataReader reader, int at = 0)
+    {
         var state = new FurnaceState(
-            reader.IsDBNull(0) ? null : reader.GetString(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetInt32(3),
-            reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetInt32(5),
-            reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTimeOffset>(6));
-        return (state, Smelting.Level(reader.GetString(7)) ?? Smelting.Stone);
+            reader.IsDBNull(at) ? null : reader.GetString(at), reader.GetInt32(at + 1), reader.GetInt32(at + 2), reader.GetInt32(at + 3),
+            reader.IsDBNull(at + 4) ? null : reader.GetString(at + 4), reader.GetInt32(at + 5),
+            reader.IsDBNull(at + 6) ? null : reader.GetFieldValue<DateTimeOffset>(at + 6));
+        return (state, Smelting.Level(reader.GetString(at + 7)) ?? Smelting.Stone);
     }
 
     public static async Task WriteAsync(GameDb db, Guid owner, Guid id, FurnaceLevel level, FurnaceState s, CancellationToken cancellationToken)
     {
-        await using var command = await db.CommandAsync(
-            """
-            INSERT INTO crafting.furnaces (object_id, owner_id, kind, input_item, input_quantity, fuel, heat, output_item, output_quantity, started_at)
-            VALUES (@id, @owner, @kind, @input, @inputQuantity, @fuel, @heat, @output, @outputQuantity, @started)
-            ON CONFLICT (object_id) DO UPDATE SET
-                input_item = @input, input_quantity = @inputQuantity, fuel = @fuel, heat = @heat,
-                output_item = @output, output_quantity = @outputQuantity, started_at = @started
-            """, cancellationToken);
-        command.Parameters.AddWithValue("id", id);
-        command.Parameters.AddWithValue("owner", owner);
-        command.Parameters.AddWithValue("kind", level.Kind);
-        command.Parameters.AddWithValue("input", (object?)s.Input ?? DBNull.Value);
-        command.Parameters.AddWithValue("inputQuantity", s.InputQuantity);
-        command.Parameters.AddWithValue("fuel", s.Fuel);
-        command.Parameters.AddWithValue("heat", s.Heat);
-        command.Parameters.AddWithValue("output", (object?)s.Output ?? DBNull.Value);
-        command.Parameters.AddWithValue("outputQuantity", s.OutputQuantity);
-        command.Parameters.Add(new NpgsqlParameter("started", NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = (object?)s.StartedAt ?? DBNull.Value });
+        await using var command = await db.CommandAsync(Write, cancellationToken);
+        Fill(command.Parameters, owner, id, level, s);
+        db.ForgetReadAhead(Key(id));
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>Writes several furnaces in one round trip.</summary>
+    public static async Task WriteAsync(GameDb db, IReadOnlyList<(Guid Owner, Guid Id, FurnaceLevel Level, FurnaceState State)> rows, CancellationToken cancellationToken)
+    {
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        await using var batch = await db.BatchAsync(cancellationToken);
+        foreach (var (owner, id, level, state) in rows)
+        {
+            var command = new NpgsqlBatchCommand(Write);
+            Fill(command.Parameters, owner, id, level, state);
+            batch.BatchCommands.Add(command);
+            db.ForgetReadAhead(Key(id));
+        }
+
+        await batch.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static void Fill(NpgsqlParameterCollection parameters, Guid owner, Guid id, FurnaceLevel level, FurnaceState s)
+    {
+        parameters.AddWithValue("id", id);
+        parameters.AddWithValue("owner", owner);
+        parameters.AddWithValue("kind", level.Kind);
+        parameters.AddWithValue("input", (object?)s.Input ?? DBNull.Value);
+        parameters.AddWithValue("inputQuantity", s.InputQuantity);
+        parameters.AddWithValue("fuel", s.Fuel);
+        parameters.AddWithValue("heat", s.Heat);
+        parameters.AddWithValue("output", (object?)s.Output ?? DBNull.Value);
+        parameters.AddWithValue("outputQuantity", s.OutputQuantity);
+        parameters.Add(new NpgsqlParameter("started", NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = (object?)s.StartedAt ?? DBNull.Value });
     }
 }
 
@@ -318,6 +378,7 @@ public sealed class FurnaceContents(GameDb db, IInventory inventory, IWallet wal
             await inventory.AddAsync(owner, Items.Coal, state.Fuel, cancellationToken);
         }
 
+        db.ForgetReadAhead(FurnaceRows.Key(id));
         await using var delete = await db.CommandAsync("DELETE FROM crafting.furnaces WHERE object_id = @id", cancellationToken);
         delete.Parameters.AddWithValue("id", id);
         await delete.ExecuteNonQueryAsync(cancellationToken);
@@ -338,10 +399,31 @@ public sealed class FurnacePorts(GameDb db, IProductionStats stats, IPlotObjects
         return new Port(db, stats, owner, id, level, (await FurnaceRows.ReadAsync(db, id, cancellationToken))?.State ?? FurnaceState.Empty);
     }
 
+    public Task PrepareAsync(IReadOnlyList<PlotObject> objects, CancellationToken cancellationToken) =>
+        FurnaceRows.ReadAheadAsync(db, objects.Where(o => Smelting.Level(o.Kind) is not null).Select(o => o.Id).Distinct().ToList(), cancellationToken);
+
+    public async Task SaveAsync(IReadOnlyList<IMachinePort> ports, CancellationToken cancellationToken)
+    {
+        var changed = ports.OfType<Port>().Where(p => p.Changed).ToList();
+        foreach (var owner in changed.GroupBy(p => p.Owner))
+        {
+            await stats.RecordAsync(owner.Key, owner.SelectMany(p => p.Made).ToList(), cancellationToken);
+        }
+
+        await FurnaceRows.WriteAsync(db, changed.Select(p => (p.Owner, p.Id, p.Level, p.State)).ToList(), cancellationToken);
+    }
+
     private sealed class Port(GameDb db, IProductionStats stats, Guid owner, Guid id, FurnaceLevel level, FurnaceState state) : IMachinePort
     {
         private readonly List<ProductionEntry> _made = [];
         private bool _changed;
+
+        public Guid Owner => owner;
+        public Guid Id => id;
+        public FurnaceLevel Level => level;
+        public FurnaceState State => state;
+        public bool Changed => _changed;
+        public IReadOnlyList<ProductionEntry> Made => _made;
 
         public string? Output(DateTimeOffset now, Func<string, bool> wanted)
         {

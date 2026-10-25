@@ -252,6 +252,19 @@ public interface IMachinePorts
 {
     /// <summary>The machine, locked until the transaction ends; null when this module keeps no machine of this kind.</summary>
     Task<IMachinePort?> OpenAsync(Guid owner, Guid id, string kind, CancellationToken cancellationToken);
+
+    /// <summary>About to open the machines among <paramref name="objects"/>: a module can read all of its own
+    /// at once here, so that each <see cref="OpenAsync"/> after needs no query of its own.</summary>
+    Task PrepareAsync(IReadOnlyList<PlotObject> objects, CancellationToken cancellationToken) => Task.CompletedTask;
+
+    /// <summary>Saves the ports this module opened; a module can write them all at once.</summary>
+    async Task SaveAsync(IReadOnlyList<IMachinePort> ports, CancellationToken cancellationToken)
+    {
+        foreach (var port in ports)
+        {
+            await port.SaveAsync(cancellationToken);
+        }
+    }
 }
 
 /// <summary>

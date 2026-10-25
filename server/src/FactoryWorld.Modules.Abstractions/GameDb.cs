@@ -17,6 +17,9 @@ public sealed class GameDb(NpgsqlDataSource dataSource) : IAsyncDisposable
     /// <summary>The transaction of <see cref="InTransactionAsync{T}"/>, if one is running.</summary>
     public NpgsqlTransaction? Transaction { get; private set; }
 
+    /// <summary>Counts the transactions begun on this connection, so that what was read in one is known apart from the next.</summary>
+    public int TransactionNumber { get; private set; }
+
     /// <summary>Runs <paramref name="work"/> in one transaction; a nested call joins the outer one.</summary>
     public async Task<T> InTransactionAsync<T>(Func<Task<T>> work, CancellationToken cancellationToken)
     {
@@ -28,6 +31,7 @@ public sealed class GameDb(NpgsqlDataSource dataSource) : IAsyncDisposable
         await OpenAsync(cancellationToken);
         await using var transaction = await Connection.BeginTransactionAsync(IsolationLevel.ReadCommitted, cancellationToken);
         Transaction = transaction;
+        TransactionNumber++;
         try
         {
             var result = await work();
@@ -43,11 +47,58 @@ public sealed class GameDb(NpgsqlDataSource dataSource) : IAsyncDisposable
     public Task InTransactionAsync(Func<Task> work, CancellationToken cancellationToken) =>
         InTransactionAsync(async () => { await work(); return true; }, cancellationToken);
 
+    private readonly Dictionary<object, object?> _readAhead = [];
+    private int _readAheadIn;
+
+    /// <summary>
+    /// Keeps a row read ahead of its use (many rows in one query instead of one query each) until
+    /// <see cref="TakeReadAhead{T}"/> takes it; only inside a transaction, which the rows stay locked in.
+    /// </summary>
+    public void ReadAhead(object key, object? row)
+    {
+        if (Transaction is null)
+        {
+            return;
+        }
+
+        if (_readAheadIn != TransactionNumber)
+        {
+            _readAhead.Clear();
+            _readAheadIn = TransactionNumber;
+        }
+
+        _readAhead[key] = row;
+    }
+
+    /// <summary>The row <see cref="ReadAhead"/> kept for <paramref name="key"/> in this transaction, once:
+    /// a second read goes to the database again, and so does one after <see cref="ForgetReadAhead"/>.</summary>
+    public bool TakeReadAhead<T>(object key, out T? row)
+    {
+        if (Transaction is not null && _readAheadIn == TransactionNumber && _readAhead.Remove(key, out var kept))
+        {
+            row = (T?)kept;
+            return true;
+        }
+
+        row = default;
+        return false;
+    }
+
+    /// <summary>The row was written: what was read ahead of it is out of date.</summary>
+    public void ForgetReadAhead(object key) => _readAhead.Remove(key);
+
     /// <summary>A raw SQL command on the shared connection, inside the current transaction if any.</summary>
     public async Task<NpgsqlCommand> CommandAsync(string sql, CancellationToken cancellationToken)
     {
         await OpenAsync(cancellationToken);
         return new NpgsqlCommand(sql, Connection, Transaction);
+    }
+
+    /// <summary>Several commands sent to the database together, in one round trip, inside the current transaction if any.</summary>
+    public async Task<NpgsqlBatch> BatchAsync(CancellationToken cancellationToken)
+    {
+        await OpenAsync(cancellationToken);
+        return new NpgsqlBatch(Connection, Transaction);
     }
 
     public async ValueTask DisposeAsync() => await Connection.DisposeAsync();
