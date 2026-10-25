@@ -84,14 +84,14 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
     /// <summary>Puts items from the inventory into a storage on the player's plot.</summary>
     public Task<(LogisticsState State, PlotObject Storage)> PutAsync(
         Guid player, int x, int y, Guid id, string item, int quantity, CancellationToken cancellationToken) =>
-        ChangeStorageAsync(player, x, y, id, PlotRight.Work, async (kind, stacks) =>
+        ChangeStorageAsync(player, x, y, id, PlotRight.Work, async (kind, stacks, only) =>
         {
             if (quantity < 1)
             {
                 throw new GameException("bad_quantity", "Put in at least one.");
             }
 
-            if (!kind.Takes(item))
+            if (!kind.Takes(item) || (only is not null && item != only))
             {
                 throw new GameException("not_stored_here", $"{Items.Names[kind.Id]} does not take this.");
             }
@@ -108,7 +108,7 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
     /// <summary>Takes items out of a storage into the inventory: <paramref name="quantity"/> of them, or all when 0.</summary>
     public Task<(LogisticsState State, PlotObject Storage)> TakeAsync(
         Guid player, int x, int y, Guid id, string item, int quantity, CancellationToken cancellationToken) =>
-        ChangeStorageAsync(player, x, y, id, PlotRight.Take, async (_, stacks) =>
+        ChangeStorageAsync(player, x, y, id, PlotRight.Take, async (_, stacks, _) =>
         {
             if (quantity < 0)
             {
@@ -158,8 +158,60 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
             return state with { Contents = all };
         }, cancellationToken);
 
+    /// <summary>Sets the one item an inserter, a storage or a machine on the player's plot takes (its
+    /// filter): an inserter then picks up nothing else, a storage or a machine lets nothing else in.
+    /// No item, and it takes anything again.</summary>
+    public Task<LogisticsState> SetFilterAsync(Guid player, int x, int y, Guid id, string? item, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            item = string.IsNullOrEmpty(item) ? null : item;
+            if (item is not null && !Items.Exists(item))
+            {
+                throw new GameException("bad_filter", "There is no such item.");
+            }
+
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            var state = await RunAsync(x, y, cancellationToken);
+            var o = state.Objects.FirstOrDefault(o => o.Id == id)
+                ?? throw new GameException("no_object", "There is no such object on this plot.");
+            if (!await FilterableAsync(o, state.Power, cancellationToken))
+            {
+                throw new GameException("not_filterable", $"{Items.Names.GetValueOrDefault(o.Kind, o.Kind)} has no filter.");
+            }
+
+            if (item is not null && Storages.Find(o.Kind) is { } kind && !kind.Takes(item))
+            {
+                throw new GameException("not_stored_here", $"{Items.Names[kind.Id]} does not take this.");
+            }
+
+            var contents = state.Contents.GetValueOrDefault(id) ?? new Contents();
+            contents.Only = item;
+            await WriteAsync(id, x, y, contents, cancellationToken);
+            var all = new Dictionary<Guid, Contents>(state.Contents) { [id] = contents };
+            return state with { Contents = all };
+        }, cancellationToken);
+
+    /// <summary>Whether an object can have a filter: an inserter, a storage, or a machine inserters put things into.</summary>
+    private async Task<bool> FilterableAsync(PlotObject o, IPowerGrid grid, CancellationToken cancellationToken)
+    {
+        if (Items.IsInserter(o.Kind) || Storages.Find(o.Kind) is not null || grid.Port(o.Id) is not null)
+        {
+            return true;
+        }
+
+        foreach (var module in machines)
+        {
+            if (await module.OpenAsync(o.Owner, o.Id, o.Kind, cancellationToken) is not null)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private Task<(LogisticsState, PlotObject)> ChangeStorageAsync(
-        Guid player, int x, int y, Guid id, PlotRight right, Func<StorageKind, List<ItemStack>, Task> change, CancellationToken cancellationToken) =>
+        Guid player, int x, int y, Guid id, PlotRight right, Func<StorageKind, List<ItemStack>, string?, Task> change, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, right);
@@ -171,7 +223,7 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
             }
 
             var contents = state.Contents.GetValueOrDefault(id) ?? new Contents();
-            await change(kind, contents.Items ??= []);
+            await change(kind, contents.Items ??= [], contents.Only);
             await WriteAsync(id, x, y, contents, cancellationToken);
             var all = new Dictionary<Guid, Contents>(state.Contents) { [id] = contents };
             return (state with { Contents = all }, storage);
@@ -323,11 +375,14 @@ public sealed class LogisticsContents(GameDb db, IInventory inventory) : IMachin
     }
 }
 
-public sealed record LogisticsRequest(int X, int Y);
+/// <param name="Names">Send what every item is called too, for choosing a filter.</param>
+public sealed record LogisticsRequest(int X, int Y, bool Names = false);
 
 public sealed record StorageRequest(int X, int Y, Guid Id);
 
 public sealed record SplitterRequest(int X, int Y, Guid Id, int Side, List<string>? Items);
+
+public sealed record FilterRequest(int X, int Y, Guid Id, string? Item);
 
 public sealed record StorageItemRequest(int X, int Y, Guid Id, string Item, int Quantity);
 
@@ -342,10 +397,10 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
         await using var scope = scopes.CreateAsyncScope();
         var state = await scope.ServiceProvider.GetRequiredService<LogisticsService>()
             .StateAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
-        return new Reply("logistics", Json(request.X, request.Y, state));
+        return new Reply("logistics", Json(request.X, request.Y, state, request.Names));
     }
 
-    public static object Json(int x, int y, LogisticsState state)
+    public static object Json(int x, int y, LogisticsState state, bool names = false)
     {
         Contents Of(Guid id) => state.Contents.GetValueOrDefault(id) ?? new Contents();
         var cables = LogisticsRules.CableLinks(state.Objects);
@@ -374,8 +429,10 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
                     // Cable stations only: the station ahead that items ride the cable to.
                     cable = cables.TryGetValue(o.Id, out var to) ? to : (Guid?)null,
                 }),
-            // What every item is called, for choosing a splitter's filter.
-            names = state.Objects.Any(o => o.Kind == Items.Splitter) ? Items.Names : null,
+            // What every item is called, for choosing a splitter's filter (and any filter, when the client asks).
+            names = names || state.Objects.Any(o => o.Kind == Items.Splitter) ? Items.Names : null,
+            // The one item each inserter, storage or machine with a filter takes, by object id.
+            filters = state.Objects.Where(o => Of(o.Id).Only is not null).Select(o => new { id = o.Id, item = Of(o.Id).Only }),
             inserters = state.Objects.Where(o => Items.IsInserter(o.Kind))
                 .Select(o => new
                 {
@@ -407,6 +464,8 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
             capacity = kind.Capacity,
             stored = stacks.Sum(s => s.Quantity),
             only = kind.Only?.Select(i => new { id = i, name = Items.Names[i] }),
+            // The item it is set to take, or null.
+            filter = contents.Only,
             items = stacks.Select(s => new { id = s.Item, name = Items.Names.GetValueOrDefault(s.Item, s.Item), quantity = s.Quantity }),
         };
     }
@@ -424,6 +483,21 @@ public sealed class SetSplitterHandler(IServiceScopeFactory scopes) : IMessageHa
         var state = await scope.ServiceProvider.GetRequiredService<LogisticsService>().SetSplitterAsync(
             client.RequireAccount(), request.X, request.Y, request.Id, request.Side, request.Items ?? [], cancellationToken);
         return new Reply("logistics", GetLogisticsHandler.Json(request.X, request.Y, state));
+    }
+}
+
+/// <summary>Sets the filter of an inserter, a storage or a machine; answers with the plot's logistics like "logistics.get".</summary>
+public sealed class SetFilterHandler(IServiceScopeFactory scopes) : IMessageHandler
+{
+    public string Type => "filter.set";
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<FilterRequest>(payload);
+        await using var scope = scopes.CreateAsyncScope();
+        var state = await scope.ServiceProvider.GetRequiredService<LogisticsService>().SetFilterAsync(
+            client.RequireAccount(), request.X, request.Y, request.Id, request.Item, cancellationToken);
+        return new Reply("logistics", GetLogisticsHandler.Json(request.X, request.Y, state, true));
     }
 }
 
@@ -498,6 +572,7 @@ public sealed class LogisticsModule : IGameModule
         services.AddScoped<IMachineContents, LogisticsContents>();
         services.AddSingleton<IMessageHandler, GetLogisticsHandler>();
         services.AddSingleton<IMessageHandler, SetSplitterHandler>();
+        services.AddSingleton<IMessageHandler, SetFilterHandler>();
         services.AddSingleton<IMessageHandler, GetStorageHandler>();
         services.AddSingleton<IMessageHandler, PutStorageHandler>();
         services.AddSingleton<IMessageHandler, TakeStorageHandler>();

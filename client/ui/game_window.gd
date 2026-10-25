@@ -17,6 +17,9 @@ var _dragging := false
 var _title: Label
 var _bar := HBoxContainer.new()
 var _scroll := ScrollContainer.new()
+## On the title bar of windows of objects that can have a filter (see show_filter_button).
+var _filter_button: Button
+var _on_filter := Callable()
 
 
 func _init(title: String, width: int) -> void:
@@ -35,6 +38,12 @@ func _init(title: String, width: int) -> void:
 	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_bar.add_child(_title)
+	_filter_button = UI.button("Filtr", func() -> void:
+		if _on_filter.is_valid():
+			_on_filter.call())
+	_filter_button.add_theme_constant_override("icon_max_width", 20)
+	_filter_button.visible = false
+	_bar.add_child(_filter_button)
 	var close := UI.button("×", hide_window)
 	close.tooltip_text = "Zamknij (Esc)"
 	_bar.add_child(close)
@@ -98,6 +107,23 @@ func _on_bar_input(event: InputEvent) -> void:
 	elif event is InputEventMouseMotion and _dragging:
 		var area := get_viewport_rect().size
 		position = (position + event.relative).clamp(Vector2.ZERO, area - size)
+
+
+## Shows the "Filtr" button on the title bar, with the icon of the filtered item when there is one.
+func show_filter_button(item: String, on_pressed: Callable) -> void:
+	_on_filter = on_pressed
+	_filter_button.icon = UI.item_texture(item) if item != "" else null
+	_filter_button.tooltip_text = "Filtr: przyjmuje tylko jeden wybrany przedmiot" if item == "" else "Filtr ustawiony: kliknij, aby zmienić"
+	_filter_button.visible = true
+
+
+func has_filter_button() -> bool:
+	return _filter_button.visible
+
+
+func hide_filter_button() -> void:
+	_on_filter = Callable()
+	_filter_button.visible = false
 
 
 func set_title(title: String) -> void:

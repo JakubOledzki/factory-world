@@ -229,6 +229,42 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
     }
 
     [Fact]
+    public void An_inserter_with_a_filter_picks_up_only_its_item()
+    {
+        var chest = Obj(Items.WoodenChest, 0, 0);
+        var inserter = Obj(Items.Inserter, 1, 0);
+        var target = Obj(Items.WoodenChest, 2, 0);
+        var contents = new Dictionary<Guid, Contents>
+        {
+            [chest.Id] = new() { Items = [new() { Item = Items.Stone, Quantity = 5 }, new() { Item = Items.Wood, Quantity = 3 }] },
+            [inserter.Id] = new() { Only = Items.Wood },
+        };
+        Build([chest, inserter, target], contents).Logistics.Run(Start, Start + TimeSpan.FromMinutes(5));
+
+        Assert.Equal(5, Stored(contents[chest.Id], Items.Stone));
+        Assert.Equal(0, Stored(contents[target.Id], Items.Stone));
+        Assert.Equal(3, Stored(contents[target.Id], Items.Wood));
+    }
+
+    [Fact]
+    public void A_chest_with_a_filter_lets_in_only_its_item()
+    {
+        // Off a belt carrying stone and wood, into a chest that takes stone only.
+        var belt = Obj(Items.Belt, 0, 0);
+        var target = Obj(Items.WoodenChest, 2, 0);
+        var contents = new Dictionary<Guid, Contents>
+        {
+            [belt.Id] = new() { Belt = Lanes([Items.Wood, null, Items.Stone, null], [Items.Stone, null, null, null]) },
+            [target.Id] = new() { Only = Items.Stone },
+        };
+        Build([belt, Obj(Items.Inserter, 1, 0), target], contents).Logistics.Run(Start, Start + TimeSpan.FromMinutes(5));
+
+        Assert.Equal(2, Stored(contents[target.Id], Items.Stone));
+        Assert.Equal(0, Stored(contents[target.Id], Items.Wood));
+        Assert.Contains(Items.Wood, contents[belt.Id].Belt!);
+    }
+
+    [Fact]
     public void An_inserter_takes_mixed_goods_out_of_a_chest_in_turn()
     {
         var chest = Obj(Items.WoodenChest, 0, 0);
@@ -378,6 +414,51 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         Assert.Equal("logistics", (await client.SendAsync("splitter.set", new { x, y, id = splitter, side = 0, items = Array.Empty<string>() })).Type());
         state = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("belts")[0];
         Assert.Empty(state.GetProperty("filter").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task A_filter_on_a_chest_or_an_inserter_is_kept_and_shown_on_the_plot()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty) = await PlotWithFreeRowAsync(client, 3);
+        await GiveAsync(client, Items.WoodenChest, 1);
+        await GiveAsync(client, Items.WoodPile, 1);
+        await GiveAsync(client, Items.Inserter, 1);
+        await GiveAsync(client, Items.Belt, 1);
+        await GiveAsync(client, Items.Wood, 5);
+        await GiveAsync(client, Items.Stone, 5);
+        var chest = await PlaceAsync(client, x, y, Items.WoodenChest, tx, ty);
+        var inserter = await PlaceAsync(client, x, y, Items.Inserter, tx + 1, ty);
+        var belt = await PlaceAsync(client, x, y, Items.Belt, tx + 2, ty);
+        var pile = await PlaceAsync(client, x, y, Items.WoodPile, tx, ty + 1);
+        await GiveAsync(client, Items.Furnace, 1);
+        var furnace = await PlaceAsync(client, x, y, Items.Furnace, tx + 1, ty + 1);
+        Assert.Equal("logistics", (await client.SendAsync("filter.set", new { x, y, id = furnace, item = Items.IronOre })).Type());
+
+        var set = await client.SendAsync("filter.set", new { x, y, id = chest, item = Items.Wood });
+        Assert.Equal("logistics", set.Type());
+        Assert.True(set.Payload().GetProperty("names").TryGetProperty(Items.Wood, out _));
+        Assert.Equal("logistics", (await client.SendAsync("filter.set", new { x, y, id = inserter, item = Items.Stone })).Type());
+        var filters = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("filters").EnumerateArray()
+            .ToDictionary(f => f.GetProperty("id").GetString()!, f => f.GetProperty("item").GetString());
+        Assert.Equal(Items.Wood, filters[chest]);
+        Assert.Equal(Items.Stone, filters[inserter]);
+        Assert.Equal(Items.IronOre, filters[furnace]);
+
+        // A chest with a filter takes nothing else, from the inventory either.
+        Assert.Equal("not_stored_here", (await client.SendAsync("storage.put", new { x, y, id = chest, item = Items.Stone, quantity = 1 })).ErrorCode());
+        var put = await client.SendAsync("storage.put", new { x, y, id = chest, item = Items.Wood, quantity = 5 });
+        Assert.Equal(Items.Wood, put.Payload().GetProperty("filter").GetString());
+
+        Assert.Equal("not_stored_here", (await client.SendAsync("filter.set", new { x, y, id = pile, item = Items.Stone })).ErrorCode());
+        Assert.Equal("not_filterable", (await client.SendAsync("filter.set", new { x, y, id = belt, item = Items.Stone })).ErrorCode());
+        Assert.Equal("bad_filter", (await client.SendAsync("filter.set", new { x, y, id = chest, item = "nothing" })).ErrorCode());
+
+        Assert.Equal("logistics", (await client.SendAsync("filter.set", new { x, y, id = chest, item = (string?)null })).Type());
+        filters = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("filters").EnumerateArray()
+            .ToDictionary(f => f.GetProperty("id").GetString()!, f => f.GetProperty("item").GetString());
+        Assert.False(filters.ContainsKey(chest));
+        Assert.Equal("storage", (await client.SendAsync("storage.put", new { x, y, id = chest, item = Items.Stone, quantity = 1 })).Type());
     }
 
     [Fact]

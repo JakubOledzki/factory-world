@@ -69,8 +69,9 @@ public static class LogisticsRules
 
     public static int Swing(string kind) => InserterSwings.GetValueOrDefault(kind, SwingTicks);
 
-    /// <summary>Ticks of work done in one catch-up: 30 minutes. Machinery that keeps busy for longer
-    /// while nobody looks (e.g. items going round a loop of belts) rests for the rest of the time.</summary>
+    /// <summary>Ticks of work done in one catch-up without a pause: 30 minutes. Machinery that keeps busy for longer
+    /// while nobody looks (e.g. items going round a loop of belts) rests for the rest of the time; machinery that
+    /// pauses now and then (e.g. an inserter waiting for room by a generator's fire) works on for as long as it takes.</summary>
     public const int MaxTicks = 9000;
 
     /// <summary>The tile a rotation faces, as (dx, dy): 0 south, 1 east, 2 north, 3 west.</summary>
@@ -112,6 +113,10 @@ public sealed class Contents
     /// <summary>A splitter's filter: these items go out on <see cref="FilterSide"/> only, the rest on
     /// the other side. Without one it sends items left and right in turn.</summary>
     public List<string>? Filter { get; set; }
+
+    /// <summary>The one item an inserter, a storage or a machine is set to take (its filter): an inserter
+    /// picks up nothing else, a storage or a machine lets nothing else in. Null takes anything.</summary>
+    public string? Only { get; set; }
 
     /// <summary>The side a splitter sends filtered items to: 0 left, 1 right (as the splitter runs).</summary>
     public int FilterSide { get; set; }
@@ -188,6 +193,22 @@ public sealed class StoragePort(StorageKind kind, Contents contents, Action chan
     public DateTimeOffset? NextChange(DateTimeOffset now) => null;
 
     public Task SaveAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}
+
+/// <summary>A machine or a storage as inserters dropping into it see it while it has a filter: it takes its one item only.</summary>
+public sealed class FilteredPort(IMachinePort port, string only) : IMachinePort
+{
+    public string? Output(DateTimeOffset now, Func<string, bool> wanted) => port.Output(now, wanted);
+
+    public void Take(string item, DateTimeOffset now) => port.Take(item, now);
+
+    public bool Accepts(string item, DateTimeOffset now) => item == only && port.Accepts(item, now);
+
+    public void Put(string item, DateTimeOffset now) => port.Put(item, now);
+
+    public DateTimeOffset? NextChange(DateTimeOffset now) => port.NextChange(now);
+
+    public Task SaveAsync(CancellationToken cancellationToken) => port.SaveAsync(cancellationToken);
 }
 
 /// <summary>
@@ -347,9 +368,10 @@ public sealed class PlotLogistics
                 inserter.FromPort = ports.GetValueOrDefault(source.Id);
             }
 
-            if (at.TryGetValue(to, out var target) && !belts.ContainsKey(to))
+            if (at.TryGetValue(to, out var target) && !belts.ContainsKey(to) && ports.GetValueOrDefault(target.Id) is { } port)
             {
-                inserter.ToPort = ports.GetValueOrDefault(target.Id);
+                // A storage or a machine with a filter lets in only its item.
+                inserter.ToPort = contents.GetValueOrDefault(target.Id)?.Only is { } only ? new FilteredPort(port, only) : port;
             }
 
             _inserters.Add(inserter);
@@ -473,7 +495,8 @@ public sealed class PlotLogistics
                 return last;
             }
 
-            // Next step on the first tick at or after it.
+            // Next step on the first tick at or after it, after a pause that starts the count of work anew.
+            worked = 0;
             var ticks = ((due - from).Ticks + tick.Ticks - 1) / tick.Ticks;
             t = from + tick * (ticks - 1);
         }
@@ -631,14 +654,16 @@ public sealed class PlotLogistics
 
     private string? Pick(Inserter inserter, DateTimeOffset now)
     {
+        // An inserter with a filter picks up its item only.
+        var only = inserter.Contents.Only;
         Func<string, bool> wanted;
         if (inserter.ToBelt is not null)
         {
-            wanted = item => Items.IsFluid(item) == inserter.Fluid;
+            wanted = item => Items.IsFluid(item) == inserter.Fluid && (only is null || item == only);
         }
         else if (inserter.ToPort is { } port)
         {
-            wanted = item => Items.IsFluid(item) == inserter.Fluid && port.Accepts(item, now);
+            wanted = item => Items.IsFluid(item) == inserter.Fluid && (only is null || item == only) && port.Accepts(item, now);
         }
         else
         {
