@@ -544,6 +544,17 @@ public static class TechTree
             [Heating, PolarTransport, Refrigeration, Glaciology, PolarTourism, DataCenter]),
         new("city", "Miasta", Items.Shop,
             [Commerce, CityServices, WasteManagement, FreightHub, Assembly, UrbanConstruction, Headquarters]),
+        new("materials", "Materiały", Items.CarbonComposite,
+            [Lubricant, Paint, CaseinGlue, InsulationBoard, Firebrick, PrecastConcrete, GlassLaminate, Coolant, IridiumAlloy, Provisions,
+             ElectricWire, PaintedSheet, RefractoryLining, CarbonComposite, SuperconductingWire, RocketFuel]),
+        new("components", "Podzespoły", Items.Gearbox,
+            [MachineShop, Bearing, Coil, WiringHarness, Gearbox, Rotor, MachineHousing, CombustionChamber, CompositePanel,
+             SuperconductingMagnet, Alternator, ControlModule, HydraulicActuator, RocketNozzle, PressureVessel, ComputingCore,
+             RobotArm, Turbopump, TurbineSet, CryogenicTank, IndustrialRobot, NavigationSystem]),
+        new("factories", "Fabryki", Items.Megafactory,
+            [RoboticHall, OxygenConverter, RollingMill, ControlCenter, ContinuousCaster, AutomatedWarehouse, SteelCombine, Megafactory]),
+        new("space", "Kosmos i fuzja", Items.LaunchRocket,
+            [RocketEngine, PlasmaChamber, Avionics, PlasmaControl, RocketStage, Satellite, FusionReactor, LaunchRocket, FusionPlant]),
         new("company", "Spółki", Items.CompanyHq, [Megaprojects, CorporateFinance]),
     ];
 

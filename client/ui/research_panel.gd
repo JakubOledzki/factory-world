@@ -185,8 +185,8 @@ func _can_pay(technology: Dictionary) -> bool:
 	return true
 
 
-## What the card says under the name; `full` names every missing requirement (cards have room for one).
-func _status_text(technology: Dictionary, full := false) -> String:
+## What the card says under the name: one missing requirement by name, more by their count (the list is in the details).
+func _status_text(technology: Dictionary) -> String:
 	match technology["status"]:
 		"done": return "Zbadane"
 		"active": return "Badanie: %s" % _left(technology)
@@ -195,7 +195,7 @@ func _status_text(technology: Dictionary, full := false) -> String:
 				return "Tylko dla spółek"
 			return "Gotowe do zbadania" if _can_pay(technology) else "Brakuje materiałów"
 	var missing: Array = technology["requires"].filter(func(id: String) -> bool: return _technology(id).get("status") != "done")
-	if missing.size() > 1 and not full:
+	if missing.size() > 1:
 		return "Wymaga %d badań" % missing.size()
 	return "Wymaga: %s" % ", ".join(missing.map(func(id: String) -> String: return _technology(id).get("name", id)))
 
@@ -335,7 +335,7 @@ func _render_tree() -> void:
 		columns[d].append(technology)
 
 	var card := _TechCard.card_size()
-	var gap := Vector2(card.x * 0.22, 16)
+	var gap := Vector2(card.x * 0.22, 22)
 	var places := {}
 	var bottom := 0.0
 	for d in columns.size():
@@ -415,7 +415,7 @@ func _render_details() -> void:
 	head.add_child(title)
 	_details.add_child(head)
 	_details.add_child(UI.label(technology["description"], UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true))
-	_status = UI.label(_status_text(technology, true), STATUS_COLORS[technology["status"]], HORIZONTAL_ALIGNMENT_LEFT, true)
+	_status = UI.label(_status_text(technology), STATUS_COLORS[technology["status"]], HORIZONTAL_ALIGNMENT_LEFT, true)
 	_details.add_child(_status)
 	if not technology["requires"].is_empty():
 		_details.add_child(UI.label("Wymaga:", UI.MUTED))
@@ -736,13 +736,24 @@ class _TechCard:
 			draw_polyline(PackedVector2Array([tick + Vector2(-r * 0.5, 0), tick + Vector2(-r * 0.1, r * 0.4), tick + Vector2(r * 0.5, -r * 0.4)]),
 					Color("#14210c"), 2.0, true)
 
-		# What it needs from other branches: their icons in the top right, green once done.
+		# What it needs from other branches: their icons on the top edge, green once done, so
+		# they take no room from the name. Past a handful, a count stands for the rest.
 		var chip := roundf(size.y * 0.26)
-		var chips_left := size.x - 8
-		for i in _outside.size():
+		var shown := mini(_outside.size(), 5 if _outside.size() > 6 else 6)
+		var at_x := size.x - 14 - chip / 2
+		if _outside.size() > shown:
+			var more := Vector2(at_x, 0)
+			draw_circle(more, chip / 2 + 1, Color("#141517"))
+			draw_arc(more, chip / 2 + 1, 0, TAU, 24, Color("#5a5b61"), 1.5, true)
+			var label := "+%d" % (_outside.size() - shown)
+			var label_size := roundi(chip * 0.55)
+			var width := UI.bold().get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, label_size).x
+			draw_string(UI.bold(), more + Vector2(-width / 2, label_size * 0.35), label, HORIZONTAL_ALIGNMENT_LEFT, -1, label_size, UI.MUTED)
+			at_x -= chip + 4
+		for i in range(shown - 1, -1, -1):
 			var need: Dictionary = _outside[i]
-			chips_left -= chip + 4
-			var at := Vector2(chips_left + chip / 2, 8 + chip / 2)
+			var at := Vector2(at_x, 0)
+			at_x -= chip + 4
 			draw_circle(at, chip / 2 + 1, Color("#141517"))
 			draw_arc(at, chip / 2 + 1, 0, TAU, 24, UI.GOOD if need.get("status") == "done" else Color("#5a5b61"), 1.5, true)
 			if _chips[i] != null:
@@ -752,7 +763,7 @@ class _TechCard:
 		var text_x := center.x + radius + 10
 		var name_line := TextLine.new()
 		name_line.add_string(_technology["name"], UI.bold(), font_size)
-		name_line.width = (chips_left if not _outside.is_empty() else size.x - 10) - text_x
+		name_line.width = size.x - 10 - text_x
 		name_line.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		var name_y := size.y / 2 - name_line.get_size().y + 2
 		name_line.draw(get_canvas_item(), Vector2(text_x, name_y), UI.TEXT if status != "locked" else UI.MUTED)
