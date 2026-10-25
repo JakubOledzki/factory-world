@@ -96,6 +96,24 @@ public sealed class ResearchTests(ServerFactory factory) : IClassFixture<ServerF
     }
 
     [Fact]
+    public async Task Every_technology_belongs_to_one_branch_of_industry()
+    {
+        var listed = TechTree.Branches.SelectMany(b => b.Technologies).ToList();
+        Assert.Equal(listed.Count, listed.Distinct().Count());
+        Assert.Equal(TechTree.Technologies.Select(t => t.Id).Order(), listed.Order());
+        Assert.All(TechTree.Branches, b => Assert.True(Items.Names.ContainsKey(b.Icon), b.Icon));
+
+        using var client = await PlayerAsync();
+        var payload = (await client.SendAsync("research.get")).Payload();
+        var branches = payload.GetProperty("branches").EnumerateArray().Select(b => b.GetProperty("id").GetString()).ToList();
+        Assert.Equal(TechTree.Branches.Select(b => b.Id), branches);
+        var tree = await TechnologiesAsync(client);
+        Assert.Equal("forestry", tree[TechTree.Woodworking].GetProperty("branch").GetString());
+        Assert.Equal("oil", tree[TechTree.Refining].GetProperty("branch").GetString());
+        Assert.Equal("company", tree[TechTree.Megaprojects].GetProperty("branch").GetString());
+    }
+
+    [Fact]
     public async Task Other_players_offers_of_what_isnt_researched_yet_are_hidden_and_cannot_be_bought()
     {
         using var seller = await PlayerAsync();
