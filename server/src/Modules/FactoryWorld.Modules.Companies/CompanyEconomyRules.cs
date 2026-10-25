@@ -50,9 +50,10 @@ public static class CompanyMoney
 /// <summary>A construction too big for one player: members bring thousands of parts, then it takes days to build.</summary>
 /// <param name="Reward">What lands in the company's warehouse when it is built.</param>
 /// <param name="Perk">What it gives every member from then on (<see cref="CompanyPerks"/>), if anything.</param>
+/// <param name="Requires">The projects the company must have built before taking this one on.</param>
 public sealed record BigProject(
     string Id, string Name, string Description, IReadOnlyList<(string Item, long Quantity)> Parts, TimeSpan Build,
-    IReadOnlyList<(string Item, int Quantity)> Reward, string? Perk);
+    IReadOnlyList<(string Item, int Quantity)> Reward, string? Perk, IReadOnlyList<string>? Requires = null);
 
 public static class BigProjects
 {
@@ -70,6 +71,17 @@ public static class BigProjects
         new(CompanyPerks.Railway, "Kolej międzykontynentalna", "Pociągi członków spółki płacą o 30% mniej, także na trasach.",
             [(Items.SteelIngot, 5000), (Items.Beams, 4000), (Items.Concrete, 3000), (Items.Diesel, 2000)], TimeSpan.FromDays(4),
             [], CompanyPerks.Railway),
+
+        // The space goals: the top of the crafting tree, built one after another.
+        new(CompanyPerks.Spaceport, "Kosmodrom", "Wyrzutnia, z której spółka wyśle misję orbitalną.",
+            [(Items.PrecastConcrete, 2000), (Items.RefractoryLining, 300), (Items.IndustrialRobot, 10), (Items.ControlModule, 20)],
+            TimeSpan.FromDays(5), [], CompanyPerks.Spaceport),
+        new(CompanyPerks.Orbit, "Misja orbitalna", "Satelita prowadzi pociągi i statki członków spółki: płacą o 20% mniej na każdej trasie.",
+            [(Items.LaunchRocket, 1), (Items.Satellite, 1), (Items.RocketFuel, 200)],
+            TimeSpan.FromDays(3), [], CompanyPerks.Orbit, [CompanyPerks.Spaceport]),
+        new(CompanyPerks.Station, "Stacja orbitalna", "Laboratorium na orbicie: badania członków spółki trwają o 20% krócej.",
+            [(Items.LaunchRocket, 2), (Items.FusionReactor, 1), (Items.IndustrialRobot, 4), (Items.CryogenicTank, 4), (Items.Provisions, 100)],
+            TimeSpan.FromDays(7), [], CompanyPerks.Station, [CompanyPerks.Orbit]),
     ];
 
     public static readonly IReadOnlyDictionary<string, BigProject> ById = All.ToDictionary(p => p.Id);

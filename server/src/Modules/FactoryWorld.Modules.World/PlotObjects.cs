@@ -42,6 +42,8 @@ public static class PlotObjects
         Items.AssemblyHall, Items.MultistoreyFactory, Items.Shop, Items.HighBay, Items.CitySorter, Items.FreightTerminal, Items.CompanyHq,
         Items.DesignOffice, Items.Laboratory, Items.ServiceWorkshop,
         Items.PaperMill, Items.Carpentry, Items.CharcoalKiln, Items.TarKiln, Items.Beehive, Items.Watchtower, Items.FireStation,
+        Items.MachineShop, Items.RoboticHall, Items.OxygenConverter, Items.RollingMill, Items.ControlCenter, Items.ContinuousCaster,
+        Items.AutomatedWarehouse, Items.SteelCombine, Items.Megafactory, Items.FusionPlant,
     };
 
     /// <summary>What stands on the glacier only, or on the glacier and the tundra.</summary>
@@ -107,7 +109,7 @@ public static class PlotObjects
             throw new GameException("city_cramped", "In a city only the ground by the station can be built on.");
         }
 
-        if (kind is Items.FreightTerminal or Items.CompanyHq && others.Any(o => o.Kind == kind))
+        if (kind is Items.FreightTerminal or Items.CompanyHq or Items.ControlCenter && others.Any(o => o.Kind == kind))
         {
             throw new GameException("has_one", "A plot has room for one of these.");
         }
@@ -169,7 +171,7 @@ public sealed class PlotObjectService(
             {
                 if ((tx, ty) == PlotLayout.Spawn || !await plots.FreeAsync(player, x, y, tx, ty, cancellationToken))
                 {
-                    throw new GameException("blocked", Footprints.Reach(kind) > 0 ? "It needs 3 × 3 free tiles." : "Something stands here.");
+                    throw new GameException("blocked", Footprints.Reach(kind) > 0 ? $"It needs {Footprints.Size(kind)} × {Footprints.Size(kind)} free tiles." : "Something stands here.");
                 }
             }
 

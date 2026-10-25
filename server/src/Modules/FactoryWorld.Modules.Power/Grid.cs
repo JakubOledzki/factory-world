@@ -19,13 +19,14 @@ public static class PowerRules
     public const double GeneratorKw = 100;
 
     /// <summary>Generators of every kind: what each gives at most (kW) and what it burns. The steam generator burns
-    /// wood and coal, the gas power plant natural gas, the diesel generator diesel or petrol.</summary>
+    /// wood and coal, the gas power plant natural gas, the diesel generator diesel or petrol, the fusion plant coolant.</summary>
     public static readonly IReadOnlyDictionary<string, (double Kw, IReadOnlySet<string> Burns)> Generators =
         new Dictionary<string, (double, IReadOnlySet<string>)>
         {
             [Items.Generator] = (GeneratorKw, new HashSet<string> { Items.Coal, Items.Charcoal, Items.Wood, Items.WoodPellets }),
             [Items.GasPlant] = (300, new HashSet<string> { Items.NaturalGas }),
             [Items.DieselGenerator] = (150, new HashSet<string> { Items.Diesel, Items.Gasoline }),
+            [Items.FusionPlant] = (5000, new HashSet<string> { Items.Coolant }),
         };
 
     /// <summary>What a generator of <paramref name="kind"/> gives at most (kW).</summary>
@@ -85,7 +86,8 @@ public static class PowerRules
     public const double WireReach = 7;
 
     /// <summary>What generators burn, and the energy (kJ) in one piece: coal lasts 200 s at full power in a steam generator,
-    /// wood 50 s, a pellet 40 s; a unit of gas 200 s in a gas power plant, of diesel 400 s and of petrol 300 s in a diesel generator.</summary>
+    /// wood 50 s, a pellet 40 s; a unit of gas 200 s in a gas power plant, of diesel 400 s and of petrol 300 s in a diesel generator;
+    /// a fusion plant uses up a unit of coolant a minute at full power.</summary>
     public static readonly IReadOnlyDictionary<string, double> Fuels = new Dictionary<string, double>
     {
         [Items.Coal] = 20_000,
@@ -95,6 +97,7 @@ public static class PowerRules
         [Items.NaturalGas] = 60_000,
         [Items.Diesel] = 60_000,
         [Items.Gasoline] = 45_000,
+        [Items.Coolant] = 300_000,
     };
 
     /// <summary>Machines that run on power, and what they draw (kW).</summary>
@@ -131,6 +134,14 @@ public static class PowerRules
         [Items.Laboratory] = 60,
         [Items.ServiceWorkshop] = 40,
         [Items.PaperMill] = 60,
+        [Items.MachineShop] = 40,
+        [Items.RoboticHall] = 300,
+        [Items.OxygenConverter] = 100,
+        [Items.RollingMill] = 120,
+        [Items.ControlCenter] = 60,
+        [Items.ContinuousCaster] = 150,
+        [Items.SteelCombine] = 600,
+        [Items.Megafactory] = 1000,
     };
 
     public static bool Covers(PlotObject pole, int tileX, int tileY) =>

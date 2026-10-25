@@ -450,6 +450,9 @@ func _render_projects(company: Dictionary) -> void:
 			status = "zbieranie części"
 		_body.add_child(_heading("%s  (%s)" % [project["name"], status]))
 		_body.add_child(UI.label("%s Budowa trwa %d dni." % [project["description"], int(float(project["buildSeconds"]) / 86400.0)], UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		var requires: Array = project.get("requires", [])
+		if not requires.is_empty():
+			_body.add_child(UI.label("Wymaga: %s." % ", ".join(requires), UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 		if not project["started"]:
 			if company["leads"] and economy["mayBuild"]:
 				_body.add_child(UI.button("Rozpocznij projekt", _send.bind("company.project.start", {"project": project["id"]}), true))

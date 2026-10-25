@@ -330,6 +330,13 @@ public sealed partial class CompanyService
                 throw new GameException("research_needed", "The company researches big projects first.");
             }
 
+            var states = await ProjectsAsync(company, cancellationToken);
+            var now = time.GetUtcNow();
+            if (project.Requires?.Any(r => states.FirstOrDefault(p => p.Project.Id == r)?.BuiltAt is not { } built || built > now) == true)
+            {
+                throw new GameException("project_locked", "The company builds the projects this one needs first.");
+            }
+
             await using (var insert = await db.CommandAsync(
                 "INSERT INTO companies.projects (company_id, project, started_at, rewarded) VALUES (@company, @project, @at, false) ON CONFLICT DO NOTHING",
                 cancellationToken))
