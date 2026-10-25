@@ -154,6 +154,36 @@ public sealed class ProcessingTests(ServerFactory factory) : IClassFixture<Serve
     }
 
     [Fact]
+    public async Task A_foundry_makes_steel_of_charcoal_where_the_recipe_asks_for_coal()
+    {
+        using var client = await PlayerAsync();
+        var (_, _, foundry) = await MachineOnPlotAsync(client, Items.Foundry);
+        await GiveAsync(client, Items.IronIngot, 4);
+        await GiveAsync(client, Items.Charcoal, 2);
+        await GiveAsync(client, Items.Wood, 2);
+        var set = (await client.SendAsync("machine.recipe", new { machine = foundry, recipe = Items.SteelIngot })).Payload();
+        var coal = set.GetProperty("inputs")[1];
+        Assert.Equal(Items.Coal, coal.GetProperty("id").GetString());
+        Assert.Equal(Items.Charcoal, coal.GetProperty("also")[0].GetProperty("id").GetString());
+
+        await client.SendAsync("machine.load", new { machine = foundry, item = Items.IronIngot, quantity = 4 });
+        // Charcoal goes where the coal goes, not by the fire.
+        var loaded = (await client.SendAsync("machine.load", new { machine = foundry, item = Items.Charcoal, quantity = 2 })).Payload();
+        Assert.Equal(2, loaded.GetProperty("inputs")[1].GetProperty("quantity").GetInt32());
+        Assert.Equal(JsonValueKind.Null, loaded.GetProperty("fuel").ValueKind);
+        await client.SendAsync("machine.load", new { machine = foundry, item = Items.Wood, quantity = 2 });
+
+        factory.Time.Advance(TimeSpan.FromSeconds(60));
+        var taken = (await client.SendAsync("machine.take", new { machine = foundry, what = "output" })).Payload();
+        Assert.Equal(2, taken.GetProperty("taken")[0].GetProperty("quantity").GetInt32());
+        var inventory = await client.InventoryAsync();
+        Assert.Equal(2, Count(inventory, Items.SteelIngot));
+        Assert.Equal(0, Count(inventory, Items.Charcoal));
+        Assert.True(Items.Fills(Items.Coal, Items.Charcoal));
+        Assert.False(Items.Fills(Items.Charcoal, Items.Coal));
+    }
+
+    [Fact]
     public async Task Changing_the_recipe_returns_ingredients_and_products()
     {
         using var client = await PlayerAsync();

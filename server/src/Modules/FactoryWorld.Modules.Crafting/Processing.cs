@@ -937,7 +937,7 @@ public sealed class MachineService(
 
             var (machine, state, clock) = await OpenAsync(owner, id, cancellationToken);
             var recipe = machine.Recipe(state.Recipe);
-            var slot = recipe is null ? -1 : recipe.Ingredients.ToList().FindIndex(i => i.Item == item);
+            var slot = recipe is null ? -1 : recipe.Ingredients.ToList().FindIndex(i => Items.Fills(i.Item, item));
             if (slot >= 0)
             {
                 if (state.Input(slot) + quantity > Processing.MaxInput)
@@ -1268,7 +1268,7 @@ public sealed class ProcessingPorts(GameDb db, IProductionStats stats, IPlotPowe
             }
         }
 
-        private int Slot(string item) => Recipe is { } recipe ? recipe.Ingredients.ToList().FindIndex(i => i.Item == item) : -1;
+        private int Slot(string item) => Recipe is { } recipe ? recipe.Ingredients.ToList().FindIndex(i => Items.Fills(i.Item, item)) : -1;
     }
 }
 
@@ -1328,6 +1328,8 @@ public abstract class MachineHandler(IServiceScopeFactory scopes) : IMessageHand
                 name = Items.Names[ingredient.Item],
                 quantity = s.Input(i),
                 need = ingredient.Quantity,
+                // What else goes in for it, e.g. charcoal for coal.
+                also = Items.StandIns(ingredient.Item).Select(a => new { id = a, name = Items.Names[a] }),
             }) ?? [],
             output = recipe is null || s.Output == 0 ? null : new { id = recipe.Id, name = Items.Names[recipe.Id], quantity = s.Output },
             // What came with the product, e.g. hide and bones out of a slaughterhouse.

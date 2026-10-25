@@ -451,7 +451,7 @@ public static class TechTree
         new(Furniture, "Meblarstwo", "Stolarnia robi krzesła, stoły i szafy, a z drewna dębowego komody, na które czekają miasta.",
             [ForestryIndustry], [(Items.Planks, 40), (Items.Nails, 30)], TimeSpan.FromMinutes(2), 40,
             [Items.Carpentry, Items.Chair, Items.Table, Items.Wardrobe, Items.OakDresser]),
-        new(Charring, "Węglarstwo i smolarstwo", "Mielerz wypala z drewna węgiel drzewny, który pali się jak kopalny, a smolarnia warzy z żywicy smołę, terpentynę i kalafonię.",
+        new(Charring, "Węglarstwo i smolarstwo", "Mielerz wypala z drewna węgiel drzewny, który pali się jak kopalny i zastępuje go w odlewni przy stali, a smolarnia warzy z żywicy smołę, terpentynę i kalafonię.",
             [ForestryIndustry], [(Items.Wood, 60), (Items.Stone, 40)], TimeSpan.FromMinutes(2), 40,
             [Items.CharcoalKiln, Items.Charcoal, Items.TarKiln, Items.Tar, Items.Turpentine, Items.Rosin]),
         new(Beekeeping, "Pszczelarstwo", "Ul daje miód i wosk, szybciej przy kwitnących lipach; z miodu pieczesz pierniki, z wosku robisz świece.",
