@@ -69,8 +69,9 @@ public static class LogisticsRules
 
     public static int Swing(string kind) => InserterSwings.GetValueOrDefault(kind, SwingTicks);
 
-    /// <summary>Ticks of work done in one catch-up: 30 minutes. Machinery that keeps busy for longer
-    /// while nobody looks (e.g. items going round a loop of belts) rests for the rest of the time.</summary>
+    /// <summary>Ticks of work done in one catch-up without a pause: 30 minutes. Machinery that keeps busy for longer
+    /// while nobody looks (e.g. items going round a loop of belts) rests for the rest of the time; machinery that
+    /// pauses now and then (e.g. an inserter waiting for room by a generator's fire) works on for as long as it takes.</summary>
     public const int MaxTicks = 9000;
 
     /// <summary>The tile a rotation faces, as (dx, dy): 0 south, 1 east, 2 north, 3 west.</summary>
@@ -473,7 +474,8 @@ public sealed class PlotLogistics
                 return last;
             }
 
-            // Next step on the first tick at or after it.
+            // Next step on the first tick at or after it, after a pause that starts the count of work anew.
+            worked = 0;
             var ticks = ((due - from).Ticks + tick.Ticks - 1) / tick.Ticks;
             t = from + tick * (ticks - 1);
         }

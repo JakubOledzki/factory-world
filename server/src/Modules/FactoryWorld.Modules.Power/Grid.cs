@@ -345,6 +345,9 @@ public sealed class PowerGrid : IPowerGrid
     /// <summary>How far ahead a generator's window looks for when it burns out.</summary>
     private static readonly TimeSpan RunsOutHorizon = TimeSpan.FromDays(3);
 
+    /// <summary>How closely <see cref="FuelBelow"/> finds the moment a piece of fuel is lit.</summary>
+    private static readonly TimeSpan FuelPrecision = TimeSpan.FromMilliseconds(1);
+
     /// <summary>A stretch of time in which a network runs the same way.</summary>
     /// <param name="Share">The part of its power each running generator gives, 0 to 1: they share the load by their size.</param>
     /// <param name="States">The network's generators as they were at <paramref name="Start"/>.</param>
@@ -568,6 +571,47 @@ public sealed class PowerGrid : IPowerGrid
         }
 
         return null;
+    }
+
+    /// <summary>The first moment after <paramref name="at"/> a generator has fewer than <paramref name="count"/> pieces of fuel
+    /// not burning yet, or null when that does not come within a few days.</summary>
+    public DateTimeOffset? FuelBelow(Guid id, int count, DateTimeOffset at)
+    {
+        bool Below(DateTimeOffset t) => Generator(id, t).Fuel < count;
+
+        if (Below(at))
+        {
+            return at;
+        }
+
+        // Looks ahead twice as far each time, so the timeline is worked out not much past the moment, then halves the gap.
+        var (before, step) = (at, TimeSpan.FromSeconds(1));
+        while (!Below(at + step))
+        {
+            if (step >= RunsOutHorizon)
+            {
+                return null;
+            }
+
+            before = at + step;
+            step *= 2;
+        }
+
+        var after = at + step;
+        while (after - before > FuelPrecision)
+        {
+            var middle = before + (after - before) / 2;
+            if (Below(middle))
+            {
+                after = middle;
+            }
+            else
+            {
+                before = middle;
+            }
+        }
+
+        return after;
     }
 
     /// <summary>How fast a network's machines work at <paramref name="at"/>.</summary>
@@ -979,7 +1023,13 @@ public sealed class PowerGrid : IPowerGrid
 
         public void Put(string item, DateTimeOffset now) => grid.Fuel(id, item, 1, now);
 
-        public DateTimeOffset? NextChange(DateTimeOffset now) => null;
+        /// <summary>A full fire makes room as it lights its next piece, and one with another fuel by it once it has lit the
+        /// last of that: an inserter waiting with fuel goes on then, also while nobody looks at the plot.</summary>
+        public DateTimeOffset? NextChange(DateTimeOffset now)
+        {
+            var state = grid.Generator(id, now);
+            return state.Fuel == 0 ? null : grid.FuelBelow(id, state.Fuel >= PowerRules.MaxFuel ? PowerRules.MaxFuel : 1, now);
+        }
 
         public Task SaveAsync(CancellationToken cancellationToken) => grid.SaveAsync(cancellationToken);
     }
