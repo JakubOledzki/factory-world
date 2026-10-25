@@ -100,12 +100,20 @@ public static class Items
     public const string FastInserter = "logistics_fast_inserter";
     public const string ExpressInserter = "logistics_express_inserter";
 
+    // More logistics researched in its branch: a belt that runs under what stands on the tiles it passes,
+    // an inserter that reaches two tiles each way, a faster cable car and drones that fly items between ports.
+    public const string UndergroundBelt = "logistics_underground_belt";
+    public const string LongInserter = "logistics_long_inserter";
+    public const string ExpressCableStation = "logistics_express_cable_station";
+    public const string DronePort = "logistics_drone_port";
+
     // Storage put on plots: chests take anything, piles, heaps and silos one kind of bulk goods.
     public const string WoodenChest = "storage_wooden_chest";
     public const string IronChest = "storage_iron_chest";
     public const string WoodPile = "storage_wood_pile";
     public const string Heap = "storage_heap";
     public const string GrainSilo = "storage_grain_silo";
+    public const string LogisticsDepot = "storage_logistics_depot";
 
     // Food processing: machines put on a plot turn crops into food, step by step.
     public const string Mill = "furniture_mill";
@@ -547,11 +555,16 @@ public static class Items
         [ExpressBelt] = "Ekspresowy taśmociąg",
         [FastInserter] = "Szybki podajnik",
         [ExpressInserter] = "Ekspresowy podajnik",
+        [UndergroundBelt] = "Taśmociąg podziemny",
+        [LongInserter] = "Długoramienny podajnik",
+        [ExpressCableStation] = "Ekspresowa stacja kolejki linowej",
+        [DronePort] = "Port dronów",
         [WoodenChest] = "Skrzynia drewniana",
         [IronChest] = "Skrzynia żelazna",
         [WoodPile] = "Stos drewna",
         [Heap] = "Hałda",
         [GrainSilo] = "Silos zbożowy",
+        [LogisticsDepot] = "Magazyn logistyczny",
         [Mill] = "Młyn",
         [OilPress] = "Tłocznia oleju",
         [PicklingBarrel] = "Beczka do kiszenia",
@@ -929,7 +942,13 @@ public static class Items
     public static bool IsBelt(string id) => id is Belt or FastBelt or ExpressBelt or Pipe;
 
     /// <summary>Inserters of every level.</summary>
-    public static bool IsInserter(string id) => id is Inserter or FastInserter or ExpressInserter or Pump;
+    public static bool IsInserter(string id) => id is Inserter or FastInserter or ExpressInserter or LongInserter or Pump;
+
+    /// <summary>Cable car stations of both levels.</summary>
+    public static bool IsCableStation(string id) => id is CableStation or ExpressCableStation;
+
+    /// <summary>Whatever items run along on a plot like on a belt: belts and pipes, splitters, underground belts and cable car stations.</summary>
+    public static bool IsConveyor(string id) => IsBelt(id) || IsCableStation(id) || id is Splitter or UndergroundBelt;
 
     /// <summary>Fluids: they go only through pipes and pumps, never on belts or by inserters.</summary>
     public static bool IsFluid(string id) => id is CrudeOil or NaturalGas or Gasoline or Diesel or Kerosene or Water;

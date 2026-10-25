@@ -62,7 +62,8 @@ public sealed class LogisticsDbContext(DbContextOptions<LogisticsDbContext> opti
 public sealed record LogisticsState(
     DateTimeOffset SimulatedAt, DateTimeOffset ServerTime, IReadOnlyList<PlotObject> Objects, IReadOnlyDictionary<Guid, Contents> Contents, IPowerGrid Power);
 
-public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<IMachinePorts> machines, IPlotPower power, IInventory inventory, TimeProvider time)
+public sealed class LogisticsService(
+    GameDb db, IPlotObjects plots, IEnumerable<IMachinePorts> machines, IPlotPower power, IInventory inventory, ITechnologies technologies, TimeProvider time)
     : IPlotAutomation
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -297,7 +298,7 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
             }
         }
 
-        var logistics = new PlotLogistics(reachable, contents, ports, grid);
+        var logistics = new PlotLogistics(reachable, contents, ports, grid, await GripsAsync(objects, cancellationToken));
         var simulated = logistics.Run(from, now);
         await WriteAsync(x, y, logistics.Changed.Concat(storageChanged).Distinct().Select(id => (id, contents[id])).ToList(), cancellationToken);
         foreach (var module in opened.GroupBy(o => o.Module, o => o.Port))
@@ -320,6 +321,23 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
         }
 
         return new LogisticsState(simulated, now, objects, contents, grid);
+    }
+
+    /// <summary>Pieces each inserter picks up at once, by the grippers its owner researched; one for those not listed.</summary>
+    private async Task<Dictionary<Guid, int>> GripsAsync(IReadOnlyList<PlotObject> objects, CancellationToken cancellationToken)
+    {
+        var grips = new Dictionary<Guid, int>();
+        foreach (var owned in objects.Where(o => Items.IsInserter(o.Kind) && o.Kind != Items.Pump).GroupBy(o => o.Owner))
+        {
+            var researched = await technologies.ResearchedAsync(owned.Key, cancellationToken);
+            var (bigger, industrial) = (researched.Contains(GripperTechs.Bigger), researched.Contains(GripperTechs.Industrial));
+            foreach (var o in owned.Where(_ => bigger || industrial))
+            {
+                grips[o.Id] = LogisticsRules.Grip(o.Kind, bigger, industrial);
+            }
+        }
+
+        return grips;
     }
 
     private async Task<DateTimeOffset?> SimulatedAtAsync(int x, int y, CancellationToken cancellationToken)
@@ -420,6 +438,7 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
     {
         Contents Of(Guid id) => state.Contents.GetValueOrDefault(id) ?? new Contents();
         var cables = LogisticsRules.CableLinks(state.Objects);
+        var tunnels = LogisticsRules.TunnelLinks(state.Objects);
         return new
         {
             x,
@@ -431,7 +450,7 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
             beltSlots = LogisticsRules.BeltSlots,
             beltLanes = LogisticsRules.BeltLanes,
             swingTicks = LogisticsRules.SwingTicks,
-            belts = state.Objects.Where(o => Items.IsBelt(o.Kind) || o.Kind is Items.Splitter or Items.CableStation)
+            belts = state.Objects.Where(o => Items.IsConveyor(o.Kind))
                 .Select(o => new
                 {
                     id = o.Id,
@@ -444,6 +463,8 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
                     turn = Of(o.Id).Turn,
                     // Cable stations only: the station ahead that items ride the cable to.
                     cable = cables.TryGetValue(o.Id, out var to) ? to : (Guid?)null,
+                    // Underground belts going down only: the one that brings their items up.
+                    tunnel = tunnels.TryGetValue(o.Id, out var exit) ? exit : (Guid?)null,
                 }),
             // What every item is called, for choosing a splitter's filter (and any filter, when the client asks).
             names = names || state.Objects.Any(o => o.Kind == Items.Splitter) ? Items.Names : null,
@@ -454,6 +475,10 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
                 {
                     id = o.Id,
                     hand = Of(o.Id).Hand,
+                    // How many pieces of it, with bigger grippers.
+                    count = Of(o.Id).Held(),
+                    // Tiles away it picks up behind it and drops in front.
+                    reach = LogisticsRules.Reach(o.Kind),
                     swing = Of(o.Id).Swing,
                     swingTicks = LogisticsRules.Swing(o.Kind),
                     // How fast it works on the power it has (0 stands still), and the power gathered for its next move.

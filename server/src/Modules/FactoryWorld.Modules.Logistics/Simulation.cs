@@ -26,6 +26,7 @@ public static class LogisticsRules
         [Items.FastBelt] = 2,
         [Items.ExpressBelt] = 3,
         [Items.CableStation] = 2,
+        [Items.ExpressCableStation] = 3,
         // Fluids run fast through pipes.
         [Items.Pipe] = 3,
     };
@@ -33,20 +34,59 @@ public static class LogisticsRules
     /// <summary>Tiles a cable runs at most from one station to the next one ahead.</summary>
     public const int CableSpan = 24;
 
-    /// <summary>Which station each cable station sends its items to over the cable: the nearest one
-    /// ahead of it, facing the same way, at least two tiles off and no further than <see cref="CableSpan"/>.</summary>
+    /// <summary>Tiles the cable of an express station runs at most.</summary>
+    public const int ExpressCableSpan = 48;
+
+    public static int Span(string station) => station == Items.ExpressCableStation ? ExpressCableSpan : CableSpan;
+
+    /// <summary>Which station each cable station sends its items to over the cable: the nearest one (of
+    /// either level) ahead of it, facing the same way, at least two tiles off and no further than its <see cref="Span"/>.</summary>
     public static Dictionary<Guid, Guid> CableLinks(IEnumerable<PlotObject> objects)
     {
-        var stations = objects.Where(o => o.Kind == Items.CableStation).ToDictionary(o => (o.TileX, o.TileY));
+        var stations = objects.Where(o => Items.IsCableStation(o.Kind)).ToDictionary(o => (o.TileX, o.TileY));
         var links = new Dictionary<Guid, Guid>();
         foreach (var station in stations.Values)
         {
             var (dx, dy) = Facing(station.Rotation);
-            for (var d = 2; d <= CableSpan; d++)
+            for (var d = 2; d <= Span(station.Kind); d++)
             {
                 if (stations.TryGetValue((station.TileX + dx * d, station.TileY + dy * d), out var other) && other.Rotation == station.Rotation)
                 {
                     links[station.Id] = other.Id;
+                    break;
+                }
+            }
+        }
+
+        return links;
+    }
+
+    /// <summary>Tiles an underground belt reaches at most to the one that brings its items up again: up to 4 tiles between them.</summary>
+    public const int TunnelSpan = 5;
+
+    /// <summary>Where each underground belt that takes items down sends them: to the nearest underground belt
+    /// ahead of it, facing the same way, no further than <see cref="TunnelSpan"/>, which brings them up. Along a
+    /// line of them they pair up from the back, one going down, the next coming up.</summary>
+    public static Dictionary<Guid, Guid> TunnelLinks(IEnumerable<PlotObject> objects)
+    {
+        var tunnels = objects.Where(o => o.Kind == Items.UndergroundBelt).ToDictionary(o => (o.TileX, o.TileY));
+        var links = new Dictionary<Guid, Guid>();
+        var exits = new HashSet<Guid>();
+        // The furthest back along the way they run first.
+        foreach (var entry in tunnels.Values.OrderBy(o => Facing(o.Rotation).Dx * o.TileX + Facing(o.Rotation).Dy * o.TileY).ThenBy(o => o.Id))
+        {
+            if (exits.Contains(entry.Id))
+            {
+                continue;
+            }
+
+            var (dx, dy) = Facing(entry.Rotation);
+            for (var d = 1; d <= TunnelSpan; d++)
+            {
+                if (tunnels.TryGetValue((entry.TileX + dx * d, entry.TileY + dy * d), out var exit) && exit.Rotation == entry.Rotation)
+                {
+                    links[entry.Id] = exit.Id;
+                    exits.Add(exit.Id);
                     break;
                 }
             }
@@ -61,8 +101,19 @@ public static class LogisticsRules
         [Items.Inserter] = SwingTicks,
         [Items.FastInserter] = 2,
         [Items.ExpressInserter] = 1,
+        [Items.LongInserter] = 3,
         [Items.Pump] = 1,
     };
+
+    /// <summary>Tiles away an inserter picks up behind it and drops in front: two for the long-armed one.</summary>
+    public static int Reach(string kind) => kind == Items.LongInserter ? 2 : 1;
+
+    /// <summary>Pieces of one item an inserter carries at once: more once its owner researched bigger grippers. Pumps move one unit.</summary>
+    public static int Grip(string kind, bool bigger, bool industrial) =>
+        kind == Items.Pump ? 1 : industrial ? 3 : bigger ? 2 : 1;
+
+    /// <summary>Pieces a port of drones flies to the ports that want them each tick, while it has power.</summary>
+    public const int DroneLoad = 1;
 
     /// <summary>Places a tick an item moves along a belt of this kind; a splitter's own speed comes from the belt feeding it.</summary>
     public static int BeltSpeed(string kind) => BeltSpeeds.GetValueOrDefault(kind, 1);
@@ -100,6 +151,12 @@ public sealed class Contents
 
     /// <summary>The item in an inserter's hand.</summary>
     public string? Hand { get; set; }
+
+    /// <summary>How many pieces of <see cref="Hand"/> it holds when more than one (bigger grippers); 0 is one.</summary>
+    public int Count { get; set; }
+
+    /// <summary>Pieces in the inserter's hand.</summary>
+    public int Held() => Hand is null ? 0 : Math.Max(1, Count);
 
     /// <summary>How far the inserter's arm is, 0 (at the pick-up side) to its swing ticks (<see cref="LogisticsRules.Swing"/>).</summary>
     public int Swing { get; set; }
@@ -141,7 +198,7 @@ public sealed class Contents
 
         if (Hand is not null)
         {
-            yield return (Hand, 1);
+            yield return (Hand, Held());
         }
 
         foreach (var stack in Items ?? [])
@@ -225,8 +282,11 @@ public sealed class FilteredPort(IMachinePort port, string only) : IMachinePort
 public sealed class PlotLogistics
 {
     /// <summary>A belt or a splitter: lanes of places that items move along.</summary>
-    private sealed class Belt(Guid id, int x, int y, int rotation, Contents contents, bool splitter, int speed, bool fluid = false)
+    private sealed class Belt(Guid id, int x, int y, int rotation, Contents contents, bool splitter, int speed, bool fluid = false, bool tunnel = false)
     {
+        /// <summary>An underground belt: it runs straight, never turning a corner.</summary>
+        public bool Tunnel { get; } = tunnel;
+
         /// <summary>A pipe: it carries fluids only, and joins only other pipes.</summary>
         public bool Fluid { get; } = fluid;
 
@@ -249,8 +309,11 @@ public sealed class PlotLogistics
     /// <summary>The belt items go on to, the lane each lane leads to and the place on it they come on at.</summary>
     private sealed record Link(Belt To, int[] Into, int Entry);
 
-    private sealed class Inserter(Guid id, Contents contents, int swingTicks, bool fluid = false)
+    private sealed class Inserter(Guid id, Contents contents, int swingTicks, bool fluid = false, int grip = 1)
     {
+        /// <summary>Pieces of one item it picks up at once.</summary>
+        public int Grip { get; } = grip;
+
         /// <summary>A pump: it moves fluids only, from and onto pipes and machines; an inserter never touches them.</summary>
         public bool Fluid { get; } = fluid;
 
@@ -276,6 +339,12 @@ public sealed class PlotLogistics
     private readonly List<Inserter> _inserters = [];
     private readonly List<IMachinePort> _ports = [];
 
+    /// <summary>A port of drones: what it holds, and its time on the plot's power grid.</summary>
+    private sealed record DronePort(Guid Id, Contents Contents, IPowerClock? Clock);
+
+    private readonly List<DronePort> _drones = [];
+    private static readonly StorageKind DroneStorage = Storages.Find(Items.DronePort)!;
+
     /// <summary>Turns belts take in a tick: as many as the fastest one moves places.</summary>
     private readonly int _phases;
 
@@ -286,11 +355,14 @@ public sealed class PlotLogistics
     /// <param name="contents">Contents of belts and inserters by object id; missing ones start empty and are added.</param>
     /// <param name="ports">Machines and storage inserters can reach, by object id.</param>
     /// <param name="power">The plot's power grid; without one inserters work as if they had all the power they need.</param>
-    public PlotLogistics(IReadOnlyList<PlotObject> objects, Dictionary<Guid, Contents> contents, IReadOnlyDictionary<Guid, IMachinePort> ports, IPowerGrid? power = null)
+    /// <param name="grips">Pieces each inserter picks up at once, by object id, when more than one.</param>
+    public PlotLogistics(
+        IReadOnlyList<PlotObject> objects, Dictionary<Guid, Contents> contents, IReadOnlyDictionary<Guid, IMachinePort> ports, IPowerGrid? power = null,
+        IReadOnlyDictionary<Guid, int>? grips = null)
     {
         var at = objects.ToDictionary(o => (o.TileX, o.TileY));
         var belts = new Dictionary<(int, int), Belt>();
-        foreach (var o in objects.Where(o => Items.IsBelt(o.Kind) || o.Kind is Items.Splitter or Items.CableStation).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
+        foreach (var o in objects.Where(o => Items.IsConveyor(o.Kind)).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
         {
             var c = Contents(contents, o.Id);
             if (c.Belt is not { Length: LogisticsRules.BeltSlots * LogisticsRules.BeltLanes })
@@ -301,15 +373,39 @@ public sealed class PlotLogistics
                 c.Belt = slots;
             }
 
-            belts[(o.TileX, o.TileY)] = new Belt(o.Id, o.TileX, o.TileY, o.Rotation, c, o.Kind == Items.Splitter, LogisticsRules.BeltSpeed(o.Kind), Items.CarriesFluids(o.Kind));
+            belts[(o.TileX, o.TileY)] = new Belt(o.Id, o.TileX, o.TileY, o.Rotation, c, o.Kind == Items.Splitter, LogisticsRules.BeltSpeed(o.Kind),
+                Items.CarriesFluids(o.Kind), o.Kind == Items.UndergroundBelt);
         }
 
-        foreach (var belt in belts.Values.Where(b => b.IsSplitter))
+        var byId = belts.Values.ToDictionary(b => b.Id);
+        var tunnels = LogisticsRules.TunnelLinks(objects);
+
+        // A splitter or an underground belt going down keeps up with the belt that feeds it from behind; the one
+        // coming up again as fast as the one that took its items down.
+        // Over and over, as one may feed the next (a line of tunnels, a splitter after one), until nothing changes.
+        for (var pass = 0; pass <= belts.Count; pass++)
         {
-            var (dx, dy) = LogisticsRules.Facing(belt.Rotation);
-            if (belts.GetValueOrDefault((belt.X - dx, belt.Y - dy)) is { IsSplitter: false } feeder && feeder.Rotation == belt.Rotation)
+            var changed = false;
+            foreach (var belt in belts.Values.Where(b => b.IsSplitter || (b.Tunnel && !tunnels.ContainsValue(b.Id))))
             {
-                belt.Speed = feeder.Speed;
+                var (dx, dy) = LogisticsRules.Facing(belt.Rotation);
+                if (belts.GetValueOrDefault((belt.X - dx, belt.Y - dy)) is { IsSplitter: false } feeder && feeder.Rotation == belt.Rotation
+                    && feeder.Speed != belt.Speed)
+                {
+                    belt.Speed = feeder.Speed;
+                    changed = true;
+                }
+            }
+
+            foreach (var (entry, exit) in tunnels)
+            {
+                changed |= byId[exit].Speed != byId[entry].Speed;
+                byId[exit].Speed = byId[entry].Speed;
+            }
+
+            if (!changed)
+            {
+                break;
             }
         }
 
@@ -317,9 +413,9 @@ public sealed class PlotLogistics
 
         // Only belts turn corners; a splitter always runs straight.
         // Pipes and belts never join, so each bends only by its own kind.
-        var beltRotations = belts.Where(b => !b.Value.IsSplitter && !b.Value.Fluid).ToDictionary(b => b.Key, b => b.Value.Rotation);
+        // An underground belt going down feeds no belt in front of it, only the one it comes up at.
+        var beltRotations = belts.Where(b => !b.Value.IsSplitter && !b.Value.Fluid && !tunnels.ContainsKey(b.Value.Id)).ToDictionary(b => b.Key, b => b.Value.Rotation);
         var pipeRotations = belts.Where(b => b.Value.Fluid).ToDictionary(b => b.Key, b => b.Value.Rotation);
-        var byId = belts.Values.ToDictionary(b => b.Id);
         var cables = LogisticsRules.CableLinks(objects);
         foreach (var belt in belts.Values)
         {
@@ -328,6 +424,11 @@ public sealed class PlotLogistics
             {
                 // Over the cable onto the start of the station ahead.
                 belt.Out[0] = new Link(byId[station], [0, 1], 0);
+            }
+            else if (tunnels.TryGetValue(belt.Id, out var exit))
+            {
+                // Under the ground onto the start of the one that comes up again.
+                belt.Out[0] = new Link(byId[exit], [0, 1], 0);
             }
             else if (belt.IsSplitter)
             {
@@ -351,10 +452,14 @@ public sealed class PlotLogistics
         foreach (var o in objects.Where(o => Items.IsInserter(o.Kind)).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
         {
             var (dx, dy) = LogisticsRules.Facing(o.Rotation);
+            var reach = LogisticsRules.Reach(o.Kind);
             var fluid = Items.CarriesFluids(o.Kind);
-            var inserter = new Inserter(o.Id, Contents(contents, o.Id), LogisticsRules.Swing(o.Kind), fluid) { Clock = power?.Clock(o.Id) };
-            var from = (o.TileX - dx, o.TileY - dy);
-            var to = (o.TileX + dx, o.TileY + dy);
+            var inserter = new Inserter(o.Id, Contents(contents, o.Id), LogisticsRules.Swing(o.Kind), fluid, grips?.GetValueOrDefault(o.Id) ?? 1)
+            {
+                Clock = power?.Clock(o.Id),
+            };
+            var from = (o.TileX - dx * reach, o.TileY - dy * reach);
+            var to = (o.TileX + dx * reach, o.TileY + dy * reach);
             // A pump reaches pipes only, an inserter belts only.
             inserter.FromBelt = belts.GetValueOrDefault(from) is { } fromBelt && fromBelt.Fluid == fluid ? fromBelt : null;
             inserter.ToBelt = belts.GetValueOrDefault(to) is { } toBelt && toBelt.Fluid == fluid ? toBelt : null;
@@ -378,6 +483,10 @@ public sealed class PlotLogistics
         }
 
         _ports.AddRange(ports.Values.Distinct());
+        foreach (var o in objects.Where(o => o.Kind == Items.DronePort).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
+        {
+            _drones.Add(new DronePort(o.Id, Contents(contents, o.Id), power?.Clock(o.Id)));
+        }
     }
 
     /// <summary>How items leave <paramref name="belt"/> towards <paramref name="way"/>: onto the belt
@@ -396,7 +505,7 @@ public sealed class PlotLogistics
             return new Link(next, [0, 1], 0);
         }
 
-        if (!next.IsSplitter && Bend(rotations, next.X, next.Y, next.Rotation) is not 0)
+        if (!next.IsSplitter && !next.Tunnel && Bend(rotations, next.X, next.Y, next.Rotation) is not 0)
         {
             // From the side of a belt fed from that side only: it is a corner, the lanes go round it.
             return new Link(next, [0, 1], 0);
@@ -457,8 +566,9 @@ public sealed class PlotLogistics
         foreach (var o in objects.Where(o => Items.IsInserter(o.Kind)))
         {
             var (dx, dy) = LogisticsRules.Facing(o.Rotation);
-            yield return (o.TileX - dx, o.TileY - dy);
-            yield return (o.TileX + dx, o.TileY + dy);
+            var reach = LogisticsRules.Reach(o.Kind);
+            yield return (o.TileX - dx * reach, o.TileY - dy * reach);
+            yield return (o.TileX + dx * reach, o.TileY + dy * reach);
         }
     }
 
@@ -468,7 +578,7 @@ public sealed class PlotLogistics
     {
         var tick = LogisticsRules.Tick;
         var last = from + tick * Math.Max(0, (now - from).Ticks / tick.Ticks);
-        if (_belts.Count == 0 && _inserters.Count == 0)
+        if (_belts.Count == 0 && _inserters.Count == 0 && _drones.Count == 0)
         {
             return last;
         }
@@ -546,9 +656,11 @@ public sealed class PlotLogistics
                 {
                     c.Swing++;
                 }
-                else if (Drop(inserter, hand, now))
+                else if (Drop(inserter, hand, c.Held(), now) is var left && left < c.Held())
                 {
-                    c.Hand = null;
+                    // What does not fit yet stays in its hand for the next tick.
+                    c.Hand = left == 0 ? null : hand;
+                    c.Count = left > 1 ? left : 0;
                 }
                 else
                 {
@@ -559,9 +671,10 @@ public sealed class PlotLogistics
             {
                 c.Swing--;
             }
-            else if (Pick(inserter, now) is { } picked)
+            else if (Pick(inserter, now) is ({ } picked, var count))
             {
                 c.Hand = picked;
+                c.Count = count > 1 ? count : 0;
             }
             else
             {
@@ -577,7 +690,54 @@ public sealed class PlotLogistics
             moved = true;
         }
 
-        return moved;
+        return Fly(now) | moved;
+    }
+
+    /// <summary>Drones fly from each port without a filter to the ports set to take what it holds, a few pieces a
+    /// tick, while both ports have power; true when any flew.</summary>
+    private bool Fly(DateTimeOffset now)
+    {
+        var flew = false;
+        foreach (var from in _drones)
+        {
+            if (from.Contents.Only is not null || from.Contents.Items is not { Count: > 0 } stacks || (from.Clock?.Speed(now) ?? 1) <= 0)
+            {
+                continue;
+            }
+
+            var load = LogisticsRules.DroneLoad;
+            foreach (var item in stacks.Select(st => st.Item).ToList())
+            {
+                foreach (var to in _drones)
+                {
+                    if (load == 0)
+                    {
+                        break;
+                    }
+
+                    if (to == from || to.Contents.Only != item || (to.Clock?.Speed(now) ?? 1) <= 0)
+                    {
+                        continue;
+                    }
+
+                    var have = stacks.FirstOrDefault(st => st.Item == item)?.Quantity ?? 0;
+                    var flown = Math.Min(Math.Min(load, have), Storages.Room(DroneStorage, to.Contents.Items ??= [], item));
+                    if (flown <= 0)
+                    {
+                        continue;
+                    }
+
+                    Storages.Remove(stacks, item, flown);
+                    Storages.Add(to.Contents.Items, item, flown);
+                    load -= flown;
+                    Changed.Add(to.Id);
+                    Changed.Add(from.Id);
+                    flew = true;
+                }
+            }
+        }
+
+        return flew;
     }
 
     /// <summary>One turn of the belts within a tick: those fast enough move their items one place on.</summary>
@@ -652,7 +812,8 @@ public sealed class PlotLogistics
         return false;
     }
 
-    private string? Pick(Inserter inserter, DateTimeOffset now)
+    /// <summary>What an inserter picks up: one item, and as many more pieces of it as its grip holds when they are there.</summary>
+    private (string? Item, int Count) Pick(Inserter inserter, DateTimeOffset now)
     {
         // An inserter with a filter picks up its item only.
         var only = inserter.Contents.Only;
@@ -667,39 +828,50 @@ public sealed class PlotLogistics
         }
         else
         {
-            return null;
+            return (null, 0);
         }
 
         if (inserter.FromBelt is { } belt)
         {
-            // The item furthest along goes first, from either lane.
-            for (var i = LogisticsRules.BeltSlots - 1; i >= 0; i--)
+            // The item furthest along goes first, from either lane, then more of the same.
+            string? picked = null;
+            var count = 0;
+            for (var i = LogisticsRules.BeltSlots - 1; i >= 0 && count < inserter.Grip; i--)
             {
-                for (var lane = 0; lane < LogisticsRules.BeltLanes; lane++)
+                for (var lane = 0; lane < LogisticsRules.BeltLanes && count < inserter.Grip; lane++)
                 {
                     var at = lane * LogisticsRules.BeltSlots + i;
-                    if (belt.Slots[at] is { } item && wanted(item))
+                    if (belt.Slots[at] is { } item && (picked is null ? wanted(item) : item == picked))
                     {
                         belt.Slots[at] = null;
                         Changed.Add(belt.Id);
-                        return item;
+                        picked = item;
+                        count++;
                     }
                 }
             }
 
-            return null;
+            return (picked, count);
         }
 
         if (inserter.FromPort is { } from && from.Output(now, wanted) is { } output)
         {
             from.Take(output, now);
-            return output;
+            var count = 1;
+            while (count < inserter.Grip && from.Output(now, item => item == output) == output)
+            {
+                from.Take(output, now);
+                count++;
+            }
+
+            return (output, count);
         }
 
-        return null;
+        return (null, 0);
     }
 
-    private bool Drop(Inserter inserter, string item, DateTimeOffset now)
+    /// <summary>Drops what an inserter holds where it takes it; returns how many pieces are left in its hand.</summary>
+    private int Drop(Inserter inserter, string item, int count, DateTimeOffset now)
     {
         if (inserter.ToBelt is { } belt)
         {
@@ -708,25 +880,25 @@ public sealed class PlotLogistics
                 foreach (var i in DropOrder)
                 {
                     var at = lane * LogisticsRules.BeltSlots + i;
-                    if (belt.Slots[at] is null)
+                    if (count > 0 && belt.Slots[at] is null)
                     {
                         belt.Slots[at] = item;
                         Changed.Add(belt.Id);
-                        return true;
+                        count--;
                     }
                 }
             }
 
-            return false;
+            return count;
         }
 
-        if (inserter.ToPort is { } port && port.Accepts(item, now))
+        while (count > 0 && inserter.ToPort is { } port && port.Accepts(item, now))
         {
             port.Put(item, now);
-            return true;
+            count--;
         }
 
-        return false;
+        return count;
     }
 
     private static Contents Contents(Dictionary<Guid, Contents> contents, Guid id)
