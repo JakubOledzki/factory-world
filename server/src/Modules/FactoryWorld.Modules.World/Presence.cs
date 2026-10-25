@@ -23,6 +23,11 @@ public sealed class PlotPresence(TimeProvider time)
 
     private readonly ConcurrentDictionary<Guid, Spot> _spots = new();
 
+    /// <summary>Who is on each plot, so that a player asking about one plot is not answered by going through every plot.</summary>
+    private readonly ConcurrentDictionary<(int X, int Y), ConcurrentDictionary<Guid, byte>> _onPlot = new();
+
+    private long _nextSweep;
+
     /// <summary>Whether a character's name and look are needed before <see cref="Update"/> (the player was not on this plot).</summary>
     public bool Knows(Guid player, int plotX, int plotY) =>
         _spots.TryGetValue(player, out var spot) && spot.PlotX == plotX && spot.PlotY == plotY;
@@ -34,38 +39,67 @@ public sealed class PlotPresence(TimeProvider time)
         y = Math.Clamp(double.IsFinite(y) ? y : 0, 0, PlotLayout.Size);
         facing = Facings.Contains(facing) ? facing! : "down";
         var now = time.GetUtcNow();
+        Spot? before = null;
         _spots.AddOrUpdate(player,
             _ => new Spot(plotX, plotY, look?.Name ?? "?", look?.Appearance ?? new { }, x, y, facing, walking, now),
-            (_, old) => old with
+            (_, old) =>
             {
-                PlotX = plotX,
-                PlotY = plotY,
-                Name = look?.Name ?? old.Name,
-                Appearance = look?.Appearance ?? old.Appearance,
-                X = x,
-                Y = y,
-                Facing = facing,
-                Walking = walking,
-                Seen = now,
+                before = old;
+                return old with
+                {
+                    PlotX = plotX,
+                    PlotY = plotY,
+                    Name = look?.Name ?? old.Name,
+                    Appearance = look?.Appearance ?? old.Appearance,
+                    X = x,
+                    Y = y,
+                    Facing = facing,
+                    Walking = walking,
+                    Seen = now,
+                };
             });
+        if (before is { } old && (old.PlotX, old.PlotY) != (plotX, plotY))
+        {
+            OffPlot(player, old.PlotX, old.PlotY);
+        }
+
+        _onPlot.GetOrAdd((plotX, plotY), _ => new ConcurrentDictionary<Guid, byte>())[player] = 0;
     }
 
-    public void Leave(Guid player) => _spots.TryRemove(player, out _);
+    public void Leave(Guid player)
+    {
+        if (_spots.TryRemove(player, out var spot))
+        {
+            OffPlot(player, spot.PlotX, spot.PlotY);
+        }
+    }
 
     /// <summary>The players on a plot other than <paramref name="viewer"/>, as the client draws them.</summary>
     public IReadOnlyList<object> Others(Guid viewer, int plotX, int plotY)
     {
         var now = time.GetUtcNow();
+        Sweep(now);
         var others = new List<object>();
-        foreach (var (player, spot) in _spots)
+        if (!_onPlot.TryGetValue((plotX, plotY), out var here))
         {
-            if (now - spot.Seen > Timeout)
+            return others;
+        }
+
+        foreach (var player in here.Keys)
+        {
+            if (!_spots.TryGetValue(player, out var spot) || spot.PlotX != plotX || spot.PlotY != plotY)
             {
-                _spots.TryRemove(new KeyValuePair<Guid, Spot>(player, spot));
+                here.TryRemove(player, out _);
                 continue;
             }
 
-            if (player != viewer && spot.PlotX == plotX && spot.PlotY == plotY)
+            if (now - spot.Seen > Timeout)
+            {
+                Expire(player, spot);
+                continue;
+            }
+
+            if (player != viewer)
             {
                 others.Add(new
                 {
@@ -81,6 +115,46 @@ public sealed class PlotPresence(TimeProvider time)
         }
 
         return others;
+    }
+
+    /// <summary>Now and then, forgets players who went quiet on plots nobody else asks about.</summary>
+    private void Sweep(DateTimeOffset now)
+    {
+        var due = Interlocked.Read(ref _nextSweep);
+        if (now.UtcTicks < due || Interlocked.CompareExchange(ref _nextSweep, (now + Timeout).UtcTicks, due) != due)
+        {
+            return;
+        }
+
+        foreach (var (player, spot) in _spots)
+        {
+            if (now - spot.Seen > Timeout)
+            {
+                Expire(player, spot);
+            }
+        }
+    }
+
+    private void Expire(Guid player, Spot spot)
+    {
+        // Only this very spot: the player may have just sent where they are again.
+        if (_spots.TryRemove(new KeyValuePair<Guid, Spot>(player, spot)))
+        {
+            OffPlot(player, spot.PlotX, spot.PlotY);
+        }
+    }
+
+    private void OffPlot(Guid player, int plotX, int plotY)
+    {
+        if (_onPlot.TryGetValue((plotX, plotY), out var there))
+        {
+            there.TryRemove(player, out _);
+            if (there.IsEmpty)
+            {
+                // A player stepping on at this moment adds themselves again on their next word.
+                _onPlot.TryRemove(new KeyValuePair<(int, int), ConcurrentDictionary<Guid, byte>>((plotX, plotY), there));
+            }
+        }
     }
 }
 

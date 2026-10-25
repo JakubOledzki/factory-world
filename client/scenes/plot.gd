@@ -317,6 +317,8 @@ const LOGISTICS_POLL := 1000.0
 const STATION_POLL := 4000.0
 ## How often (ms) the player says where they stand and sees the others on the plot.
 const PRESENCE_POLL := 150.0
+## How often (ms) a player alone on the plot says where they stand.
+const PRESENCE_POLL_ALONE := 1000.0
 ## Crops in the order of the art; the server sends their names and growing times.
 const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower"]
 ## A crop shows as a sprout until this much of its growing time is left, then half grown.
@@ -3297,7 +3299,11 @@ func _poll_presence() -> void:
 	})
 	_polling_presence = false
 	if reply["type"] == "plot.presence":
-		_others.apply(reply["payload"].get("players", []))
+		var players: Array = reply["payload"].get("players", [])
+		_others.apply(players)
+		if players.is_empty():
+			# Alone on the plot: nobody needs to see this player walk, so asking less often is enough to notice someone coming.
+			_next_presence_poll = Time.get_ticks_msec() + PRESENCE_POLL_ALONE
 	elif reply["type"] == "error":
 		_others.clear()
 		# Not allowed here (any more), or the connection dropped: try again in a while.
