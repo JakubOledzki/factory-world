@@ -1,3 +1,4 @@
+using FactoryWorld.Modules.Abstractions.Contracts;
 using FactoryWorld.Modules.Characters;
 
 namespace FactoryWorld.Server.Tests;
@@ -121,6 +122,16 @@ public sealed class LevelingTests
     [InlineData(5_841_396, 100)]
     [InlineData(99_999_999, 100)]
     public void Level_follows_the_xp_table(long xp, int level) => Assert.Equal(level, Leveling.LevelForXp(xp));
+
+    [Fact]
+    public void Level_bonuses_come_every_fifth_level_and_add_up()
+    {
+        Assert.Empty(LevelBonuses.For(4));
+        Assert.Equal(new Dictionary<string, int> { ["forestry"] = 5 }, LevelBonuses.For(5));
+        var top = LevelBonuses.For(Leveling.MaxLevel);
+        Assert.All(Industries.All.Where(i => i != Industries.Trade), i => Assert.Equal(15, top[i]));
+        Assert.Equal(5, top[Industries.Trade]);
+    }
 
     [Fact]
     public void Every_level_boundary_is_exact()
