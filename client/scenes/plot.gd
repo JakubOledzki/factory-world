@@ -450,6 +450,9 @@ var _placed := {}
 var _placing := ""
 ## The placed object whose window is open, or (-1, -1).
 var _using := Vector2i(-1, -1)
+## The placed object whose window or menu was opened last, marked on the ground while that window stays open; (-1, -1) for none.
+## Unlike _using it also covers the market, which stays open while the player walks away, and belts' and inserters' menus.
+var _in_use := Vector2i(-1, -1)
 ## Which way the next belt or inserter will face (see DIRECTIONS).
 var _place_rotation := 1
 var _logistics: PlotLogistics
@@ -1646,6 +1649,7 @@ func _power_note(id: String) -> String:
 
 func _draw_marks() -> void:
 	_draw_power_reach()
+	_draw_in_use()
 	if _hold_id != "":
 		_draw_hold()
 	if _hovered.x >= 0 and WORK.has(_work_kind(_hovered)) and not _fields.has(_hovered):
@@ -1674,6 +1678,24 @@ func _draw_marks() -> void:
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8))
 	if _work.x >= 0:
 		_draw_ring(_cell_centre(_work), Color(1, 1, 1, 0.7))
+
+
+## A gently pulsing golden ring (and the footprint of a big one) under the object whose window is open,
+## so it is clear which furnace or chest the window belongs to.
+func _draw_in_use() -> void:
+	if _in_use.x < 0 or not _placed.has(_in_use):
+		return
+	var kind: String = _placed[_in_use]["kind"]
+	var open := _using_window_open() or (_bank_window.visible and kind in [BANK, BANK_BRANCH])
+	if not open:
+		_in_use = Vector2i(-1, -1)
+		return
+	var pulse := 0.65 + 0.3 * sin(Time.get_ticks_msec() / 250.0)
+	var gold := Color(0.96, 0.69, 0.25, pulse)
+	var anchor := _anchor(_in_use)
+	_draw_footprint(kind, anchor, gold)
+	_draw_ring(_object_centre(kind, anchor), gold, _ring_size(kind))
+	_draw_ring(_object_centre(kind, anchor), Color(gold, pulse * 0.4), _ring_size(kind) * 1.15)
 
 
 ## The tiles poles power, on the ground: of every pole while a pole, a generator or a machine that
@@ -2713,6 +2735,7 @@ func _use_placed(cell: Vector2i) -> void:
 		return
 	var object: Dictionary = _placed[cell]
 	_using = cell
+	_in_use = cell
 	_station_window.hide_window()
 	_hide_placed_windows()
 	if object["kind"] == COMPUTER:
@@ -2983,6 +3006,7 @@ func _on_object_chosen(choice: int) -> void:
 func _open_splitter(cell: Vector2i) -> void:
 	var object: Dictionary = _placed[cell]
 	_hide_placed_windows()
+	_in_use = cell
 	_splitter_window.names = _logistics.names
 	_splitter_window.set_items(_items)
 	_splitter_window.open_at(_at, object["id"], int(object.get("rotation", 0)), _logistics.splitter(object["id"]))
@@ -2992,6 +3016,7 @@ func _open_splitter(cell: Vector2i) -> void:
 func _open_filter(object: Dictionary, role: String) -> void:
 	if role == "inserter":
 		_hide_placed_windows()
+		_in_use = Vector2i(object["tileX"], object["tileY"])
 	elif not UI.touch():
 		# Beside the window of the storage or machine; on a phone, over it, as it would not fit beside.
 		_filter_window.position = Vector2(maxf(12.0, get_viewport_rect().size.x - 2 * 412.0), 64)
