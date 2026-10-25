@@ -23,6 +23,139 @@ namespace FactoryWorld.Modules.World.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.BankAccountRow", b =>
+                {
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("player_id");
+
+                    b.Property<long>("BalanceCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("balance_cents");
+
+                    b.Property<DateTimeOffset>("OpenedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("opened_at");
+
+                    b.HasKey("CompanyId", "PlayerId");
+
+                    b.HasIndex("PlayerId");
+
+                    b.ToTable("bank_accounts", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.BankBuildingRow", b =>
+                {
+                    b.Property<Guid>("ObjectId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("kind");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("ObjectId");
+
+                    b.HasIndex("CompanyId");
+
+                    b.ToTable("bank_buildings", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.BankRow", b =>
+                {
+                    b.Property<Guid>("CompanyId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("name");
+
+                    b.HasKey("CompanyId");
+
+                    b.ToTable("banks", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.BankTransferRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("ArrivesAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("arrives_at");
+
+                    b.Property<long>("Cents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("cents");
+
+                    b.Property<Guid?>("FromCompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("from_company_id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("player_id");
+
+                    b.Property<DateTimeOffset>("SentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("sent_at");
+
+                    b.Property<Guid?>("ToCompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("to_company_id");
+
+                    b.Property<Guid>("ToPlayerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("to_player_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ArrivesAt");
+
+                    b.HasIndex("PlayerId");
+
+                    b.HasIndex("ToPlayerId", "ToCompanyId");
+
+                    b.ToTable("bank_transfers", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.BeachFind", b =>
                 {
                     b.Property<int>("X")

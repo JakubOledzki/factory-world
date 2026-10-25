@@ -176,6 +176,7 @@ public static class TechTree
 
     public const string Megaprojects = CompanyTechs.Megaprojects;
     public const string CorporateFinance = CompanyTechs.CorporateFinance;
+    public const string Banking = CompanyTechs.Banking;
 
     public static readonly IReadOnlyList<Technology> Technologies =
     [
@@ -622,6 +623,9 @@ public static class TechTree
         new(CorporateFinance, "Finanse korporacyjne", "Tylko dla spółek: spółka wchodzi na giełdę, a gracze spoza niej kupują jej akcje.",
             [Commerce, Headquarters], [(Items.Paper, 500), (Items.Blueprint, 10), (Items.CircuitBoard, 50)], TimeSpan.FromMinutes(20), 200,
             [], CompanyOnly: true),
+        new(Banking, "Bankowość", "Tylko dla spółek: spółka stawia w mieście bank, a w innych miastach jego oddziały; gracze trzymają w nim pieniądze na kontach i robią przelewy.",
+            [CorporateFinance], [(Items.Paper, 500), (Items.MarbleSlabs, 40), (Items.Blueprint, 10)], TimeSpan.FromMinutes(20), 200,
+            [Items.Bank, Items.BankBranch], CompanyOnly: true),
     ];
 
     /// <summary>
@@ -662,7 +666,7 @@ public static class TechTree
             [RoboticHall, OxygenConverter, RollingMill, ControlCenter, ContinuousCaster, AutomatedWarehouse, SteelCombine, Megafactory]),
         new("space", "Kosmos i fuzja", Items.LaunchRocket,
             [RocketEngine, PlasmaChamber, Avionics, PlasmaControl, RocketStage, Satellite, FusionReactor, LaunchRocket, FusionPlant]),
-        new("company", "Spółki", Items.CompanyHq, [Megaprojects, CorporateFinance]),
+        new("company", "Spółki", Items.CompanyHq, [Megaprojects, CorporateFinance, Banking]),
     ];
 
     /// <summary>The branch each technology belongs to.</summary>

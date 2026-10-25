@@ -47,7 +47,7 @@ public static class PlotObjects
         Items.AutomatedWarehouse, Items.SteelCombine, Items.Megafactory, Items.FusionPlant,
         Items.Canteen, Items.Slaughterhouse, Items.Dairy, Items.PotatoDistillery, Items.BiogasPlant, Items.Stable, Items.Bellows,
         Items.Farmstead, Items.ManorFarm,
-        Items.ExportChest, Items.BuyMarket, Items.RailPort,
+        Items.ExportChest, Items.BuyMarket, Items.RailPort, Items.Bank, Items.BankBranch,
     };
 
     /// <summary>What stands on the glacier only, or on the glacier and the tundra.</summary>
@@ -119,7 +119,8 @@ public static class PlotObjects
         }
 
         if (kind is Items.FreightTerminal or Items.CompanyHq or Items.ControlCenter or Items.Canteen or Items.Stable or Items.Bellows
-            or Items.ExportChest or Items.RailPort && others.Any(o => o.Kind == kind))
+            or Items.ExportChest or Items.RailPort && others.Any(o => o.Kind == kind)
+            || Items.IsBank(kind) && others.Any(o => Items.IsBank(o.Kind)))
         {
             throw new GameException("has_one", "A plot has room for one of these.");
         }

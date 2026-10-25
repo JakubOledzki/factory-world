@@ -39,6 +39,7 @@ const ACTIONS := {
 	"stats": [KEY_L],
 	"contracts": [KEY_J],
 	"company": [KEY_K],
+	"bank": [KEY_B],
 	"cancel": [KEY_ESCAPE],
 	"rotate": [KEY_R],
 	"world_map": [KEY_N],
@@ -112,6 +113,7 @@ var _portrait: CharacterPreview
 var _crafting_window: CraftingWindow
 var _research_window: ResearchWindow
 var _company_window: CompanyWindow
+var _bank_window: BankWindow
 var _furnace_window: FurnaceWindow
 var _sorter_window: SorterWindow
 var _stats_window: StatsWindow
@@ -542,6 +544,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_contracts_window.toggle()
 	elif event.is_action_pressed("company"):
 		_company_window.toggle()
+	elif event.is_action_pressed("bank"):
+		_bank_window.toggle()
 	elif event.is_action_pressed("achievements"):
 		_achievements_window.toggle()
 	elif event.is_action_pressed("character"):
@@ -775,6 +779,7 @@ func _build_hud() -> void:
 	bar.add_child(UI.toolbar_button("market", "Rynek  [M]", func() -> void: _market_window.toggle()))
 	bar.add_child(UI.toolbar_button("contracts", "Zlecenia  [J]", func() -> void: _contracts_window.toggle()))
 	bar.add_child(UI.toolbar_button("company", "Spółka  [K]", func() -> void: _company_window.toggle()))
+	bar.add_child(UI.toolbar_button("bank", "Banki  [B]\nKonta, wpłaty, wypłaty i przelewy", func() -> void: _bank_window.toggle()))
 	bar.add_child(UI.toolbar_button("garage_upgrade", "Ulepszenia garażu  [U]", func() -> void: _upgrades_window.toggle()))
 	bar.add_child(UI.toolbar_button("stats", "Statystyki  [L]", func() -> void: _stats_window.toggle()))
 	bar.add_child(UI.toolbar_button("achievements", "Osiągnięcia  [O]", func() -> void: _achievements_window.toggle()))
@@ -850,6 +855,13 @@ func _build_windows() -> void:
 		if wallet["type"] == "wallet":
 			_set_balance(int(wallet["payload"]["balanceCents"])))
 	_company_window.failed.connect(_show_error)
+	_bank_window = BankWindow.new()
+	_bank_window.position = Vector2(1280 - 520 - 12, 64)
+	_bank_window.balance_changed.connect(func() -> void:
+		var wallet := await Net.request("wallet.get")
+		if wallet["type"] == "wallet":
+			_set_balance(int(wallet["payload"]["balanceCents"])))
+	_bank_window.failed.connect(_show_error)
 	_stats_window = StatsWindow.new()
 	_stats_window.position = Vector2(1280 - 640 - 12, 64)
 	_stats_window.failed.connect(_show_error)
@@ -883,7 +895,7 @@ func _build_windows() -> void:
 
 ## The windows of this screen (but the character's), for Esc to close them all.
 func _windows() -> Array[GameWindow]:
-	var windows: Array[GameWindow] = [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _research_window, _furnace_window, _sorter_window, _stats_window, _company_window, _achievements_window, _upgrades_window, _storage_window, _wardrobe_window]
+	var windows: Array[GameWindow] = [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _research_window, _furnace_window, _sorter_window, _stats_window, _company_window, _bank_window, _achievements_window, _upgrades_window, _storage_window, _wardrobe_window]
 	return windows
 
 

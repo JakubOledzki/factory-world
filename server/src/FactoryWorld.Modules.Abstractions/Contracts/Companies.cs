@@ -66,4 +66,7 @@ public static class CompanyTechs
 
     /// <summary>Going public on the stock exchange.</summary>
     public const string CorporateFinance = "corporate_finance";
+
+    /// <summary>A bank in town, with branches in others, where players keep money on accounts.</summary>
+    public const string Banking = "banking";
 }

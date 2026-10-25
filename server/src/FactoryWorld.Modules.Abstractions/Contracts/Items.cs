@@ -338,6 +338,11 @@ public static class Items
     public const string BuyMarket = "furniture_buy_market";
     public const string RailPort = "furniture_rail_port";
 
+    // Banks of companies in towns: players keep money on accounts there, and it takes as long to get in or out as the way
+    // from their nearest plot to the nearest of the bank's buildings (see BankRules in World).
+    public const string Bank = "furniture_bank";
+    public const string BankBranch = "furniture_bank_branch";
+
     // Clothes: sewn at a tailor's in town and worn in four slots; each makes some industry's work go faster
     // (or, for trade, makes the trader pay more), see Clothes.
     public const string Tailor = "furniture_tailor";
@@ -750,6 +755,8 @@ public static class Items
         [ExportChest] = "Skrzynia eksportowa",
         [BuyMarket] = "Rynek skupu",
         [RailPort] = "Port pociągowy",
+        [Bank] = "Bank",
+        [BankBranch] = "Oddział banku",
         [Tailor] = "Pracownia krawiecka",
         [MinerHelmet] = "Kask górniczy z czołówką",
         [SouWester] = "Kapelusz rybacki",
@@ -997,7 +1004,10 @@ public static class Items
 
     /// <summary>What stands in a city only.</summary>
     public static bool IsCityOnly(string id) => id is MultistoreyFactory or Shop or HighBay or FreightTerminal or CompanyHq or DesignOffice or Laboratory or ServiceWorkshop
-        or Tailor or BuyMarket;
+        or Tailor or BuyMarket or Bank or BankBranch;
+
+    /// <summary>A bank's building: its first one or a branch.</summary>
+    public static bool IsBank(string id) => id is Bank or BankBranch;
 
     public static bool IsClothing(string id) => Clothes.ContainsKey(id);
 
