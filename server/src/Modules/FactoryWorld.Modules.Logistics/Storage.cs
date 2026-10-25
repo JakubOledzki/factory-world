@@ -35,6 +35,8 @@ public static class Storages
         {
             Items.Stone, Items.Sand, Items.Coal,
             Items.IronOre, Items.CopperOre, Items.TinOre, Items.SilverOre, Items.GoldOre,
+            // What a crusher makes of ore, on its way to the furnace.
+            Items.CrushedIronOre, Items.CrushedCopperOre, Items.CrushedTinOre,
         }),
         new(Items.GrainSilo, 1, 2000, new HashSet<string> { Items.Wheat, Items.Corn, Items.Sunflower }),
         // A tank holds one fluid at a time.
