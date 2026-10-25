@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Abstractions.Contracts;
 using Microsoft.EntityFrameworkCore;
@@ -421,7 +422,8 @@ public sealed class LogisticsContents(GameDb db, IInventory inventory) : IMachin
 }
 
 /// <param name="Names">Send what every item is called too, for choosing a filter.</param>
-public sealed record LogisticsRequest(int X, int Y, bool Names = false);
+/// <param name="Compact">The short form of the answer (see <see cref="GetLogisticsHandler.Json"/>), which a client asking every second wants.</param>
+public sealed record LogisticsRequest(int X, int Y, bool Names = false, bool Compact = false);
 
 public sealed record StorageRequest(int X, int Y, Guid Id);
 
@@ -445,20 +447,29 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
         try
         {
             var state = await logistics.StateAsync(player, request.X, request.Y, cancellationToken);
-            return new Reply("logistics", Json(request.X, request.Y, state, request.Names));
+            return new Reply("logistics", Json(request.X, request.Y, state, request.Names, compact: request.Compact));
         }
         catch (GameException e) when (e.Code == "not_owner")
         {
             // A visitor of a public plot sees the belts and inserters at work, but not what lies in the storages.
             var state = await logistics.StateAsync(player, request.X, request.Y, PlotRight.Visit, cancellationToken);
-            return new Reply("logistics", Json(request.X, request.Y, state, request.Names, visitor: true));
+            return new Reply("logistics", Json(request.X, request.Y, state, request.Names, visitor: true, request.Compact));
         }
     }
 
     /// <param name="visitor">Leaves out what the storages hold, for someone only looking around the plot.</param>
-    public static object Json(int x, int y, LogisticsState state, bool names = false, bool visitor = false)
+    /// <param name="compact">The short form, a few kilobytes instead of a few hundred on a big factory: only belts that carry
+    /// something or are splitters (any other is empty), with their items and a splitter's settings; inserters with what
+    /// changes only (the hand when full, the pieces in it when more than one, the speed when not 1, the charge when not 0);
+    /// what the client knows from the kinds (speeds, reach, swing ticks, cables, tunnels) left out; the item names only when asked.</param>
+    public static object Json(int x, int y, LogisticsState state, bool names = false, bool visitor = false, bool compact = false)
     {
         Contents Of(Guid id) => state.Contents.GetValueOrDefault(id) ?? new Contents();
+        if (compact)
+        {
+            return CompactJson(x, y, state, names, visitor, Of);
+        }
+
         var cables = LogisticsRules.CableLinks(state.Objects);
         var tunnels = LogisticsRules.TunnelLinks(state.Objects);
         return new
@@ -514,6 +525,116 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
                 .Select(o => StorageSummary(Storages.Find(o.Kind)!, o, Of(o.Id))),
             power = state.Power.Summary(state.ServerTime),
         };
+    }
+
+    private static object CompactJson(int x, int y, LogisticsState state, bool names, bool visitor, Func<Guid, Contents> of)
+    {
+        var belts = new List<Dictionary<string, object?>>();
+        var inserters = new List<Dictionary<string, object?>>();
+        foreach (var o in state.Objects)
+        {
+            if (Items.IsConveyor(o.Kind))
+            {
+                var c = of(o.Id);
+                var splitter = o.Kind == Items.Splitter;
+                if (!splitter && (c.Belt is null || c.Belt.All(i => i is null)))
+                {
+                    continue;
+                }
+
+                var belt = new Dictionary<string, object?> { ["id"] = o.Id, ["items"] = c.Belt ?? new string?[LogisticsRules.BeltSlots * LogisticsRules.BeltLanes] };
+                if (splitter)
+                {
+                    belt["filter"] = c.Filter ?? [];
+                    belt["filterSide"] = c.FilterSide;
+                    belt["turn"] = c.Turn;
+                }
+
+                belts.Add(belt);
+            }
+            else if (Items.IsInserter(o.Kind))
+            {
+                var c = of(o.Id);
+                var inserter = new Dictionary<string, object?> { ["id"] = o.Id, ["swing"] = c.Swing };
+                if (c.Hand is not null)
+                {
+                    inserter["hand"] = c.Hand;
+                }
+
+                if (c.Held() > 1)
+                {
+                    inserter["count"] = c.Held();
+                }
+
+                if (state.Power.Clock(o.Id).Speed(state.SimulatedAt) is var speed && speed != 1)
+                {
+                    inserter["speed"] = speed;
+                }
+
+                if (c.Charge != 0)
+                {
+                    inserter["charge"] = c.Charge;
+                }
+
+                inserters.Add(inserter);
+            }
+        }
+
+        return new
+        {
+            x,
+            y,
+            compact = true,
+            simulatedAt = state.SimulatedAt.ToUnixTimeMilliseconds(),
+            serverTime = state.ServerTime.ToUnixTimeMilliseconds(),
+            tickMs = LogisticsRules.Tick.TotalMilliseconds,
+            beltSlots = LogisticsRules.BeltSlots,
+            beltLanes = LogisticsRules.BeltLanes,
+            swingTicks = LogisticsRules.SwingTicks,
+            belts,
+            names = names ? Items.Names : null,
+            filters = state.Objects.Where(o => of(o.Id).Only is not null).Select(o => new { id = o.Id, item = of(o.Id).Only }),
+            inserters,
+            drones = state.Objects.Where(o => o.Kind == Items.DronePort)
+                .Select(o => new { id = o.Id, speed = state.Power.Clock(o.Id).Speed(state.SimulatedAt) }),
+            storages = visitor ? [] : state.Objects.Where(o => Storages.Find(o.Kind) is not null)
+                .Select(o => CompactStorage(Storages.Find(o.Kind)!, o, of(o.Id))),
+            power = CompactPower(state.Power.Summary(state.ServerTime)),
+        };
+    }
+
+    /// <summary>A storage as the plot shows it: how full it is and what it holds (ids only), the filter and what it takes when set.</summary>
+    private static Dictionary<string, object?> CompactStorage(StorageKind kind, PlotObject o, Contents contents)
+    {
+        var stacks = contents.Items ?? [];
+        var storage = new Dictionary<string, object?>
+        {
+            ["id"] = o.Id,
+            ["slots"] = kind.Slots,
+            ["usedSlots"] = Storages.UsedSlots(kind, stacks),
+            ["capacity"] = kind.Capacity,
+            ["stored"] = stacks.Sum(s => s.Quantity),
+            ["items"] = stacks.Select(s => new { id = s.Item, quantity = s.Quantity }),
+        };
+        if (kind.Only is { } only)
+        {
+            storage["only"] = only.Select(i => new { id = i, name = Items.Names[i] });
+        }
+
+        if (contents.Only is { } filter)
+        {
+            storage["filter"] = filter;
+        }
+
+        return storage;
+    }
+
+    /// <summary>The power summary without the pairs of wired poles, which the client works out itself.</summary>
+    private static JsonNode? CompactPower(object summary)
+    {
+        var node = JsonSerializer.SerializeToNode(summary, Payload.Json);
+        (node as JsonObject)?.Remove("wires");
+        return node;
     }
 
     public static object StorageSummary(StorageKind kind, PlotObject o, Contents contents)
