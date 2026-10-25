@@ -467,7 +467,17 @@ public sealed class CompanyEconomyTests(ServerFactory factory) : IClassFixture<S
         Assert.Equal("research_needed", (await owner.SendAsync("company.list", new { listed = true })).ErrorCode());
         Assert.Equal("not_listed", (await investor.SendAsync("company.shares.buy", new { company = id, shares = 10 })).ErrorCode());
         await ResearchedAsync(id, TechTree.CorporateFinance);
-        Assert.True(Economy(await owner.CompanyAsync("company.list", new { listed = true })).GetProperty("listed").GetBoolean());
+
+        // The debut is celebrated with a banquet of fine dishes from the warehouse, roasts first.
+        Assert.Equal("banquet_needed", (await owner.SendAsync("company.list", new { listed = true })).ErrorCode());
+        await SqlAsync("INSERT INTO companies.warehouse (company_id, item, quantity) VALUES (@c, @i, 120)", ("c", id), ("i", Items.RoastBeef));
+        await SqlAsync("INSERT INTO companies.warehouse (company_id, item, quantity) VALUES (@c, @i, 100)", ("c", id), ("i", Items.Cheesecake));
+        var debut = Economy(await owner.CompanyAsync("company.list", new { listed = true }));
+        Assert.True(debut.GetProperty("listed").GetBoolean());
+        var left = (await owner.CompanyAsync("company.get")).GetProperty("warehouse").GetProperty("items").EnumerateArray()
+            .ToDictionary(i => i.GetProperty("id").GetString()!, i => i.GetProperty("quantity").GetInt64());
+        Assert.False(left.ContainsKey(Items.RoastBeef));
+        Assert.Equal(20, left[Items.Cheesecake]);
 
         var exchange = await investor.SendAsync("company.exchange");
         Assert.Equal("company.exchange", exchange.Type());

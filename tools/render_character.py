@@ -752,6 +752,12 @@ def clothes(rig):
         laces = ra.plain("laces", (0.5, 0.42, 0.25), 0.6)
         return boots("Boots", leather, top=0.18, d=0.02, sole_mat=sole, laces=laces)
 
+    def leather_boots():
+        leather = colour_mat("hide_leather", (0.3, 0.14, 0.05), 0.4, bump=0.35, scale=16)
+        sole = ra.plain("hide_sole", (0.05, 0.035, 0.02), 0.7, bump=0.4)
+        laces = ra.plain("hide_laces", (0.12, 0.07, 0.03), 0.6)
+        return boots("Riders", leather, top=0.32, d=0.02, sole_mat=sole, laces=laces)
+
     def dress_shoes():
         black = colour_mat("patent", (0.012, 0.011, 0.01), 0.12, bump=0.02, scale=6)
         return boots("Oxfords", black, top=0.0, d=0.01)
@@ -771,6 +777,7 @@ def clothes(rig):
         "clothes_rubber_boots": ("feet", rubber_boots),
         "clothes_work_boots": ("feet", work_boots),
         "clothes_dress_shoes": ("feet", dress_shoes),
+        "clothes_leather_boots": ("feet", leather_boots),
     }
 
 
@@ -990,19 +997,21 @@ def main(args):
         studio.holdout(holdout, False)
 
     if "icons" in args:
-        render_icons(studio, garments)
+        render_icons(studio, garments, only)
 
     write_meta(studio, garments)
 
 
-def render_icons(studio, garments):
-    """Inventory icons of the clothes: each garment alone, turned a little towards the light."""
+def render_icons(studio, garments, only=()):
+    """Inventory icons of the clothes: each garment alone, turned a little towards the light; with `only`, just those."""
     studio.shade_mode()
     studio.use(studio.portrait_cam, (PORTRAIT_RES[0] * 2, PORTRAIT_RES[1] * 2))
     every = [o for _, objs in garments.values() for o in objs]
     shown = [o for o in studio.scene.objects if o.type in ("MESH", "META") and not o.hide_render and o not in every]
     studio.show(shown, False)
     for item, (_, objs) in garments.items():
+        if only and item not in only:
+            continue
         studio.show(every, False)
         studio.show(objs, True)
         studio.rig.pose(-0.45)

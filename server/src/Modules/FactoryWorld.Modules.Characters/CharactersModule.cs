@@ -27,6 +27,7 @@ public sealed class CharactersModule : IGameModule
         services.AddSingleton<IMessageHandler, GetCharacterHandler>();
         services.AddSingleton<IMessageHandler, CreateCharacterHandler>();
         services.AddSingleton<IMessageHandler, EquipHandler>();
+        services.AddSingleton<IMessageHandler, EatHandler>();
         services.AddSingleton<IMessageHandler, UnequipHandler>();
         services.AddSingleton<IMessageHandler, RestyleHandler>();
     }

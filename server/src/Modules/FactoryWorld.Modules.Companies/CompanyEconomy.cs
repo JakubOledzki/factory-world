@@ -174,6 +174,29 @@ public sealed partial class CompanyService
                 throw new GameException("research_needed", "The company researches corporate finance first.");
             }
 
+            // The debut on the exchange is celebrated with a banquet: fine dishes from the warehouse, roasts first.
+            if (listed && !await ListedAsync(company, cancellationToken))
+            {
+                var roasts = await StockAsync(company, Items.RoastBeef, cancellationToken);
+                var cakes = await StockAsync(company, Items.Cheesecake, cancellationToken);
+                if (roasts + cakes < CompanyMoney.ListingBanquet)
+                {
+                    throw new GameException("banquet_needed",
+                        $"A listing is celebrated with a banquet: {CompanyMoney.ListingBanquet} fine dishes (roast beef or cheesecake) in the warehouse.");
+                }
+
+                var fromRoasts = Math.Min(roasts, CompanyMoney.ListingBanquet);
+                if (fromRoasts > 0)
+                {
+                    await ChangeStockAsync(company, Items.RoastBeef, -fromRoasts, cancellationToken);
+                }
+
+                if (CompanyMoney.ListingBanquet - fromRoasts > 0)
+                {
+                    await ChangeStockAsync(company, Items.Cheesecake, -(CompanyMoney.ListingBanquet - fromRoasts), cancellationToken);
+                }
+            }
+
             await using (var update = await db.CommandAsync("UPDATE companies.companies SET listed = @listed WHERE id = @company", cancellationToken))
             {
                 update.Parameters.AddWithValue("company", company);

@@ -16,8 +16,11 @@ public sealed record SmeltingRecipe(string Input, string Output, TimeSpan Time);
 /// <param name="SmeltsPerCoal">Smelts one coal lasts for.</param>
 public sealed record FurnaceLevel(string Kind, int Level, int Speed, int MaxInput, int MaxFuel, int SmeltsPerCoal)
 {
+    /// <summary>How many times faster still it smelts where it stands, e.g. with a leather bellows on the plot.</summary>
+    public double Boost { get; init; } = 1;
+
     /// <summary>How long one piece of ore takes in this furnace.</summary>
-    public TimeSpan Time(SmeltingRecipe recipe) => recipe.Time / Speed;
+    public TimeSpan Time(SmeltingRecipe recipe) => recipe.Time / (Speed * Boost);
 }
 
 /// <summary>
@@ -39,6 +42,13 @@ public static class Smelting
     public static FurnaceLevel Stone => Levels[0];
 
     public static FurnaceLevel? Level(string kind) => Levels.FirstOrDefault(l => l.Kind == kind);
+
+    /// <summary>The furnace <paramref name="level"/> as it smelts where the object <paramref name="id"/> stands: faster by
+    /// <see cref="Processing.BellowsBonus"/> on a plot with a leather bellows.</summary>
+    public static async Task<FurnaceLevel> OnPlotAsync(FurnaceLevel level, IPlotObjects plots, Guid id, CancellationToken cancellationToken) =>
+        await plots.PlotOfAsync(id, cancellationToken) is { } at && (await plots.ObjectsAsync(at.X, at.Y, cancellationToken)).Any(o => o.Kind == Items.Bellows)
+            ? level with { Boost = Processing.BellowsBonus }
+            : level;
 
     /// <summary>Experience for each ingot taken out of the furnace.</summary>
     public const int XpPerIngot = 1;
@@ -154,7 +164,7 @@ internal static class FurnaceRows
 }
 
 public sealed class FurnaceService(
-    GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
+    GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, IProductionStats stats, IPlotObjects plots, TimeProvider time)
 {
     public Task<FurnaceReply> StateAsync(Guid owner, Guid id, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -265,7 +275,7 @@ public sealed class FurnaceService(
     private async Task<(FurnaceState, FurnaceLevel)> OpenAsync(Guid owner, Guid id, CancellationToken cancellationToken)
     {
         var kind = await Workshop.RequireAsync(places, owner, id, Items.IsFurnace, Items.Furnace, cancellationToken);
-        var level = Smelting.Level(kind)!;
+        var level = await Smelting.OnPlotAsync(Smelting.Level(kind)!, plots, id, cancellationToken);
         var stored = (await FurnaceRows.ReadAsync(db, id, cancellationToken))?.State ?? FurnaceState.Empty;
         var state = Smelting.Advance(stored, level, time.GetUtcNow());
         var made = MachineProduction.Smelted(level, stored, state);
@@ -315,15 +325,16 @@ public sealed class FurnaceContents(GameDb db, IInventory inventory, IWallet wal
 }
 
 /// <summary>Furnaces as inserters see them: coal and ore go in, ingots come out.</summary>
-public sealed class FurnacePorts(GameDb db, IProductionStats stats) : IMachinePorts
+public sealed class FurnacePorts(GameDb db, IProductionStats stats, IPlotObjects plots) : IMachinePorts
 {
     public async Task<IMachinePort?> OpenAsync(Guid owner, Guid id, string kind, CancellationToken cancellationToken)
     {
-        if (Smelting.Level(kind) is not { } level)
+        if (Smelting.Level(kind) is not { } plain)
         {
             return null;
         }
 
+        var level = await Smelting.OnPlotAsync(plain, plots, id, cancellationToken);
         return new Port(db, stats, owner, id, level, (await FurnaceRows.ReadAsync(db, id, cancellationToken))?.State ?? FurnaceState.Empty);
     }
 
@@ -422,7 +433,7 @@ public abstract class FurnaceHandler(IServiceScopeFactory scopes) : IMessageHand
             kind = level.Kind,
             name = Items.Names[level.Kind],
             level = level.Level,
-            speed = level.Speed,
+            speed = level.Speed * level.Boost,
             input = Stack(s.Input, s.InputQuantity),
             output = Stack(s.Output, s.OutputQuantity),
             fuel = s.Fuel,

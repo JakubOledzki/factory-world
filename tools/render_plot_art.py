@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [tree] [logistics] [<sprite>...] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [tree] [logistics] [husbandry] [<sprite>...] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -5470,9 +5470,512 @@ def icon_models():
     }
 
 
+# --- Husbandry and gastronomy ----------------------------------------------------------------------
+# The works canteen, the biogas plant and the farmer's buildings cover 3 × 3 tiles and are drawn on their
+# middle tile with their door to the south, like the forester's; the rest stand on one tile.
+
+def plank_wall(name, w, h, at, along_x, mat):
+    """A wall of upright boards, w long and h high, its foot at `at`."""
+    size = (w, 0.08, h) if along_x else (0.08, w, h)
+    ra.box(name, size, Vector((at[0], at[1], at[2] + h / 2)), mat, bevel=0.01)
+    batten = ra.wood(name + "_batten", (0.09, 0.055, 0.03))
+    for k in range(int(w / 0.35)):
+        o = -w / 2 + 0.175 + k * 0.35
+        p = Vector((at[0] + (o if along_x else 0), at[1] + (0 if along_x else o), at[2] + h / 2))
+        ra.box(name + "_batten", (0.03, 0.1, h) if along_x else (0.1, 0.03, h), p, batten)
+
+
+def hay_bale(at, r=0.32, along_x=True):
+    straw = ra.plain("hay", (0.55, 0.42, 0.14), 0.9, variation=0.3, scale=30, bump=0.8)
+    ra.cylinder("bale", r, r * 1.5, Vector((at[0], at[1], r)), straw, rotation=(0, math.radians(90), 0) if along_x else (math.radians(90), 0, 0), verts=20)
+
+
+def churn(at, steel):
+    ra.cylinder("churn", 0.13, 0.42, Vector((at[0], at[1], 0.21)), steel, verts=16)
+    ra.cylinder("churn_neck", 0.13, 0.1, Vector((at[0], at[1], 0.47)), steel, radius2=0.07, verts=16)
+    ra.cylinder("churn_lid", 0.08, 0.05, Vector((at[0], at[1], 0.54)), steel, verts=16)
+
+
+def fence(start, end, wood_m, posts=4):
+    sx, sy = start
+    ex, ey = end
+    for k in range(posts):
+        t = k / (posts - 1)
+        ra.box("fence_post", (0.08, 0.08, 0.6), Vector((sx + (ex - sx) * t, sy + (ey - sy) * t, 0.3)), wood_m)
+    length = math.hypot(ex - sx, ey - sy)
+    angle = math.atan2(ey - sy, ex - sx)
+    for z in (0.25, 0.48):
+        ra.box("fence_rail", (length, 0.05, 0.06), Vector(((sx + ex) / 2, (sy + ey) / 2, z)), wood_m, rotation=(0, 0, angle))
+
+
+def build_canteen():
+    """The works canteen: a long low brick hall with big lit windows, a flat roof with a vent puffing,
+    a sign over the door and tables with benches in front where the crews eat."""
+    brick = ra.plain("cant_brick", (0.36, 0.14, 0.08), 0.85, variation=0.35, scale=14, bump=0.5)
+    trim = ra.plain("cant_trim", (0.72, 0.7, 0.62), 0.6)
+    roof = ra.plain("cant_roof", (0.12, 0.12, 0.13), 0.8, variation=0.2)
+    glow = ra.emission("cant_window", (1.0, 0.75, 0.4), 1.8)
+    dark = ra.wood("cant_door", (0.12, 0.06, 0.03))
+    steel = ra.rusty_metal("cant_steel", (0.35, 0.36, 0.38), rust=0.15)
+    table = ra.wood("cant_table", (0.32, 0.2, 0.1))
+    w, d, h = 4.4, 2.6, 2.0
+    ra.box("cant_plinth", (w + 0.2, d + 0.2, 0.15), Vector((0, 0.6, 0.075)), trim, bevel=0.02)
+    ra.box("cant_hall", (w, d, h), Vector((0, 0.6, 0.15 + h / 2)), brick, bevel=0.02)
+    ra.box("cant_roof", (w + 0.3, d + 0.3, 0.14), Vector((0, 0.6, 0.15 + h + 0.07)), roof, bevel=0.02)
+    for x in (-1.5, -0.6, 0.9, 1.7):
+        ra.box("cant_window", (0.6, 0.04, 0.8), Vector((x, 0.6 - d / 2 - 0.01, 1.2)), glow)
+        ra.box("cant_sill", (0.7, 0.1, 0.06), Vector((x, 0.6 - d / 2 - 0.04, 0.78)), trim)
+    ra.box("cant_door", (0.7, 0.05, 1.4), Vector((0.15, 0.6 - d / 2 - 0.02, 0.85)), dark, bevel=0.02)
+    ra.box("cant_sign", (1.6, 0.06, 0.34), Vector((0.15, 0.6 - d / 2 - 0.05, 1.85)), ra.plain("cant_sign", (0.55, 0.12, 0.06), 0.5))
+    ra.box("cant_sign_text", (1.2, 0.02, 0.12), Vector((0.15, 0.6 - d / 2 - 0.09, 1.85)), ra.emission("cant_letters", (1.0, 0.9, 0.6), 1.2))
+    ra.cylinder("cant_vent", 0.22, 0.6, Vector((1.4, 1.2, 0.15 + h + 0.4)), steel, verts=16)
+    ra.cylinder("cant_vent_cap", 0.3, 0.06, Vector((1.4, 1.2, 0.15 + h + 0.74)), steel, verts=16)
+    steam = ra.plain("cant_steam", (0.8, 0.8, 0.82), 0.9, variation=0.1)
+    for k in range(3):
+        ra.sphere("cant_steam", 0.16 + 0.06 * k, Vector((1.4 + 0.1 * k, 1.25, 3.05 + 0.3 * k)), steam, segments=10)
+    for x in (-1.3, 1.3):
+        ra.box("cant_table", (1.2, 0.6, 0.06), Vector((x, -1.6, 0.72)), table, bevel=0.01)
+        for dx in (-0.5, 0.5):
+            ra.box("cant_leg", (0.06, 0.5, 0.7), Vector((x + dx, -1.6, 0.35)), table)
+        for dy in (-0.5, 0.5):
+            ra.box("cant_bench", (1.2, 0.24, 0.05), Vector((x, -1.6 + dy, 0.42)), table)
+        ra.cylinder("cant_pot", 0.12, 0.14, Vector((x - 0.2, -1.6, 0.82)), steel, verts=16)
+        ra.cylinder("cant_plate", 0.1, 0.02, Vector((x + 0.3, -1.65, 0.76)), trim, verts=16)
+
+
+def build_slaughterhouse():
+    """A slaughterhouse: a white-washed brick hall with a red roof, a wide door with a rail and hook
+    over it, and a hide stretched on a frame drying beside it."""
+    wall = ra.plain("slt_wall", (0.72, 0.7, 0.64), 0.85, variation=0.15, bump=0.3)
+    brick = ra.plain("slt_brick", (0.36, 0.14, 0.08), 0.85, variation=0.35, scale=14, bump=0.5)
+    tiles = ra.plain("slt_roof", (0.4, 0.1, 0.05), 0.8, variation=0.3, scale=16, bump=0.5)
+    door = ra.wood("slt_door", (0.2, 0.08, 0.04))
+    steel = ra.rusty_metal("slt_steel", (0.3, 0.3, 0.32), rust=0.3)
+    hide = ra.plain("slt_hide", (0.36, 0.2, 0.09), 0.8, variation=0.3, bump=0.6)
+    frame = ra.wood("slt_frame", (0.25, 0.16, 0.08))
+    ra.box("slt_plinth", (1.5, 1.2, 0.2), Vector((0, 0.15, 0.1)), brick, bevel=0.02)
+    ra.box("slt_hall", (1.4, 1.1, 0.9), Vector((0, 0.15, 0.65)), wall, bevel=0.02)
+    gable_roof("slt_roof", 1.1, 1.0, 1.08, 1.5, tiles, (0, 0.15))
+    gable_ends("slt_gable", 1.4, 1.1, 1.1, 1.5, wall, (0, 0.15))
+    ra.box("slt_door", (0.5, 0.04, 0.6), Vector((-0.2, -0.42, 0.5)), door, bevel=0.01)
+    ra.box("slt_rail", (0.8, 0.05, 0.05), Vector((-0.2, -0.5, 0.92)), steel)
+    ra.cylinder("slt_hook", 0.015, 0.14, Vector((-0.05, -0.5, 0.84)), steel, verts=8)
+    ra.box("slt_frame", (0.04, 0.04, 0.8), Vector((0.55, -0.55, 0.4)), frame)
+    ra.box("slt_frame", (0.04, 0.04, 0.8), Vector((0.95, -0.55, 0.4)), frame)
+    ra.box("slt_frame_top", (0.48, 0.04, 0.04), Vector((0.75, -0.55, 0.78)), frame)
+    ra.box("slt_hide", (0.36, 0.02, 0.5), Vector((0.75, -0.56, 0.48)), hide, bevel=0.05)
+
+
+def build_dairy():
+    """A dairy: a small white wooden house with a blue door, a row of milk churns by the step and a
+    wheel of cheese ripening on a shelf under the eave."""
+    boards = ra.plain("dairy_boards", (0.78, 0.76, 0.7), 0.7, variation=0.1, scale=20, bump=0.3)
+    roof = ra.plain("dairy_roof", (0.18, 0.2, 0.24), 0.7, variation=0.2, scale=12, bump=0.4)
+    blue = ra.plain("dairy_door", (0.12, 0.25, 0.5), 0.5)
+    steel = ra.plain("dairy_steel", (0.6, 0.62, 0.64), 0.3, 1.0)
+    cheese = ra.plain("dairy_cheese", (0.85, 0.65, 0.18), 0.5, variation=0.15)
+    shelf = ra.wood("dairy_shelf", (0.3, 0.2, 0.1))
+    ra.box("dairy_house", (1.3, 1.0, 0.9), Vector((0, 0.2, 0.45)), boards, bevel=0.02)
+    gable_roof("dairy_roof", 1.3, 1.0, 0.88, 1.35, roof, (0, 0.2))
+    gable_ends("dairy_gable", 1.3, 1.0, 0.9, 1.35, boards, (0, 0.2))
+    ra.box("dairy_door", (0.36, 0.04, 0.62), Vector((0.25, -0.31, 0.33)), blue, bevel=0.01)
+    ra.box("dairy_window", (0.3, 0.04, 0.26), Vector((-0.3, -0.31, 0.55)), ra.emission("dairy_glow", (1.0, 0.8, 0.5), 1.2))
+    for k in range(3):
+        churn((-0.55 + 0.3 * k, -0.6), steel)
+    ra.box("dairy_shelf", (0.5, 0.25, 0.04), Vector((0.6, -0.55, 0.32)), shelf)
+    ra.cylinder("dairy_wheel", 0.15, 0.1, Vector((0.6, -0.55, 0.39)), cheese, verts=24)
+
+
+def build_potato_distillery():
+    """A potato distillery: a copper still (a round pot and a column with a coil) on a brick firebox
+    glowing at the front, a brick chimney behind and a sack of potatoes."""
+    brick = ra.plain("dist_brick", (0.36, 0.14, 0.08), 0.85, variation=0.35, scale=14, bump=0.5)
+    copper = ra.plain("dist_copper", (0.6, 0.28, 0.12), 0.3, 1.0, variation=0.2)
+    ember = ra.emission("dist_ember", (1.0, 0.35, 0.06), 4.0)
+    sack_m = ra.plain("dist_sack", (0.45, 0.36, 0.22), 0.95, variation=0.15, bump=0.5)
+    potato = ra.plain("dist_potato", (0.5, 0.35, 0.18), 0.8, variation=0.2)
+    ra.box("dist_firebox", (1.0, 0.9, 0.45), Vector((0, 0.1, 0.225)), brick, bevel=0.02)
+    ra.box("dist_mouth", (0.3, 0.04, 0.18), Vector((-0.15, -0.36, 0.2)), ember)
+    pot = ra.sphere("dist_pot", 0.36, Vector((-0.15, 0.1, 0.72)), copper, scale=(1, 1, 0.85), segments=24)
+    ra.cylinder("dist_neck", 0.08, 0.3, Vector((-0.15, 0.1, 1.12)), copper, verts=16)
+    ra.cylinder("dist_column", 0.12, 0.9, Vector((0.32, 0.25, 0.9)), copper, verts=16)
+    ra.cylinder("dist_pipe", 0.035, 0.5, Vector((0.08, 0.17, 1.26)), copper, rotation=(0, math.radians(90), 0), verts=10)
+    for k in range(4):
+        ra.torus("dist_coil", 0.13, 0.02, Vector((0.32, 0.25, 0.6 + 0.12 * k)), copper)
+    ra.box("dist_chimney", (0.28, 0.28, 1.4), Vector((-0.3, 0.45, 0.7)), brick, bevel=0.02)
+    s = ra.sphere("dist_sack", 0.16, Vector((0.55, -0.45, 0.15)), sack_m, scale=(1, 0.9, 1.1), segments=16)
+    ra.displace(s, 0.01, 0.2, 1)
+    for k in range(3):
+        ra.sphere("dist_potato", 0.06, Vector((0.35 + 0.1 * k, -0.62, 0.05)), potato, scale=(1.3, 1, 0.9), segments=10)
+
+
+def build_biogas_plant():
+    """A biogas plant: two round digesters under green domes, a gas holder, pipes between them and a
+    small block house with a flare stack burning."""
+    concrete = ra.plain("bio_concrete", (0.42, 0.41, 0.38), 0.85, variation=0.15, bump=0.3)
+    green = ra.plain("bio_dome", (0.16, 0.3, 0.12), 0.5, variation=0.1)
+    steel = ra.rusty_metal("bio_steel", (0.4, 0.42, 0.44), rust=0.15)
+    flame = ra.emission("bio_flame", (1.0, 0.55, 0.12), 6.0)
+    for x, y in ((-1.3, 0.8), (1.0, 0.9)):
+        ra.cylinder("bio_tank", 1.0, 1.0, Vector((x, y, 0.5)), concrete, verts=40)
+        ra.sphere("bio_dome", 1.02, Vector((x, y, 1.0)), green, scale=(1, 1, 0.55), segments=32, keep=lambda co: co.z >= -0.01)
+    ra.sphere("bio_holder", 0.6, Vector((0.6, -1.4, 0.6)), green, segments=24)
+    ra.cylinder("bio_pipe", 0.07, 2.3, Vector((-0.15, 0.85, 0.4)), steel, rotation=(0, math.radians(90), 0), verts=12)
+    ra.cylinder("bio_pipe", 0.07, 2.2, Vector((0.8, -0.3, 0.4)), steel, rotation=(math.radians(90), 0, 0), verts=12)
+    ra.box("bio_house", (1.1, 0.9, 1.0), Vector((-1.2, -1.3, 0.5)), concrete, bevel=0.03)
+    ra.box("bio_house_roof", (1.2, 1.0, 0.08), Vector((-1.2, -1.3, 1.04)), steel)
+    ra.box("bio_door", (0.4, 0.04, 0.7), Vector((-1.2, -1.76, 0.35)), ra.plain("bio_door", (0.1, 0.25, 0.1), 0.5))
+    ra.cylinder("bio_flare", 0.06, 2.0, Vector((1.9, -0.9, 1.0)), steel, verts=10)
+    ra.sphere("bio_flame", 0.12, Vector((1.9, -0.9, 2.12)), flame, scale=(1, 1, 1.8), segments=12)
+
+
+def build_stable():
+    """A stable: a wooden barn with a dark shingle roof, a half-door with the top open, a hay bale
+    and a horseshoe over the door."""
+    boards = ra.wood("stab_boards", (0.3, 0.17, 0.08))
+    roof = ra.plain("stab_roof", (0.12, 0.08, 0.05), 0.85, variation=0.35, scale=18, bump=0.6)
+    dark = ra.plain("stab_dark", (0.02, 0.015, 0.01), 0.95)
+    steel = ra.plain("stab_shoe", (0.45, 0.45, 0.47), 0.35, 1.0)
+    w, d, h = 1.5, 1.2, 0.95
+    plank_wall("stab_front", w, h, (0, 0.15 - d / 2, 0), True, boards)
+    plank_wall("stab_back", w, h, (0, 0.15 + d / 2, 0), True, boards)
+    plank_wall("stab_side", d, h, (-w / 2, 0.15, 0), False, boards)
+    plank_wall("stab_side", d, h, (w / 2, 0.15, 0), False, boards)
+    ra.box("stab_inside", (w - 0.1, d - 0.1, h), Vector((0, 0.15, h / 2)), dark)
+    gable_ends("stab_gable", w, d, h, h + 0.6, boards, (0, 0.15))
+    gable_roof("stab_roof", w, d, h - 0.04, h + 0.6, roof, (0, 0.15))
+    ra.box("stab_hole", (0.5, 0.05, 0.75), Vector((0.1, 0.15 - d / 2 - 0.03, 0.42)), dark)
+    ra.box("stab_half_door", (0.5, 0.06, 0.4), Vector((0.1, 0.15 - d / 2 - 0.06, 0.2)), boards, bevel=0.01)
+    ra.torus("stab_shoe", 0.07, 0.015, Vector((0.1, 0.15 - d / 2 - 0.06, 0.88)), steel).rotation_euler = (math.radians(90), 0, 0)
+    hay_bale((-0.55, -0.75), 0.22)
+
+
+def build_bellows():
+    """A blacksmith's bellows: two boards with pleated leather between them on a wooden trestle, a
+    long handle and an iron nozzle."""
+    wood_m = ra.wood("bel_wood", (0.3, 0.19, 0.09))
+    leather = ra.plain("bel_leather", (0.3, 0.16, 0.07), 0.7, variation=0.3, bump=0.6)
+    iron = ra.rusty_metal("bel_iron", (0.12, 0.12, 0.13), rust=0.3)
+    for x in (-0.4, 0.4):
+        ra.box("bel_leg", (0.08, 0.5, 0.08), Vector((x, 0, 0.28)), wood_m, rotation=(math.radians(0), 0, 0))
+        for y in (-0.22, 0.22):
+            ra.box("bel_foot", (0.08, 0.08, 0.36), Vector((x, y, 0.18)), wood_m)
+    ra.box("bel_bottom", (1.0, 0.6, 0.05), Vector((0, 0, 0.38)), wood_m, bevel=0.01)
+    for k in range(4):
+        ra.box("bel_pleat", (0.9 - 0.08 * k, 0.56 - 0.02 * k, 0.06), Vector((-0.04 * k, 0, 0.44 + 0.06 * k)), leather, bevel=0.025)
+    ra.box("bel_top", (0.9, 0.6, 0.05), Vector((-0.1, 0, 0.7)), wood_m, bevel=0.01, rotation=(0, math.radians(-6), 0))
+    ra.cylinder("bel_handle", 0.03, 0.8, Vector((-0.8, 0, 0.78)), wood_m, rotation=(0, math.radians(84), 0), verts=10)
+    ra.cylinder("bel_nozzle", 0.06, 0.4, Vector((0.65, 0, 0.45)), iron, radius2=0.025, rotation=(0, math.radians(90), 0), verts=12)
+
+
+def build_farmstead():
+    """The farmer's farmstead: a white-washed cottage with a thatched roof and a lit window, a small
+    wooden barn beside it, hay bales, a fence and a hand cart; its door to the south."""
+    wall = ra.plain("farm_wall", (0.74, 0.71, 0.62), 0.85, variation=0.15, bump=0.3)
+    thatch = ra.plain("farm_thatch", (0.4, 0.3, 0.12), 0.95, variation=0.35, scale=24, bump=0.9)
+    boards = ra.wood("farm_boards", (0.3, 0.17, 0.08))
+    dark = ra.wood("farm_dark", (0.08, 0.045, 0.025))
+    stone = rock("farm_stone", (0.24, 0.22, 0.2))
+    glow = ra.emission("farm_window", (1.0, 0.65, 0.3), 1.6)
+    w, d, h = 3.0, 2.2, 1.6
+    ra.box("farm_plinth", (w + 0.2, d + 0.2, 0.18), Vector((-0.4, 0.5, 0.09)), stone, bevel=0.03)
+    ra.box("farm_house", (w, d, h), Vector((-0.4, 0.5, 0.18 + h / 2)), wall, bevel=0.03)
+    gable_ends("farm_gable", w, d, 0.18 + h, 0.18 + h + 1.4, wall, (-0.4, 0.5))
+    gable_roof("farm_roof", w, d, 0.1 + h, 0.18 + h + 1.4, thatch, (-0.4, 0.5))
+    ra.box("farm_door", (0.6, 0.06, 1.25), Vector((0.1, 0.5 - d / 2 - 0.02, 0.18 + 0.62)), dark, bevel=0.02)
+    for x in (-1.2, 0.8):
+        ra.box("farm_window", (0.45, 0.04, 0.42), Vector((x, 0.5 - d / 2 - 0.02, 1.1)), glow)
+        ra.box("farm_shutter", (0.15, 0.05, 0.46), Vector((x - 0.32, 0.5 - d / 2 - 0.03, 1.1)), ra.plain("farm_shutter", (0.1, 0.25, 0.12), 0.6))
+    ra.box("farm_chimney", (0.4, 0.4, 1.2), Vector((-1.4, 0.9, 3.0)), stone, bevel=0.03)
+    # The barn on the east.
+    plank_wall("farm_barn", 1.6, 1.4, (2.0, -0.2, 0), False, boards)
+    plank_wall("farm_barn", 1.6, 1.4, (2.7, -0.2, 0), False, boards)
+    ra.box("farm_barn_in", (0.7, 1.6, 1.4), Vector((2.35, -0.2, 0.7)), boards)
+    ra.box("farm_barn_door", (0.5, 0.05, 1.0), Vector((2.35, -1.02, 0.5)), dark)
+    gable_roof("farm_barn_roof", 0.7, 1.6, 1.36, 2.0, thatch, (2.35, -0.2))
+    hay_bale((1.6, -1.8), 0.3)
+    hay_bale((2.4, -1.9), 0.3, along_x=False)
+    fence((-2.6, -1.4), (-0.8, -2.2), boards, 4)
+    # A hand cart with a sack of grain.
+    ra.box("farm_cart", (0.9, 0.6, 0.12), Vector((-1.6, -1.7, 0.45)), boards, bevel=0.01)
+    for y in (-2.02, -1.38):
+        ra.cylinder("farm_wheel", 0.3, 0.06, Vector((-1.6, y, 0.3)), dark, rotation=(math.radians(90), 0, 0), verts=16)
+    ra.cylinder("farm_shaft", 0.03, 1.0, Vector((-2.4, -1.7, 0.38)), boards, rotation=(0, math.radians(80), 0), verts=8)
+    sack_m = ra.plain("farm_sack", (0.62, 0.55, 0.4), 0.95, variation=0.12, bump=0.5)
+    s = ra.sphere("farm_sack", 0.2, Vector((-1.6, -1.7, 0.7)), sack_m, scale=(1.1, 0.9, 1.0), segments=14)
+    ra.displace(s, 0.012, 0.2, 1)
+
+
+def build_manor_farm():
+    """A manor farm: a white manor house with a red tiled roof and a porch on columns, a granary of
+    timber on the east, a well and stacked sacks of grain."""
+    wall = ra.plain("manor_wall", (0.8, 0.78, 0.7), 0.8, variation=0.12, bump=0.3)
+    tiles = ra.plain("manor_roof", (0.42, 0.12, 0.06), 0.8, variation=0.3, scale=16, bump=0.5)
+    boards = ra.wood("manor_boards", (0.28, 0.16, 0.08))
+    dark = ra.wood("manor_dark", (0.1, 0.05, 0.03))
+    stone = rock("manor_stone", (0.3, 0.28, 0.25))
+    glow = ra.emission("manor_window", (1.0, 0.7, 0.35), 1.6)
+    w, d, h = 3.8, 2.4, 2.0
+    ra.box("manor_plinth", (w + 0.2, d + 0.2, 0.25), Vector((-0.3, 0.6, 0.125)), stone, bevel=0.03)
+    ra.box("manor_house", (w, d, h), Vector((-0.3, 0.6, 0.25 + h / 2)), wall, bevel=0.03)
+    gable_ends("manor_gable", w, d, 0.25 + h, 0.25 + h + 1.2, wall, (-0.3, 0.6))
+    gable_roof("manor_roof", w, d, 0.2 + h, 0.25 + h + 1.2, tiles, (-0.3, 0.6))
+    front = 0.6 - d / 2
+    ra.box("manor_porch_roof", (1.6, 0.9, 0.1), Vector((-0.3, front - 0.4, 2.1)), wall, bevel=0.02)
+    ra.mesh_from("manor_pediment", [(-1.1, front - 0.85, 2.15), (0.5, front - 0.85, 2.15), (-0.3, front - 0.85, 2.7)], [(0, 1, 2)], wall)
+    for x in (-0.95, -0.55, -0.05, 0.35):
+        ra.cylinder("manor_column", 0.08, 1.85, Vector((x, front - 0.8, 1.17)), wall, verts=14)
+    ra.box("manor_steps", (1.6, 0.6, 0.2), Vector((-0.3, front - 0.5, 0.1)), stone, bevel=0.02)
+    ra.box("manor_door", (0.6, 0.05, 1.3), Vector((-0.3, front - 0.02, 0.9)), dark, bevel=0.02)
+    for x in (-1.7, -1.2, 0.6, 1.1):
+        ra.box("manor_window", (0.36, 0.04, 0.6), Vector((x, front - 0.02, 1.3)), glow)
+    # The granary on posts.
+    for x in (2.0, 2.7):
+        for y in (-0.8, 0.4):
+            ra.box("manor_post", (0.12, 0.12, 0.5), Vector((x, y, 0.25)), stone)
+    ra.box("manor_granary", (1.0, 1.6, 1.2), Vector((2.35, -0.2, 1.1)), boards, bevel=0.02)
+    gable_roof("manor_granary_roof", 1.0, 1.6, 1.68, 2.2, tiles, (2.35, -0.2))
+    # A well and sacks of grain.
+    ra.cylinder("manor_well", 0.35, 0.6, Vector((1.6, -1.9, 0.3)), stone, verts=20)
+    ra.cylinder("manor_well_water", 0.28, 0.02, Vector((1.6, -1.9, 0.58)), ra.plain("manor_water", (0.05, 0.1, 0.15), 0.05))
+    for x in (1.25, 1.95):
+        ra.box("manor_well_post", (0.06, 0.06, 0.9), Vector((x, -1.9, 0.9)), boards)
+    gable_roof("manor_well_roof", 0.6, 0.5, 1.25, 1.55, tiles, (1.6, -1.9))
+    sack_m = ra.plain("manor_sack", (0.62, 0.55, 0.4), 0.95, variation=0.12, bump=0.5)
+    for k, (x, y, z) in enumerate(((-2.0, -1.8, 0.2), (-1.6, -1.85, 0.2), (-1.8, -1.8, 0.52))):
+        s = ra.sphere("manor_sack", 0.22, Vector((x, y, z)), sack_m, scale=(1.1, 0.9, 1.0), segments=14)
+        ra.displace(s, 0.012, 0.2, 1)
+
+
+HUSBANDRY = {
+    # name: (canvas width, height, camera target height, builder)
+    "canteen": (240, 240, 1.3, build_canteen),
+    "slaughterhouse": (112, 128, 0.7, build_slaughterhouse),
+    "dairy": (112, 120, 0.65, build_dairy),
+    "potato_distillery": (112, 144, 0.75, build_potato_distillery),
+    "biogas_plant": (240, 232, 1.0, build_biogas_plant),
+    "stable": (112, 120, 0.7, build_stable),
+    "bellows": (112, 104, 0.45, build_bellows),
+    "farmstead": (240, 272, 1.7, build_farmstead),
+    "manor_farm": (240, 272, 1.8, build_manor_farm),
+}
+
+
+def render_husbandry(layout: dict, only=()):
+    for name, (w, h, tz, build) in HUSBANDRY.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build), true_scale=True)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
+
+
+def husbandry_icon_models():
+    """Icons of what husbandry and the kitchens give."""
+    def plate():
+        ra.cylinder("plate", 0.25, 0.015, (0, 0, -0.005), ra.plain("ic_plate", (0.85, 0.85, 0.85), 0.3), verts=32)
+
+    def sack_of(color, spill=None):
+        def build():
+            cloth = ra.plain("ic_hsack", color, 0.95, variation=0.12, scale=12, bump=0.5)
+            body = ra.sphere("sack", 0.17, (0, 0, 0.15), cloth, scale=(1, 0.9, 1.15), segments=20)
+            ra.displace(body, 0.015, 0.2, 1)
+            ra.cylinder("neck", 0.06, 0.12, (0, 0, 0.36), cloth, radius2=0.09, verts=16)
+            ra.cylinder("tie", 0.065, 0.025, (0, 0, 0.33), ra.plain("ic_htie", (0.35, 0.25, 0.12), 0.8), verts=16)
+            if spill:
+                m = ra.plain("ic_hspill", spill, 0.8, variation=0.2)
+                for k in range(7):
+                    ra.sphere("pellet", 0.025, (0.08 + random.uniform(-0.06, 0.08), -0.17 + random.uniform(-0.04, 0.04), 0.0), m,
+                              scale=(1.6, 1, 1), segments=8)
+        return build
+
+    def manure():
+        m = ra.plain("ic_manure", (0.12, 0.08, 0.04), 0.9, variation=0.3, bump=0.8)
+        pile = ra.sphere("pile", 0.22, (0, 0, -0.03), m, scale=(1, 1, 0.6), segments=24)
+        ra.displace(pile, 0.03, 0.15, 2)
+        straw = ra.plain("ic_mstraw", (0.55, 0.42, 0.14), 0.9)
+        for k in range(8):
+            a = random.random() * math.tau
+            ra.box("straw", (0.12, 0.008, 0.008), (math.cos(a) * 0.12, math.sin(a) * 0.12, 0.08), straw, rotation=(0, 0.3, a))
+
+    def meat():
+        flesh = ra.plain("ic_meat", (0.32, 0.03, 0.025), 0.45, variation=0.2, bump=0.4)
+        fat = ra.plain("ic_fat", (0.9, 0.85, 0.75), 0.5)
+        ra.cylinder("board", 0.26, 0.04, (0, 0, 0.02), ra.wood("ic_board", (0.32, 0.2, 0.1)), verts=32)
+        s = ra.sphere("steak", 0.17, (0, 0, 0.08), flesh, scale=(1.3, 1, 0.3), segments=20)
+        ra.displace(s, 0.01, 0.15, 1)
+        ra.sphere("fat", 0.06, (0.17, 0.05, 0.08), fat, scale=(0.6, 1.4, 0.4), segments=10)
+
+    def hide():
+        leather = ra.plain("ic_hide", (0.36, 0.2, 0.09), 0.75, variation=0.3, bump=0.6)
+        h = ra.sphere("hide", 0.25, (0, 0, 0.0), leather, scale=(1.2, 0.9, 0.05), segments=20)
+        ra.displace(h, 0.03, 0.2, 1)
+        ra.box("roll", (0.08, 0.36, 0.08), (0.24, 0, 0.05), leather, bevel=0.035)
+
+    def tallow():
+        wax = ra.plain("ic_tallow", (0.88, 0.84, 0.66), 0.5, variation=0.1, bump=0.2)
+        for k, (x, y) in enumerate(((-0.08, 0), (0.1, 0.02))):
+            ra.box("block", (0.16, 0.14, 0.1 + 0.04 * k), (x, y, 0.05 + 0.02 * k), wax, bevel=0.03)
+
+    def bones():
+        bone = ra.plain("ic_bone", (0.85, 0.82, 0.72), 0.5, variation=0.1)
+        for k, a in enumerate((0.3, -0.5, 1.2)):
+            c = (math.cos(a) * 0.04 * k, math.sin(a) * 0.04 * k, 0.04 + 0.03 * k)
+            ra.cylinder("shaft", 0.025, 0.34, c, bone, rotation=(0, math.radians(90), a), verts=10)
+            for e in (-1, 1):
+                ra.sphere("knob", 0.045, (c[0] + e * math.cos(a) * 0.17, c[1] + e * math.sin(a) * 0.17, c[2]), bone, segments=10)
+
+    def jar(color):
+        def build():
+            glass = ra.plain("ic_hjar", (0.7, 0.75, 0.78), 0.05, variation=0.05, grime=0.1)
+            ra.cylinder("jar", 0.13, 0.28, (0, 0, 0.14), glass, verts=24)
+            ra.cylinder("fill", 0.12, 0.22, (0, 0, 0.12), ra.plain("ic_hjar_fill", color, 0.15, variation=0.1), verts=24)
+            ra.cylinder("lid", 0.12, 0.05, (0, 0, 0.3), ra.plain("ic_hjar_lid", (0.6, 0.6, 0.62), 0.4, 0.8), verts=24)
+        return build
+
+    def gelatin():
+        plate()
+        jelly = ra.plain("ic_gelatin", (0.75, 0.38, 0.05), 0.08, variation=0.1, grime=0.0)
+        for k, (x, y) in enumerate(((-0.07, 0.04), (0.09, -0.03))):
+            ra.box("sheet", (0.16, 0.22, 0.015), (x, y, 0.01 + 0.016 * k), jelly, bevel=0.004, rotation=(0, 0, 0.3 * k))
+
+    def culture_medium():
+        glass = ra.plain("ic_petri", (0.75, 0.8, 0.82), 0.05, variation=0.05, grime=0.05)
+        agar = ra.plain("ic_agar", (0.7, 0.32, 0.06), 0.3, variation=0.1)
+        for k, (x, y) in enumerate(((-0.1, 0.05), (0.1, -0.02), (0.0, 0.0))):
+            z = 0.02 + 0.045 * (k // 2)
+            ra.cylinder("dish", 0.13, 0.035, (x, y, z), glass, verts=28)
+            ra.cylinder("agar", 0.115, 0.02, (x, y, z + 0.012), agar, verts=28)
+        dot = ra.plain("ic_colony", (0.95, 0.92, 0.75), 0.5)
+        for k in range(5):
+            a = random.random() * math.tau
+            ra.sphere("colony", 0.012, (math.cos(a) * 0.06, math.sin(a) * 0.06, 0.08), dot, segments=8)
+
+    def cheese():
+        rind = ra.plain("ic_cheese_rind", (0.8, 0.55, 0.12), 0.5, variation=0.15)
+        inside = ra.plain("ic_cheese", (0.95, 0.8, 0.35), 0.6, variation=0.1)
+        ra.cylinder("wheel", 0.2, 0.12, (-0.04, 0.03, 0.06), rind, verts=32)
+        wedge = ra.mesh_from("wedge", [(0.08, -0.12, 0), (0.3, -0.18, 0), (0.24, -0.02, 0), (0.08, -0.12, 0.1), (0.3, -0.18, 0.1), (0.24, -0.02, 0.1)],
+                             [(0, 1, 2), (3, 5, 4), (0, 3, 4, 1), (1, 4, 5, 2), (2, 5, 3, 0)], inside)
+
+    def butter():
+        paper = ra.plain("ic_butter_paper", (0.85, 0.85, 0.8), 0.7)
+        yellow = ra.plain("ic_butter", (0.95, 0.82, 0.35), 0.4, variation=0.05)
+        ra.box("paper", (0.36, 0.26, 0.01), (0, 0, 0.005), paper)
+        ra.box("butter", (0.26, 0.16, 0.12), (0, 0, 0.07), yellow, bevel=0.015)
+
+    def bottle(color, label=(0.85, 0.8, 0.6)):
+        def build():
+            glass = ra.plain("ic_hbottle", color, 0.05, variation=0.05, grime=0.1)
+            ra.cylinder("bottle", 0.09, 0.3, (0, 0, 0.15), glass, verts=24)
+            ra.cylinder("shoulder", 0.09, 0.08, (0, 0, 0.34), glass, radius2=0.03, verts=24)
+            ra.cylinder("neck", 0.03, 0.08, (0, 0, 0.42), glass, verts=16)
+            ra.cylinder("cap", 0.034, 0.04, (0, 0, 0.47), ra.plain("ic_hcap", (0.6, 0.1, 0.05), 0.4), verts=16)
+            ra.cylinder("label", 0.092, 0.1, (0, 0, 0.14), ra.plain("ic_hlabel", label, 0.8), verts=24)
+        return build
+
+    def bowl_of(color, chunks):
+        def build():
+            ceramic = ra.plain("ic_hbowl", (0.75, 0.72, 0.65), 0.3, variation=0.05)
+            ra.sphere("bowl", 0.22, (0, 0, 0.2), ceramic, scale=(1, 1, 0.75), segments=32, keep=lambda co: co.z <= 0.01)
+            ra.cylinder("food", 0.2, 0.02, (0, 0, 0.19), ra.plain("ic_hfood", color, 0.3, variation=0.15), verts=32)
+            for c, n in chunks:
+                m = ra.plain("ic_hchunk", c, 0.6)
+                for _ in range(n):
+                    a = random.random() * math.tau
+                    r = random.uniform(0, 0.14)
+                    ra.box("chunk", (0.04, 0.04, 0.03), (math.cos(a) * r, math.sin(a) * r, 0.205), m, bevel=0.008,
+                           rotation=(0, 0, random.random() * 3))
+        return build
+
+    def dried_meat():
+        m = ra.plain("ic_jerky", (0.13, 0.035, 0.015), 0.6, variation=0.3, bump=0.6)
+        for k in range(4):
+            s = ra.box("strip", (0.32, 0.07, 0.02), (0, -0.12 + 0.08 * k, 0.01 + 0.015 * (k % 2)), m, bevel=0.01,
+                       rotation=(0, 0, random.uniform(-0.2, 0.2)))
+            ra.displace(s, 0.008, 0.1, 1)
+
+    def workers_lunch():
+        plate()
+        ra.sphere("potatoes", 0.08, (-0.08, 0.06, 0.04), ra.plain("ic_mash", (0.9, 0.82, 0.55), 0.6), scale=(1.3, 1, 0.6), segments=14)
+        b = ra.plain("ic_lunch_bigos", (0.45, 0.32, 0.12), 0.6, variation=0.3, bump=0.5)
+        ra.sphere("bigos", 0.09, (0.09, 0.0, 0.03), b, scale=(1.3, 1.1, 0.5), segments=14)
+        ra.box("bread", (0.12, 0.08, 0.03), (-0.02, -0.14, 0.03), ra.plain("ic_lunch_bread", (0.55, 0.33, 0.12), 0.7), bevel=0.01)
+        ra.cylinder("mug", 0.06, 0.12, (0.18, 0.15, 0.06), ra.plain("ic_mug", (0.9, 0.9, 0.88), 0.3), verts=16)
+
+    def cheese_sandwich():
+        bread = ra.plain("ic_sw_bread", (0.8, 0.62, 0.38), 0.7, variation=0.15, bump=0.4)
+        crust = ra.plain("ic_sw_crust", (0.45, 0.26, 0.08), 0.6)
+        cheese_m = ra.plain("ic_sw_cheese", (0.95, 0.78, 0.25), 0.5)
+        for z, m in ((0.02, bread), (0.06, cheese_m), (0.1, bread)):
+            ra.box("layer", (0.3, 0.26, 0.04 if m is bread else 0.02), (0, 0, z), m, bevel=0.012 if m is bread else 0.002,
+                   rotation=(0, 0, 0.3 if m is cheese_m else 0.2))
+        ra.box("crust", (0.31, 0.27, 0.01), (0, 0, 0.125), crust, rotation=(0, 0, 0.2))
+        ra.box("lettuce", (0.32, 0.05, 0.01), (0.0, -0.12, 0.045), ra.plain("ic_sw_leaf", (0.25, 0.5, 0.12), 0.5), rotation=(0, 0, 0.2))
+
+    def miners_breakfast():
+        tin = ra.rusty_metal("ic_lunchbox", (0.35, 0.36, 0.38), rust=0.15)
+        ra.box("box", (0.34, 0.22, 0.12), (0, 0, 0.06), tin, bevel=0.02)
+        ra.box("sandwich", (0.14, 0.12, 0.05), (-0.07, 0, 0.14), ra.plain("ic_mb_bread", (0.8, 0.62, 0.38), 0.7), bevel=0.01)
+        ra.sphere("egg", 0.05, (0.08, 0.02, 0.15), ra.plain("ic_mb_egg", (0.92, 0.88, 0.8), 0.4), scale=(1, 1, 1.3), segments=12)
+        ra.cylinder("flask", 0.05, 0.26, (0.22, 0.12, 0.13), ra.plain("ic_flask", (0.2, 0.35, 0.2), 0.4, 0.4), verts=14)
+
+    def roast_beef():
+        plate()
+        roast = ra.plain("ic_roast", (0.32, 0.12, 0.05), 0.5, variation=0.25, bump=0.5)
+        r = ra.sphere("roast", 0.15, (0, 0.02, 0.07), roast, scale=(1.3, 1, 0.65), segments=20)
+        ra.displace(r, 0.01, 0.15, 1)
+        pink = ra.plain("ic_roast_in", (0.7, 0.3, 0.25), 0.5)
+        for k in range(2):
+            ra.box("slice", (0.02, 0.14, 0.11), (0.2 + 0.03 * k, -0.06, 0.05), pink, bevel=0.02, rotation=(0, 0.3, 0))
+        green = ra.plain("ic_parsley", (0.2, 0.45, 0.1), 0.5)
+        for k in range(3):
+            ra.sphere("parsley", 0.02, (-0.15 + 0.03 * k, -0.15, 0.03), green, segments=8)
+
+    def cheesecake():
+        crust = ra.plain("ic_cc_crust", (0.55, 0.35, 0.15), 0.7, variation=0.2)
+        body = ra.plain("ic_cc", (0.95, 0.86, 0.6), 0.5, variation=0.05)
+        top = ra.plain("ic_cc_top", (0.75, 0.48, 0.15), 0.5)
+        plate()
+        ra.cylinder("base", 0.2, 0.03, (0, 0, 0.015), crust, verts=32)
+        ra.cylinder("cake", 0.2, 0.13, (0, 0, 0.095), body, verts=32)
+        ra.cylinder("top", 0.2, 0.01, (0, 0, 0.165), top, verts=32)
+
+    def dining_takings():
+        gold = ra.plain("ic_dcoin", (0.75, 0.52, 0.12), 0.3, 1.0, variation=0.2, bump=0.4)
+        for k in range(4):
+            ra.cylinder("coin", 0.12, 0.025, (0.02 * k, 0, 0.013 + k * 0.027), gold, verts=28)
+        ra.box("bill", (0.22, 0.12, 0.005), (0.15, -0.12, 0.02), ra.plain("ic_bill", (0.85, 0.82, 0.72), 0.6), rotation=(0, 0, 0.4))
+        ra.box("fork", (0.02, 0.2, 0.01), (-0.18, -0.08, 0.01), ra.plain("ic_fork", (0.7, 0.7, 0.72), 0.3, 1.0), rotation=(0, 0, -0.3))
+
+    return {
+        "item_manure": manure,
+        "item_concentrate_feed": sack_of((0.55, 0.45, 0.2), (0.7, 0.55, 0.15)),
+        "item_meat": meat,
+        "item_hide": hide,
+        "item_tallow": tallow,
+        "item_bones": bones,
+        "item_gelatin": gelatin,
+        "item_culture_medium": culture_medium,
+        "item_cheese": cheese,
+        "item_butter": butter,
+        "item_casein": sack_of((0.88, 0.86, 0.8)),
+        "item_ethanol": bottle((0.75, 0.8, 0.82)),
+        "item_stillage": bowl_of((0.4, 0.3, 0.15), [((0.5, 0.38, 0.2), 8)]),
+        "item_dried_meat": dried_meat,
+        "item_workers_lunch": workers_lunch,
+        "item_cheese_sandwich": cheese_sandwich,
+        "item_miners_breakfast": miners_breakfast,
+        "item_lumberjack_goulash": bowl_of((0.45, 0.15, 0.05), [((0.35, 0.1, 0.06), 8), ((0.9, 0.82, 0.55), 6), ((0.3, 0.45, 0.15), 3)]),
+        "item_roast_beef": roast_beef,
+        "item_cheesecake": cheesecake,
+        "item_dining_takings": dining_takings,
+    }
+
+
 def render_icons(only=()):
     ICONS.mkdir(parents=True, exist_ok=True)
-    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models(), **city_icon_models(), **forest_icon_models(), **tree_icon_models()}.items():
+    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models(), **city_icon_models(), **forest_icon_models(), **tree_icon_models(), **husbandry_icon_models()}.items():
         if only and name not in only:
             continue
         random.seed(zlib.crc32(name.encode()))
@@ -5484,7 +5987,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "office", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "office", "logistics", "husbandry", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -5546,6 +6049,9 @@ if __name__ == "__main__":
     if "tree" in args or any(a in tree for a in args):
         # Names of crafting tree sprites render just those.
         render_tree(layout, [a for a in args if a in tree])
+    if "husbandry" in args or any(a in HUSBANDRY for a in args):
+        # Names of husbandry sprites render just those.
+        render_husbandry(layout, [a for a in args if a in HUSBANDRY])
     if "logistics" in args or any(a in LOGISTICS for a in args):
         # Names of logistics sprites render just those.
         render_logistics(layout, [a for a in args if a in LOGISTICS])

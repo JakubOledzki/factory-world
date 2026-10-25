@@ -18,6 +18,9 @@ public static class CompanyMoney
 
     public const int DefaultDividendPercent = 20;
 
+    /// <summary>Fine dishes (roast beef or cheesecake) a company's debut banquet takes from the warehouse when it first goes public.</summary>
+    public const long ListingBanquet = 200;
+
     public static readonly TimeSpan DividendEvery = TimeSpan.FromDays(1);
 
     /// <summary>How many past days of earnings count towards the company's value.</summary>
@@ -60,27 +63,27 @@ public static class BigProjects
     public static readonly IReadOnlyList<BigProject> All =
     [
         new("offshore_rig", "Platforma wiertnicza", "Dwie gotowe platformy wiertnicze trafiają do magazynu spółki.",
-            [(Items.SteelIngot, 3000), (Items.Concrete, 2000), (Items.Pipe, 500), (Items.Gasket, 100)], TimeSpan.FromDays(2),
+            [(Items.SteelIngot, 3000), (Items.Concrete, 2000), (Items.Pipe, 500), (Items.Gasket, 100), (Items.Provisions, 500)], TimeSpan.FromDays(2),
             [(Items.OffshorePlatform, 2)], null),
         new(CompanyPerks.Harbour, "Port spółki", "Statki członków spółki płacą za rejs między portami połowę opłaty.",
-            [(Items.Concrete, 3000), (Items.Beams, 2000), (Items.SteelIngot, 1500), (Items.Tar, 300)], TimeSpan.FromDays(2),
+            [(Items.Concrete, 3000), (Items.Beams, 2000), (Items.SteelIngot, 1500), (Items.Tar, 300), (Items.Provisions, 1000)], TimeSpan.FromDays(2),
             [], CompanyPerks.Harbour),
         new("mirror_field", "Pole lustrzane", "Trzy elektrownie słoneczne z lustrami trafiają do magazynu spółki.",
-            [(Items.Mirror, 1500), (Items.Glass, 3000), (Items.SteelIngot, 2000), (Items.Concrete, 1000)], TimeSpan.FromDays(3),
+            [(Items.Mirror, 1500), (Items.Glass, 3000), (Items.SteelIngot, 2000), (Items.Concrete, 1000), (Items.Provisions, 500)], TimeSpan.FromDays(3),
             [(Items.SolarTower, 3)], null),
         new(CompanyPerks.Railway, "Kolej międzykontynentalna", "Pociągi członków spółki płacą o 30% mniej, także na trasach.",
-            [(Items.SteelIngot, 5000), (Items.Beams, 4000), (Items.Concrete, 3000), (Items.Diesel, 2000)], TimeSpan.FromDays(4),
+            [(Items.SteelIngot, 5000), (Items.Beams, 4000), (Items.Concrete, 3000), (Items.Diesel, 2000), (Items.Provisions, 1000)], TimeSpan.FromDays(4),
             [], CompanyPerks.Railway),
 
         // The space goals: the top of the crafting tree, built one after another.
         new(CompanyPerks.Spaceport, "Kosmodrom", "Wyrzutnia, z której spółka wyśle misję orbitalną.",
-            [(Items.PrecastConcrete, 2000), (Items.RefractoryLining, 300), (Items.IndustrialRobot, 10), (Items.ControlModule, 20)],
+            [(Items.PrecastConcrete, 2000), (Items.RefractoryLining, 300), (Items.IndustrialRobot, 10), (Items.ControlModule, 20), (Items.Provisions, 2000)],
             TimeSpan.FromDays(5), [], CompanyPerks.Spaceport),
         new(CompanyPerks.Orbit, "Misja orbitalna", "Satelita prowadzi pociągi i statki członków spółki: płacą o 20% mniej na każdej trasie.",
-            [(Items.LaunchRocket, 1), (Items.Satellite, 1), (Items.RocketFuel, 200)],
+            [(Items.LaunchRocket, 1), (Items.Satellite, 1), (Items.RocketFuel, 200), (Items.Provisions, 500)],
             TimeSpan.FromDays(3), [], CompanyPerks.Orbit, [CompanyPerks.Spaceport]),
         new(CompanyPerks.Station, "Stacja orbitalna", "Laboratorium na orbicie: badania członków spółki trwają o 20% krócej.",
-            [(Items.LaunchRocket, 2), (Items.FusionReactor, 1), (Items.IndustrialRobot, 4), (Items.CryogenicTank, 4), (Items.Provisions, 100)],
+            [(Items.LaunchRocket, 2), (Items.FusionReactor, 1), (Items.IndustrialRobot, 4), (Items.CryogenicTank, 4), (Items.Provisions, 1000)],
             TimeSpan.FromDays(7), [], CompanyPerks.Station, [CompanyPerks.Orbit]),
     ];
 

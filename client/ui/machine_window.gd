@@ -157,10 +157,18 @@ func _render() -> void:
 	var out_label := UI.label("Gotowe: %s × %d" % [output["name"], int(output["quantity"])] if output != null else "Gotowe: pusto")
 	out_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	out_row.add_child(out_label)
-	var take := UI.button("Wyjmij", _take.bind("output"), output != null)
-	take.disabled = output == null
+	var extras: Array = _state.get("extras", [])
+	var take := UI.button("Wyjmij", _take.bind("output"), output != null or not extras.is_empty())
+	take.disabled = output == null and extras.is_empty()
 	out_row.add_child(take)
 	_slots.add_child(out_row)
+	# What came with the product, e.g. hide, tallow and bones out of a slaughterhouse; taken out with it.
+	for extra: Dictionary in extras:
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		row.add_child(UI.item_icon(extra["id"], 26))
+		row.add_child(UI.label("Przy okazji: %s × %d" % [extra["name"], int(extra["quantity"])], UI.MUTED))
+		_slots.add_child(row)
 
 	var help: Array[String] = ["Maszyna pracuje dalej, gdy odejdziesz. Mieści %d sztuk gotowych produktów." % int(_state["maxOutput"])]
 	if _state["fired"]:
@@ -176,7 +184,10 @@ func _formula_text(recipe: Dictionary) -> String:
 	var parts: Array[String] = []
 	for i: Dictionary in recipe["ingredients"]:
 		parts.append("%d × %s" % [int(i["quantity"]), i["name"].to_lower()])
-	return "%s → %d × %s, %d s" % [" + ".join(parts), int(recipe["quantity"]), recipe["name"].to_lower(), int(recipe["seconds"])]
+	var made := "%d × %s" % [int(recipe["quantity"]), recipe["name"].to_lower()]
+	for e: Dictionary in recipe.get("extras", []):
+		made += " + %d × %s" % [int(e["quantity"]), e["name"].to_lower()]
+	return "%s → %s, %d s" % [" + ".join(parts), made, int(recipe["seconds"])]
 
 
 func _batches_word(n: int) -> String:

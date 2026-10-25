@@ -126,6 +126,9 @@ public static class CityRules
         // Clothes from the tailors.
         (Items.Beanie, 1, 10), (Items.StrawHat, 1, 10), (Items.FlannelJacket, 2, 5), (Items.RubberBoots, 2, 5),
         (Items.SuitJacket, 3, 3), (Items.DressShoes, 3, 4),
+        // Husbandry and gastronomy: cheese and butter from the dairy, meat and the fine dishes of banquets.
+        (Items.Cheese, 0, 20), (Items.Butter, 0, 20), (Items.Meat, 1, 30), (Items.WorkersLunch, 1, 15), (Items.LeatherBoots, 2, 4),
+        (Items.RoastBeef, 2, 10), (Items.Cheesecake, 2, 10),
     ];
 
     /// <summary>A town pays this many times the trader's price for what it wants, and more at each level.</summary>
@@ -135,6 +138,14 @@ public static class CityRules
 
     /// <summary>How much more a town pays with the mayor's "demand" bonus.</summary>
     public const double DemandBonus = 1.15;
+
+    /// <summary>A mayor's festival: fine dishes (roast beef or cheesecake) from the mayor's inventory make the town pay
+    /// <see cref="FestivalBonus"/> times as much for what it wants, for <see cref="FestivalTime"/>.</summary>
+    public const long FestivalDishes = 100;
+
+    public const double FestivalBonus = 1.15;
+
+    public static readonly TimeSpan FestivalTime = TimeSpan.FromHours(24);
 
     public static int NeedCount(int level) => 3 + level;
 
@@ -157,14 +168,16 @@ public static class CityRules
 
         // The newest goods of the town's level come first, so a town that grew asks for what it could not before.
         var open = Goods.Where(g => g.Level <= level && priced(g.Item)).ToList();
-        var fresh = open.Where(g => g.Level == level).OrderBy(g => Hash(g.Item)).Take(level > 0 ? 1 : 0);
+        // Past the last level with goods of its own, the newest goods there are are the fresh ones.
+        var newest = open.Count > 0 ? open.Max(g => g.Level) : 0;
+        var fresh = open.Where(g => g.Level == newest).OrderBy(g => Hash(g.Item)).Take(level > 0 ? 1 : 0);
         var picked = fresh.Concat(open.Except(fresh).OrderBy(g => Hash(g.Item))).Take(NeedCount(level));
         var factor = PopulationFactor(town.Population) * (1 + 0.5 * level);
         return picked.Select(g => (g.Item, Math.Max(1, (long)Math.Round(g.Quantity * factor)))).ToList();
     }
 
-    public static long NeedPriceCents(long traderCents, int level, bool demandBonus) =>
-        (long)Math.Round(traderCents * (Premium + PremiumPerLevel * level) * (demandBonus ? DemandBonus : 1));
+    public static long NeedPriceCents(long traderCents, int level, bool demandBonus, bool festival = false) =>
+        (long)Math.Round(traderCents * (Premium + PremiumPerLevel * level) * (demandBonus ? DemandBonus : 1) * (festival ? FestivalBonus : 1));
 
     /// <summary>What the town pays for each piece of rubbish taken away.</summary>
     public const long TrashFeeCents = 20;
@@ -339,6 +352,16 @@ public sealed class TownPolicyRow
 
 public sealed record TownPolicy(Guid? Mayor, int TaxPercent, string? Bonus);
 
+/// <summary>A town's festival, which the mayor holds with fine dishes: it wants goods dearer until <see cref="Until"/>.</summary>
+public sealed class TownFestivalRow
+{
+    public int TownX { get; set; }
+
+    public int TownY { get; set; }
+
+    public DateTimeOffset Until { get; set; }
+}
+
 public sealed class CityService(
     GameDb db, WorldMap map, Towns towns, PlotService plots, IInventory inventory, IWallet wallet, ICharacterProgress progress,
     ICharacterNames names, IMarketPrices prices, BeachService beach, TimeProvider time) : IMachineContents
@@ -422,11 +445,66 @@ public sealed class CityService(
     {
         var day = CityRules.DayOf(time.GetUtcNow());
         var delivered = await DayDeliveriesAsync(town, day, cancellationToken);
+        var festival = await FestivalUntilAsync(town, cancellationToken) > time.GetUtcNow();
         return CityRules.Needs(town, level, day, item => prices.BuysCents(item) is not null)
             .Select(n => (n.Item, n.Wanted, delivered.GetValueOrDefault(n.Item),
-                CityRules.NeedPriceCents(prices.BuysCents(n.Item)!.Value, level, policy.Bonus == "demand")))
+                CityRules.NeedPriceCents(prices.BuysCents(n.Item)!.Value, level, policy.Bonus == "demand", festival)))
             .ToList();
     }
+
+    /// <summary>When the town's festival ends, or null when it never held one.</summary>
+    public async Task<DateTimeOffset?> FestivalUntilAsync(Town town, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            "SELECT until FROM world.town_festivals WHERE town_x = @x AND town_y = @y", cancellationToken);
+        command.Parameters.AddWithValue("x", town.X);
+        command.Parameters.AddWithValue("y", town.Y);
+        return await command.ExecuteScalarAsync(cancellationToken) is DateTimeOffset until ? until : null;
+    }
+
+    /// <summary>The mayor holds a festival: <see cref="CityRules.FestivalDishes"/> fine dishes from their inventory, roasts first, and the town
+    /// pays more for what it wants for <see cref="CityRules.FestivalTime"/> (from when the one going on ends).</summary>
+    public Task<DateTimeOffset> FestivalAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            var town = RequireTown(x, y);
+            if ((await PolicyAsync(town, cancellationToken)).Mayor != player)
+            {
+                throw new GameException("not_mayor", "Only this week's mayor holds a festival.");
+            }
+
+            var roasts = await inventory.CountAsync(player, Items.RoastBeef, cancellationToken);
+            var cakes = await inventory.CountAsync(player, Items.Cheesecake, cancellationToken);
+            if (roasts + cakes < CityRules.FestivalDishes)
+            {
+                throw new GameException("banquet_needed", $"A festival takes {CityRules.FestivalDishes} fine dishes: roast beef or cheesecake.");
+            }
+
+            var fromRoasts = Math.Min(roasts, CityRules.FestivalDishes);
+            if (fromRoasts > 0)
+            {
+                await inventory.RemoveAsync(player, Items.RoastBeef, fromRoasts, cancellationToken);
+            }
+
+            if (CityRules.FestivalDishes - fromRoasts > 0)
+            {
+                await inventory.RemoveAsync(player, Items.Cheesecake, CityRules.FestivalDishes - fromRoasts, cancellationToken);
+            }
+
+            var now = time.GetUtcNow();
+            var until = (await FestivalUntilAsync(town, cancellationToken) is { } going && going > now ? going : now) + CityRules.FestivalTime;
+            await using var upsert = await db.CommandAsync(
+                """
+                INSERT INTO world.town_festivals (town_x, town_y, until) VALUES (@x, @y, @until)
+                ON CONFLICT (town_x, town_y) DO UPDATE SET until = @until
+                """, cancellationToken);
+            upsert.Parameters.AddWithValue("x", town.X);
+            upsert.Parameters.AddWithValue("y", town.Y);
+            upsert.Parameters.AddWithValue("until", until);
+            await upsert.ExecuteNonQueryAsync(cancellationToken);
+            await progress.AddXpAsync(player, (int)CityRules.FestivalDishes, cancellationToken);
+            return until;
+        }, cancellationToken);
 
     private async Task<Dictionary<string, long>> DayDeliveriesAsync(Town town, int day, CancellationToken cancellationToken)
     {
@@ -858,6 +936,11 @@ public sealed class CityService(
                 maxTaxPercent = CityRules.MaxTaxPercent,
                 bonus = policy.Bonus,
                 bonuses = CityRules.Bonuses.Select(b => new { id = b.Key, name = b.Value }),
+                // A festival the mayor holds with fine dishes: the town pays festivalPercent more while it lasts (Unix milliseconds).
+                festivalUntil = await FestivalUntilAsync(town, cancellationToken) is { } festival && festival > now ? festival.ToUnixTimeMilliseconds() : (long?)null,
+                festivalDishes = CityRules.FestivalDishes,
+                festivalPercent = (int)Math.Round((CityRules.FestivalBonus - 1) * 100),
+                festivalHours = CityRules.FestivalTime.TotalHours,
                 canVote = folk.Contains(player),
                 myVote = myVote is { } v ? Name(v) : null,
                 candidates = folk.Select(f => new { name = Name(f), votes = votes.GetValueOrDefault(f), me = f == player })
@@ -1292,4 +1375,16 @@ public sealed class TakeFromShopHandler(IServiceScopeFactory scopes) : ShopHandl
 
     protected override Task<object> RunAsync(CityService cities, Guid player, ShopRequest request, CancellationToken cancellationToken) =>
         cities.TakeFromShopAsync(player, request.Id, request.Item ?? "", request.Quantity, cancellationToken);
+}
+
+public sealed class CityFestivalHandler(IServiceScopeFactory scopes) : CityHandler(scopes)
+{
+    public override string Type => "city.festival";
+
+    protected override async Task<object?> RunAsync(CityService cities, Guid player, JsonElement? payload, CancellationToken cancellationToken)
+    {
+        var r = Payload.Read<CityRequest>(payload);
+        var until = await cities.FestivalAsync(player, r.X, r.Y, cancellationToken);
+        return new { festivalUntil = until.ToUnixTimeMilliseconds() };
+    }
 }

@@ -35,6 +35,9 @@ public static class Farming
 
     /// <summary>A crop sown with fertiliser grows this much faster: in half the time.</summary>
     public const double FertilizerSpeed = 2;
+
+    /// <summary>A crop sown on manure grows a quarter faster: in 75% of its time.</summary>
+    public const double ManureSpeed = 4.0 / 3;
 }
 
 /// <param name="Crop">Null on a tilled field nothing grows on yet.</param>
@@ -104,9 +107,10 @@ public sealed class FarmService(
             return new FieldChange(new Field(tileX, tileY, null, null), [], xp);
         }, cancellationToken);
 
-    /// <summary>Sows a crop on an empty field; <paramref name="fertilize"/> spends a fertiliser from the inventory, and the crop grows in half the time.</summary>
+    /// <summary>Sows a crop on an empty field; <paramref name="fertilize"/> spends a fertiliser from the inventory, and the crop grows in half the time;
+    /// <paramref name="manure"/> spends a manure, and it grows in 75% of the time.</summary>
     public Task<FieldChange> PlantAsync(
-        Guid player, int x, int y, int tileX, int tileY, string crop, CancellationToken cancellationToken, bool fertilize = false) =>
+        Guid player, int x, int y, int tileX, int tileY, string crop, CancellationToken cancellationToken, bool fertilize = false, bool manure = false) =>
         db.InTransactionAsync(async () =>
         {
             if (!Farming.ById.ContainsKey(crop))
@@ -123,8 +127,15 @@ public sealed class FarmService(
                 await stats.RecordAsync(player, [ProductionEntry.Used(Items.Fertilizer, 1, now)], cancellationToken);
             }
 
+            if (manure)
+            {
+                await inventory.RemoveAsync(player, Items.Manure, 1, cancellationToken);
+                await stats.RecordAsync(player, [ProductionEntry.Used(Items.Manure, 1, now)], cancellationToken);
+            }
+
             // A fertilised crop counts as sown so long ago that it is ripe in half its time; a farmer's clothes take off more.
-            var speed = (fertilize ? Farming.FertilizerSpeed : 1) * await plots.SpeedAsync(player, Industries.Farming, cancellationToken);
+            var speed = (fertilize ? Farming.FertilizerSpeed : 1) * (manure ? Farming.ManureSpeed : 1)
+                * await plots.SpeedAsync(player, Industries.Farming, cancellationToken);
             var sown = now - Farming.ById[crop].Grow * (1 - 1 / speed);
             await using var update = await db.CommandAsync(
                 """
@@ -198,7 +209,7 @@ public sealed class FarmService(
     }
 }
 
-public sealed record FieldRequest(int X, int Y, int TileX, int TileY, string? Crop, bool Fertilize = false);
+public sealed record FieldRequest(int X, int Y, int TileX, int TileY, string? Crop, bool Fertilize = false, bool Manure = false);
 
 /// <summary>plot.till, plot.plant and plot.reap all answer with the changed field.</summary>
 public abstract class FieldHandler(IServiceScopeFactory scopes, TimeProvider time) : IMessageHandler
@@ -251,7 +262,7 @@ public sealed class PlantHandler(IServiceScopeFactory scopes, TimeProvider time)
     public override string Type => "plot.plant";
 
     protected override Task<FieldChange> RunAsync(FarmService farm, ClientContext client, FieldRequest r, CancellationToken cancellationToken) =>
-        farm.PlantAsync(client.RequireAccount(), r.X, r.Y, r.TileX, r.TileY, r.Crop ?? "", cancellationToken, r.Fertilize);
+        farm.PlantAsync(client.RequireAccount(), r.X, r.Y, r.TileX, r.TileY, r.Crop ?? "", cancellationToken, r.Fertilize, r.Manure);
 }
 
 public sealed class ReapHandler(IServiceScopeFactory scopes, TimeProvider time) : FieldHandler(scopes, time)

@@ -14,10 +14,15 @@ public sealed record UnequipRequest(int? Slot, bool Backpack, string? Clothing =
 
 public sealed record RestyleRequest(Appearance Appearance);
 
+public sealed record EatRequest(string Item);
+
 internal static class CharacterView
 {
-    public static object From(Character c)
+    public static DateTimeOffset Now(AsyncServiceScope scope) => scope.ServiceProvider.GetRequiredService<TimeProvider>().GetUtcNow();
+
+    public static object From(Character c, DateTimeOffset now)
     {
+        var meal = c.MealAt(now);
         var level = Leveling.LevelForXp(c.Xp);
         return new
         {
@@ -47,6 +52,15 @@ internal static class CharacterView
             bonuses = LevelBonuses.With(Outfit.Bonuses(c.Outfit), level),
             levelBonuses = LevelBonuses.For(level),
             levelRewards = LevelBonuses.All.Select(b => new { level = b.Level, industry = b.Industry, percent = b.Percent }),
+            // What the last meal gives, while it lasts (Unix milliseconds).
+            meal = meal is null ? null : new
+            {
+                id = meal,
+                name = Items.Names[meal],
+                bonuses = Items.Meals[meal].Bonuses,
+                until = c.MealUntil!.Value.ToUnixTimeMilliseconds(),
+            },
+            serverTime = now.ToUnixTimeMilliseconds(),
             restyleCents = CharacterRules.RestyleCents,
         };
     }
@@ -84,7 +98,7 @@ public sealed class GetCharacterHandler(IServiceScopeFactory scopes) : IMessageH
         await using var scope = scopes.CreateAsyncScope();
         var character = await scope.ServiceProvider.GetRequiredService<CharacterService>()
             .FindAsync(client.RequireAccount(), cancellationToken);
-        return character is null ? new Reply("character.none") : new Reply("character", CharacterView.From(character));
+        return character is null ? new Reply("character.none") : new Reply("character", CharacterView.From(character, CharacterView.Now(scope)));
     }
 }
 
@@ -103,7 +117,7 @@ public sealed class CreateCharacterHandler(IServiceScopeFactory scopes) : IMessa
         await using var scope = scopes.CreateAsyncScope();
         var character = await scope.ServiceProvider.GetRequiredService<CharacterService>()
             .CreateAsync(client.RequireAccount(), request.Name ?? "", request.Appearance, cancellationToken);
-        return new Reply("character", CharacterView.From(character));
+        return new Reply("character", CharacterView.From(character, CharacterView.Now(scope)));
     }
 }
 
@@ -119,7 +133,7 @@ public sealed class EquipHandler(IServiceScopeFactory scopes) : IMessageHandler
         var equipment = scope.ServiceProvider.GetRequiredService<Equipment>();
         await equipment.EquipAsync(client.RequireAccount(), request.Item ?? "", request.Slot, cancellationToken);
         var character = await scope.ServiceProvider.GetRequiredService<CharacterService>().FindAsync(client.RequireAccount(), cancellationToken);
-        return new Reply("character", CharacterView.From(character!));
+        return new Reply("character", CharacterView.From(character!, CharacterView.Now(scope)));
     }
 }
 
@@ -147,7 +161,7 @@ public sealed class UnequipHandler(IServiceScopeFactory scopes) : IMessageHandle
         }
 
         var character = await scope.ServiceProvider.GetRequiredService<CharacterService>().FindAsync(client.RequireAccount(), cancellationToken);
-        return new Reply("character", CharacterView.From(character!));
+        return new Reply("character", CharacterView.From(character!, CharacterView.Now(scope)));
     }
 }
 
@@ -168,6 +182,21 @@ public sealed class RestyleHandler(IServiceScopeFactory scopes) : IMessageHandle
         var characters = scope.ServiceProvider.GetRequiredService<CharacterService>();
         await characters.RestyleAsync(client.RequireAccount(), request.Appearance, cancellationToken);
         var character = await characters.FindAsync(client.RequireAccount(), cancellationToken);
-        return new Reply("character", CharacterView.From(character!));
+        return new Reply("character", CharacterView.From(character!, CharacterView.Now(scope)));
+    }
+}
+
+/// <summary>Eats a meal from the inventory: hand work goes faster for a while (see <see cref="Items.Meals"/>).</summary>
+public sealed class EatHandler(IServiceScopeFactory scopes) : IMessageHandler
+{
+    public string Type => "character.eat";
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<EatRequest>(payload);
+        await using var scope = scopes.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<Equipment>().EatAsync(client.RequireAccount(), request.Item ?? "", CharacterView.Now(scope), cancellationToken);
+        var character = await scope.ServiceProvider.GetRequiredService<CharacterService>().FindAsync(client.RequireAccount(), cancellationToken);
+        return new Reply("character", CharacterView.From(character!, CharacterView.Now(scope)));
     }
 }

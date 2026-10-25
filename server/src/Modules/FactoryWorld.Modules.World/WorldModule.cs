@@ -52,6 +52,9 @@ public sealed class PlotField
     public string? Crop { get; set; }
 
     public DateTimeOffset? PlantedAt { get; set; }
+
+    /// <summary>The farmstead that tends it, or null for a field a player tends.</summary>
+    public Guid? FarmsteadId { get; set; }
 }
 
 /// <summary>A tree a player planted on a plot, growing until <see cref="ReadyAt"/>.</summary>
@@ -88,6 +91,9 @@ public sealed class PlotAnimalRow
     public string Kind { get; set; } = "";
 
     public DateTimeOffset? ReadyAt { get; set; }
+
+    /// <summary>Collections so far, which count towards a young one.</summary>
+    public int Meals { get; set; }
 }
 
 /// <summary>A mine of a plot that has been worked: loads taken since it was last full, and when it ran dry.</summary>
@@ -148,6 +154,28 @@ public sealed class PlotForesterRow
 
     /// <summary>The kind of tree it plants.</summary>
     public string Species { get; set; } = Trees.Pine;
+}
+
+/// <summary>A farmstead on a plot: the crops it keeps, its manure, when it can reap again and what it sows.</summary>
+public sealed class PlotFarmsteadRow
+{
+    public Guid ObjectId { get; set; }
+
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public Guid OwnerId { get; set; }
+
+    /// <summary>The crop it sows.</summary>
+    public string Crop { get; set; } = "";
+
+    /// <summary>What it harvested, as JSON: crop → count.</summary>
+    public string Store { get; set; } = "{}";
+
+    public int Manure { get; set; }
+
+    public DateTimeOffset BusyUntil { get; set; }
 }
 
 /// <summary>A well pumping oil or gas: what it holds, how far it is with its unit and the state of its seals.</summary>
@@ -326,6 +354,8 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(f => f.TileY).HasColumnName("tile_y");
             e.Property(f => f.Crop).HasColumnName("crop").HasMaxLength(32);
             e.Property(f => f.PlantedAt).HasColumnName("planted_at");
+            e.Property(f => f.FarmsteadId).HasColumnName("farmstead_id");
+            e.HasIndex(f => f.FarmsteadId);
         });
         model.Entity<PlotTree>(e =>
         {
@@ -350,6 +380,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(a => a.TileY).HasColumnName("tile_y");
             e.Property(a => a.Kind).HasColumnName("kind").HasMaxLength(32);
             e.Property(a => a.ReadyAt).HasColumnName("ready_at");
+            e.Property(a => a.Meals).HasColumnName("meals").HasDefaultValue(0);
         });
         model.Entity<PlotMine>(e =>
         {
@@ -389,6 +420,22 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(f => f.OakWood).HasColumnName("oak_wood").HasDefaultValue(0);
             e.Property(f => f.BusyUntil).HasColumnName("busy_until");
             e.Property(f => f.Species).HasColumnName("species").HasMaxLength(16).HasDefaultValue(Trees.Pine);
+            e.HasIndex(f => new { f.X, f.Y });
+            e.HasIndex(f => f.OwnerId);
+        });
+
+        model.Entity<PlotFarmsteadRow>(e =>
+        {
+            e.ToTable("plot_farmsteads");
+            e.HasKey(f => f.ObjectId);
+            e.Property(f => f.ObjectId).HasColumnName("object_id");
+            e.Property(f => f.X).HasColumnName("x");
+            e.Property(f => f.Y).HasColumnName("y");
+            e.Property(f => f.OwnerId).HasColumnName("owner_id");
+            e.Property(f => f.Crop).HasColumnName("crop").HasMaxLength(32);
+            e.Property(f => f.Store).HasColumnName("store").HasDefaultValue("{}");
+            e.Property(f => f.Manure).HasColumnName("manure").HasDefaultValue(0);
+            e.Property(f => f.BusyUntil).HasColumnName("busy_until");
             e.HasIndex(f => new { f.X, f.Y });
             e.HasIndex(f => f.OwnerId);
         });
@@ -575,6 +622,14 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(p => p.MayorId).HasColumnName("mayor_id");
             e.Property(p => p.TaxPercent).HasColumnName("tax_percent");
             e.Property(p => p.Bonus).HasColumnName("bonus").HasMaxLength(16);
+        });
+        model.Entity<TownFestivalRow>(e =>
+        {
+            e.ToTable("town_festivals");
+            e.HasKey(f => new { f.TownX, f.TownY });
+            e.Property(f => f.TownX).HasColumnName("town_x");
+            e.Property(f => f.TownY).HasColumnName("town_y");
+            e.Property(f => f.Until).HasColumnName("until");
         });
         model.Entity<PlotFireRow>(e =>
         {
@@ -960,6 +1015,12 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, FindPartnersHandler>();
         services.AddScoped<IMachinePorts, StationPorts>();
         services.AddScoped<ForesterService>();
+        services.AddScoped<FarmsteadService>();
+        services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<FarmsteadService>());
+        services.AddScoped<IPlotAutomation>(provider => provider.GetRequiredService<FarmsteadService>());
+        services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<FarmsteadService>());
+        services.AddScoped<IMachinePorts>(provider => provider.GetRequiredService<FarmsteadService>());
+        services.AddScoped<IMachineStatuses>(provider => provider.GetRequiredService<FarmsteadService>());
         services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<ForesterService>());
         services.AddScoped<IPlotAutomation>(provider => provider.GetRequiredService<ForesterService>());
         services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<ForesterService>());
@@ -985,6 +1046,9 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, GetForestryHandler>();
         services.AddSingleton<IMessageHandler, TakeFromForesterHandler>();
         services.AddSingleton<IMessageHandler, PlantForesterHandler>();
+        services.AddSingleton<IMessageHandler, GetFarmsteadsHandler>();
+        services.AddSingleton<IMessageHandler, TakeFromFarmsteadHandler>();
+        services.AddSingleton<IMessageHandler, SowFarmsteadHandler>();
         services.AddHostedService<RailwayDispatcher>();
         services.AddSingleton<IMessageHandler, TillHandler>();
         services.AddSingleton<IMessageHandler, PlantHandler>();
@@ -1010,6 +1074,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, CityServiceHandler>();
         services.AddSingleton<IMessageHandler, CityVoteHandler>();
         services.AddSingleton<IMessageHandler, CityPolicyHandler>();
+        services.AddSingleton<IMessageHandler, CityFestivalHandler>();
         services.AddSingleton<IMessageHandler, GetShopHandler>();
         services.AddSingleton<IMessageHandler, StockShopHandler>();
         services.AddSingleton<IMessageHandler, TakeFromShopHandler>();

@@ -53,6 +53,14 @@ public sealed class Character
     /// <summary>What is in each slot of the tool bar the character has now.</summary>
     public IReadOnlyList<string?> Tools => new[] { Tool, Tool2, Tool3 }[..Equipment.ToolSlots(Backpack)];
 
+    /// <summary>What the character ate last, and until when it helps; see <see cref="Items.Meals"/>.</summary>
+    public string? Meal { get; set; }
+
+    public DateTimeOffset? MealUntil { get; set; }
+
+    /// <summary>The meal that still helps at <paramref name="now"/>, or null.</summary>
+    public string? MealAt(DateTimeOffset now) => Meal is { } meal && MealUntil > now && Items.Meals.ContainsKey(meal) ? meal : null;
+
     public DateTimeOffset CreatedAt { get; set; }
 }
 
@@ -77,6 +85,7 @@ public sealed class CharactersDbContext(DbContextOptions<CharactersDbContext> op
             e.Property(c => c.Tool2).HasMaxLength(32);
             e.Property(c => c.Tool3).HasMaxLength(32);
             e.Property(c => c.Backpack).HasMaxLength(32);
+            e.Property(c => c.Meal).HasMaxLength(32);
             e.Property(c => c.ClothesHead).HasMaxLength(32);
             e.Property(c => c.ClothesBody).HasMaxLength(32);
             e.Property(c => c.ClothesLegs).HasMaxLength(32);
