@@ -539,35 +539,40 @@ func _render_sell() -> void:
 		_page.add_child(_nothing("Nie masz nic, co można sprzedać."))
 
 
+## Laid out like a row of the "Gracze" tab: the prices on the right, then the buttons.
 func _sell_row(entry: Dictionary) -> Control:
 	var item: String = entry["id"]
 	var owned := _count(item)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	row.add_child(UI.item_icon(item, 26))
-	var text := VBoxContainer.new()
-	text.add_theme_constant_override("separation", -4)
-	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var name_label := UI.label("%s  ×%d" % [entry["name"], owned])
-	name_label.add_theme_font_override("font", UI.bold())
-	text.add_child(name_label)
-	var parts := []
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_label)
+	var prices := VBoxContainer.new()
+	prices.add_theme_constant_override("separation", -4)
+	prices.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	if entry.get("quickSaleCents") != null:
-		parts.append("handlarz %s%s" % [UI.money(int(entry["quickSaleCents"])), _sell_change(item)])
+		prices.add_child(UI.label("handlarz %s%s" % [UI.money(int(entry["quickSaleCents"])), _sell_change(item)], UI.GOLD, HORIZONTAL_ALIGNMENT_RIGHT))
 	if entry.get("highestCents") != null:
-		parts.append("zlecenia do %s" % UI.money(int(entry["highestCents"])))
-	text.add_child(UI.label(", ".join(parts) if not parts.is_empty() else "handlarz nie skupuje, brak zleceń",
-			UI.GOOD if not parts.is_empty() else UI.MUTED))
-	row.add_child(text)
+		prices.add_child(UI.label("skup do %s (%d szt.)" % [UI.money(int(entry["highestCents"])), int(entry["wanted"])], UI.GOOD, HORIZONTAL_ALIGNMENT_RIGHT))
+	if prices.get_child_count() == 0:
+		prices.add_child(UI.label("nikt nie skupuje", UI.MUTED, HORIZONTAL_ALIGNMENT_RIGHT))
+	row.add_child(prices)
+	var quick := UI.button("Handlarzowi", _send.bind("market.sell", {"item": item, "quantity": mini(owned, 1000)}, item, "market.traded"))
 	if entry.get("quickSaleCents") != null:
-		var quick := UI.button("Handlarzowi", _send.bind("market.sell", {"item": item, "quantity": mini(owned, 1000)}, item, "market.traded"))
 		quick.tooltip_text = "Sprzedaj wszystko handlarzowi po %s/szt." % UI.money(int(entry["quickSaleCents"]))
-		row.add_child(quick)
+	else:
+		quick.disabled = true
+		quick.tooltip_text = "Handlarz tego nie skupuje"
+	row.add_child(quick)
+	var open := UI.button("›", _open_item.bind(item))
+	open.tooltip_text = "Sprzedaj graczom albo wystaw ogłoszenie"
 	# Not researched yet: only the trader buys it, players can't see it.
-	if not entry.get("traderOnly", false):
-		var open := UI.button("›", _open_item.bind(item))
-		open.tooltip_text = "Sprzedaj graczom albo wystaw ogłoszenie"
-		row.add_child(open)
+	if entry.get("traderOnly", false):
+		open.disabled = true
+		open.tooltip_text = "Najpierw to zbadaj, aby handlować z graczami"
+	row.add_child(open)
 	return row
 
 
