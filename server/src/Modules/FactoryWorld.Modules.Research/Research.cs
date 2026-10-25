@@ -27,6 +27,8 @@ public static class TechTree
     public const string Logistics = "logistics";
     public const string Automation = "automation";
     public const string Sorting = "sorting";
+    public const string FastLogistics = "fast_logistics";
+    public const string ExpressLogistics = "express_logistics";
     public const string Storage = "storage";
     public const string Milling = "milling";
     public const string OilPressing = "oil_pressing";
@@ -189,6 +191,12 @@ public static class TechTree
         new(Sorting, "Sortowanie", "Rozdzielacz dzieli taśmę na dwie i odsyła wybrane przedmioty na jedną stronę.",
             [Automation], [(Items.Belt, 10), (Items.Inserter, 4), (Items.CopperIngot, 10)], TimeSpan.FromMinutes(3), 60,
             [Items.Splitter]),
+        new(FastLogistics, "Szybka logistyka", "Szybki taśmociąg wozi przedmioty 2 razy szybciej, a szybki podajnik na prąd obraca ramię 2 razy szybciej.",
+            [Automation], [(Items.Belt, 20), (Items.Inserter, 5), (Items.IronIngot, 50), (Items.CopperIngot, 30)], TimeSpan.FromMinutes(4), 80,
+            [Items.FastBelt, Items.FastInserter]),
+        new(ExpressLogistics, "Ekspresowa logistyka", "Ekspresowy taśmociąg wozi przedmioty 3 razy szybciej, a ekspresowy podajnik obraca ramię 4 razy szybciej.",
+            [FastLogistics, Metallurgy], [(Items.FastBelt, 20), (Items.FastInserter, 5), (Items.SteelIngot, 30), (Items.TinIngot, 20), (Items.SilverIngot, 10)], TimeSpan.FromMinutes(6), 120,
+            [Items.ExpressBelt, Items.ExpressInserter]),
         new(GrainStorage, "Silosy zbożowe", "Silos mieści 2000 pszenicy, kukurydzy albo słonecznika.",
             [Storage, Milling], [(Items.Wheat, 100), (Items.IronIngot, 20)], TimeSpan.FromMinutes(2), 40,
             [Items.GrainSilo]),
@@ -580,7 +588,7 @@ public static class TechTree
     /// </summary>
     public static readonly IReadOnlyList<Branch> Branches =
     [
-        new("logistics", "Logistyka", Items.Belt, [Logistics, Automation, Storage, Sorting, CableTransport]),
+        new("logistics", "Logistyka", Items.Belt, [Logistics, Automation, Storage, Sorting, FastLogistics, ExpressLogistics, CableTransport]),
         new("mining", "Górnictwo", Items.IronOre,
             [Stonemasonry, Metallurgy, MiningAutomation, Crushing, Explosives, DeepMining]),
         new("forestry", "Leśnictwo", Items.Wood,
