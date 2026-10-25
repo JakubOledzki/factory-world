@@ -2,14 +2,14 @@ class_name CharacterWindow
 extends GameWindow
 ## The player's character, opened from the portrait in the corner: the clothes worn on the head,
 ## body, legs and feet with the bonuses they give the industries, and a new look (face, hair,
-## colours) for a fee, and what every fifth level adds to the same bonuses. Clothes are sewn in the
-## tailor's workshop in town or bought.
+## colours) for a fee, what every fifth level adds to the same bonuses, and what the last updates
+## changed. Clothes are sewn in the tailor's workshop in town or bought.
 
 signal failed(reply: Dictionary)
 ## After paying for a new look, so the money shown follows.
 signal balance_changed
 
-const TABS := ["Ubrania", "Wygląd", "Poziomy"]
+const TABS := ["Ubrania", "Wygląd", "Poziomy", "Co nowego"]
 const SLOTS := ["head", "body", "legs", "feet"]
 const SLOT_NAMES := {"head": "Głowa", "body": "Tułów", "legs": "Nogi", "feet": "Stopy"}
 ## How each industry's bonus reads.
@@ -27,6 +27,10 @@ const TAKE_OFF := 1000
 ## What can be eaten on the go, for a while of faster hand work (as the server's Items.Meals).
 const MEALS := ["bread", "scrambled_eggs", "workers_lunch", "cheese_sandwich", "miners_breakfast", "lumberjack_goulash"]
 const EAT := 2000
+## The updates, newest first; a new one goes on top of the file.
+const CHANGELOG_FILE := "res://data/changelog.json"
+## How many of the newest updates the "Co nowego" tab shows.
+const CHANGELOG_SIZE := 10
 
 var _tab := 0
 var _tab_buttons: Array[Button] = []
@@ -34,6 +38,7 @@ var _preview := CharacterPreview.new()
 var _clothes_page := VBoxContainer.new()
 var _look_page := VBoxContainer.new()
 var _levels_page := VBoxContainer.new()
+var _news_page := VBoxContainer.new()
 var _level_summary := VBoxContainer.new()
 var _level_rows := VBoxContainer.new()
 var _level_heading := UI.label("", UI.GOLD)
@@ -58,13 +63,15 @@ func _init() -> void:
 	top.add_theme_constant_override("separation", 4)
 	for i in TABS.size():
 		var b := UI.button(TABS[i], _open_tab.bind(i))
-		b.custom_minimum_size.x = 150
+		b.custom_minimum_size.x = 120 if UI.touch() else 150
 		top.add_child(b)
 		_tab_buttons.append(b)
 	content.add_child(top)
 
 	var columns := HBoxContainer.new()
 	columns.add_theme_constant_override("separation", 18)
+	# On phones the window fills the screen, and the updates list takes what is left.
+	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(columns)
 	_preview.display_scale = 1.0 if UI.touch() else 0.85
 	_preview.options = Game.appearance_options
@@ -72,13 +79,16 @@ func _init() -> void:
 	columns.add_child(_preview)
 	var pages := VBoxContainer.new()
 	pages.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pages.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	pages.add_child(_clothes_page)
 	pages.add_child(_look_page)
 	pages.add_child(_levels_page)
+	pages.add_child(_news_page)
 	columns.add_child(pages)
 	_build_clothes()
 	_build_look()
 	_build_levels()
+	_build_news()
 	_error.visible = false
 	content.add_child(_error)
 
@@ -102,6 +112,9 @@ func _open_tab(tab: int) -> void:
 	_clothes_page.visible = _tab == 0
 	_look_page.visible = _tab == 1
 	_levels_page.visible = _tab == 2
+	_news_page.visible = _tab == 3
+	# The updates read better across the whole window.
+	_preview.visible = _tab != 3
 	_refresh()
 
 
@@ -355,6 +368,53 @@ func _refresh_levels() -> void:
 		row.add_child(text)
 		row.add_child(UI.label("zdobyte" if done else ("następna" if is_next else ""), UI.GOOD if done else UI.GOLD))
 		_level_rows.add_child(row)
+
+
+# --- What's new -------------------------------------------------------------------
+
+func _build_news() -> void:
+	_news_page.add_theme_constant_override("separation", 8)
+	_news_page.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var intro := UI.label("Co zmieniło się w ostatnich aktualizacjach gry.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
+	intro.add_theme_font_size_override("font_size", 13)
+	intro.custom_minimum_size.x = 300
+	_news_page.add_child(intro)
+	var list := ScrollContainer.new()
+	list.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	list.custom_minimum_size.y = 200 if UI.touch() else 420
+	list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var entries := VBoxContainer.new()
+	entries.add_theme_constant_override("separation", 6)
+	entries.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	list.add_child(entries)
+	_news_page.add_child(list)
+	var updates: Variant = JSON.parse_string(FileAccess.get_file_as_string(CHANGELOG_FILE))
+	if not updates is Array or updates.is_empty():
+		entries.add_child(UI.label("Na razie nic nowego.", UI.MUTED))
+		return
+	for i in mini(updates.size(), CHANGELOG_SIZE):
+		var update: Dictionary = updates[i]
+		if i > 0:
+			entries.add_child(HSeparator.new())
+		var heading := HBoxContainer.new()
+		heading.add_theme_constant_override("separation", 10)
+		var title := UI.label(update.get("title", ""), UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT, true)
+		title.add_theme_font_override("font", UI.bold())
+		title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		heading.add_child(title)
+		heading.add_child(UI.label(_date_text(update.get("date", "")), UI.MUTED))
+		entries.add_child(heading)
+		for change: String in update.get("changes", []):
+			var line := UI.label("•  " + change, UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
+			line.add_theme_font_size_override("font_size", 14)
+			line.custom_minimum_size.x = 260
+			entries.add_child(line)
+
+
+## "2026-10-25" as "25.10.2026".
+func _date_text(date: String) -> String:
+	var parts := date.split("-")
+	return ".".join([parts[2], parts[1], parts[0]]) if parts.size() == 3 else date
 
 
 # --- Look --------------------------------------------------------------------------
