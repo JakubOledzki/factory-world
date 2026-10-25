@@ -10,6 +10,9 @@ public sealed class AchievementObserver(IServiceScopeFactory scopes) : IMessageO
 {
     public const string Watching = "achievements.watching";
 
+    /// <summary>The highest values (level, balance...) this connection has recorded, by stat.</summary>
+    private const string Recorded = "achievements.recorded";
+
     public async Task ObserveAsync(Envelope request, Envelope reply, ClientContext client, CancellationToken cancellationToken)
     {
         if (client.AccountId is not { } owner || reply.Payload is not { } payload)
@@ -18,6 +21,22 @@ public sealed class AchievementObserver(IServiceScopeFactory scopes) : IMessageO
         }
 
         var counts = Tally.Count(new HandledMessage(request.Type, request.Payload, reply.Type, payload));
+        // Many replies show the balance or the level: one no higher than already recorded changes nothing.
+        if (client.Items.GetValueOrDefault(Recorded) is not Highest { } highest || highest.Owner != owner)
+        {
+            client.Items[Recorded] = highest = new Highest(owner, []);
+        }
+
+        var recorded = highest.Values;
+
+        foreach (var stat in counts.Keys.Where(Stats.IsHighest).ToList())
+        {
+            if (recorded.TryGetValue(stat, out var known) && counts[stat] <= known)
+            {
+                counts.Remove(stat);
+            }
+        }
+
         if (counts.Count == 0)
         {
             return;
@@ -25,6 +44,10 @@ public sealed class AchievementObserver(IServiceScopeFactory scopes) : IMessageO
 
         await using var scope = scopes.CreateAsyncScope();
         var unlocked = await scope.ServiceProvider.GetRequiredService<AchievementService>().RecordAsync(owner, counts, cancellationToken);
+        foreach (var (stat, value) in counts.Where(c => Stats.IsHighest(c.Key)))
+        {
+            recorded[stat] = value;
+        }
         if (!client.Items.ContainsKey(Watching))
         {
             return;
@@ -42,6 +65,9 @@ public sealed class AchievementObserver(IServiceScopeFactory scopes) : IMessageO
         }
     }
 }
+
+/// <summary>The highest values recorded for the player logged in on a connection.</summary>
+internal sealed record Highest(Guid Owner, Dictionary<string, long> Values);
 
 public sealed class GetAchievementsHandler(IServiceScopeFactory scopes) : IMessageHandler
 {
