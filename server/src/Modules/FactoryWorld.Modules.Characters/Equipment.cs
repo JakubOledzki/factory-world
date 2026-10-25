@@ -117,6 +117,23 @@ public sealed class Equipment(GameDb db, IInventory inventory) : IEquipment
             await SetAsync(accountId, ClothesColumn(slot), null, cancellationToken);
         }, cancellationToken);
 
+    /// <summary>Puts a piece of clothing (or nothing) on a slot without touching the inventory: the
+    /// wardrobe keeps what comes off and gives what goes on.</summary>
+    public async Task DressAsync(Guid accountId, string slot, string? item, CancellationToken cancellationToken)
+    {
+        if (!ClothingSlots.All.Contains(slot) || item is not null && (!Items.Clothes.TryGetValue(item, out var garment) || garment.Slot != slot))
+        {
+            throw new GameException("bad_slot", "This is not worn there.");
+        }
+
+        if (await OutfitAsync(accountId, true, cancellationToken) is null)
+        {
+            throw new GameException("no_character", "Create a character first.");
+        }
+
+        await SetAsync(accountId, ClothesColumn(slot), item, cancellationToken);
+    }
+
     /// <summary>The column of a clothing slot.</summary>
     private static string ClothesColumn(string slot) => "Clothes" + char.ToUpperInvariant(slot[0]) + slot[1..];
 
@@ -266,14 +283,29 @@ public sealed class InventorySize(GameDb db) : IInventorySize
 }
 
 /// <summary>What the worn clothes give, the bonuses of each piece added up per industry, with the level's on top
-/// (<see cref="LevelBonuses"/>) and what the last meal gives while it lasts.</summary>
-public sealed class Outfit(Equipment equipment, ICharacterXp xp, TimeProvider time) : IOutfit
+/// (<see cref="LevelBonuses"/>), what the last meal gives while it lasts and the player's other bonuses (the
+/// garage's upgrades).</summary>
+public sealed class Outfit(Equipment equipment, ICharacterXp xp, TimeProvider time, IEnumerable<IPlayerBonuses> others) : IOutfit
 {
-    public async Task<int> BonusAsync(Guid accountId, string industry, CancellationToken cancellationToken) =>
-        Bonuses(await equipment.OutfitAsync(accountId, false, cancellationToken) ?? new Dictionary<string, string>())
-            .GetValueOrDefault(industry)
-        + LevelBonuses.For(Leveling.LevelForXp(await xp.XpAsync(accountId, cancellationToken) ?? 0)).GetValueOrDefault(industry)
-        + (await equipment.MealAsync(accountId, time.GetUtcNow(), cancellationToken) is { } meal ? Items.Meals[meal].Bonuses.GetValueOrDefault(industry) : 0);
+    public async Task<int> BonusAsync(Guid accountId, string industry, CancellationToken cancellationToken)
+    {
+        var percent = Bonuses(await equipment.OutfitAsync(accountId, false, cancellationToken) ?? new Dictionary<string, string>())
+                .GetValueOrDefault(industry)
+            + LevelBonuses.For(Leveling.LevelForXp(await xp.XpAsync(accountId, cancellationToken) ?? 0)).GetValueOrDefault(industry)
+            + (await equipment.MealAsync(accountId, time.GetUtcNow(), cancellationToken) is { } meal ? Items.Meals[meal].Bonuses.GetValueOrDefault(industry) : 0);
+        foreach (var bonus in others)
+        {
+            percent += await bonus.PercentAsync(accountId, industry, cancellationToken);
+        }
+
+        return percent;
+    }
+
+    public async Task<IReadOnlyDictionary<string, string>> WornAsync(Guid accountId, CancellationToken cancellationToken) =>
+        await equipment.OutfitAsync(accountId, false, cancellationToken) ?? new Dictionary<string, string>();
+
+    public Task SetWornAsync(Guid accountId, string slot, string? item, CancellationToken cancellationToken) =>
+        equipment.DressAsync(accountId, slot, item, cancellationToken);
 
     /// <summary>Percent per industry the clothes give together; industries they do not help left out.</summary>
     public static IReadOnlyDictionary<string, int> Bonuses(IReadOnlyDictionary<string, string> outfit) =>

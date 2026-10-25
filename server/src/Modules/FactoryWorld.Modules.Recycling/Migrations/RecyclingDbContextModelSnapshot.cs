@@ -47,6 +47,30 @@ namespace FactoryWorld.Modules.Recycling.Migrations
                     b.ToTable("garages", "recycling");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.Recycling.GarageItem", b =>
+                {
+                    b.Property<Guid>("HolderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("holder_id");
+
+                    b.Property<string>("Item")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("item");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<long>("Quantity")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity");
+
+                    b.HasKey("HolderId", "Item");
+
+                    b.ToTable("garage_items", "recycling");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.Recycling.GarageObject", b =>
                 {
                     b.Property<Guid>("Id")
@@ -81,6 +105,67 @@ namespace FactoryWorld.Modules.Recycling.Migrations
                     b.HasIndex("OwnerId");
 
                     b.ToTable("garage_objects", "recycling");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Recycling.GarageUpgrade", b =>
+                {
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("Track")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("track");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("integer")
+                        .HasColumnName("level");
+
+                    b.HasKey("OwnerId", "Track");
+
+                    b.ToTable("garage_upgrades", "recycling");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Recycling.SavedOutfit", b =>
+                {
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<int>("Number")
+                        .HasColumnType("integer")
+                        .HasColumnName("number");
+
+                    b.Property<string>("Body")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("body");
+
+                    b.Property<string>("Feet")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("feet");
+
+                    b.Property<string>("Head")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("head");
+
+                    b.Property<string>("Legs")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("legs");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("name");
+
+                    b.HasKey("OwnerId", "Number");
+
+                    b.ToTable("outfits", "recycling");
                 });
 
             modelBuilder.Entity("FactoryWorld.Modules.Recycling.Sorter", b =>

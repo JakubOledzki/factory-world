@@ -7,6 +7,8 @@ const HIGHLIGHT := preload("res://garage/highlight.gdshader")
 
 var id := ""
 var kind := ""
+## The look drawn, when it differs from the kind: the shelf after its upgrade is "furniture_shelf_l3".
+var look := ""
 var display_name := ""
 ## Front-left cell, quarter turns anticlockwise (0 faces the camera) and cells taken unturned.
 var cell := Vector2i.ZERO
@@ -42,15 +44,25 @@ func place(at: Vector2i, steps: int) -> void:
 	cell = at
 	if steps != rotation_steps or _image == null:
 		rotation_steps = steps
-		var art: Dictionary = RoomProjection.layout()["objects"][kind][steps]
-		_sprite.texture = load("res://art/garage/%s_r%d.png" % [kind, steps])
+		var art_kind := look if look != "" else kind
+		var art: Dictionary = RoomProjection.layout()["objects"][art_kind][steps]
+		_sprite.texture = load("res://art/garage/%s_r%d.png" % [art_kind, steps])
 		_sprite.offset = -Vector2(art["anchorX"], art["anchorY"])
-		shadow.texture = load("res://art/garage/%s_r%d_shadow.png" % [kind, steps])
+		shadow.texture = load("res://art/garage/%s_r%d_shadow.png" % [art_kind, steps])
 		shadow.offset = _sprite.offset
 		_image = _sprite.texture.get_image()
 	floor_pos = (Vector2(cell) + Vector2(size_cells()) / 2) * _cell_size
 	position = RoomProjection.to_screen(floor_pos)
 	shadow.position = position
+
+
+## Draws another look of the same piece, e.g. the shelf after an upgrade ("" for the usual one).
+func set_look(value: String) -> void:
+	if value == look:
+		return
+	look = value
+	_image = null
+	place(cell, rotation_steps)
 
 
 ## The footprint on the floor, in metres.

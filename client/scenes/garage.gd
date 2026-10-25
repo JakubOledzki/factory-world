@@ -18,8 +18,14 @@ const FURNACE := "furniture_furnace"
 const ANVIL := "furniture_anvil"
 const SORTER := "furniture_sorting_machine"
 const RESEARCH := "furniture_research_table"
+const SHELF := "furniture_shelf"
+const PALLET := "furniture_pallet"
+const WARDROBE := "furniture_wardrobe"
 ## What [E] does next to each piece of furniture that can be used.
-const USE := {BIN: "Segreguj", WORKBENCH: "Wytwarzaj", ANVIL: "Kuj narzędzia", RESEARCH: "Badania", FURNACE: "Piec kamienny", SORTER: "Sortownia"}
+const USE := {BIN: "Segreguj", WORKBENCH: "Wytwarzaj", ANVIL: "Kuj narzędzia", RESEARCH: "Badania", FURNACE: "Piec kamienny", SORTER: "Sortownia",
+	SHELF: "Regał", PALLET: "Paleta dostaw", WARDROBE: "Szafa"}
+## How much brighter each level of the lighting upgrade makes the room.
+const LIGHT_STEP := 0.06
 
 ## Keyboard actions of this screen: name and keys.
 const ACTIONS := {
@@ -39,6 +45,7 @@ const ACTIONS := {
 	"tool": [KEY_Q],
 	"achievements": [KEY_O],
 	"character": [KEY_C],
+	"upgrades": [KEY_U],
 }
 
 var _garage := {}
@@ -58,6 +65,10 @@ var _furniture_info := {}
 var _objects := {}
 var _astar := AStarGrid2D.new()
 
+## The room in layers: the floor and the walls follow their upgrades, the vignette darkens the edges.
+var _floor: Sprite2D
+var _walls: Sprite2D
+var _room_levels := {}
 var _shadows: Node2D
 var _footprint: Polygon2D
 var _sorted: Node2D
@@ -104,13 +115,18 @@ var _company_window: CompanyWindow
 var _furnace_window: FurnaceWindow
 var _sorter_window: SorterWindow
 var _stats_window: StatsWindow
-## The piece of furniture whose window is open (workbench, research table, furnace or sorting machine), to close
+var _upgrades_window: UpgradesWindow
+var _storage_window: StorageWindow
+var _wardrobe_window: WardrobeWindow
+## The piece of furniture whose window is open (workbench, research table, furnace, sorting
+## machine, shelf, pallet or wardrobe), to close
 ## it when the player walks away.
 var _using: Furniture
 ## Last known state of each furnace by id, to show the fire while it burns.
 var _furnaces := {}
 
 var _trash: Label
+var _bag_text: Label
 var _sort_button: Button
 var _queue_text: Label
 var _machine_hint: Label
@@ -143,10 +159,16 @@ func _ready() -> void:
 # --- Room ------------------------------------------------------------------------
 
 func _build_room() -> void:
-	var background := Sprite2D.new()
-	background.texture = load("res://art/garage/background.jpg")
-	background.centered = false
-	add_child(background)
+	_floor = Sprite2D.new()
+	_floor.centered = false
+	add_child(_floor)
+	_walls = Sprite2D.new()
+	_walls.centered = false
+	add_child(_walls)
+	var vignette := Sprite2D.new()
+	vignette.texture = load("res://art/garage/rooms/vignette.png")
+	vignette.centered = false
+	add_child(vignette)
 
 	# Shadows lie on the floor under everything; the rest is drawn back to front.
 	_shadows = Node2D.new()
@@ -162,6 +184,7 @@ func _build_room() -> void:
 	_sorted = Node2D.new()
 	_sorted.y_sort_enabled = true
 	add_child(_sorted)
+	_show_room({})
 
 	var layout := RoomProjection.layout()
 	_player = GaragePlayer.new(Game.look(), Game.appearance_options)
@@ -199,6 +222,41 @@ func _build_room() -> void:
 	_toast.position = Vector2(240, 628)
 	_toast.modulate.a = 0.0
 	_overlay.add_child(_toast)
+
+
+## Shows the floor and walls of the upgrades bought (track → level), and the room as bright as
+## its lighting.
+func _show_room(levels: Dictionary) -> void:
+	var floor_level := int(levels.get("floor", 0))
+	var walls_level := int(levels.get("walls", 0))
+	if _room_levels.is_empty() or int(_room_levels.get("floor", -1)) != floor_level:
+		_floor.texture = load("res://art/garage/rooms/floor_%d.jpg" % floor_level)
+	if _room_levels.is_empty() or int(_room_levels.get("walls", -1)) != walls_level:
+		_walls.texture = load("res://art/garage/rooms/walls_%d.png" % walls_level)
+	var shelves := int(levels.get("shelves", 0))
+	for object: Furniture in _objects.values():
+		if object.kind == SHELF:
+			object.set_look("%s_l%d" % [SHELF, shelves] if shelves > 0 else "")
+	var light := 1.0 + LIGHT_STEP * int(levels.get("lighting", 0))
+	var room := Color(light, light, light * 0.98)
+	_floor.modulate = room
+	_walls.modulate = room
+	_shadows.modulate = Color(1, 1, 1, 1.0 / light)
+	_sorted.modulate = Color(minf(light, 1.25), minf(light, 1.25), minf(light, 1.25))
+	_room_levels = {"floor": floor_level, "walls": walls_level, "lighting": int(levels.get("lighting", 0)), "shelves": shelves}
+
+
+func _seconds(value: float) -> String:
+	return str(int(value)) if is_equal_approx(value, roundf(value)) else "%.1f" % value
+
+
+## A level of an upgrade was bought: the room and the bonuses change, the money was spent.
+func _on_upgraded(levels: Dictionary, balance_cents: int) -> void:
+	_set_balance(balance_cents)
+	_show_room(levels)
+	_banner("Ulepszono garaż!")
+	await _reload_inventory()
+	_collect()
 
 
 func _outlined(label: Label) -> Label:
@@ -243,11 +301,16 @@ func _use(object: Furniture) -> void:
 			_furnace_window.open_at(object.id)
 		SORTER:
 			_sorter_window.open_at(object.id)
+		SHELF, PALLET:
+			_storage_window.set_title(object.display_name)
+			_storage_window.open_in_garage(object.id)
+		WARDROBE:
+			_wardrobe_window.open_at(object.id)
 
 
 ## The windows of furniture used where it stands; they close when the player walks away.
 func _using_windows() -> Array[GameWindow]:
-	var windows: Array[GameWindow] = [_crafting_window, _research_window, _furnace_window, _sorter_window]
+	var windows: Array[GameWindow] = [_crafting_window, _research_window, _furnace_window, _sorter_window, _storage_window, _wardrobe_window]
 	return windows
 
 
@@ -453,7 +516,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _menu.visible:
 			_menu.visible = false
 		else:
-			for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _research_window, _furnace_window, _sorter_window, _stats_window, _company_window, _achievements_window]:
+			for window: GameWindow in _windows():
 				window.hide_window()
 			_character_window.hide_window()
 	elif event.is_action_pressed("rotate") and _placing != "":
@@ -483,6 +546,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_achievements_window.toggle()
 	elif event.is_action_pressed("character"):
 		_character_window.toggle()
+	elif event.is_action_pressed("upgrades"):
+		_upgrades_window.toggle()
 	elif event.is_action_pressed("world_map"):
 		Game.open_world_map()
 	elif event.is_action_pressed("tool"):
@@ -550,6 +615,8 @@ func _start_placing(kind: String, steps := 0) -> void:
 	_menu.visible = false
 	_path = PackedVector2Array()
 	_ghost = Furniture.new(kind, _furniture_info.get(kind, {}), _cell_size)
+	if kind == SHELF and int(_room_levels.get("shelves", 0)) > 0:
+		_ghost.look = "%s_l%d" % [SHELF, int(_room_levels["shelves"])]
 	_ghost_rotation = steps
 	_ghost.place(Vector2i.ZERO, steps)
 	_ghost.z_index = 2  # Over everything, so it shows even behind tall furniture.
@@ -708,6 +775,7 @@ func _build_hud() -> void:
 	bar.add_child(UI.toolbar_button("market", "Rynek  [M]", func() -> void: _market_window.toggle()))
 	bar.add_child(UI.toolbar_button("contracts", "Zlecenia  [J]", func() -> void: _contracts_window.toggle()))
 	bar.add_child(UI.toolbar_button("company", "Spółka  [K]", func() -> void: _company_window.toggle()))
+	bar.add_child(UI.toolbar_button("garage_upgrade", "Ulepszenia garażu  [U]", func() -> void: _upgrades_window.toggle()))
 	bar.add_child(UI.toolbar_button("stats", "Statystyki  [L]", func() -> void: _stats_window.toggle()))
 	bar.add_child(UI.toolbar_button("achievements", "Osiągnięcia  [O]", func() -> void: _achievements_window.toggle()))
 	bar.add_child(UI.toolbar_button("world_map", "Mapa świata  [N]", Game.open_world_map))
@@ -750,6 +818,8 @@ func _build_windows() -> void:
 	_market_window = MarketWindow.new()
 	_market_window.position = Vector2(1280 - 440 - 12, 64)
 	_market_window.traded.connect(_on_traded)
+	_market_window.to_pallet.connect(func(_item: String) -> void:
+		_show_toast("Ekwipunek pełny: zakup czeka na palecie dostaw.", UI.GOLD))
 	_market_window.failed.connect(_show_error)
 	_contracts_window = ContractsWindow.new()
 	_contracts_window.changed.connect(_on_contracts_changed)
@@ -785,6 +855,20 @@ func _build_windows() -> void:
 	_stats_window.failed.connect(_show_error)
 	_achievements_window = AchievementsWindow.new()
 	_achievements_window.failed.connect(_show_error)
+	_upgrades_window = UpgradesWindow.new()
+	_upgrades_window.position = Vector2(1280 - 560 - 12, 64)
+	_upgrades_window.upgraded.connect(_on_upgraded)
+	_upgrades_window.failed.connect(_show_error)
+	_storage_window = StorageWindow.new()
+	_storage_window.position = Vector2(1280 - 420 - 12, 64)
+	_storage_window.inventory_changed.connect(_reload_inventory)
+	_storage_window.failed.connect(_show_error)
+	_wardrobe_window = WardrobeWindow.new()
+	_wardrobe_window.position = Vector2(1280 - 470 - 12, 64)
+	_wardrobe_window.changed.connect(func() -> void:
+		_reload_inventory()
+		Game.reload_character())
+	_wardrobe_window.failed.connect(_show_error)
 	_character_window = CharacterWindow.new()
 	_character_window.position = Vector2(280, 60)
 	_character_window.failed.connect(_show_error)
@@ -793,8 +877,14 @@ func _build_windows() -> void:
 		if wallet["type"] == "wallet":
 			_set_balance(int(wallet["payload"]["balanceCents"])))
 	add_child(_character_window)
-	for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _research_window, _furnace_window, _sorter_window, _stats_window, _company_window, _achievements_window]:
+	for window: GameWindow in _windows():
 		add_child(window)
+
+
+## The windows of this screen (but the character's), for Esc to close them all.
+func _windows() -> Array[GameWindow]:
+	var windows: Array[GameWindow] = [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _research_window, _furnace_window, _sorter_window, _stats_window, _company_window, _achievements_window, _upgrades_window, _storage_window, _wardrobe_window]
+	return windows
 
 
 func _build_sorting(page: VBoxContainer) -> void:
@@ -807,7 +897,8 @@ func _build_sorting(page: VBoxContainer) -> void:
 	_trash = UI.label("")
 	_trash.add_theme_font_override("font", UI.bold())
 	bin_text.add_child(_trash)
-	bin_text.add_child(UI.label("Worek: 10 s, losowy surowiec i 5 XP", UI.MUTED))
+	_bag_text = UI.label("Worek: 10 s, losowy surowiec i 5 XP", UI.MUTED)
+	bin_text.add_child(_bag_text)
 	bin.add_child(bin_text)
 	page.add_child(bin)
 
@@ -886,6 +977,8 @@ func _apply_garage(garage: Dictionary) -> void:
 	_furniture_info = garage["furniture"]
 	_sync_objects(garage["objects"])
 	_trash.text = "Śmieci: %d" % garage["trash"]
+	_bag_text.text = "Worek: %s s, losowy surowiec i 5 XP" % _seconds(float(garage.get("sortSeconds", 10)))
+	_show_room(garage.get("upgrades", {}))
 
 	var results: Array = garage.get("results", [])
 	for i in results.size():
@@ -915,6 +1008,9 @@ func _apply_inventory(inventory: Dictionary) -> void:
 	_research_window.set_items(_items)
 	_furnace_window.set_items(_items)
 	_sorter_window.set_items(_items)
+	_storage_window.set_items(_items)
+	_wardrobe_window.set_items(_items)
+	_upgrades_window.set_player(_items, _balance)
 
 
 func _reload_inventory() -> void:
@@ -928,6 +1024,7 @@ func _set_balance(cents: int) -> void:
 	_money.text = UI.money(cents)
 	_market_window.set_player(_items, _balance)
 	_contracts_window.set_player(_items, _balance)
+	_upgrades_window.set_player(_items, _balance)
 
 
 func _count(item: String) -> int:

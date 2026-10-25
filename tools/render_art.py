@@ -495,6 +495,8 @@ FURNITURE_AT = {
     "furniture_workbench": (6.25, 5.5),
     "furniture_gas_cylinder": (4.75, 5.75),
     "furniture_shelf": (1.5, 2.75),
+    # The shelf after each level of the shelves upgrade, rendered at the same spot.
+    **{f"furniture_shelf_l{level}": (1.5, 2.75) for level in range(1, 6)},
     "furniture_barrel_blue": (7.75, 2.75),
     "furniture_barrel_red": (7.75, 1.75),
     "furniture_tyres": (6.5, 1.0),
@@ -504,6 +506,7 @@ FURNITURE_AT = {
     "furniture_sorting_machine": (3.75, 2.0),
     "furniture_furnace": (5.0, 2.5),
     "furniture_anvil": (5.0, 2.25),
+    "furniture_wardrobe": (5.75, 3.25),
 }
 ROTATIONS = 4
 
@@ -639,24 +642,68 @@ def build_workbench(coll, at: Vector):
     box("bench_crate", (0.5, 0.4, 0.22), at + Vector((-0.6, 0, 0.38)), plain("cardboard", (0.28, 0.18, 0.09), 0.85, variation=0.25), coll, bevel=0.01)
 
 
-def build_shelf(coll, at: Vector):
-    """Steel shelving with cardboard boxes, open towards the camera."""
-    shelf_m = rusty_metal("shelf", (0.15, 0.16, 0.17), 0.4)
-    cardboard = plain("cardboard", (0.28, 0.18, 0.09), 0.85, variation=0.25)
-    for z in (0.05, 0.6, 1.15, 1.7):
-        box("shelf_board", (2.0, 0.5, 0.04), at + Vector((0, 0, z)), shelf_m, coll)
+def build_shelf(coll, at: Vector, level=0):
+    """Shelving with boxes, open towards the camera. Each level of the shelves upgrade makes it
+    tidier: from rusty steel with a jumble of boxes to a white storage system with labelled bins."""
+    frames = [
+        rusty_metal("shelf", (0.15, 0.16, 0.17), 0.4),
+        rusty_metal("shelf1", (0.16, 0.17, 0.18), 0.25),
+        plain("shelf2", (0.32, 0.34, 0.36), 0.45, metallic=0.6, grime=0.35),
+        plain("shelf3", (0.05, 0.14, 0.32), 0.4, metallic=0.3, grime=0.25),
+        plain("shelf4", (0.05, 0.12, 0.3), 0.4, metallic=0.3, grime=0.15),
+        plain("shelf5", (0.7, 0.71, 0.72), 0.35, metallic=0.2, grime=0.05),
+    ]
+    frame = frames[level]
+    boards = (0.05, 0.6, 1.15, 1.7) if level == 0 else (0.05, 0.47, 0.89, 1.31, 1.73)
+    board = frame
+    if level == 4:
+        board = plain("shelf4_beam", (0.55, 0.18, 0.02), 0.4, metallic=0.3, grime=0.15)
+    if level == 1:
+        board = wood("shelf1_board", (0.3, 0.2, 0.1))
+    for z in boards:
+        box("shelf_board", (2.0, 0.5, 0.04), at + Vector((0, 0, z)), board, coll)
     for x in (-0.97, 0.97):
         for y in (-0.23, 0.23):
-            box("shelf_post", (0.05, 0.05, 1.8), at + Vector((x, y, 0.9)), shelf_m, coll)
-    for z in (0.07, 0.62, 1.17):
-        x = -0.92
-        while x < 0.75:
-            w = random.uniform(0.3, 0.5)
-            h = random.uniform(0.2, 0.42)
-            if random.random() < 0.8:
-                box("box", (w * 0.9, 0.4, h), at + Vector((x + w / 2, 0.02, z + h / 2)), cardboard, coll, bevel=0.01,
-                    rotation=(0, 0, random.uniform(-0.08, 0.08)))
-            x += w
+            box("shelf_post", (0.05, 0.05, 1.8), at + Vector((x, y, 0.9)), frame, coll)
+    gap = boards[1] - boards[0]
+    cardboard = plain("cardboard", (0.28, 0.18, 0.09), 0.85, variation=0.25)
+    if level <= 2:
+        # Cardboard boxes: thrown in at first, then the same size in neat rows.
+        for z in boards[:-1]:
+            x = -0.92
+            while x < 0.75:
+                if level == 0:
+                    w, h, turn = random.uniform(0.3, 0.5), random.uniform(0.2, 0.42), random.uniform(-0.08, 0.08)
+                    keep = random.random() < 0.8
+                else:
+                    w, h, turn = 0.36, gap * (0.6 if level == 1 else 0.7), 0.0
+                    keep = level == 2 or random.random() < 0.9
+                if keep:
+                    box("box", (w * 0.9, 0.4, h), at + Vector((x + w / 2, 0.02, z + 0.02 + h / 2)), cardboard, coll, bevel=0.01,
+                        rotation=(0, 0, turn))
+                x += w
+        return
+    # Plastic bins in rows with a label on each; the storage system's are all alike.
+    colours = {3: [(0.5, 0.05, 0.03), (0.05, 0.2, 0.45), (0.5, 0.35, 0.02), (0.08, 0.3, 0.1)],
+               4: [(0.04, 0.12, 0.3)], 5: [(0.18, 0.19, 0.2)]}[level]
+    label = plain("bin_label", (0.85, 0.85, 0.82), 0.6, grime=0.05, variation=0.05)
+    bins = [plain(f"bin{level}_{i}", c, 0.5, variation=0.08, grime=0.1) for i, c in enumerate(colours)]
+    count = 5 if level != 4 else 4
+    width = 1.84 / count
+    for row, z in enumerate(boards[:-1]):
+        for i in range(count):
+            x = -0.92 + width * (i + 0.5)
+            h = gap * 0.72
+            m = bins[row % len(bins)] if level == 3 else bins[0]
+            if level == 4:
+                box("crate", (width * 0.92, 0.42, h), at + Vector((x, 0.0, z + 0.02 + h / 2)), cardboard, coll, bevel=0.008)
+            else:
+                box("bin", (width * 0.88, 0.42, h), at + Vector((x, 0.0, z + 0.02 + h / 2)), m, coll, bevel=0.015)
+            box("bin_label", (width * 0.4, 0.01, h * 0.22), at + Vector((x, -0.215, z + 0.02 + h * 0.62)), label, coll)
+    if level == 5:
+        # A lit strip under the top shelf.
+        led = plain("shelf_led_m", (1.0, 0.97, 0.9), 0.3, grime=0.0, variation=0.0)
+        box("shelf_led", (1.9, 0.03, 0.015), at + Vector((0, -0.2, boards[-1] - 0.03)), led, coll)
 
 
 def build_barrel(coll, at: Vector, color):
@@ -685,6 +732,29 @@ def build_pallet(coll, at: Vector):
     cardboard = plain("cardboard_p", (0.28, 0.18, 0.09), 0.85, variation=0.25)
     box("pallet_box", (0.5, 0.4, 0.35), at + Vector((-0.25, 0.1, 0.32)), cardboard, coll, bevel=0.01, rotation=(0, 0, 0.1))
     box("pallet_box2", (0.35, 0.3, 0.25), at + Vector((0.22, -0.15, 0.27)), cardboard, coll, bevel=0.01, rotation=(0, 0, -0.2))
+
+
+def build_wardrobe(coll, at: Vector):
+    """A tall wooden wardrobe for sets of clothes: two doors and a drawer at the bottom, a coat
+    hanging on a hook at its side."""
+    oak = wood("wardrobe", (0.3, 0.17, 0.08))
+    dark = wood("wardrobe_trim", (0.17, 0.09, 0.04))
+    brass = plain("wardrobe_brass", (0.55, 0.38, 0.12), 0.35, metallic=1.0, variation=0.1, grime=0.3)
+    w, d, h = 1.3, 0.46, 1.95
+    box("wardrobe_body", (w, d, h), at + Vector((0, 0, h / 2 + 0.06)), oak, coll, bevel=0.01)
+    box("wardrobe_crown", (w + 0.06, d + 0.05, 0.06), at + Vector((0, 0, h + 0.09)), dark, coll, bevel=0.01)
+    box("wardrobe_plinth", (w - 0.04, d - 0.04, 0.06), at + Vector((0, 0, 0.03)), dark, coll)
+    front = -d / 2 - 0.008
+    for x in (-w / 4, w / 4):
+        box("wardrobe_door", (w / 2 - 0.05, 0.016, h - 0.42), at + Vector((x, front, 0.42 + (h - 0.42) / 2 + 0.04)), oak, coll, bevel=0.006)
+        box("wardrobe_panel", (w / 2 - 0.2, 0.012, h - 0.75), at + Vector((x, front - 0.008, 0.6 + (h - 0.75) / 2)), dark, coll, bevel=0.004)
+        cylinder("wardrobe_knob", 0.018, 0.04, at + Vector((x * 0.12, front - 0.03, 1.1)), brass, coll, rotation=(math.pi / 2, 0, 0))
+    box("wardrobe_drawer", (w - 0.08, 0.016, 0.26), at + Vector((0, front, 0.23)), oak, coll, bevel=0.006)
+    box("wardrobe_pull", (0.22, 0.03, 0.025), at + Vector((0, front - 0.025, 0.25)), brass, coll, bevel=0.006)
+    # A coat on a hook at the side.
+    coat = plain("wardrobe_coat", (0.05, 0.08, 0.12), 0.9, variation=0.25, grime=0.4)
+    cylinder("wardrobe_hook", 0.012, 0.08, at + Vector((w / 2 + 0.04, -0.05, 1.75)), brass, coll, rotation=(0, math.pi / 2, 0))
+    box("wardrobe_coat", (0.08, 0.36, 0.85), at + Vector((w / 2 + 0.06, -0.05, 1.3)), coat, coll, bevel=0.03)
 
 
 def build_gas(coll, at: Vector):
@@ -918,10 +988,12 @@ FURNITURE_BUILDERS = {
     "furniture_workbench": build_workbench,
     "furniture_gas_cylinder": build_gas,
     "furniture_shelf": build_shelf,
+    **{f"furniture_shelf_l{level}": (lambda c, at, level=level: build_shelf(c, at, level)) for level in range(1, 6)},
     "furniture_barrel_blue": lambda c, at: build_barrel(c, at, (0.05, 0.12, 0.25)),
     "furniture_barrel_red": lambda c, at: build_barrel(c, at, (0.3, 0.07, 0.04)),
     "furniture_tyres": build_tyres,
     "furniture_pallet": build_pallet,
+    "furniture_wardrobe": build_wardrobe,
 }
 
 
@@ -994,7 +1066,7 @@ def render_furniture(scene, coll, kind, turn, at, lights, catcher, shadow_sun, o
             min(SCREEN_W, max(a[2], b[2]) + 2), min(SCREEN_H, max(a[3], b[3]) + 2))
     sprite.crop(box_).save(out / f"{name}.png", optimize=True)
     shadow.crop(box_).save(out / f"{name}_shadow.png", optimize=True)
-    if turn == 0:
+    if turn == 0 and kind[-3:-1] != "_l":
         icon_from(sprite, icons / f"{kind}.png")
     fx, fy = screen_pos(scene, at)
     return {"anchorX": round(fx - box_[0]), "anchorY": round(fy - box_[1])}
