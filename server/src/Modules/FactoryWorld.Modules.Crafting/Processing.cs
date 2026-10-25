@@ -30,7 +30,7 @@ public sealed record ProcessingMachine(
 /// Machines that turn crops into food, put on a plot like the furnace: a mill grinds grain into
 /// flour, an oil press squeezes sunflowers, a barrel pickles cabbage, and the fired bakery and
 /// field kitchen bake and cook from those; a sawmill saws wood into planks, beams and pellets. In the
-/// mountains a quarry cuts stone, a crusher grinds stone and ore, a stonemason dresses stone and marble and a
+/// mountains a quarry cuts stone, a crusher grinds stone and ore (the mill, the quarry and the crusher come in three levels, like the sawmill), a stonemason dresses stone and marble and a
 /// fired foundry casts bronze and steel and fires bricks. On the shore boats fish, a smokehouse smokes fish, a
 /// cannery cans it, a salt pan boils salt and a fish farm raises salmon and mussels. The mill, the crusher, the cannery,
 /// oil press and the electric and industrial sawmills run on power from a
@@ -66,6 +66,20 @@ public static class Processing
             new(Items.CornFlour, 1, TimeSpan.FromSeconds(6), [(Items.Corn, 2)], 1),
             // Concentrate for work horses, of corn and the distillery's stillage.
             new(Items.ConcentrateFeed, 2, TimeSpan.FromSeconds(8), [(Items.Corn, 2), (Items.Stillage, 1)], 1),
+        ], Powered: true),
+        // The mill's higher levels, like the sawmills': the roller mill about three times the pace with a quarter more flour out of
+        // the same grain, the flour works about six times with half as much more.
+        new(Items.RollerMill, false,
+        [
+            new(Items.Flour, 5, TimeSpan.FromSeconds(10), [(Items.Wheat, 8)], 1),
+            new(Items.CornFlour, 5, TimeSpan.FromSeconds(10), [(Items.Corn, 8)], 1),
+            new(Items.ConcentrateFeed, 5, TimeSpan.FromSeconds(8), [(Items.Corn, 4), (Items.Stillage, 2)], 1),
+        ], Powered: true),
+        new(Items.FlourWorks, false,
+        [
+            new(Items.Flour, 3, TimeSpan.FromSeconds(3), [(Items.Wheat, 4)], 1),
+            new(Items.CornFlour, 3, TimeSpan.FromSeconds(3), [(Items.Corn, 4)], 1),
+            new(Items.ConcentrateFeed, 3, TimeSpan.FromSeconds(2), [(Items.Corn, 2), (Items.Stillage, 1)], 1),
         ], Powered: true),
         new(Items.OilPress, false,
         [
@@ -138,6 +152,15 @@ public static class Processing
         [
             new(Items.Stone, 2, TimeSpan.FromSeconds(6), [], 1),
         ]),
+        // The quarry's higher levels, on power: the mechanised one cuts three times as much, the open-pit mine six times.
+        new(Items.MechanizedQuarry, false,
+        [
+            new(Items.Stone, 6, TimeSpan.FromSeconds(6), [], 1),
+        ], Powered: true),
+        new(Items.OpenPitMine, false,
+        [
+            new(Items.Stone, 6, TimeSpan.FromSeconds(3), [], 1),
+        ], Powered: true),
         // A crusher grinds stone into sand and ore into crushed ore, three from two, which smelts into as many ingots.
         new(Items.Crusher, false,
         [
@@ -145,6 +168,22 @@ public static class Processing
             new(Items.CrushedIronOre, 3, TimeSpan.FromSeconds(5), [(Items.IronOre, 2)], 2),
             new(Items.CrushedCopperOre, 3, TimeSpan.FromSeconds(5), [(Items.CopperOre, 2)], 2),
             new(Items.CrushedTinOre, 3, TimeSpan.FromSeconds(6), [(Items.TinOre, 2)], 3),
+        ], Powered: true),
+        // The crusher's higher levels: the cone crusher about three times the pace, with seven of crushed ore from four, and the
+        // ore processing plant about six times, with two from one.
+        new(Items.ConeCrusher, false,
+        [
+            new(Items.Sand, 7, TimeSpan.FromSeconds(2.5), [(Items.Stone, 2)], 1),
+            new(Items.CrushedIronOre, 7, TimeSpan.FromSeconds(4), [(Items.IronOre, 4)], 2),
+            new(Items.CrushedCopperOre, 7, TimeSpan.FromSeconds(4), [(Items.CopperOre, 4)], 2),
+            new(Items.CrushedTinOre, 7, TimeSpan.FromSeconds(4.5), [(Items.TinOre, 4)], 3),
+        ], Powered: true),
+        new(Items.OreProcessingPlant, false,
+        [
+            new(Items.Sand, 4, TimeSpan.FromSeconds(0.7), [(Items.Stone, 1)], 1),
+            new(Items.CrushedIronOre, 4, TimeSpan.FromSeconds(1.2), [(Items.IronOre, 2)], 2),
+            new(Items.CrushedCopperOre, 4, TimeSpan.FromSeconds(1.2), [(Items.CopperOre, 2)], 2),
+            new(Items.CrushedTinOre, 4, TimeSpan.FromSeconds(1.4), [(Items.TinOre, 2)], 3),
         ], Powered: true),
         new(Items.Stonemason, false,
         [
