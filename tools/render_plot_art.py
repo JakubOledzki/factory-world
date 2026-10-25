@@ -6124,8 +6124,216 @@ def render_icons(only=()):
         print("icon", name)
 
 
+# --- Export by rail -------------------------------------------------------------------------------
+
+def build_export_chest():
+    """An export chest by the station: a green steel freight box with a yellow band, a wagon plate and a price tag on a string."""
+    green = ra.rusty_metal("ex_green", (0.12, 0.4, 0.18), 0.15)
+    dark = ra.rusty_metal("ex_frame", (0.08, 0.08, 0.09), 0.3)
+    yellow = ra.plain("ex_yellow", (0.7, 0.5, 0.05), 0.5, variation=0.1, grime=0.3)
+    paper = ra.plain("ex_tag", (0.8, 0.75, 0.6), 0.7, variation=0.1)
+    w, d, h = 1.3, 0.95, 0.75
+    ra.box("ex_body", (w, d, h), (0, 0, h / 2), green, bevel=0.03)
+    ra.box("ex_lid", (w + 0.05, d + 0.05, 0.1), (0, 0, h + 0.05), dark, bevel=0.02)
+    ra.box("ex_band", (w + 0.01, d + 0.01, 0.1), (0, 0, h - 0.2), yellow)
+    for x in (-w / 2, w / 2):
+        for y in (-d / 2, d / 2):
+            ra.box("ex_corner", (0.09, 0.09, h + 0.04), (x, y, (h + 0.04) / 2), dark, bevel=0.01)
+    # The wagon plate on the front: a little freight wagon in white on dark.
+    ra.box("ex_plate", (0.5, 0.02, 0.26), (-0.2, -d / 2 - 0.01, 0.3), dark)
+    white = ra.plain("ex_white", (0.8, 0.8, 0.78), 0.5)
+    ra.box("ex_wagon", (0.3, 0.01, 0.1), (-0.2, -d / 2 - 0.025, 0.33), white)
+    for x in (-0.3, -0.1):
+        ra.cylinder("ex_wheel", 0.035, 0.01, (x, -d / 2 - 0.025, 0.25), white, rotation=(math.radians(90), 0, 0), verts=10)
+    # A price tag hanging from the handle.
+    ra.box("ex_handle", (0.25, 0.04, 0.05), (0.35, -d / 2 - 0.04, h - 0.3), dark, bevel=0.01)
+    ra.box("ex_string", (0.01, 0.01, 0.14), (0.42, -d / 2 - 0.06, h - 0.38), dark)
+    ra.box("ex_price", (0.16, 0.01, 0.1), (0.45, -d / 2 - 0.07, h - 0.5), paper, rotation=(0, math.radians(-15), 0))
+    ra.box("ex_price_mark", (0.08, 0.005, 0.03), (0.45, -d / 2 - 0.08, h - 0.5), ra.plain("ex_ink", (0.4, 0.05, 0.04), 0.6),
+           rotation=(0, math.radians(-15), 0))
+
+
+def build_buy_market():
+    """A buying market on 3 × 3 tiles: a brick market hall with a glass barrel roof on iron ribs, a lit gold sign,
+    and in front of it stalls under striped awnings with crates of goods and a freight wagon on a short siding."""
+    m = city_mats()
+    gold = ra.emission("bm_gold", (1.0, 0.7, 0.2), 3.5)
+    ra.box("bm_pad", (5.8, 5.8, 0.06), (0, 0, 0.03), m["concrete"])
+    ra.box("bm_hall", (4.6, 3.0, 1.7), (0, 0.9, 0.91), m["brick"], bevel=0.03)
+    ra.box("bm_plinth", (4.7, 3.1, 0.25), (0, 0.9, 0.18), ra.plain("bm_stone", (0.4, 0.38, 0.34), 0.8, variation=0.2, bump=0.3))
+    # The barrel vault of glass on iron ribs.
+    ra.cylinder("bm_vault", 1.45, 4.5, (0, 0.9, 1.76), m["glass"], rotation=(0, math.radians(90), 0), verts=32)
+    for k in range(7):
+        ra.cylinder("bm_rib", 1.48, 0.06, (-2.1 + k * 0.7, 0.9, 1.76), m["dark"], rotation=(0, math.radians(90), 0), verts=32)
+    # Arched windows, lit, along the front, and a tall door in the middle.
+    for x in (-1.8, -1.2, -0.6, 0.6, 1.2, 1.8):
+        ra.box("bm_window", (0.35, 0.02, 0.8), (x, -0.61, 0.95), m["window"])
+        ra.cylinder("bm_arch", 0.175, 0.02, (x, -0.61, 1.35), m["window"], rotation=(math.radians(90), 0, 0), verts=16)
+    ra.box("bm_door", (0.7, 0.03, 1.1), (0, -0.62, 0.8), m["timber"])
+    ra.box("bm_sign", (2.2, 0.06, 0.35), (0, -0.66, 1.62), m["dark"])
+    ra.box("bm_sign_glow", (1.9, 0.02, 0.18), (0, -0.7, 1.62), gold)
+    # Stalls under striped awnings with crates of goods.
+    goods = [(0.5, 0.3, 0.05), (0.15, 0.4, 0.08), (0.55, 0.1, 0.05), (0.6, 0.5, 0.15)]
+    for k, x in enumerate((-2.1, -0.9, 0.9, 2.1)):
+        ra.box("bm_table", (0.9, 0.5, 0.06), (x, -1.4, 0.55), m["timber"])
+        for leg in (-0.4, 0.4):
+            ra.box("bm_leg", (0.05, 0.05, 0.5), (x + leg, -1.4, 0.28), m["timber"])
+        for j in range(4):
+            ra.box("bm_awning", (0.24, 0.65, 0.02), (x - 0.36 + j * 0.24, -1.45, 1.15), m["red"] if (j + k) % 2 else m["white"],
+                   rotation=(math.radians(-15), 0, 0))
+        for side in (-0.43, 0.43):
+            ra.box("bm_pole", (0.04, 0.04, 0.6), (x + side, -1.65, 0.85), m["dark"])
+        for j in range(2):
+            ra.box("bm_crate", (0.3, 0.3, 0.18), (x - 0.18 + j * 0.36, -1.4, 0.67), m["timber"], bevel=0.01)
+            ra.sphere("bm_goods", 0.12, (x - 0.18 + j * 0.36, -1.4, 0.77), ra.plain(f"bm_goods{k}{j}", goods[(k + j) % 4], 0.7),
+                      scale=(1.2, 1.2, 0.5), segments=10)
+    # A short siding along the front edge with a freight wagon on it.
+    rail = ra.rusty_metal("bm_rail", (0.2, 0.2, 0.21), rust=0.4)
+    sleeper = ra.wood("bm_sleeper", (0.14, 0.09, 0.05))
+    for k in range(14):
+        ra.box("bm_sleeper", (0.12, 0.6, 0.04), (-2.6 + k * 0.4, -2.45, 0.08), sleeper)
+    for y in (-2.65, -2.25):
+        ra.box("bm_rail", (5.6, 0.05, 0.05), (0, y, 0.12), rail)
+    ra.box("bm_wagon", (1.8, 0.6, 0.55), (1.3, -2.45, 0.55), ra.corrugated("bm_wagon_side", (0.35, 0.12, 0.06), 0.2), bevel=0.02)
+    ra.box("bm_wagon_roof", (1.85, 0.65, 0.05), (1.3, -2.45, 0.85), m["dark"])
+    for x in (0.6, 2.0):
+        for y in (-2.72, -2.18):
+            ra.cylinder("bm_wheel", 0.12, 0.05, (1.3 + (x - 1.3), y, 0.2), m["dark"], rotation=(math.radians(90), 0, 0), verts=14)
+    # Lamps at the corners of the stall row.
+    for x in (-2.7, 2.7):
+        ra.cylinder("bm_lamp_post", 0.03, 1.4, (x, -1.0, 0.76), m["dark"], verts=8)
+        ra.sphere("bm_lamp", 0.08, (x, -1.0, 1.5), ra.emission("bm_lamp", (1.0, 0.8, 0.5), 5.0), segments=10)
+
+
+def build_rail_port():
+    """A rail port on 9 × 9 tiles: a concrete quay where three tracks run past a brick terminal with a clock tower,
+    a signal box and wagons waiting on the sidings, the middle track onto a yellow link span under a lifting gantry,
+    and a train ferry moored beyond it in the water, its bow open and wagons on its deck. Built with the water behind,
+    to the north; `seaward` turns it round."""
+    m = city_mats()
+    water = water_mat("rp_water")
+    stone = ra.plain("rp_stone", (0.26, 0.25, 0.23), 0.9, variation=0.2, bump=0.4)
+    rail = ra.rusty_metal("rp_rail", (0.2, 0.2, 0.21), rust=0.4)
+    sleeper = ra.wood("rp_sleeper", (0.14, 0.09, 0.05))
+    ballast = ra.plain("rp_ballast", (0.2, 0.19, 0.18), 0.95, variation=0.4, scale=40, bump=0.6)
+    hull = ra.rusty_metal("rp_hull", (0.06, 0.12, 0.3), rust=0.2)
+    keel = ra.rusty_metal("rp_keel", (0.35, 0.06, 0.04), rust=0.3)
+    deck = ra.rusty_metal("rp_deck", (0.22, 0.23, 0.24), rust=0.3)
+    yellow = ra.rusty_metal("rp_yellow", (0.65, 0.42, 0.04), rust=0.25)
+    white = m["white"]
+    lit = ra.emission("rp_win", (1.0, 0.8, 0.5), 2.5)
+    wagons = [ra.corrugated(f"rp_wagon{k}", c, 0.2) for k, c in enumerate(((0.35, 0.12, 0.06), (0.08, 0.2, 0.12), (0.3, 0.3, 0.32)))]
+
+    # The quay over the whole ground, its edge of dressed stone along the water.
+    ra.box("rp_apron", (18, 18, 0.3), (0, 0, 0.15), m["concrete"])
+    ra.box("rp_edge", (18, 0.5, 0.36), (0, 8.75, 0.18), stone, bevel=0.03)
+    ra.box("rp_water", (10, 13.5, 0.02), (0, 15.75, 0.01), water)
+
+    def track(x, y0, y1, prefix):
+        ra.box(f"{prefix}_bed", (1.6, y1 - y0, 0.06), (x, (y0 + y1) / 2, 0.33), ballast)
+        n = int((y1 - y0) / 0.6)
+        for k in range(n):
+            ra.box(f"{prefix}_sleeper", (1.3, 0.2, 0.05), (x, y0 + 0.3 + k * 0.6, 0.39), sleeper)
+        for side in (-0.36, 0.36):
+            ra.box(f"{prefix}_rail", (0.07, y1 - y0, 0.08), (x + side, (y0 + y1) / 2, 0.45), rail)
+
+    track(0, -9, 8.5, "rp_main")
+    track(-3.2, -9, 5.5, "rp_west")
+    track(3.2, -9, 5.5, "rp_east")
+    # Buffer stops at the end of the sidings, and wagons waiting on them.
+    for x in (-3.2, 3.2):
+        ra.box("rp_buffer", (1.2, 0.3, 0.6), (x, 5.6, 0.7), m["red"], bevel=0.03)
+    for k, (x, y) in enumerate(((-3.2, -5.5), (-3.2, -1.5), (3.2, -3.0), (3.2, 1.2))):
+        body = wagons[k % 3]
+        ra.box("rp_wagon", (1.5, 3.4, 1.4), (x, y, 1.35), body, bevel=0.04)
+        ra.box("rp_wagon_roof", (1.6, 3.5, 0.1), (x, y, 2.1), body)
+        for dy in (-1.1, 1.1):
+            for side in (-0.75, 0.75):
+                ra.cylinder("rp_wheel", 0.28, 0.12, (x + side, y + dy, 0.6), m["dark"], rotation=(0, math.radians(90), 0), verts=14)
+
+    # The terminal: a brick hall on the west side with a clock tower, and a signal box on the east.
+    ra.box("rp_hall", (3.4, 7.0, 3.2), (-7.1, -4.0, 1.9), m["brick"], bevel=0.04)
+    ra.box("rp_hall_roof", (3.7, 7.3, 0.25), (-7.1, -4.0, 3.6), ra.plain("rp_slate", (0.16, 0.17, 0.2), 0.7, variation=0.2, scale=12))
+    for k in range(4):
+        ra.box("rp_hall_win", (0.05, 0.9, 1.2), (-5.38, -6.6 + k * 1.75, 2.0), lit if k % 2 == 0 else m["glass"])
+    ra.box("rp_tower", (1.6, 1.6, 6.2), (-7.1, 0.6, 3.4), m["brick"], bevel=0.03)
+    ra.box("rp_tower_cap", (1.9, 1.9, 0.3), (-7.1, 0.6, 6.6), m["dark"])
+    ra.cylinder("rp_spire", 1.0, 1.2, (-7.1, 0.6, 7.35), m["dark"], radius2=0.05, verts=4, rotation=(0, 0, math.radians(45)))
+    for face in (-1, 1):
+        ra.cylinder("rp_clock", 0.55, 0.05, (-7.1, 0.6 + face * 0.82, 5.4), white, rotation=(math.radians(90), 0, 0), verts=24)
+        ra.cylinder("rp_clock_face", 0.45, 0.06, (-7.1, 0.6 + face * 0.83, 5.4), lit, rotation=(math.radians(90), 0, 0), verts=24)
+    ra.box("rp_sign", (0.08, 4.0, 0.6), (-5.35, -4.0, 3.1), m["dark"])
+    ra.box("rp_sign_glow", (0.04, 3.4, 0.3), (-5.3, -4.0, 3.1), ra.emission("rp_sign", (1.0, 0.7, 0.2), 3.5))
+    ra.box("rp_box", (2.2, 2.6, 2.2), (6.9, -5.5, 1.4), m["plaster"], bevel=0.03)
+    ra.box("rp_box_glass", (2.3, 2.7, 0.9), (6.9, -5.5, 2.95), m["glass"])
+    ra.box("rp_box_roof", (2.6, 3.0, 0.2), (6.9, -5.5, 3.5), m["red"])
+    # Stacked containers by the signal box.
+    for k, (x, y, z) in enumerate(((7.3, -0.8, 0.9), (7.3, 2.0, 0.9), (7.3, -0.8, 2.1), (5.3, 3.3, 0.9))):
+        ra.box("rp_container", (2.2, 2.6, 1.2), (x, y, z), ra.corrugated(f"rp_cont{k}", ra_color(m, ("blue", "red", "yellow", "green")[k]), 0.2))
+
+    # The link span onto the ferry, under a yellow lifting gantry, and a signal at its foot.
+    ra.box("rp_span", (2.6, 4.0, 0.25), (0, 10.3, 0.35), yellow, rotation=(math.radians(-3), 0, 0))
+    for side in (-0.36, 0.36):
+        ra.box("rp_span_rail", (0.07, 4.0, 0.08), (side, 10.3, 0.52), rail, rotation=(math.radians(-3), 0, 0))
+    for x in (-1.9, 1.9):
+        ra.box("rp_gantry_leg", (0.4, 0.4, 5.0), (x, 8.2, 2.8), yellow)
+        ra.cylinder("rp_cable", 0.03, 3.2, (x * 0.6, 9.8, 2.9), m["dark"], rotation=(math.radians(-25), 0, 0), verts=6)
+    ra.box("rp_gantry_beam", (4.4, 0.6, 0.6), (0, 8.2, 5.4), yellow)
+    ra.box("rp_gantry_cab", (1.2, 1.0, 0.9), (1.4, 8.2, 6.1), white, bevel=0.03)
+    ra.cylinder("rp_signal_post", 0.07, 3.2, (1.4, 6.6, 1.9), m["dark"], verts=8)
+    ra.box("rp_signal_head", (0.4, 0.25, 0.8), (1.4, 6.5, 3.6), m["dark"])
+    ra.sphere("rp_signal_light", 0.11, (1.4, 6.36, 3.75), ra.emission("rp_green", (0.2, 1.0, 0.3), 6.0), segments=8)
+    for x in (-7.5, -4.5, 4.5, 7.5):
+        ra.cylinder("rp_bollard", 0.18, 0.4, (x, 8.4, 0.5), m["dark"], verts=12)
+        ra.cylinder("rp_cap", 0.24, 0.08, (x, 8.4, 0.74), m["dark"], verts=12)
+    for x in (-8.4, 8.4):
+        ra.cylinder("rp_lamp_post", 0.06, 4.0, (x, 7.6, 2.3), m["dark"], verts=8)
+        ra.sphere("rp_lamp", 0.2, (x, 7.6, 4.35), ra.emission("rp_lamp", (1.0, 0.8, 0.5), 5.0), segments=10)
+
+    # The train ferry: a long hull with a red waterline, an open car deck with wagons, the bridge and funnels at the stern.
+    ra.box("rp_keel", (7.2, 11.0, 0.6), (0, 17.0, 0.25), keel, bevel=0.15)
+    ra.box("rp_hull", (7.2, 11.0, 1.4), (0, 17.0, 1.2), hull, bevel=0.15)
+    ra.box("rp_car_deck", (6.4, 10.4, 0.1), (0, 17.0, 1.95), deck)
+    for side in (-1, 1):
+        ra.box("rp_bulwark", (0.25, 10.4, 0.7), (side * 3.35, 17.0, 2.3), white)
+        ra.box("rp_ferry_rail", (0.07, 7.0, 0.08), (side * 0.36, 15.5, 2.05), rail)
+    ra.box("rp_bow_door", (2.8, 0.2, 2.0), (0, 11.9, 1.35), hull, rotation=(math.radians(-70), 0, 0))
+    for k in range(2):
+        y = 13.6 + k * 3.6
+        ra.box("rp_deck_wagon", (1.5, 3.2, 1.4), (0, y, 2.8), wagons[(k + 1) % 3], bevel=0.04)
+        ra.box("rp_deck_wagon_roof", (1.6, 3.3, 0.1), (0, y, 3.55), wagons[(k + 1) % 3])
+    ra.box("rp_super", (6.6, 3.0, 2.4), (0, 20.8, 3.1), white, bevel=0.05)
+    ra.box("rp_bridge", (6.0, 2.2, 1.2), (0, 20.7, 4.9), white, bevel=0.05)
+    ra.box("rp_bridge_win", (5.6, 0.06, 0.5), (0, 19.58, 5.0), lit)
+    for k in range(5):
+        ra.box("rp_super_win", (0.6, 0.06, 0.4), (-2.4 + k * 1.2, 19.28, 3.4), lit if k % 2 else m["glass"])
+    for x in (-1.6, 1.6):
+        ra.cylinder("rp_funnel", 0.45, 1.6, (x, 21.4, 6.2), m["red"], verts=16)
+        ra.cylinder("rp_funnel_top", 0.47, 0.3, (x, 21.4, 7.1), m["dark"], verts=16)
+    ra.cylinder("rp_mast", 0.06, 2.4, (0, 20.3, 6.7), m["dark"], verts=8)
+
+
+EXPORT = {
+    # name: (canvas width, height, camera target, builder, seaward); the buying market stands on 3 × 3 tiles, the rail port
+    # on 9 × 9 with its ferry out on the water in front.
+    "export_chest": (72, 72, (0, 0, 0.3), build_export_chest, False),
+    "buy_market": (256, 240, (0, 0, 1.0), build_buy_market, False),
+    "rail_port": (704, 960, (0, -4.5, 1.5), build_rail_port, True),
+}
+
+
+def render_export(layout: dict, only=()):
+    for name, (w, h, tz, build, sea) in EXPORT.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        make = seaward(build) if sea else crafted(build)
+        layout[name] = render_sprite(name, w, h, Vector(tz), make, true_scale=True)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
+
+
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "office", "logistics", "husbandry", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "office", "logistics", "husbandry", "export", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -6193,6 +6401,9 @@ if __name__ == "__main__":
     if "logistics" in args or any(a in LOGISTICS for a in args):
         # Names of logistics sprites render just those.
         render_logistics(layout, [a for a in args if a in LOGISTICS])
+    if "export" in args or any(a in EXPORT for a in args):
+        # Names of export sprites render just those.
+        render_export(layout, [a for a in args if a in EXPORT])
     # "item_<id>" arguments render just those icons.
     if "icons" in args or any(a.startswith("item_") for a in args):
         render_icons([a for a in args if a.startswith("item_")])

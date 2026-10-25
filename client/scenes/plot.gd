@@ -182,6 +182,7 @@ const PLACED_SPRITES := {
 	"furniture_canteen": "canteen", "furniture_slaughterhouse": "slaughterhouse", "furniture_dairy": "dairy",
 	"furniture_potato_distillery": "potato_distillery", "furniture_biogas_plant": "biogas_plant", "furniture_stable": "stable",
 	"furniture_bellows": "bellows", "furniture_farmstead": "farmstead", "furniture_manor_farm": "manor_farm",
+	"furniture_export_chest": "export_chest", "furniture_buy_market": "buy_market", "furniture_rail_port": "rail_port",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
@@ -224,7 +225,7 @@ const TIDAL := "power_tidal_plant"
 ## What stands on the shore, right next to the water, and on which biome's (-1 for the sea or a lake).
 const SHORE := {"furniture_fishing_boat": 10, "furniture_rowing_boat": 11, "furniture_salt_pan": 10, "power_tidal_plant": 10,
 	"furniture_fish_farm": -1, "furniture_shipyard": -1, "furniture_port": -1, "furniture_breakwater": -1,
-	"furniture_offshore_platform": 10, "furniture_desalinator": 10}
+	"furniture_offshore_platform": 10, "furniture_desalinator": 10, "furniture_rail_port": 10}
 const LIGHTHOUSE := "furniture_lighthouse"
 const SHIPYARD := "furniture_shipyard"
 const PORT := "furniture_port"
@@ -272,10 +273,17 @@ const CITY := 9
 const CITY_HALF_WIDTH := 30
 const CITY_ROWS := 60
 const CITY_ONLY := ["furniture_multistorey_factory", "furniture_shop", "storage_high_bay", "furniture_freight_terminal",
-	"furniture_company_hq", "furniture_design_office", "furniture_laboratory", "furniture_service_workshop", "furniture_tailor"]
+	"furniture_company_hq", "furniture_design_office", "furniture_laboratory", "furniture_service_workshop", "furniture_tailor", BUY_MARKET]
 ## Makes every machine on power on the plot 20% faster; opens nothing.
 const CONTROL_CENTER := "furniture_control_center"
-const ONE_PER_PLOT := ["furniture_freight_terminal", "furniture_company_hq", CONTROL_CENTER, CANTEEN, STABLE, BELLOWS]
+const ONE_PER_PLOT := ["furniture_freight_terminal", "furniture_company_hq", CONTROL_CENTER, CANTEEN, STABLE, BELLOWS, EXPORT_CHEST, RAIL_PORT]
+## Export by rail: a chest by the station (at most EXPORT_REACH tiles from it) whose priced goods a train takes every hour to the
+## nearest buying market, which stands in a town (one a town, on 3 × 3 tiles) and lists them on the players' market; across the
+## sea the train goes on a ferry from a rail port on the coast. The market and the port open a window to set their commission or fee.
+const EXPORT_CHEST := "furniture_export_chest"
+const BUY_MARKET := "furniture_buy_market"
+const RAIL_PORT := "furniture_rail_port"
+const EXPORT_REACH := 3
 const ASSEMBLY_HALL := "furniture_assembly_hall"
 const SHOP := "furniture_shop"
 ## Forester's buildings of every level and how far their forest reaches from the building's tile;
@@ -288,9 +296,11 @@ const FARMSTEADS := {"furniture_farmstead": 4, "furniture_manor_farm": 5}
 const FERTILE := [3, 12]
 ## Buildings of the crafting tree on 3 × 3 tiles, and the two on 5 × 5 (HUGE_FOOTPRINT each way).
 const LARGE := ["furniture_robotic_hall", "furniture_oxygen_converter", "furniture_rolling_mill", "furniture_continuous_caster",
-	"storage_automated_warehouse", "power_fusion_plant", CANTEEN, "furniture_biogas_plant"]
+	"storage_automated_warehouse", "power_fusion_plant", CANTEEN, "furniture_biogas_plant", BUY_MARKET]
 const HUGE := ["furniture_steel_combine", "furniture_megafactory"]
 const HUGE_FOOTPRINT := 2
+## The rail port with its tracks and ferry ramp covers 9 × 9 tiles (GIANT_FOOTPRINT each way).
+const GIANT_FOOTPRINT := 4
 const FOREST_CLEARING := 2
 ## How often (ms) the foresters are asked for, to draw the trees they plant and cut.
 const FORESTRY_POLL := 3000.0
@@ -549,6 +559,8 @@ var _generator_window: GeneratorWindow
 var _drill_window: DrillWindow
 var _well_window: WellWindow
 var _shop_window: ShopWindow
+var _export_window: ExportWindow
+var _export_post_window: ExportPostWindow
 var _hive_window: HiveWindow
 var _city_window: CityWindow
 var _city_button: Button
@@ -871,8 +883,10 @@ func _big(kind: String) -> bool:
 
 
 ## How many tiles an object of `kind` covers each way from its own: 1 (3 × 3) for a forester's building, a solar tower,
-## a large wind turbine, an ice hotel, an assembly hall and the LARGE buildings; 2 (5 × 5) for the HUGE ones.
+## a large wind turbine, an ice hotel, an assembly hall and the LARGE buildings; 2 (5 × 5) for the HUGE ones; 4 (9 × 9) for the rail port.
 func _reach(kind: String) -> int:
+	if kind == RAIL_PORT:
+		return GIANT_FOOTPRINT
 	if kind in HUGE:
 		return HUGE_FOOTPRINT
 	return FOOTPRINT if FORESTERS.has(kind) or FARMSTEADS.has(kind) or kind in LARGE or kind in [SOLAR_TOWER, LARGE_WIND, ICE_HOTEL, ASSEMBLY_HALL] else 0
@@ -1300,6 +1314,8 @@ func _can_place(cell: Vector2i) -> bool:
 		return false
 	if _placing in ONE_PER_PLOT and _count_placed(_placing) > 0:
 		return false
+	if _placing == EXPORT_CHEST and not _by_station(cell):
+		return false
 	if _placing in DRILLS:
 		var mine := _mine_beside(cell)
 		return mine >= 0 and _drill_at(mine).x < 0
@@ -1310,7 +1326,8 @@ func _can_place(cell: Vector2i) -> bool:
 		return biome == COAST
 	if SHORE.has(_placing):
 		var only: int = SHORE[_placing]
-		return (biome == only if only >= 0 else biome in [COAST, LAKESHORE]) and _by_water(cell)
+		# A big one (the rail port) has the water along any edge of its ground.
+		return (biome == only if only >= 0 else biome in [COAST, LAKESHORE]) and _footprint(_placing, cell).any(_by_water)
 	if _placing in HYDRO:
 		return biome in WATER_BIOMES
 	if _placing == SOLAR_TOWER:
@@ -1324,6 +1341,18 @@ func _can_place(cell: Vector2i) -> bool:
 	if FARMSTEADS.has(_placing):
 		return biome in FERTILE
 	return true
+
+
+## Whether a tile is at most EXPORT_REACH tiles from the station building or the platform track in front of it.
+func _by_station(cell: Vector2i) -> bool:
+	var s: Dictionary = _plot.get("station", {})
+	if s.is_empty():
+		return false
+	var left := int(s["x"]) - EXPORT_REACH
+	var right := int(s["x"]) + int(s["width"]) - 1 + EXPORT_REACH
+	var top := int(s["y"]) - EXPORT_REACH
+	var bottom := maxi(int(s["y"]) + int(s["height"]) - 1, int(_plot.get("railRow", 0))) + EXPORT_REACH
+	return cell.x >= left and cell.x <= right and cell.y >= top and cell.y <= bottom
 
 
 ## How many objects of `kind` stand on the plot.
@@ -2494,7 +2523,10 @@ func _count(item: String) -> int:
 
 func _place_object(cell: Vector2i) -> void:
 	if not _can_place(cell) or _in_footprint(_placing, cell):
-		_show_toast("Tu nie można tego postawić.", UI.ERROR)
+		if _placing == EXPORT_CHEST and not _by_station(cell):
+			_show_toast("Skrzynia eksportowa stoi przy stacji: najwyżej %d pola od budynku albo toru." % EXPORT_REACH, UI.ERROR)
+		else:
+			_show_toast("Tu nie można tego postawić.", UI.ERROR)
 		return
 	var kind := _placing
 	# Belts and inserters are laid one after another until they run out.
@@ -2526,6 +2558,12 @@ func _place_object(cell: Vector2i) -> void:
 	elif FARMSTEADS.has(kind):
 		_show_toast("%s stoi na działce i już obsiewa pole wokół siebie. Plony wyjmiesz ręcznie albo podajnikiem." % object["name"])
 		_poll_farmsteads()
+	elif kind == EXPORT_CHEST:
+		_show_toast("%s stoi przy stacji. Kliknij ją, ustaw ceny towarów, a pociąg co godzinę zawiezie je na rynek skupu." % object["name"])
+	elif kind == BUY_MARKET:
+		_show_toast("%s stoi w mieście. Pociągi z całego lądu przywiozą tu towar na rynek graczy; kliknij go, aby ustawić prowizję." % object["name"])
+	elif kind == RAIL_PORT:
+		_show_toast("%s stoi na brzegu: pociągi z eksportem przeprawią się stąd promem. Kliknij go, aby ustawić opłatę." % object["name"])
 	elif kind == CANTEEN:
 		_show_toast("%s stoi na działce. Wydaj w niej jedzenie, a maszyny na opał i na prąd przyspieszą o 20%%." % object["name"])
 	elif kind == STABLE:
@@ -2622,13 +2660,18 @@ func _use_placed(cell: Vector2i) -> void:
 		_farmstead_window.open_at(_at, object["id"])
 	elif object["kind"] == CANTEEN:
 		_canteen_window.open_at(object["id"])
+	elif object["kind"] == EXPORT_CHEST:
+		_export_window.open_at(_at)
+	elif object["kind"] in [BUY_MARKET, RAIL_PORT]:
+		_export_post_window.open_at(object["id"])
 
 
 func _using_window_open() -> bool:
 	return _crafting_window.visible or _research_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
 		or _splitter_window.visible or _filter_window.visible or _generator_window.visible or _market_window.visible or _forester_window.visible \
 		or _farmstead_window.visible or _canteen_window.visible \
-		or _drill_window.visible or _well_window.visible or _shop_window.visible or _hive_window.visible
+		or _drill_window.visible or _well_window.visible or _shop_window.visible or _hive_window.visible \
+		or _export_window.visible or _export_post_window.visible
 
 
 func _hide_placed_windows() -> void:
@@ -2644,6 +2687,8 @@ func _hide_placed_windows() -> void:
 	_well_window.hide_window()
 	_shop_window.hide_window()
 	_hive_window.hide_window()
+	_export_window.hide_window()
+	_export_post_window.hide_window()
 	_storage_window.hide_window()
 	_splitter_window.hide_window()
 	_filter_window.hide_window()
@@ -3976,6 +4021,17 @@ func _build_windows() -> void:
 	_shop_window.balance_changed.connect(_reload_balance)
 	_shop_window.failed.connect(_show_error)
 	_shop_window.pick_up_requested.connect(_pick_up_placed)
+	_export_window = ExportWindow.new()
+	_export_window.position = Vector2(1280 - 500 - 12, 64)
+	_export_window.inventory_changed.connect(_reload_inventory)
+	_export_window.balance_changed.connect(_reload_balance)
+	_export_window.failed.connect(_show_error)
+	_export_window.pick_up_requested.connect(_pick_up_placed)
+	_export_post_window = ExportPostWindow.new()
+	_export_post_window.position = Vector2(1280 - 440 - 12, 64)
+	_export_post_window.balance_changed.connect(_reload_balance)
+	_export_post_window.failed.connect(_show_error)
+	_export_post_window.pick_up_requested.connect(_pick_up_placed)
 	_hive_window = HiveWindow.new()
 	_hive_window.position = Vector2(1280 - 400 - 12, 64)
 	_hive_window.inventory_changed.connect(_reload_inventory)
@@ -4020,6 +4076,9 @@ func _build_windows() -> void:
 	layer.add_child(_drill_window)
 	layer.add_child(_well_window)
 	layer.add_child(_shop_window)
+	layer.add_child(_hive_window)
+	layer.add_child(_export_window)
+	layer.add_child(_export_post_window)
 	layer.add_child(_city_window)
 	_achievements_window = AchievementsWindow.new()
 	_achievements_window.failed.connect(_show_error)

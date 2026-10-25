@@ -106,6 +106,9 @@ public sealed class WorldMap
         return biome == Biome.Desert && Oasis.Is(x, y) ? Biome.Oasis : biome;
     }
 
+    /// <summary>Whether the plot is open water, the sea or a lake, where no train goes.</summary>
+    public bool IsWater(int x, int y) => (Biome)_biomes[y * Width + x] is Biome.Ocean or Biome.Lake;
+
     /// <summary>The plot at a point of the globe, in degrees (same projection as tools/build_world.py).</summary>
     public (int X, int Y) PlotAt(double latitude, double longitude)
     {

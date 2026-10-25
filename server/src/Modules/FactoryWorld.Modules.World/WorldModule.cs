@@ -314,6 +314,90 @@ public sealed class TrainRouteRow
     public string? LastProblem { get; set; }
 }
 
+/// <summary>An export chest by a plot's station and when its train comes next.</summary>
+public sealed class ExportChestRow
+{
+    public Guid ObjectId { get; set; }
+
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public DateTimeOffset NextPickupAt { get; set; }
+
+    public DateTimeOffset? LastPickupAt { get; set; }
+
+    public long LastQuantity { get; set; }
+
+    public string? LastProblem { get; set; }
+}
+
+/// <summary>What a plot's export chest holds of one item.</summary>
+public sealed class ExportItemRow
+{
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public required string Item { get; set; }
+
+    public long Quantity { get; set; }
+}
+
+/// <summary>What a plot's export chest lists a piece of one item for.</summary>
+public sealed class ExportPriceRow
+{
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public required string Item { get; set; }
+
+    public long PriceCents { get; set; }
+}
+
+/// <summary>A buying market (its commission in percent) or a rail port (its fee in cents), and what it earned its owner.</summary>
+public sealed class ExportPostRow
+{
+    public Guid ObjectId { get; set; }
+
+    public required string Kind { get; set; }
+
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public long Value { get; set; }
+
+    public long EarnedCents { get; set; }
+
+    public long Uses { get; set; }
+}
+
+/// <summary>Goods of an export train on their way to a buying market.</summary>
+public sealed class ExportShipmentRow
+{
+    public long Id { get; set; }
+
+    public Guid SellerId { get; set; }
+
+    public int FromX { get; set; }
+
+    public int FromY { get; set; }
+
+    public int MarketX { get; set; }
+
+    public int MarketY { get; set; }
+
+    public required string Item { get; set; }
+
+    public long Quantity { get; set; }
+
+    public long PriceCents { get; set; }
+
+    public DateTimeOffset ArrivesAt { get; set; }
+}
+
 public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, GameDb gameDb) : ModuleDbContext(options, gameDb)
 {
     public const string Schema = "world";
@@ -547,6 +631,66 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.HasIndex(r => r.NextDepartureAt);
             e.HasIndex(r => new { r.FromX, r.FromY });
             e.HasIndex(r => new { r.ToX, r.ToY });
+        });
+        model.Entity<ExportChestRow>(e =>
+        {
+            e.ToTable("export_chests");
+            e.HasKey(c => c.ObjectId);
+            e.Property(c => c.ObjectId).HasColumnName("object_id");
+            e.Property(c => c.X).HasColumnName("x");
+            e.Property(c => c.Y).HasColumnName("y");
+            e.Property(c => c.NextPickupAt).HasColumnName("next_pickup_at");
+            e.Property(c => c.LastPickupAt).HasColumnName("last_pickup_at");
+            e.Property(c => c.LastQuantity).HasColumnName("last_quantity");
+            e.Property(c => c.LastProblem).HasColumnName("last_problem").HasMaxLength(32);
+            e.HasIndex(c => c.NextPickupAt);
+            e.HasIndex(c => new { c.X, c.Y }).IsUnique();
+        });
+        model.Entity<ExportItemRow>(e =>
+        {
+            e.ToTable("export_items");
+            e.HasKey(i => new { i.X, i.Y, i.Item });
+            e.Property(i => i.X).HasColumnName("x");
+            e.Property(i => i.Y).HasColumnName("y");
+            e.Property(i => i.Item).HasColumnName("item").HasMaxLength(64);
+            e.Property(i => i.Quantity).HasColumnName("quantity");
+        });
+        model.Entity<ExportPriceRow>(e =>
+        {
+            e.ToTable("export_prices");
+            e.HasKey(i => new { i.X, i.Y, i.Item });
+            e.Property(i => i.X).HasColumnName("x");
+            e.Property(i => i.Y).HasColumnName("y");
+            e.Property(i => i.Item).HasColumnName("item").HasMaxLength(64);
+            e.Property(i => i.PriceCents).HasColumnName("price_cents");
+        });
+        model.Entity<ExportPostRow>(e =>
+        {
+            e.ToTable("export_posts");
+            e.HasKey(p => p.ObjectId);
+            e.Property(p => p.ObjectId).HasColumnName("object_id");
+            e.Property(p => p.Kind).HasColumnName("kind").HasMaxLength(64);
+            e.Property(p => p.X).HasColumnName("x");
+            e.Property(p => p.Y).HasColumnName("y");
+            e.Property(p => p.Value).HasColumnName("value");
+            e.Property(p => p.EarnedCents).HasColumnName("earned_cents");
+            e.Property(p => p.Uses).HasColumnName("uses");
+        });
+        model.Entity<ExportShipmentRow>(e =>
+        {
+            e.ToTable("export_shipments");
+            e.Property(s => s.Id).HasColumnName("id");
+            e.Property(s => s.SellerId).HasColumnName("seller_id");
+            e.Property(s => s.FromX).HasColumnName("from_x");
+            e.Property(s => s.FromY).HasColumnName("from_y");
+            e.Property(s => s.MarketX).HasColumnName("market_x");
+            e.Property(s => s.MarketY).HasColumnName("market_y");
+            e.Property(s => s.Item).HasColumnName("item").HasMaxLength(64);
+            e.Property(s => s.Quantity).HasColumnName("quantity");
+            e.Property(s => s.PriceCents).HasColumnName("price_cents");
+            e.Property(s => s.ArrivesAt).HasColumnName("arrives_at");
+            e.HasIndex(s => s.ArrivesAt);
+            e.HasIndex(s => new { s.FromX, s.FromY });
         });
         model.Entity<TownProgressRow>(e =>
         {
@@ -1015,6 +1159,18 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, RemoveRouteHandler>();
         services.AddSingleton<IMessageHandler, FindPartnersHandler>();
         services.AddScoped<IMachinePorts, StationPorts>();
+        services.AddSingleton(provider => new LandMasses(provider.GetRequiredService<WorldMap>()));
+        services.AddScoped<ExportService>();
+        services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<ExportService>());
+        services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<ExportService>());
+        services.AddScoped<IMachinePorts, ExportChestPorts>();
+        services.AddHostedService<ExportDispatcher>();
+        services.AddSingleton<IMessageHandler, GetExportHandler>();
+        services.AddSingleton<IMessageHandler, LoadExportHandler>();
+        services.AddSingleton<IMessageHandler, UnloadExportHandler>();
+        services.AddSingleton<IMessageHandler, PriceExportHandler>();
+        services.AddSingleton<IMessageHandler, GetExportPostHandler>();
+        services.AddSingleton<IMessageHandler, SetExportPostHandler>();
         services.AddScoped<ForesterService>();
         services.AddScoped<FarmsteadService>();
         services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<FarmsteadService>());

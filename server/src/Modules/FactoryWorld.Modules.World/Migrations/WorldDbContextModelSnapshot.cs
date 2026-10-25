@@ -50,6 +50,190 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("beach_finds", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.ExportChestRow", b =>
+                {
+                    b.Property<Guid>("ObjectId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<DateTimeOffset?>("LastPickupAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_pickup_at");
+
+                    b.Property<string>("LastProblem")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("last_problem");
+
+                    b.Property<long>("LastQuantity")
+                        .HasColumnType("bigint")
+                        .HasColumnName("last_quantity");
+
+                    b.Property<DateTimeOffset>("NextPickupAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_pickup_at");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("ObjectId");
+
+                    b.HasIndex("NextPickupAt");
+
+                    b.HasIndex("X", "Y")
+                        .IsUnique();
+
+                    b.ToTable("export_chests", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.ExportItemRow", b =>
+                {
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.Property<string>("Item")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("item");
+
+                    b.Property<long>("Quantity")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity");
+
+                    b.HasKey("X", "Y", "Item");
+
+                    b.ToTable("export_items", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.ExportPostRow", b =>
+                {
+                    b.Property<Guid>("ObjectId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<long>("EarnedCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("earned_cents");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("kind");
+
+                    b.Property<long>("Uses")
+                        .HasColumnType("bigint")
+                        .HasColumnName("uses");
+
+                    b.Property<long>("Value")
+                        .HasColumnType("bigint")
+                        .HasColumnName("value");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("ObjectId");
+
+                    b.ToTable("export_posts", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.ExportPriceRow", b =>
+                {
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.Property<string>("Item")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("item");
+
+                    b.Property<long>("PriceCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("price_cents");
+
+                    b.HasKey("X", "Y", "Item");
+
+                    b.ToTable("export_prices", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.ExportShipmentRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<DateTimeOffset>("ArrivesAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("arrives_at");
+
+                    b.Property<int>("FromX")
+                        .HasColumnType("integer")
+                        .HasColumnName("from_x");
+
+                    b.Property<int>("FromY")
+                        .HasColumnType("integer")
+                        .HasColumnName("from_y");
+
+                    b.Property<string>("Item")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("item");
+
+                    b.Property<int>("MarketX")
+                        .HasColumnType("integer")
+                        .HasColumnName("market_x");
+
+                    b.Property<int>("MarketY")
+                        .HasColumnType("integer")
+                        .HasColumnName("market_y");
+
+                    b.Property<long>("PriceCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("price_cents");
+
+                    b.Property<long>("Quantity")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity");
+
+                    b.Property<Guid>("SellerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("seller_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ArrivesAt");
+
+                    b.HasIndex("FromX", "FromY");
+
+                    b.ToTable("export_shipments", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.ForestLedgerRow", b =>
                 {
                     b.Property<Guid>("PlayerId")

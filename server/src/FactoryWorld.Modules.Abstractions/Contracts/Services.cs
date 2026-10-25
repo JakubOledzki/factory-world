@@ -335,6 +335,14 @@ public interface IMarketPrices
     long? SellsCents(string item);
 }
 
+/// <summary>Lists goods on the players' market for a seller who is not at a computer: what an export train brings to a buying market.</summary>
+public interface IExportMarket
+{
+    /// <summary>Puts the goods up for sale at the price, as many listings as the market's largest one takes; the seller's
+    /// limit on open listings does not count them.</summary>
+    Task ListAsync(Guid seller, string item, long quantity, long priceCents, CancellationToken cancellationToken);
+}
+
 /// <summary>The forest certificate: a player who planted at least as many trees as they cut over the last week, and
 /// enough of them, sells timber dearer.</summary>
 public interface IForestCertificate

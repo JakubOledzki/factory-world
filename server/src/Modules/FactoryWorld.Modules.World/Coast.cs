@@ -47,6 +47,8 @@ public static class Coast
         [Items.Shipyard] = null,
         [Items.Port] = null,
         [Items.Breakwater] = null,
+        // Trains roll onto the ferry from the sea shore.
+        [Items.RailPort] = Biome.Coast,
     };
 
     public static bool HasWater(Biome biome) => biome is Biome.Coast or Biome.Lakeshore;
@@ -185,7 +187,9 @@ public static class Coast
                 shore == Biome.Coast ? "It stands on the sea coast." : shore == Biome.Lakeshore ? "It stands on a lakeshore." : "It stands by the sea or a lake.");
         }
 
-        if (!NextToWater(PlotLayout.Generate(x, y, biome), tileX, tileY))
+        // A big one (the rail port) has the water along any edge of its ground.
+        var tiles = PlotLayout.Generate(x, y, biome);
+        if (!Footprints.Tiles(kind, tileX, tileY).Any(t => NextToWater(tiles, t.X, t.Y)))
         {
             throw new GameException("not_on_shore", "It stands right next to the water.");
         }
