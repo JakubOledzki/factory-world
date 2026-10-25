@@ -1,0 +1,105 @@
+[
+	{
+		"date": "2026-10-25",
+		"title": "Logistyka i tartaki",
+		"changes": [
+			"Szybsze taśmy i podajniki bada się teraz w gałęzi Logistyka.",
+			"Nowe: taśmociągi podziemne, podajniki z długim ramieniem i większe chwytaki.",
+			"Magazyn przeładunkowy, kolejka ekspresowa i latające drony do przewozu towarów.",
+			"Tartak elektryczny i przemysłowy wyciągają więcej z kłody i pracują szybciej.",
+			"Kilof meteorytowy kupisz i wykujesz dopiero po badaniu „Narzędzia z meteorytu”.",
+			"Działka z wieloma maszynami odświeża się płynniej."
+		]
+	},
+	{
+		"date": "2026-10-25",
+		"title": "Garaż aż do biura",
+		"changes": [
+			"Ulepszenia garażu: 11 podłóg i 11 ścian, aż po biuro z widokiem na miasto.",
+			"Regał-schowek, który z każdym poziomem wygląda porządniej.",
+			"Paleta dostaw i szafa na komplety ubrań.",
+			"Ulepszenia są droższe, więc garaż to cel na dłużej."
+		]
+	},
+	{
+		"date": "2026-10-25",
+		"title": "Hodowla i gastronomia",
+		"changes": [
+			"Zagroda i folwark same orzą, sieją i zbierają pola wokół siebie.",
+			"Stołówka zakładowa przyspiesza maszyny opalane i elektryczne.",
+			"Posiłki zjedzone w biegu (w oknie postaci) dają chwilę szybszej pracy rąk.",
+			"Rzeźnia, mleczarnia, gorzelnia, biogazownia, obornik i hodowla.",
+			"Konie robocze ze stajniami i wozy konne, bankiety i festyny w miastach."
+		]
+	},
+	{
+		"date": "2026-10-25",
+		"title": "Premie za poziomy",
+		"changes": [
+			"Co piąty poziom dodaje premię do jednego z przemysłów.",
+			"Nowa zakładka „Poziomy” w oknie postaci pokazuje zdobyte i następne premie.",
+			"Poziomy rosną wolniej, setny to cel na kilka miesięcy gry."
+		]
+	},
+	{
+		"date": "2026-10-25",
+		"title": "Stół badawczy i drzewka gałęzi",
+		"changes": [
+			"Badania prowadzi się przy stole badawczym: jest w każdym garażu, a handlarz sprzedaje go za 2000 $.",
+			"Każda gałąź przemysłu ma własne drzewko badań.",
+			"Krawiectwo jest w gałęzi „Miasta”."
+		]
+	},
+	{
+		"date": "2026-10-25",
+		"title": "Postać i ubrania",
+		"changes": [
+			"Okno postaci (kliknij portret w rogu): czapka, kurtka, spodnie i buty dają premie do przemysłów.",
+			"Ubrania szyje pracownia krawiecka w mieście, część sprzedają sklepy i handlarz.",
+			"Nowy wygląd postaci za 1000 $, z podglądem przed zapłatą.",
+			"Bardziej realistyczne postacie: cztery twarze, zarost i 14 ubrań.",
+			"Ceny rynkowe w opisie przedmiotu (Ctrl albo przytrzymanie palca na telefonie)."
+		]
+	},
+	{
+		"date": "2026-10-25",
+		"title": "Filtry i wygoda",
+		"changes": [
+			"Filtry na podajnikach, magazynach i maszynach: wybierz, co ma przechodzić.",
+			"Chata leśnika sadzi gatunek drzew, który wybierzesz.",
+			"Przez podajniki, pompy i słupy elektryczne da się przejść.",
+			"Generatory zasilane podajnikami pracują też, gdy nikt nie patrzy na działkę."
+		]
+	},
+	{
+		"date": "2026-10-25",
+		"title": "Wielkie drzewko wytwarzania",
+		"changes": [
+			"Drzewko wytwarzania ma ponad 10 poziomów, od huty po megafabryki i cele kosmiczne.",
+			"Rynek ma osobną zakładkę Sprzedaż.",
+			"Badanie geologiczne działki kosztuje 100 000 $."
+		]
+	},
+	{
+		"date": "2026-10-25",
+		"title": "Nowe krainy i spółki",
+		"changes": [
+			"Góry: wiertła, kamieniołom, kruszarka, odlewnia, energia wodna, kolejka linowa i głębokie kopalnie.",
+			"Nabrzeże z rybołówstwem i łodziami, ropa i gaz, pustynia ze słońcem i oazami, lodowiec z turbinami wiatrowymi.",
+			"Miasta i spółki: wspólna kasa, udziały, badania, zlecenia, umowy i giełda.",
+			"Na wspólnej działce widać innych graczy."
+		]
+	},
+	{
+		"date": "2026-10-24",
+		"title": "Leśnictwo i plecaki",
+		"changes": [
+			"Leśnicy sadzą i ścinają las, tartaki robią wyroby z drewna; z drzewa czasem wypada sadzonka.",
+			"Plecaki u handlarza powiększają ekwipunek i pasek narzędzi.",
+			"Ikony zamiast tekstu w dolnym pasku.",
+			"Automatyczna sortownia jako osobna maszyna.",
+			"Hodowla kur, owiec i krów na stepie.",
+			"Rynek, stół i maszyny pokazują tylko to, co już jest zbadane."
+		]
+	}
+]
