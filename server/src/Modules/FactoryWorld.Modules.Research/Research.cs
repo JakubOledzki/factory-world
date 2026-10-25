@@ -45,6 +45,7 @@ public static class TechTree
     public const string Metallurgy = "metallurgy";
     public const string Explosives = "explosives";
     public const string DeepMining = "deep_mining";
+    public const string MeteoriteTools = "meteorite_tools";
     public const string HydroPlant = "hydro_plant";
     public const string CableTransport = "cable_transport";
     public const string Fishing = "fishing";
@@ -228,6 +229,9 @@ public static class TechTree
         new(DeepMining, "Głębokie górnictwo", "Obudowa górnicza pozwala pogłębić kopalnię do poziomu 4 i 5; wiertło udarowe i kilof stalowy kopią szybciej.",
             [MiningAutomation, Metallurgy], [(Items.SteelIngot, 30), (Items.Beams, 20), (Items.BronzeIngot, 20)], TimeSpan.FromMinutes(5), 100,
             [Items.MineSupport, Items.HeavyDrill, Items.SteelPickaxe]),
+        new(MeteoriteTools, "Narzędzia z meteorytu", "Żelazo meteorytowe z lodowca i iryd wykuwasz na kowadle w kilof, który kopie dwa razy szybciej niż żelazny; dopiero wtedy sprzeda go też handlarz.",
+            [DeepMining], [(Items.MeteoricIron, 10), (Items.SteelIngot, 20)], TimeSpan.FromMinutes(4), 80,
+            [Items.MeteoritePickaxe]),
         new(HydroPlant, "Elektrownia wodna", "Mała elektrownia wodna daje pięć razy więcej prądu niż koło wodne.",
             [Hydropower, Metallurgy], [(Items.SteelIngot, 20), (Items.Bricks, 40), (Items.CopperIngot, 30)], TimeSpan.FromMinutes(5), 100,
             [Items.HydroPlant]),
@@ -582,7 +586,7 @@ public static class TechTree
     [
         new("logistics", "Logistyka", Items.Belt, [Logistics, Automation, Storage, Sorting, CableTransport]),
         new("mining", "Górnictwo", Items.IronOre,
-            [Stonemasonry, Metallurgy, MiningAutomation, Crushing, Explosives, DeepMining]),
+            [Stonemasonry, Metallurgy, MiningAutomation, Crushing, Explosives, DeepMining, MeteoriteTools]),
         new("forestry", "Leśnictwo", Items.Wood,
             [ForestryIndustry, Silviculture, Woodworking, IndustrialForestry, Papermaking, Furniture, Charring, FireProtection, Beekeeping, ForestFoods]),
         new("food", "Przetwórstwo", Items.Bread,
