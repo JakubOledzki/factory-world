@@ -13,6 +13,8 @@ signal failed(reply: Dictionary)
 signal pick_up_requested(id: String)
 
 const COAL := "coal"
+## What goes on the fire: coal and charcoal burn alike.
+const FUELS := ["coal", "charcoal"]
 
 var furnace := ""
 var can_pick_up := false
@@ -137,18 +139,18 @@ func _render() -> void:
 	var any := false
 	for stack: Dictionary in _items:
 		var item: String = stack["id"]
-		if item != COAL and not smeltable.has(item):
+		if not FUELS.has(item) and not smeltable.has(item):
 			continue
 		any = true
 		var owned := int(stack["quantity"])
-		var room := int(_state["maxFuel"]) - fuel if item == COAL else int(_state["maxInput"]) - (int(input["quantity"]) if input != null else 0)
-		var blocked: bool = item != COAL and input != null and input["id"] != item
+		var room := int(_state["maxFuel"]) - fuel if FUELS.has(item) else int(_state["maxInput"]) - (int(input["quantity"]) if input != null else 0)
+		var blocked: bool = not FUELS.has(item) and input != null and input["id"] != item
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 6)
 		row.add_child(UI.item_icon(item, 26))
 		var name_label := UI.label("%s  ×%d" % [stack["name"], owned])
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		if item != COAL:
+		if not FUELS.has(item):
 			name_label.tooltip_text = "→ %s, %s s" % [smeltable[item]["outputName"], _seconds(float(smeltable[item]["seconds"]))]
 			name_label.mouse_filter = Control.MOUSE_FILTER_STOP
 		row.add_child(name_label)
@@ -161,7 +163,7 @@ func _render() -> void:
 			row.add_child(b)
 		_load.add_child(row)
 	if not any:
-		_load.add_child(UI.label("Nie masz rudy ani węgla. Rudy i węgiel wydobywa się w kopalniach w górach.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		_load.add_child(UI.label("Nie masz rudy ani węgla. Rudy i węgiel wydobywa się w kopalniach w górach, a węgiel drzewny wypala z drewna mielerz.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
 	var lines: Array[String] = []
 	if int(_state.get("speed", 1)) > 1:

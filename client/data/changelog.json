@@ -31,6 +31,7 @@
 		"changes": [
 			"Węgiel drzewny z mielerza zastępuje teraz węgiel kopalny w przepisach maszyn: odlewnia i konwertor tlenowy robią z niego stal, a piec łukowy krzem.",
 			"W oknie maszyny pod węglem pojawia się wiersz „Węgiel drzewny zamiast: węgiel”, gdy masz go w ekwipunku; podajniki też go wkładają.",
+			"Okno pieca pokazuje węgiel drzewny z ekwipunku i pozwala dołożyć go do ognia jak zwykły węgiel, w piecu kamiennym, ceglanym i hutniczym.",
 			"Przypomnienie: mielerz (badanie „Węglarstwo i smolarstwo” w gałęzi leśnictwa) wypala 2 węgla drzewnego z 4 drewna w 60 s, bez opału i prądu."
 		]
 	},
