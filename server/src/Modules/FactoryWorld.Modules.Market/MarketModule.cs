@@ -69,6 +69,9 @@ public static class NpcPrices
         [Items.Sawmill] = 40_000,
         [Items.Planks] = 300,
         [Items.FishingRod] = 10_000,
+        // A bank is bought only, never made, and the trader does not buy it back.
+        [Items.Bank] = 10_000_000_000_00,
+        [Items.BankBranch] = 5_000_000_000_00,
     };
 
     /// <summary>What the NPC pays the player.</summary>
@@ -315,8 +318,6 @@ public static class NpcPrices
         [Items.BuyMarket] = 150_000,
         [Items.RailPort] = 250_000,
         [Items.CompanyHq] = 600_000,
-        [Items.Bank] = 1_000_000,
-        [Items.BankBranch] = 300_000,
         [Items.DesignOffice] = 20_000,
         [Items.Laboratory] = 60_000,
         [Items.ServiceWorkshop] = 25_000,

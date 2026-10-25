@@ -8,6 +8,8 @@ extends GameWindow
 signal researched(finished: Array, xp: Variant)
 ## The cost was taken or given back; the screen reloads the inventory.
 signal inventory_changed
+## Money went from the wallet to the company's research or came back.
+signal balance_changed
 signal failed(reply: Dictionary)
 ## The player asked to put this table back into the inventory (only where `can_pick_up`).
 signal pick_up_requested(id: String)
@@ -39,6 +41,7 @@ func _init() -> void:
 	content.add_child(top)
 	_panel.researched.connect(researched.emit)
 	_panel.inventory_changed.connect(inventory_changed.emit)
+	_panel.balance_changed.connect(balance_changed.emit)
 	_panel.failed.connect(failed.emit)
 	content.add_child(_panel)
 

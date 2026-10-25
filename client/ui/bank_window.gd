@@ -280,7 +280,7 @@ func _reparent(control: Control, parent: Control) -> void:
 func _spin() -> SpinBox:
 	var spin := SpinBox.new()
 	spin.min_value = 0.01
-	spin.max_value = 100_000_000
+	spin.max_value = 1_000_000_000_000
 	spin.step = 0.01
 	spin.value = 100
 	spin.suffix = "$"

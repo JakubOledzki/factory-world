@@ -329,13 +329,14 @@ public sealed class CoastTests(ServerFactory factory) : IClassFixture<ServerFact
         Assert.Equal(atStorm, (await client.InventoryAsync()).GetValueOrDefault(Items.Herring));
         Assert.NotEmpty(taken.GetProperty("taken").EnumerateArray());
 
-        // A plot has room for four boats.
+        // A plot has room for four boats. The storm may have thrown finds up on the beach, so the shore is looked at again.
+        var free = ShoreTiles(Tiles((await client.SendAsync("plot.enter", new { x, y })).Payload())).Where(t => t != shore[0]).ToList();
         for (var i = 1; i < Coast.PlotBoats; i++)
         {
-            await PlaceAsync(client, x, y, Items.FishingBoat, shore[i].X, shore[i].Y);
+            await PlaceAsync(client, x, y, Items.FishingBoat, free[i].X, free[i].Y);
         }
 
-        Assert.Equal("too_many_boats", await PlaceErrorAsync(client, x, y, Items.FishingBoat, shore[5].X, shore[5].Y));
+        Assert.Equal("too_many_boats", await PlaceErrorAsync(client, x, y, Items.FishingBoat, free[5].X, free[5].Y));
     }
 
     [Fact]

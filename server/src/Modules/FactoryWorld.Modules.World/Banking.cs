@@ -30,7 +30,7 @@ public static class BankRules
     public static readonly TimeSpan NoRoute = OtherBank;
 
     /// <summary>The most one payment or transfer may move.</summary>
-    public const long MaxCents = 100_000_000_00;
+    public const long MaxCents = 1_000_000_000_000_00;
 
     /// <summary>Bank buildings a town has room for, of all banks together: one in a village, five in a metropolis.</summary>
     public static int MaxBuildings(int townLevel) => townLevel + 1;

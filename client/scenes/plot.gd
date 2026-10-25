@@ -3973,6 +3973,7 @@ func _build_windows() -> void:
 	_research_window = ResearchWindow.new()
 	_research_window.can_pick_up = true
 	_research_window.inventory_changed.connect(_reload_inventory)
+	_research_window.balance_changed.connect(_reload_balance)
 	_research_window.failed.connect(_show_error)
 	_research_window.researched.connect(_on_researched)
 	_research_window.pick_up_requested.connect(_pick_up_placed)

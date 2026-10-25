@@ -1,6 +1,8 @@
 using System.Text.Json;
 using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Abstractions.Contracts;
+using FactoryWorld.Modules.Crafting;
+using FactoryWorld.Modules.Market;
 using FactoryWorld.Modules.Research;
 using FactoryWorld.Modules.World;
 using Microsoft.Extensions.DependencyInjection;
@@ -41,8 +43,8 @@ public sealed class BankTests(ServerFactory factory) : ExportTestBase(factory), 
         return id;
     }
 
-    /// <summary>Marks banking as researched by the company, as if its members had brought its cost and waited.</summary>
-    private async Task ResearchAsync(Guid company)
+    /// <summary>Marks banking (or another technology) as researched by the company, as if its members had brought its cost and waited.</summary>
+    private async Task ResearchAsync(Guid company, string technology = TechTree.Banking)
     {
         await using var scope = Factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<GameDb>();
@@ -51,7 +53,7 @@ public sealed class BankTests(ServerFactory factory) : ExportTestBase(factory), 
             await using var command = await db.CommandAsync(
                 "INSERT INTO research.company_technologies (company_id, technology, starts_at, finishes_at) VALUES (@c, @t, @at, @at)", CancellationToken.None);
             command.Parameters.AddWithValue("c", company);
-            command.Parameters.AddWithValue("t", TechTree.Banking);
+            command.Parameters.AddWithValue("t", technology);
             command.Parameters.AddWithValue("at", Factory.Time.GetUtcNow().AddMinutes(-1));
             await command.ExecuteNonQueryAsync();
         }, CancellationToken.None);
@@ -99,6 +101,51 @@ public sealed class BankTests(ServerFactory factory) : ExportTestBase(factory), 
         Assert.Equal(TimeSpan.FromMinutes(1), BankRules.SameBank);
         Assert.Equal(TimeSpan.FromHours(6), BankRules.OtherBank);
         Assert.Equal(TimeSpan.FromMinutes(30), BankRules.NoPlot);
+    }
+
+    [Fact]
+    public async Task Banking_costs_the_company_100_billion_brought_from_wallets_and_a_bank_is_only_bought_for_10_billion()
+    {
+        Assert.Equal(100_000_000_000_00, TechTree.ById[TechTree.Banking].CostCents);
+        Assert.Equal(10_000_000_000_00, NpcPrices.Sells[Items.Bank]);
+        Assert.Equal(5_000_000_000_00, NpcPrices.Sells[Items.BankBranch]);
+        Assert.False(NpcPrices.Buys.ContainsKey(Items.Bank));
+        Assert.DoesNotContain(Workshop.Recipes, r => Items.IsBank(r.Id));
+
+        using var owner = await PlayerAsync();
+        var company = await CompanyAsync(owner, false);
+        await ResearchAsync(company, TechTree.CorporateFinance);
+        await using (var scope = Factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(owner.AccountId, 100_000_000_001_00, "test", CancellationToken.None);
+        }
+
+        async Task<long> BalanceAsync()
+        {
+            await using var scope = Factory.Services.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<IWallet>().BalanceAsync(owner.AccountId, CancellationToken.None);
+        }
+
+        static JsonElement Money(JsonElement reply) =>
+            reply.GetProperty("company").GetProperty("delivered").EnumerateArray().Single(d => d.GetProperty("id").GetString() == TechTree.Money);
+
+        var before = await BalanceAsync();
+        Assert.Equal("research", (await owner.SendAsync("research.companyStart", new { technology = TechTree.Banking })).Type());
+        var part = (await owner.SendAsync("research.contribute", new { item = TechTree.Money, quantity = 40_000_000_000_00L })).Payload();
+        Assert.Equal(40_000_000_000_00, Money(part).GetProperty("delivered").GetInt64());
+        Assert.Equal(100_000_000_000_00, Money(part).GetProperty("needed").GetInt64());
+        Assert.Equal(before - 40_000_000_000_00, await BalanceAsync());
+
+        // Called off, the money goes back to the wallet.
+        Assert.Equal("research", (await owner.SendAsync("research.companyCancel")).Type());
+        Assert.Equal(before, await BalanceAsync());
+
+        // No more is taken than it needs; with all of it in, the research starts.
+        await owner.SendAsync("research.companyStart", new { technology = TechTree.Banking });
+        var full = (await owner.SendAsync("research.contribute", new { item = TechTree.Money, quantity = 100_000_000_001_00L })).Payload();
+        Assert.NotEqual(JsonValueKind.Null, full.GetProperty("company").GetProperty("finishesAt").ValueKind);
+        Assert.Equal(before - 100_000_000_000_00, await BalanceAsync());
+        Assert.Equal("no_research", (await owner.SendAsync("research.contribute", new { item = TechTree.Money, quantity = 1L })).ErrorCode());
     }
 
     // --- Banks, accounts and transfers ------------------------------------------------------------
