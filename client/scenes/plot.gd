@@ -299,6 +299,8 @@ const LARGE := ["furniture_robotic_hall", "furniture_oxygen_converter", "furnitu
 	"storage_automated_warehouse", "power_fusion_plant", CANTEEN, "furniture_biogas_plant", BUY_MARKET]
 const HUGE := ["furniture_steel_combine", "furniture_megafactory"]
 const HUGE_FOOTPRINT := 2
+## The rail port with its tracks and ferry ramp covers 9 × 9 tiles (GIANT_FOOTPRINT each way).
+const GIANT_FOOTPRINT := 4
 const FOREST_CLEARING := 2
 ## How often (ms) the foresters are asked for, to draw the trees they plant and cut.
 const FORESTRY_POLL := 3000.0
@@ -881,8 +883,10 @@ func _big(kind: String) -> bool:
 
 
 ## How many tiles an object of `kind` covers each way from its own: 1 (3 × 3) for a forester's building, a solar tower,
-## a large wind turbine, an ice hotel, an assembly hall and the LARGE buildings; 2 (5 × 5) for the HUGE ones.
+## a large wind turbine, an ice hotel, an assembly hall and the LARGE buildings; 2 (5 × 5) for the HUGE ones; 4 (9 × 9) for the rail port.
 func _reach(kind: String) -> int:
+	if kind == RAIL_PORT:
+		return GIANT_FOOTPRINT
 	if kind in HUGE:
 		return HUGE_FOOTPRINT
 	return FOOTPRINT if FORESTERS.has(kind) or FARMSTEADS.has(kind) or kind in LARGE or kind in [SOLAR_TOWER, LARGE_WIND, ICE_HOTEL, ASSEMBLY_HALL] else 0
@@ -1322,7 +1326,8 @@ func _can_place(cell: Vector2i) -> bool:
 		return biome == COAST
 	if SHORE.has(_placing):
 		var only: int = SHORE[_placing]
-		return (biome == only if only >= 0 else biome in [COAST, LAKESHORE]) and _by_water(cell)
+		# A big one (the rail port) has the water along any edge of its ground.
+		return (biome == only if only >= 0 else biome in [COAST, LAKESHORE]) and _footprint(_placing, cell).any(_by_water)
 	if _placing in HYDRO:
 		return biome in WATER_BIOMES
 	if _placing == SOLAR_TOWER:

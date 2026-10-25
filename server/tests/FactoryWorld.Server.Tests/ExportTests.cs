@@ -65,31 +65,59 @@ public abstract class ExportTestBase(ServerFactory factory)
         throw new InvalidOperationException("No such plot.");
     }
 
-    /// <summary>A free tile of a coast plot right by the sea.</summary>
-    protected static (int X, int Y) Shore((int X, int Y) plot)
+    /// <summary>Where a rail port's 9 × 9 ground fits on a coast plot, all of it free and its edge by the sea.</summary>
+    protected (int X, int Y) Shore((int X, int Y) plot) => FindShore(plot) ?? throw new InvalidOperationException("No shore.");
+
+    /// <summary>The coast plot nearest (x, y) on the same landmass or on another one with room for a rail port by the sea.</summary>
+    protected (int X, int Y) PortPlot(int x, int y, bool sameLand = true)
+    {
+        for (var skip = 0; ; skip++)
+        {
+            var plot = Near(x, y, Biome.Coast, sameLand, skip);
+            if (FindShore(plot) is not null)
+            {
+                return plot;
+            }
+        }
+    }
+
+    private (int X, int Y)? FindShore((int X, int Y) plot)
     {
         var tiles = PlotLayout.Generate(plot.X, plot.Y, Biome.Coast);
-        for (var y = 20; y < PlotLayout.Size; y++)
+        // What the sea threw up on the beach today lies on free sand by the water and is in the way too.
+        var day = SeaWeather.Day(factory.Time.GetUtcNow());
+        foreach (var (fx, fy) in Coast.Flotsam(plot.X, plot.Y, Biome.Coast, tiles, day, true))
         {
-            if (tiles[y * PlotLayout.Size + 60] == (byte)TileObject.None && Coast.NextToWater(tiles, 60, y))
+            tiles[fy * PlotLayout.Size + fx] = (byte)TileObject.Flotsam;
+        }
+
+        for (var y = PlotLayout.Size - 1; y >= 20; y--)
+        {
+            for (var x = 40; x < PlotLayout.Size - 40; x++)
             {
-                return (60, y);
+                var ground = Footprints.Tiles(Items.RailPort, x, y).ToList();
+                if (ground.All(t => PlotLayout.Inside(t.X, t.Y) && tiles[t.Y * PlotLayout.Size + t.X] == (byte)TileObject.None && t != PlotLayout.Spawn)
+                    && ground.Any(t => Coast.NextToWater(tiles, t.X, t.Y)))
+                {
+                    return (x, y);
+                }
             }
         }
 
-        throw new InvalidOperationException("No shore.");
+        return null;
     }
 
-    /// <summary>A free tile of a new plot from row <paramref name="row"/> on, with free tiles all round it.</summary>
-    protected static (int X, int Y) FreeTile((int X, int Y) plot, int row)
+    /// <summary>A free tile of a new plot from row <paramref name="row"/> on, with <paramref name="reach"/> free tiles all round it, away from water.</summary>
+    protected static (int X, int Y) FreeTile((int X, int Y) plot, int row, int reach = 1)
     {
         var tiles = PlotLayout.Generate(plot.X, plot.Y, Map.BiomeAt(plot.X, plot.Y));
         bool Free(int x, int y) => tiles[y * PlotLayout.Size + x] == (byte)TileObject.None;
-        for (var y = row; y < PlotLayout.Size - 1; y++)
+        for (var y = row; y < PlotLayout.Size - 1 - reach; y++)
         {
             for (var x = 20; x < PlotLayout.Size - 20; x++)
             {
-                if (Enumerable.Range(-1, 3).All(dy => Enumerable.Range(-1, 3).All(dx => Free(x + dx, y + dy))) && !Coast.NextToWater(tiles, x, y))
+                var around = Enumerable.Range(-reach, 2 * reach + 1).SelectMany(dy => Enumerable.Range(-reach, 2 * reach + 1).Select(dx => (X: x + dx, Y: y + dy))).ToList();
+                if (around.All(t => Free(t.X, t.Y) && t != PlotLayout.Spawn && !Coast.NextToWater(tiles, t.X, t.Y)))
                 {
                     return (x, y);
                 }
@@ -400,17 +428,20 @@ public sealed class ExportSeaTests(ServerFactory factory) : ExportTestBase(facto
         Assert.Equal("no_route", (await ExportAsync(seller, field)).GetProperty("problem").GetString());
 
         // A rail port stands on the sea shore only.
-        var dover = Near(TownNamed("Dover").X, TownNamed("Dover").Y, Biome.Coast);
-        var calais = Near(dover.X, dover.Y, Biome.Coast, sameLand: false);
+        var dover = PortPlot(TownNamed("Dover").X, TownNamed("Dover").Y);
+        var calais = PortPlot(dover.X, dover.Y, sameLand: false);
         await GiveAsync(ferryman, Items.RailPort, 3);
         var inland = Near(dover.X, dover.Y, Biome.Farmland);
         await BuyAsync(ferryman, inland);
-        Assert.Equal("no_coast", await PlaceErrorAsync(ferryman, inland, Items.RailPort, FreeTile(inland, 30)));
+        Assert.Equal("no_coast", await PlaceErrorAsync(ferryman, inland, Items.RailPort, FreeTile(inland, 30, Footprints.GiantReach)));
         await BuyAsync(ferryman, dover);
         await BuyAsync(ferryman, calais);
-        Assert.Equal("not_on_shore", await PlaceErrorAsync(ferryman, dover, Items.RailPort, FreeTile(dover, 30)));
+        Assert.Equal("not_on_shore", await PlaceErrorAsync(ferryman, dover, Items.RailPort, FreeTile(dover, 30, Footprints.GiantReach)));
         var portDover = await PlaceAsync(ferryman, dover, Items.RailPort, Shore(dover));
         var portCalais = await PlaceAsync(ferryman, calais, Items.RailPort, Shore(calais));
+        // The port with its tracks and ferry ramp covers 9 × 9 tiles.
+        await GiveAsync(ferryman, Items.WoodenChest, 1);
+        Assert.Equal("blocked", await PlaceErrorAsync(ferryman, dover, Items.WoodenChest, (Shore(dover).X + 4, Shore(dover).Y - 4)));
         Assert.Equal(ExportRules.DefaultPortFeeCents, (await ferryman.SendAsync("export.post", new { id = portDover })).Payload().GetProperty("value").GetInt64());
         Assert.Equal("bad_fee", (await ferryman.SendAsync("export.setPost", new { id = portCalais, value = ExportRules.MaxPortFeeCents + 1 })).ErrorCode());
         Assert.Equal("export.post", (await ferryman.SendAsync("export.setPost", new { id = portCalais, value = 25_00 })).Type());

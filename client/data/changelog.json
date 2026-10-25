@@ -5,7 +5,7 @@
 		"changes": [
 			"Skrzynia eksportowa przy stacji: ustaw cenę każdego towaru, a pociąg co godzinę zabierze go na rynek graczy.",
 			"Rynek skupu w mieście (jeden na miasto) wystawia przywiezione towary; jego właściciel ustala prowizję od cudzych.",
-			"Port pociągowy na wybrzeżu przewozi pociągi promem na inny ląd, 3 razy wolniej niż po torach; właściciel ustala opłatę.",
+			"Duży port pociągowy (9 × 9 pól) na wybrzeżu przewozi pociągi promem na inny ląd, 3 razy wolniej niż po torach; właściciel ustala opłatę.",
 			"Im dalej do rynku skupu, tym dłużej jedzie towar: 10 działek to minuta drogi.",
 			"Nowe badania: „Rynek skupu” w gałęzi Miasta i „Port pociągowy” w gałęzi Logistyka."
 		]

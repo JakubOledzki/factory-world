@@ -79,12 +79,12 @@ func _render(set_value: bool) -> void:
 		set_title("Rynek skupu · %s" % _state["town"])
 		_about.text = ("Pociągi ze skrzyń eksportowych przy stacjach przywożą tu co godzinę towar z najbliższej okolicy i wystawiają go na rynek graczy " +
 			"po cenach sprzedawców. Jeden rynek skupu na miasto; na świecie stoi ich teraz %d.") % int(_state["markets"])
-		_owner.text = "Prowadzi: %s · prowizja od cudzych towarów: %d%% wartości, płatna przy wystawieniu." % [_state["owner"], value]
+		_owner.text = "Prowadzi: %s.\nProwizja od cudzych towarów: %d%% wartości, płatna przy wystawieniu." % [_state["owner"], value]
 	else:
 		set_title("Port pociągowy · %d × %d" % [int(_state["x"]), int(_state["y"])])
 		_about.text = ("Pociągi nie jeżdżą po wodzie: tu wjeżdżają na prom i płyną do innego portu pociągowego, trzy razy wolniej niż lądem. " +
 			"Pociąg wybiera najszybszą drogę do rynku skupu, przez dowolne porty.")
-		_owner.text = "Właściciel: %s · opłata za przeprawę cudzego pociągu: %s." % [_state["owner"], UI.money(value).replace(" ", "\u00a0")]
+		_owner.text = "Właściciel: %s.\nOpłata za przeprawę cudzego pociągu: %s." % [_state["owner"], UI.money(value).replace(" ", "\u00a0")]
 	_earned.visible = mine
 	_setting.visible = mine
 	_pick_up.visible = mine

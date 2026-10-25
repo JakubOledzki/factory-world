@@ -487,7 +487,7 @@ const ITEMS := {
 			"Stół warsztatowy: 1 × żelazna skrzynia + 20 × deski + 10 × sztabka żelaza (30 s). Wymaga badania: Rynek skupu."],
 	"furniture_buy_market": ["Rynek skupu", "Tylko w mieście, jeden na całe miasto (3 × 3 pola): pociągi ze skrzyń eksportowych przywożą tu towar z całego lądu i wystawiają go na rynek graczy. Ustalasz prowizję (do 20%) od wartości cudzych towarów; trafia prosto do twojego portfela. Bez żadnego rynku skupu na świecie eksport nie działa.",
 			"Stół warsztatowy: 40 × beton + 60 × cegły + 40 × deski + 20 × szkło + 20 × sztabka stali + 2 × plany budynku (240 s). Wymaga badania: Rynek skupu."],
-	"furniture_rail_port": ["Port pociągowy", "Tylko na brzegu morza, jeden na działkę: pociągi z eksportem wjeżdżają tu na prom i płyną do innego portu pociągowego, 3 razy wolniej niż lądem. Ustalasz opłatę (do 1000 $) za każdy cudzy pociąg; trafia prosto do twojego portfela.",
+	"furniture_rail_port": ["Port pociągowy", "Stoi na 9 × 9 polach na brzegu morza (jednym bokiem przy wodzie), jeden na działkę: pociągi z eksportem wjeżdżają tu na prom i płyną do innego portu pociągowego, 3 razy wolniej niż lądem. Ustalasz opłatę (do 1000 $) za każdy cudzy pociąg; trafia prosto do twojego portfela.",
 			"Stół warsztatowy: 1 × przystań + 40 × sztabka stali + 40 × beton + 20 × belki (240 s). Wymaga badania: Port pociągowy."],
 	"furniture_company_hq": ["Siedziba spółki", "Tylko w mieście, na działce wniesionej do spółki: spółka przyjmie 30 członków zamiast 20, a jej magazyn pomieści 150 000 sztuk.",
 			"Stół warsztatowy: 50 × beton + 30 × szkło + 30 × sztabka stali + 20 × płyty marmurowe + 2 × plany budynku (240 s). Wymaga badania: Siedziba spółki."],

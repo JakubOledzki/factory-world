@@ -6206,48 +6206,119 @@ def build_buy_market():
 
 
 def build_rail_port():
-    """A rail port: a stone quay with a track running onto a hinged link span, a train ferry moored in the water
-    with a wagon on its deck, bollards along the edge and a signal at the ramp."""
-    stone = ra.plain("rp_stone", (0.24, 0.23, 0.22), 0.9, variation=0.2, bump=0.4)
+    """A rail port on 9 × 9 tiles: a concrete quay where three tracks run past a brick terminal with a clock tower,
+    a signal box and wagons waiting on the sidings, the middle track onto a yellow link span under a lifting gantry,
+    and a train ferry moored beyond it in the water, its bow open and wagons on its deck. Built with the water behind,
+    to the north; `seaward` turns it round."""
+    m = city_mats()
     water = water_mat("rp_water")
-    iron = ra.rusty_metal("rp_iron", (0.08, 0.08, 0.09), rust=0.3)
+    stone = ra.plain("rp_stone", (0.26, 0.25, 0.23), 0.9, variation=0.2, bump=0.4)
     rail = ra.rusty_metal("rp_rail", (0.2, 0.2, 0.21), rust=0.4)
     sleeper = ra.wood("rp_sleeper", (0.14, 0.09, 0.05))
+    ballast = ra.plain("rp_ballast", (0.2, 0.19, 0.18), 0.95, variation=0.4, scale=40, bump=0.6)
     hull = ra.rusty_metal("rp_hull", (0.06, 0.12, 0.3), rust=0.2)
-    deck = ra.rusty_metal("rp_deck", (0.25, 0.26, 0.27), rust=0.3)
-    white = ra.plain("rp_white", (0.75, 0.75, 0.72), 0.4, variation=0.1, grime=0.3)
+    keel = ra.rusty_metal("rp_keel", (0.35, 0.06, 0.04), rust=0.3)
+    deck = ra.rusty_metal("rp_deck", (0.22, 0.23, 0.24), rust=0.3)
     yellow = ra.rusty_metal("rp_yellow", (0.65, 0.42, 0.04), rust=0.25)
-    ra.box("rp_water", (1.9, 1.3, 0.02), (0, 0.35, 0.01), water)
-    ra.box("rp_quay", (1.9, 0.75, 0.28), (0, -0.6, 0.14), stone, bevel=0.02)
-    # The track over the quay and onto the link span.
+    white = m["white"]
+    lit = ra.emission("rp_win", (1.0, 0.8, 0.5), 2.5)
+    wagons = [ra.corrugated(f"rp_wagon{k}", c, 0.2) for k, c in enumerate(((0.35, 0.12, 0.06), (0.08, 0.2, 0.12), (0.3, 0.3, 0.32)))]
+
+    # The quay over the whole ground, its edge of dressed stone along the water.
+    ra.box("rp_apron", (18, 18, 0.3), (0, 0, 0.15), m["concrete"])
+    ra.box("rp_edge", (18, 0.5, 0.36), (0, 8.75, 0.18), stone, bevel=0.03)
+    ra.box("rp_water", (10, 13.5, 0.02), (0, 15.75, 0.01), water)
+
+    def track(x, y0, y1, prefix):
+        ra.box(f"{prefix}_bed", (1.6, y1 - y0, 0.06), (x, (y0 + y1) / 2, 0.33), ballast)
+        n = int((y1 - y0) / 0.6)
+        for k in range(n):
+            ra.box(f"{prefix}_sleeper", (1.3, 0.2, 0.05), (x, y0 + 0.3 + k * 0.6, 0.39), sleeper)
+        for side in (-0.36, 0.36):
+            ra.box(f"{prefix}_rail", (0.07, y1 - y0, 0.08), (x + side, (y0 + y1) / 2, 0.45), rail)
+
+    track(0, -9, 8.5, "rp_main")
+    track(-3.2, -9, 5.5, "rp_west")
+    track(3.2, -9, 5.5, "rp_east")
+    # Buffer stops at the end of the sidings, and wagons waiting on them.
+    for x in (-3.2, 3.2):
+        ra.box("rp_buffer", (1.2, 0.3, 0.6), (x, 5.6, 0.7), m["red"], bevel=0.03)
+    for k, (x, y) in enumerate(((-3.2, -5.5), (-3.2, -1.5), (3.2, -3.0), (3.2, 1.2))):
+        body = wagons[k % 3]
+        ra.box("rp_wagon", (1.5, 3.4, 1.4), (x, y, 1.35), body, bevel=0.04)
+        ra.box("rp_wagon_roof", (1.6, 3.5, 0.1), (x, y, 2.1), body)
+        for dy in (-1.1, 1.1):
+            for side in (-0.75, 0.75):
+                ra.cylinder("rp_wheel", 0.28, 0.12, (x + side, y + dy, 0.6), m["dark"], rotation=(0, math.radians(90), 0), verts=14)
+
+    # The terminal: a brick hall on the west side with a clock tower, and a signal box on the east.
+    ra.box("rp_hall", (3.4, 7.0, 3.2), (-7.1, -4.0, 1.9), m["brick"], bevel=0.04)
+    ra.box("rp_hall_roof", (3.7, 7.3, 0.25), (-7.1, -4.0, 3.6), ra.plain("rp_slate", (0.16, 0.17, 0.2), 0.7, variation=0.2, scale=12))
+    for k in range(4):
+        ra.box("rp_hall_win", (0.05, 0.9, 1.2), (-5.38, -6.6 + k * 1.75, 2.0), lit if k % 2 == 0 else m["glass"])
+    ra.box("rp_tower", (1.6, 1.6, 6.2), (-7.1, 0.6, 3.4), m["brick"], bevel=0.03)
+    ra.box("rp_tower_cap", (1.9, 1.9, 0.3), (-7.1, 0.6, 6.6), m["dark"])
+    ra.cylinder("rp_spire", 1.0, 1.2, (-7.1, 0.6, 7.35), m["dark"], radius2=0.05, verts=4, rotation=(0, 0, math.radians(45)))
+    for face in (-1, 1):
+        ra.cylinder("rp_clock", 0.55, 0.05, (-7.1, 0.6 + face * 0.82, 5.4), white, rotation=(math.radians(90), 0, 0), verts=24)
+        ra.cylinder("rp_clock_face", 0.45, 0.06, (-7.1, 0.6 + face * 0.83, 5.4), lit, rotation=(math.radians(90), 0, 0), verts=24)
+    ra.box("rp_sign", (0.08, 4.0, 0.6), (-5.35, -4.0, 3.1), m["dark"])
+    ra.box("rp_sign_glow", (0.04, 3.4, 0.3), (-5.3, -4.0, 3.1), ra.emission("rp_sign", (1.0, 0.7, 0.2), 3.5))
+    ra.box("rp_box", (2.2, 2.6, 2.2), (6.9, -5.5, 1.4), m["plaster"], bevel=0.03)
+    ra.box("rp_box_glass", (2.3, 2.7, 0.9), (6.9, -5.5, 2.95), m["glass"])
+    ra.box("rp_box_roof", (2.6, 3.0, 0.2), (6.9, -5.5, 3.5), m["red"])
+    # Stacked containers by the signal box.
+    for k, (x, y, z) in enumerate(((7.3, -0.8, 0.9), (7.3, 2.0, 0.9), (7.3, -0.8, 2.1), (5.3, 3.3, 0.9))):
+        ra.box("rp_container", (2.2, 2.6, 1.2), (x, y, z), ra.corrugated(f"rp_cont{k}", ra_color(m, ("blue", "red", "yellow", "green")[k]), 0.2))
+
+    # The link span onto the ferry, under a yellow lifting gantry, and a signal at its foot.
+    ra.box("rp_span", (2.6, 4.0, 0.25), (0, 10.3, 0.35), yellow, rotation=(math.radians(-3), 0, 0))
+    for side in (-0.36, 0.36):
+        ra.box("rp_span_rail", (0.07, 4.0, 0.08), (side, 10.3, 0.52), rail, rotation=(math.radians(-3), 0, 0))
+    for x in (-1.9, 1.9):
+        ra.box("rp_gantry_leg", (0.4, 0.4, 5.0), (x, 8.2, 2.8), yellow)
+        ra.cylinder("rp_cable", 0.03, 3.2, (x * 0.6, 9.8, 2.9), m["dark"], rotation=(math.radians(-25), 0, 0), verts=6)
+    ra.box("rp_gantry_beam", (4.4, 0.6, 0.6), (0, 8.2, 5.4), yellow)
+    ra.box("rp_gantry_cab", (1.2, 1.0, 0.9), (1.4, 8.2, 6.1), white, bevel=0.03)
+    ra.cylinder("rp_signal_post", 0.07, 3.2, (1.4, 6.6, 1.9), m["dark"], verts=8)
+    ra.box("rp_signal_head", (0.4, 0.25, 0.8), (1.4, 6.5, 3.6), m["dark"])
+    ra.sphere("rp_signal_light", 0.11, (1.4, 6.36, 3.75), ra.emission("rp_green", (0.2, 1.0, 0.3), 6.0), segments=8)
+    for x in (-7.5, -4.5, 4.5, 7.5):
+        ra.cylinder("rp_bollard", 0.18, 0.4, (x, 8.4, 0.5), m["dark"], verts=12)
+        ra.cylinder("rp_cap", 0.24, 0.08, (x, 8.4, 0.74), m["dark"], verts=12)
+    for x in (-8.4, 8.4):
+        ra.cylinder("rp_lamp_post", 0.06, 4.0, (x, 7.6, 2.3), m["dark"], verts=8)
+        ra.sphere("rp_lamp", 0.2, (x, 7.6, 4.35), ra.emission("rp_lamp", (1.0, 0.8, 0.5), 5.0), segments=10)
+
+    # The train ferry: a long hull with a red waterline, an open car deck with wagons, the bridge and funnels at the stern.
+    ra.box("rp_keel", (7.2, 11.0, 0.6), (0, 17.0, 0.25), keel, bevel=0.15)
+    ra.box("rp_hull", (7.2, 11.0, 1.4), (0, 17.0, 1.2), hull, bevel=0.15)
+    ra.box("rp_car_deck", (6.4, 10.4, 0.1), (0, 17.0, 1.95), deck)
+    for side in (-1, 1):
+        ra.box("rp_bulwark", (0.25, 10.4, 0.7), (side * 3.35, 17.0, 2.3), white)
+        ra.box("rp_ferry_rail", (0.07, 7.0, 0.08), (side * 0.36, 15.5, 2.05), rail)
+    ra.box("rp_bow_door", (2.8, 0.2, 2.0), (0, 11.9, 1.35), hull, rotation=(math.radians(-70), 0, 0))
+    for k in range(2):
+        y = 13.6 + k * 3.6
+        ra.box("rp_deck_wagon", (1.5, 3.2, 1.4), (0, y, 2.8), wagons[(k + 1) % 3], bevel=0.04)
+        ra.box("rp_deck_wagon_roof", (1.6, 3.3, 0.1), (0, y, 3.55), wagons[(k + 1) % 3])
+    ra.box("rp_super", (6.6, 3.0, 2.4), (0, 20.8, 3.1), white, bevel=0.05)
+    ra.box("rp_bridge", (6.0, 2.2, 1.2), (0, 20.7, 4.9), white, bevel=0.05)
+    ra.box("rp_bridge_win", (5.6, 0.06, 0.5), (0, 19.58, 5.0), lit)
     for k in range(5):
-        ra.box("rp_sleeper", (0.5, 0.1, 0.03), (0, -0.9 + k * 0.15, 0.295), sleeper)
-    ra.box("rp_span", (0.6, 0.45, 0.06), (0, -0.05, 0.25), yellow, rotation=(math.radians(-6), 0, 0))
-    for x in (-0.15, 0.15):
-        ra.box("rp_rail", (0.04, 1.4, 0.04), (x, -0.45, 0.32), rail)
-    # The ferry: a long blue hull with a white bridge at the stern and a wagon on deck.
-    ra.box("rp_hull", (0.85, 1.0, 0.25), (0, 0.6, 0.12), hull, bevel=0.04)
-    ra.box("rp_deck", (0.8, 0.95, 0.03), (0, 0.6, 0.26), deck)
-    for x in (-0.15, 0.15):
-        ra.box("rp_deck_rail", (0.04, 0.9, 0.03), (x, 0.6, 0.29), rail)
-    ra.box("rp_bridge", (0.75, 0.18, 0.3), (0, 1.0, 0.43), white, bevel=0.02)
-    ra.box("rp_bridge_win", (0.6, 0.02, 0.08), (0, 0.9, 0.5), ra.emission("rp_win", (1.0, 0.8, 0.5), 2.0))
-    ra.cylinder("rp_funnel", 0.06, 0.2, (0.2, 1.02, 0.68), ra.plain("rp_red", (0.45, 0.05, 0.04), 0.6), verts=12)
-    ra.box("rp_wagon", (0.4, 0.6, 0.35), (0, 0.5, 0.48), ra.corrugated("rp_wagon_side", (0.35, 0.12, 0.06), 0.2), bevel=0.02)
-    for x in (-0.7, 0.7):
-        ra.cylinder("rp_bollard", 0.06, 0.14, (x, -0.28, 0.35), iron, verts=12)
-        ra.cylinder("rp_cap", 0.08, 0.03, (x, -0.28, 0.43), iron, verts=12)
-    # A signal by the ramp.
-    ra.cylinder("rp_signal_post", 0.025, 0.8, (-0.5, -0.65, 0.68), iron, verts=8)
-    ra.box("rp_signal_head", (0.1, 0.06, 0.2), (-0.5, -0.68, 1.1), iron)
-    ra.sphere("rp_signal_light", 0.03, (-0.5, -0.72, 1.14), ra.emission("rp_green", (0.2, 1.0, 0.3), 6.0), segments=8)
+        ra.box("rp_super_win", (0.6, 0.06, 0.4), (-2.4 + k * 1.2, 19.28, 3.4), lit if k % 2 else m["glass"])
+    for x in (-1.6, 1.6):
+        ra.cylinder("rp_funnel", 0.45, 1.6, (x, 21.4, 6.2), m["red"], verts=16)
+        ra.cylinder("rp_funnel_top", 0.47, 0.3, (x, 21.4, 7.1), m["dark"], verts=16)
+    ra.cylinder("rp_mast", 0.06, 2.4, (0, 20.3, 6.7), m["dark"], verts=8)
 
 
 EXPORT = {
-    # name: (canvas width, height, camera target height, builder, seaward); the buying market stands on 3 × 3 tiles.
-    "export_chest": (72, 72, 0.3, build_export_chest, False),
-    "buy_market": (256, 240, 1.0, build_buy_market, False),
-    "rail_port": (128, 160, 0.6, build_rail_port, True),
+    # name: (canvas width, height, camera target, builder, seaward); the buying market stands on 3 × 3 tiles, the rail port
+    # on 9 × 9 with its ferry out on the water in front.
+    "export_chest": (72, 72, (0, 0, 0.3), build_export_chest, False),
+    "buy_market": (256, 240, (0, 0, 1.0), build_buy_market, False),
+    "rail_port": (704, 960, (0, -4.5, 1.5), build_rail_port, True),
 }
 
 
@@ -6257,7 +6328,7 @@ def render_export(layout: dict, only=()):
             continue
         random.seed(zlib.crc32(name.encode()))
         make = seaward(build) if sea else crafted(build)
-        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), make, true_scale=True)
+        layout[name] = render_sprite(name, w, h, Vector(tz), make, true_scale=True)
         ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
 
 
