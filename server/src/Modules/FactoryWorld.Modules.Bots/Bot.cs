@@ -1087,6 +1087,8 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             var reply = await SendAsync("plot.place", new { x = plot.X, y = plot.Y, kind, tileX = x, tileY = y, rotation = 0 }, cancellationToken);
             if (reply.Is("plot.placed"))
             {
+                // A machine covers more tiles than the one it stands on.
+                plot.Free.RemoveAll(t => Footprints.Covers(kind, x, y, t.X, t.Y));
                 plot.Objects.Add((reply.Payload.Get("object")?.Id("id") ?? Guid.Empty, kind));
                 _inventory[kind] = Math.Max(0, Have(kind) - 1);
                 return true;

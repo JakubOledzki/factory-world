@@ -143,3 +143,41 @@ public static class ReplyExtensions
     public static string? ErrorCode(this JsonElement reply) =>
         reply.Type() == "error" ? reply.Payload().GetProperty("code").GetString() : null;
 }
+
+/// <summary>Free ground in a plot's tiles, for tests that put machines down: machines cover up to 4 × 4 tiles.</summary>
+public static class PlotTiles
+{
+    /// <summary>Whether the square of tiles <paramref name="reach"/> each way around (x, y) is open ground, off the spawn:
+    /// with the default reach anything up to 5 × 5 fits on (x, y).</summary>
+    public static bool Clear(byte[] tiles, int x, int y, int reach = 2)
+    {
+        for (var dy = -reach; dy <= reach; dy++)
+        {
+            for (var dx = -reach; dx <= reach; dx++)
+            {
+                var (tx, ty) = (x + dx, y + dy);
+                if (!FactoryWorld.Modules.World.PlotLayout.Inside(tx, ty) || (tx, ty) == FactoryWorld.Modules.World.PlotLayout.Spawn
+                    || tiles[ty * FactoryWorld.Modules.World.PlotLayout.Size + tx] != (byte)FactoryWorld.Modules.World.TileObject.None)
+                {
+                    return false;
+                }
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>Of <paramref name="tiles"/> in their order, those at least <paramref name="apart"/> tiles from every one taken before.</summary>
+    public static IEnumerable<(int X, int Y)> Apart(IEnumerable<(int X, int Y)> tiles, int apart = 5)
+    {
+        var taken = new List<(int X, int Y)>();
+        foreach (var t in tiles)
+        {
+            if (taken.All(o => Math.Max(Math.Abs(o.X - t.X), Math.Abs(o.Y - t.Y)) >= apart))
+            {
+                taken.Add(t);
+                yield return t;
+            }
+        }
+    }
+}

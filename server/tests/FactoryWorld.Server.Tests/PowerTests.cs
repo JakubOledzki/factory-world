@@ -263,9 +263,10 @@ public sealed class PowerTests(ServerFactory factory) : IClassFixture<ServerFact
         var bytes = tiles.ToArray();
         for (var ty = 20; ty < PlotLayout.Size; ty++)
         {
-            for (var tx = 0; tx + 3 <= PlotLayout.Size; tx++)
+            for (var tx = 0; tx + 4 <= PlotLayout.Size; tx++)
             {
-                if (Enumerable.Range(tx, 3).All(i => bytes[ty * PlotLayout.Size + i] == (byte)TileObject.None))
+                // Room for a 2 × 2 machine and a pole and a generator east of it.
+                if (Enumerable.Range(tx, 4).All(i => bytes[ty * PlotLayout.Size + i] == (byte)TileObject.None && bytes[(ty + 1) * PlotLayout.Size + i] == (byte)TileObject.None))
                 {
                     return (client, x, y, tx, ty);
                 }
@@ -304,8 +305,8 @@ public sealed class PowerTests(ServerFactory factory) : IClassFixture<ServerFact
         Assert.Equal("no_power", stall.GetProperty("reason").GetString());
 
         // One wood is 5 MJ: 166.7 s for a mill drawing 30 kW, 27 batches of 6 s.
-        await PlaceAsync(client, x, y, Items.Pole, tx + 1, ty);
-        var generator = await PlaceAsync(client, x, y, Items.Generator, tx + 2, ty);
+        await PlaceAsync(client, x, y, Items.Pole, tx + 2, ty);
+        var generator = await PlaceAsync(client, x, y, Items.Generator, tx + 3, ty);
         await GiveAsync(client, Items.Wood, 1);
         Assert.Equal("not_fuel", (await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Stone, quantity = 1 })).ErrorCode());
         var fuelled = (await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Wood, quantity = 1 })).Payload();

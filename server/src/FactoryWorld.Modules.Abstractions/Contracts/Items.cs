@@ -148,6 +148,11 @@ public static class Items
     public const string Sawmill = "furniture_sawmill";
     public const string ElectricSawmill = "furniture_electric_sawmill";
     public const string IndustrialSawmill = "furniture_industrial_sawmill";
+
+    /// <summary>Assembling machines: they make the workbench's recipes by themselves, from what inserters load into them, larger and faster by level.</summary>
+    public const string Assembler = "furniture_assembler";
+    public const string FastAssembler = "furniture_fast_assembler";
+    public const string ExpressAssembler = "furniture_express_assembler";
     public const string Planks = "planks";
     public const string Beams = "beams";
     public const string WoodPellets = "wood_pellets";
@@ -601,6 +606,9 @@ public static class Items
         [Sawmill] = "Tartak",
         [ElectricSawmill] = "Tartak elektryczny",
         [IndustrialSawmill] = "Tartak przemysłowy",
+        [Assembler] = "Stacja montażowa",
+        [FastAssembler] = "Szybka stacja montażowa",
+        [ExpressAssembler] = "Ekspresowa stacja montażowa",
         [Planks] = "Deski",
         [Beams] = "Belki",
         [WoodPellets] = "Pellet drzewny",
@@ -935,6 +943,9 @@ public static class Items
 
     /// <summary>Furnaces of every level: the stone one and its upgrades.</summary>
     public static bool IsFurnace(string id) => id is Furnace or BrickFurnace or BlastFurnace;
+
+    /// <summary>Assembling machines of every level.</summary>
+    public static bool IsAssembler(string id) => id is Assembler or FastAssembler or ExpressAssembler;
 
     /// <summary>Forester's buildings of every level: the hut and its upgrades.</summary>
     public static bool IsForester(string id) => id is ForesterHut or ForesterLodge or ForestryStation;

@@ -28,6 +28,11 @@ public static class Workshop
         new(Items.BrickFurnace, 1, TimeSpan.FromSeconds(60), [(Items.Furnace, 1), (Items.Stone, 40), (Items.Sand, 20), (Items.IronIngot, 10)], 25),
         new(Items.BlastFurnace, 1, TimeSpan.FromSeconds(90), [(Items.BrickFurnace, 1), (Items.Stone, 60), (Items.IronIngot, 40), (Items.CopperIngot, 20), (Items.Provisions, 5)], 50),
         new(Items.Nails, 5, TimeSpan.FromSeconds(10), [(Items.IronIngot, 1)], 2),
+        // Assembling machines, each built on the one below it.
+        new(Items.Assembler, 1, TimeSpan.FromSeconds(60), [(Items.Workbench, 1), (Items.IronIngot, 10), (Items.CopperIngot, 5), (Items.Nails, 10)], 20),
+        new(Items.FastAssembler, 1, TimeSpan.FromSeconds(90), [(Items.Assembler, 1), (Items.SteelIngot, 10), (Items.CopperIngot, 15), (Items.FastInserter, 2)], 40),
+        new(Items.ExpressAssembler, 1, TimeSpan.FromSeconds(120),
+            [(Items.FastAssembler, 1), (Items.SteelIngot, 20), (Items.ElectricMotor, 4), (Items.CircuitBoard, 4), (Items.ExpressInserter, 2)], 80),
         new(Items.Belt, 4, TimeSpan.FromSeconds(10), [(Items.IronIngot, 2), (Items.Wood, 1)], 3),
         new(Items.Inserter, 1, TimeSpan.FromSeconds(15), [(Items.IronIngot, 2), (Items.CopperIngot, 1), (Items.Nails, 5)], 5),
         new(Items.FastBelt, 2, TimeSpan.FromSeconds(15), [(Items.Belt, 2), (Items.IronIngot, 3), (Items.CopperIngot, 1)], 5),

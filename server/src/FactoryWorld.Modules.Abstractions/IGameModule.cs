@@ -18,6 +18,10 @@ public interface IGameModule
     /// <summary>Runs once at startup, before the server accepts players (e.g. database migrations).</summary>
     Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) => Task.CompletedTask;
 
+    /// <summary>Runs once at startup after every module's <see cref="InitializeAsync"/>, before the server accepts players: for data
+    /// that needs other modules' tables too (e.g. objects on plots brought in line with new rules, and what they held given back).</summary>
+    Task StartedAsync(IServiceProvider services, CancellationToken cancellationToken) => Task.CompletedTask;
+
     /// <summary>Optional HTTP endpoints. Gameplay goes through the WebSocket instead.</summary>
     void MapEndpoints(IEndpointRouteBuilder endpoints) { }
 }

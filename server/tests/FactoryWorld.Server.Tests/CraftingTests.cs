@@ -356,7 +356,7 @@ public sealed class CraftingTests(ServerFactory factory) : IClassFixture<ServerF
         var bytes = tiles.ToArray();
         for (var i = PlotLayout.Size * 20; i < bytes.Length; i++)
         {
-            if (bytes[i] == (byte)TileObject.None)
+            if (PlotTiles.Clear(bytes, i % PlotLayout.Size, i / PlotLayout.Size))
             {
                 return (x, y, i % PlotLayout.Size, i / PlotLayout.Size);
             }

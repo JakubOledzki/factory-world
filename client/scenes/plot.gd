@@ -147,6 +147,7 @@ const PLACED_SPRITES := {
 	"furniture_forester_hut": "forester_hut", "furniture_forester_lodge": "forester_lodge",
 	"furniture_forestry_station": "forestry_station", "furniture_sawmill": "sawmill",
 	"furniture_electric_sawmill": "electric_sawmill", "furniture_industrial_sawmill": "industrial_sawmill",
+	"furniture_assembler": "assembler", "furniture_fast_assembler": "fast_assembler", "furniture_express_assembler": "express_assembler",
 	"furniture_drill": "drill", "furniture_heavy_drill": "heavy_drill", "furniture_quarry": "quarry",
 	"furniture_crusher": "crusher", "furniture_stonemason": "stonemason", "furniture_foundry": "foundry",
 	"power_water_wheel": "water_wheel", "power_hydro_plant": "hydro_plant", "logistics_cable_station": "cable_station",
@@ -194,6 +195,7 @@ const ANIMAL_SPRITES := {"animal_chicken": "chicken", "animal_sheep": "sheep", "
 ## Placed objects that open the machine window.
 const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen",
 	"furniture_sawmill", "furniture_electric_sawmill", "furniture_industrial_sawmill",
+	"furniture_assembler", "furniture_fast_assembler", "furniture_express_assembler",
 	"furniture_quarry", "furniture_crusher", "furniture_stonemason", "furniture_foundry",
 	"furniture_fishing_boat", "furniture_rowing_boat", "furniture_smokehouse", "furniture_cannery", "furniture_salt_pan",
 	"furniture_fish_farm", "furniture_distillery", "furniture_refinery", "furniture_cracker", "furniture_chemical_plant",
@@ -301,13 +303,6 @@ const FOOTPRINT := 1
 ## (farmland, oasis) and keep the same clearing and path free.
 const FARMSTEADS := {"furniture_farmstead": 4, "furniture_manor_farm": 5}
 const FERTILE := [3, 12]
-## Buildings of the crafting tree on 3 × 3 tiles, and those on 5 × 5 (HUGE_FOOTPRINT each way).
-const LARGE := ["furniture_robotic_hall", "furniture_oxygen_converter", "furniture_rolling_mill", "furniture_continuous_caster",
-	"storage_automated_warehouse", "power_fusion_plant", CANTEEN, "furniture_biogas_plant", BUY_MARKET, BANK_BRANCH]
-const HUGE := ["furniture_steel_combine", "furniture_megafactory", BANK]
-const HUGE_FOOTPRINT := 2
-## The rail port with its tracks and ferry ramp covers 9 × 9 tiles (GIANT_FOOTPRINT each way).
-const GIANT_FOOTPRINT := 4
 const FOREST_CLEARING := 2
 ## How often (ms) the foresters are asked for, to draw the trees they plant and cut.
 const FORESTRY_POLL := 3000.0
@@ -464,6 +459,9 @@ var _polling_forestry := false
 var _astar := AStarGrid2D.new()
 var _sources := {}
 var _images := {}
+## Sprites drawn bigger than in their files (see Footprints.GROWN), and the anchors of those and of other sprites drawn off their tile's middle.
+var _grown_textures := {}
+var _grown_anchors := {}
 var _chunks := {}
 var _player_chunk := Vector2i(-99, -99)
 
@@ -728,14 +726,31 @@ func _tile_set(shadows: bool) -> TileSet:
 
 ## Adds one sprite as a tile anchored on the cell's centre; with `looks`, also a brightened
 ## (alternative 1) and a see-through (alternative 2) version. Returns the source id.
+## A grown machine's sprite is enlarged to its square and stands in the square's middle.
 func _add_source(set: TileSet, sprite: String, file: String, looks: bool) -> int:
 	var texture: Texture2D = load("res://art/plot/%s.png" % file)
+	var anchor := Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"])
+	var kind := _placed_kind(sprite)
+	if Footprints.GROWN.has(kind):
+		var scale := Footprints.sprite_scale(kind, Vector2(_layout_size(sprite)), TILE)
+		var image := texture.get_image()
+		if image.is_compressed():
+			image.decompress()
+		image.resize(roundi(image.get_width() * scale), roundi(image.get_height() * scale), Image.INTERPOLATE_CUBIC)
+		texture = ImageTexture.create_from_image(image)
+		anchor *= scale
+		if looks:
+			_grown_textures[sprite] = texture
+	if Footprints.shift(kind) != Vector2.ZERO:
+		# An even square's middle lies on the corner of its tiles, half a tile right of and below the object's own tile.
+		anchor -= Footprints.shift(kind) * TILE
+	if looks and anchor != Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"]):
+		_grown_anchors[sprite] = anchor
 	var source := TileSetAtlasSource.new()
 	source.texture = texture
 	source.texture_region_size = Vector2i(texture.get_size())
 	source.create_tile(Vector2i.ZERO)
-	var anchor := Vector2i(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"])
-	var origin := anchor - Vector2i(texture.get_size() / 2)
+	var origin := Vector2i(anchor.round()) - Vector2i(texture.get_size() / 2)
 	source.get_tile_data(Vector2i.ZERO, 0).texture_origin = origin
 	if looks:
 		for modulate: Color in [Color(1.45, 1.4, 1.25), Color(1, 1, 1, 0.4)]:
@@ -748,6 +763,23 @@ func _add_source(set: TileSet, sprite: String, file: String, looks: bool) -> int
 		_sources[sprite] = id
 		_images[sprite] = texture.get_image()
 	return id
+
+
+## The kind of placed object a sprite stands for, or "" for nature and the like.
+func _placed_kind(sprite: String) -> String:
+	var kind: Variant = PLACED_SPRITES.find_key(sprite)
+	return kind if kind != null else ""
+
+
+## The size of a sprite's own picture (its shadow may be bigger), which a grown machine's sprite is enlarged by.
+func _layout_size(sprite: String) -> Vector2i:
+	var texture: Texture2D = load("res://art/plot/%s.png" % sprite)
+	return Vector2i(texture.get_size())
+
+
+## Where a sprite's anchor lies in its picture as drawn: on the cell's centre.
+func _sprite_anchor(sprite: String) -> Vector2:
+	return _grown_anchors.get(sprite, Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"]))
 
 
 func _apply_plot(plot: Dictionary) -> void:
@@ -885,19 +917,19 @@ func _sandy() -> bool:
 	return int(_plot.get("biome", -1)) in SANDY
 
 
-## Whether an object of `kind` stands on more than one tile (see _reach).
+## Whether an object of `kind` stands on more than one tile (see Footprints).
 func _big(kind: String) -> bool:
-	return _reach(kind) > 0
+	return Footprints.size(kind) > 1
 
 
-## How many tiles an object of `kind` covers each way from its own: 1 (3 × 3) for a forester's building, a solar tower,
-## a large wind turbine, an ice hotel, an assembly hall and the LARGE buildings; 2 (5 × 5) for the HUGE ones; 4 (9 × 9) for the rail port.
-func _reach(kind: String) -> int:
-	if kind == RAIL_PORT:
-		return GIANT_FOOTPRINT
-	if kind in HUGE:
-		return HUGE_FOOTPRINT
-	return FOOTPRINT if FORESTERS.has(kind) or FARMSTEADS.has(kind) or kind in LARGE or kind in [SOLAR_TOWER, LARGE_WIND, ICE_HOTEL, ASSEMBLY_HALL] else 0
+## The middle of the square an object of `kind` standing on `cell` covers, on the ground.
+func _object_centre(kind: String, cell: Vector2i) -> Vector2:
+	return _cell_centre(cell) + Footprints.shift(kind) * TILE
+
+
+## How big a ring around an object of `kind` is: one tile's for a small one, its square's for a big one.
+func _ring_size(kind: String) -> float:
+	return 1.0 + 0.7 * (Footprints.size(kind) - 1)
 
 
 ## Whether a tile of a city plot can be built on: by the station only.
@@ -1200,14 +1232,15 @@ func _object_at(point: Vector2) -> Vector2i:
 func _objects_at(point: Vector2, first_only := false) -> Array[Vector2i]:
 	var found: Array[Vector2i] = []
 	var base := Vector2i((point / TILE).floor())
-	for dy in range(7, -2, -1):
-		for dx in [0, -1, 1, -2, 2]:
+	# Big machines stand far below the top of their sprites.
+	for dy in range(11, -3, -1):
+		for dx in [0, -1, 1, -2, 2, -3, 3]:
 			var cell := base + Vector2i(dx, dy)
 			var sprite := _sprite_at(cell)
 			if sprite == "":
 				continue
 			var image: Image = _images[sprite]
-			var pixel := Vector2i(point - _cell_centre(cell)) + Vector2i(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"])
+			var pixel := Vector2i(point - _cell_centre(cell) + _sprite_anchor(sprite))
 			if Rect2i(Vector2i.ZERO, image.get_size()).has_point(pixel) and image.get_pixelv(pixel).a > 0.4:
 				found.append(cell)
 				if first_only:
@@ -1415,15 +1448,16 @@ func _in_footprint(kind: String, cell: Vector2i) -> bool:
 func _place_big(cell: Vector2i) -> void:
 	_stop_work()
 	var kind := _placing
-	if not _in_footprint(kind, cell) and _near(cell, REACH + _reach(kind)):
+	if not _in_footprint(kind, cell) and _near(cell, REACH + Footprints.high(kind)):
 		_place_object(cell)
 		return
-	var reach := _reach(kind) + 1
+	var low := -Footprints.low(kind) - 1
+	var high := Footprints.high(kind) + 1
 	var best := Vector2i(-1, -1)
-	for dy in range(-reach, reach + 1):
-		for dx in range(-reach, reach + 1):
+	for dy in range(low, high + 1):
+		for dx in range(low, high + 1):
 			var at := cell + Vector2i(dx, dy)
-			if maxi(absi(dx), absi(dy)) != reach or _solid(at) or not _astar.region.has_point(at):
+			if (dx not in [low, high] and dy not in [low, high]) or _solid(at) or not _astar.region.has_point(at):
 				continue
 			if best.x < 0 or _player.floor_pos.distance_to(Vector2(at)) < _player.floor_pos.distance_to(Vector2(best)):
 				best = at
@@ -1435,14 +1469,9 @@ func _place_big(cell: Vector2i) -> void:
 			_place_object(cell))
 
 
-## The tiles an object of `kind` standing on `cell` covers: a square _reach(kind) tiles each way.
+## The tiles an object of `kind` standing on `cell` covers (see Footprints).
 func _footprint(kind: String, cell: Vector2i) -> Array[Vector2i]:
-	var cells: Array[Vector2i] = []
-	var reach := _reach(kind)
-	for dy in range(-reach, reach + 1):
-		for dx in range(-reach, reach + 1):
-			cells.append(cell + Vector2i(dx, dy))
-	return cells
+	return Footprints.tiles(kind, cell)
 
 
 ## Puts a placed object on every tile it covers.
@@ -1608,14 +1637,19 @@ func _draw_marks() -> void:
 	var ground := _ground_cell()
 	if _hovered.x >= 0 and (_placed.has(_hovered) or _animals.has(_hovered)):
 		var big := _placed.has(_hovered) and _big(_placed[_hovered]["kind"])
-		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8), 1.0 + 1.4 * _reach(_placed[_hovered]["kind"]) if big else 1.0)
+		if big:
+			_draw_footprint(_placed[_hovered]["kind"], _anchor(_hovered), Color(0.96, 0.69, 0.25, 0.8))
+			_draw_ring(_object_centre(_placed[_hovered]["kind"], _anchor(_hovered)), Color(0.96, 0.69, 0.25, 0.8), _ring_size(_placed[_hovered]["kind"]))
+		else:
+			_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8))
 		if big and (FORESTERS.has(_placed[_hovered]["kind"]) or FARMSTEADS.has(_placed[_hovered]["kind"])):
 			_draw_forest(_placed[_hovered]["kind"], _hovered, int(_placed[_hovered].get("rotation", 0)))
 	if _placing != "" and ground.x >= 0:
 		if FORESTERS.has(_placing) or FARMSTEADS.has(_placing):
 			_draw_forest(_placing, ground, _place_rotation)
-		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8),
-			1.0 + 1.4 * _reach(_placing))
+		var tint := Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8)
+		_draw_footprint(_placing, ground, tint)
+		_draw_ring(_object_centre(_placing, ground), tint, _ring_size(_placing))
 		_draw_ghost(ground)
 	elif _releasing != "" and ground.x >= 0:
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_release(ground) else Color(1.0, 0.42, 0.35, 0.8))
@@ -1657,9 +1691,8 @@ func _draw_ghost(cell: Vector2i) -> void:
 		else PlotLogistics.TUNNEL_SPRITES[(_place_rotation + 2) & 3] if _placing == UNDERGROUND else PLACED_SPRITES.get(_placing, "")
 	if sprite == "" or not _layout.has(sprite):
 		return
-	var texture: Texture2D = load("res://art/plot/%s.png" % sprite)
-	var anchor := Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"])
-	_marks.draw_texture(texture, _cell_centre(cell) - anchor, Color(1, 1, 1, 0.55))
+	var texture: Texture2D = _grown_textures[sprite] if _grown_textures.has(sprite) else load("res://art/plot/%s.png" % sprite)
+	_marks.draw_texture(texture, _cell_centre(cell) - _sprite_anchor(sprite), Color(1, 1, 1, 0.55))
 	if _placing in MACHINERY:
 		var dir := Vector2(PlotLogistics.facing(_place_rotation)) * TILE
 		var from := _cell_centre(cell) - dir * 0.35 - Vector2(0, 10)
@@ -1669,6 +1702,16 @@ func _draw_ghost(cell: Vector2i) -> void:
 		var color := Color(0.56, 0.84, 0.35, 0.95)
 		_marks.draw_line(from, to, color, 3.0, true)
 		_marks.draw_colored_polygon([to + head * 4, to - head * 9 + side * 7, to - head * 9 - side * 7], color)
+
+
+## The tiles a machine of more than one tile covers, on the ground, so it shows where inserters fit along its sides.
+func _draw_footprint(kind: String, cell: Vector2i, color: Color) -> void:
+	if Footprints.size(kind) < 2:
+		return
+	for tile in Footprints.tiles(kind, cell):
+		var rect := Rect2(Vector2(tile) * TILE, TILE).grow(-2.0)
+		_marks.draw_rect(rect, Color(color, 0.12))
+		_marks.draw_rect(rect, Color(color, 0.55), false, 1.5)
 
 
 func _draw_ring(at: Vector2, color: Color, size := 1.0) -> void:
@@ -2878,8 +2921,8 @@ func _draw_filters() -> void:
 		if not filters.has(object["id"]) or drawn.has(object["id"]) or _anchor(cell) != cell:
 			continue
 		drawn[object["id"]] = true
-		var lift := 0.35 if object["kind"] in INSERTERS else 0.55 + 0.5 * _reach(object["kind"])
-		var at := _cell_centre(cell) - Vector2(0, TILE.y * lift)
+		var lift := 0.35 if object["kind"] in INSERTERS else 0.3 + 0.5 * Footprints.size(object["kind"])
+		var at := _object_centre(object["kind"], cell) - Vector2(0, TILE.y * lift)
 		_filter_marks.draw_circle(at, 12.0, Color(0.09, 0.08, 0.07, 0.85))
 		_filter_marks.draw_arc(at, 12.0, 0, TAU, 24, Color(0.96, 0.69, 0.25, 0.95), 1.5, true)
 		_filter_marks.draw_texture_rect(_logistics._icon(filters[object["id"]]), Rect2(at - Vector2(8, 8), Vector2(16, 16)), false)

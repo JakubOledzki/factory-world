@@ -12,8 +12,9 @@ namespace FactoryWorld.Modules.World;
 /// poles that carry its power, a computer to trade on the market from the plot, a forester's building
 /// that grows and cuts a forest around itself, a sawmill, or the mountain industry: a drill at a mine,
 /// a quarry, a crusher, a stonemason, a foundry, water power and cable car stations, or on the shore boats,
-/// a smokehouse, a cannery, a salt pan, a fish farm, a shipyard, a port, a breakwater, a lighthouse and a tidal plant. Each stands on one tile (a forester's
-/// building on 3 × 3, see <see cref="Footprints"/>), turned by quarter turns like furniture in the garage.
+/// a smokehouse, a cannery, a salt pan, a fish farm, a shipyard, a port, a breakwater, a lighthouse and a tidal plant. Each covers a square of
+/// tiles by its kind and level (see <see cref="Footprints"/>: a belt one tile, a first-level machine 2 × 2, a forester's building 3 × 3),
+/// turned by quarter turns like furniture in the garage.
 /// </summary>
 public static class PlotObjects
 {
@@ -29,6 +30,7 @@ public static class PlotObjects
         Items.Computer,
         Items.ForesterHut, Items.ForesterLodge, Items.ForestryStation,
         Items.Sawmill, Items.ElectricSawmill, Items.IndustrialSawmill,
+        Items.Assembler, Items.FastAssembler, Items.ExpressAssembler,
         Items.Drill, Items.HeavyDrill, Items.Quarry, Items.Crusher, Items.Stonemason, Items.Foundry,
         Items.WaterWheel, Items.HydroPlant, Items.CableStation,
         Items.FishingBoat, Items.RowingBoat, Items.Smokehouse, Items.Cannery, Items.SaltPan, Items.FishFarm,
@@ -188,7 +190,7 @@ public sealed class PlotObjectService(
             {
                 if ((tx, ty) == PlotLayout.Spawn || !await plots.FreeAsync(player, x, y, tx, ty, cancellationToken))
                 {
-                    throw new GameException("blocked", Footprints.Reach(kind) > 0 ? $"It needs {Footprints.Size(kind)} × {Footprints.Size(kind)} free tiles." : "Something stands here.");
+                    throw new GameException("blocked", Footprints.Size(kind) > 1 ? $"It needs {Footprints.Size(kind)} × {Footprints.Size(kind)} free tiles." : "Something stands here.");
                 }
             }
 

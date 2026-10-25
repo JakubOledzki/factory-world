@@ -247,9 +247,15 @@ public sealed class LogisticsService(
 
         // Storages are this module's own; every other machine within an inserter's reach comes from its
         // module, and so does the plot's station, which inserters can load and unload too.
-        // A forester's building covers 3 × 3 tiles, and an inserter next to any of them reaches it.
-        var reachable = objects.SelectMany(Footprints.Spread).Concat(await plots.FixturesAsync(x, y, cancellationToken)).ToList();
-        var at = reachable.ToDictionary(o => (o.TileX, o.TileY));
+        // A machine may cover several tiles, and an inserter next to any of them reaches it. An object's own tile goes first,
+        // so a plot not yet brought in line with grown machines (see the world's footprint migration) still works as it was built.
+        var fixtures = await plots.FixturesAsync(x, y, cancellationToken);
+        var at = new Dictionary<(int, int), PlotObject>();
+        foreach (var o in objects.Concat(fixtures).Concat(objects.SelectMany(Footprints.Spread)))
+        {
+            at.TryAdd((o.TileX, o.TileY), o);
+        }
+
         var ports = new Dictionary<Guid, IMachinePort>();
         var opened = new List<(IMachinePorts Module, IMachinePort Port)>();
         var storageChanged = new HashSet<Guid>();
@@ -298,7 +304,7 @@ public sealed class LogisticsService(
             }
         }
 
-        var logistics = new PlotLogistics(reachable, contents, ports, grid, await GripsAsync(objects, cancellationToken));
+        var logistics = new PlotLogistics(at.Values.ToList(), contents, ports, grid, await GripsAsync(objects, cancellationToken));
         var simulated = logistics.Run(from, now);
         await WriteAsync(x, y, logistics.Changed.Concat(storageChanged).Distinct().Select(id => (id, contents[id])).ToList(), cancellationToken);
         foreach (var module in opened.GroupBy(o => o.Module, o => o.Port))

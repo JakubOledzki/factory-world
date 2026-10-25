@@ -40,6 +40,7 @@ const CATEGORIES := [
 			"furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen", "furniture_computer",
 			"furniture_forester_hut", "furniture_forester_lodge", "furniture_forestry_station",
 			"furniture_sawmill", "furniture_electric_sawmill", "furniture_industrial_sawmill",
+			"furniture_assembler", "furniture_fast_assembler", "furniture_express_assembler",
 			"furniture_drill", "furniture_heavy_drill", "furniture_quarry", "furniture_crusher", "furniture_stonemason",
 			"furniture_foundry", "furniture_fishing_boat", "furniture_rowing_boat", "furniture_smokehouse", "furniture_cannery",
 			"furniture_salt_pan", "furniture_fish_farm", "furniture_shipyard", "furniture_port", "furniture_breakwater",
@@ -218,6 +219,15 @@ const ITEMS := {
 	"furniture_industrial_sawmill": ["Tartak przemysłowy",
 			"Trzeci poziom: tnie 6 razy szybciej niż tartak, z kłody robi 3 deski, z 3 drewien 2 belki, skleja sklejkę. Działa na prąd (80 kW).",
 			"Stół warsztatowy: 1 × tartak elektryczny + 10 × sklejka + 40 × sztabka żelaza + 20 × sztabka miedzi + 5 × sztabka cyny (120 s). Wymaga badania: Leśnictwo przemysłowe."],
+	"furniture_assembler": ["Stacja montażowa",
+			"Sama robi wybrany przepis stołu warsztatowego z tego, co włożysz albo co włożą podajniki, i trzyma gotowe rzeczy, aż je wyjmiesz. Tak szybko jak stół, bez prądu.",
+			"Stół warsztatowy: 1 × stół warsztatowy + 10 × sztabka żelaza + 5 × sztabka miedzi + 10 × gwoździe (60 s). Wymaga badania: Stacje montażowe."],
+	"furniture_fast_assembler": ["Szybka stacja montażowa",
+			"Drugi poziom: przepisy stołu warsztatowego 2 razy szybciej. Działa na prąd (40 kW).",
+			"Stół warsztatowy: 1 × stacja montażowa + 10 × sztabka stali + 15 × sztabka miedzi + 2 × szybki podajnik (90 s). Wymaga badania: Szybki montaż."],
+	"furniture_express_assembler": ["Ekspresowa stacja montażowa",
+			"Trzeci poziom: przepisy stołu warsztatowego 4 razy szybciej. Działa na prąd (100 kW).",
+			"Stół warsztatowy: 1 × szybka stacja montażowa + 20 × sztabka stali + 4 × silnik elektryczny + 4 × płytka drukowana + 2 × ekspresowy podajnik (120 s). Wymaga badania: Ekspresowy montaż."],
 	"planks": ["Deski", "Do leśniczówki i sklejki; w cenie podczas boomu budowlanego.",
 			"Tartak: 1 × drewno → 2 szt. (8 s); elektryczny: 2 × drewno → 5 szt. (5 s); przemysłowy: 1 × drewno → 3 szt. Kupisz też u handlarza."],
 	"beams": ["Belki", "Do lepszych budynków leśnych i tartaków.", "Tartak: 2 × drewno (10 s); elektryczny: 5 × drewno → 3 szt. (8 s); przemysłowy: 3 × drewno → 2 szt. (2,5 s)."],
@@ -473,7 +483,7 @@ const ITEMS := {
 			"Biuro projektowe: 2 × makulatura (40 s). Można też kupić usługę w cudzym biurze w mieście. Wymaga badania: Usługi."],
 	"furniture_assembly_hall": ["Hala montażowa", "Na 3 × 3 polach, na prąd (120 kW): składa płytki drukowane i silniki. W mieście o 25% szybciej.",
 			"Stół warsztatowy: 40 × sztabka stali + 30 × beton + 20 × sztabka miedzi + 10 × szkło (180 s). Wymaga badania: Montaż."],
-	"furniture_multistorey_factory": ["Fabryka wielopiętrowa", "Tylko w mieście: to samo co hala montażowa, dwa razy szybciej i na jednym polu. Na prąd (300 kW).",
+	"furniture_multistorey_factory": ["Fabryka wielopiętrowa", "Tylko w mieście: to samo co hala montażowa, dwa razy szybciej i na mniejszym placu. Na prąd (300 kW).",
 			"Stół warsztatowy: 1 × hala montażowa + 60 × beton + 60 × sztabka stali + 2 × plany budynku (300 s). Wymaga badania: Budownictwo miejskie."],
 	"furniture_shop": ["Sklep", "Tylko w mieście: wystaw towar po swojej cenie, a mieszkańcy sami go kupią. Po cenie handlarza kupuje każdy klient, po dwukrotnej połowa, po trzykrotnej nikt.",
 			"Stół warsztatowy: 20 × deski + 10 × szkło + 20 × cegły (60 s). Wymaga badania: Handel."],
@@ -770,7 +780,9 @@ static func name_of(item: String) -> String:
 
 
 static func description(item: String) -> String:
-	return ITEMS[item][1] if ITEMS.has(item) else ""
+	var text: String = ITEMS[item][1] if ITEMS.has(item) else ""
+	var n := Footprints.size(item)
+	return text + (" Na działce zajmuje %d × %d pola." % [n, n]) if n > 1 and n < 5 and " × " not in text else text
 
 
 static func source(item: String) -> String:

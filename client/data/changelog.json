@@ -1,6 +1,17 @@
 [
 	{
 		"date": "2026-10-25",
+		"title": "Większe maszyny i stacje montażowe",
+		"changes": [
+			"Maszyny rosną z poziomem: piec kamienny, młyn, kruszarka, tartak i inne maszyny pierwszego poziomu zajmują 2 × 2 pola, więc przy jednym boku stoją dwa podajniki.",
+			"Lepsze maszyny są jeszcze większe: piec ceglany, tartak elektryczny, odlewnia i rafineria 3 × 3, a wielki piec i tartak przemysłowy 4 × 4.",
+			"Przy stawianiu widać pola, które maszyna zajmie, a po najechaniu myszą pola, które już zajmuje.",
+			"Maszyny na starych działkach zostały na miejscu, jeśli się mieściły, albo przesunęły się o pole czy dwa tak, żeby podajniki dalej ich sięgały. Te, dla których zabrakło miejsca, wróciły do ekwipunku razem z zawartością.",
+			"Nowe stacje montażowe robią same przepisy stołu warsztatowego z tego, co włożą do nich podajniki: zwykła 2 × 2 bez prądu, szybka 3 × 3 dwa razy szybciej i ekspresowa 4 × 4 cztery razy szybciej (badania w gałęzi logistyki)."
+		]
+	},
+	{
+		"date": "2026-10-25",
 		"title": "Banki spółek",
 		"changes": [
 			"Spółka, która zbada „Bankowość”, stawia bank w mieście, a w innych miastach jego oddziały.",

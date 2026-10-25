@@ -433,10 +433,10 @@ public sealed class ExportSeaTests(ServerFactory factory) : ExportTestBase(facto
         await GiveAsync(ferryman, Items.RailPort, 3);
         var inland = Near(dover.X, dover.Y, Biome.Farmland);
         await BuyAsync(ferryman, inland);
-        Assert.Equal("no_coast", await PlaceErrorAsync(ferryman, inland, Items.RailPort, FreeTile(inland, 30, Footprints.GiantReach)));
+        Assert.Equal("no_coast", await PlaceErrorAsync(ferryman, inland, Items.RailPort, FreeTile(inland, 30, Footprints.Reach(Items.RailPort))));
         await BuyAsync(ferryman, dover);
         await BuyAsync(ferryman, calais);
-        Assert.Equal("not_on_shore", await PlaceErrorAsync(ferryman, dover, Items.RailPort, FreeTile(dover, 30, Footprints.GiantReach)));
+        Assert.Equal("not_on_shore", await PlaceErrorAsync(ferryman, dover, Items.RailPort, FreeTile(dover, 30, Footprints.Reach(Items.RailPort))));
         var portDover = await PlaceAsync(ferryman, dover, Items.RailPort, Shore(dover));
         var portCalais = await PlaceAsync(ferryman, calais, Items.RailPort, Shore(calais));
         // The port with its tracks and ferry ramp covers 9 × 9 tiles.

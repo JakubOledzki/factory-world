@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [tree] [logistics] [husbandry] [export] [banks] [<sprite>...] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [tree] [assemblers] [logistics] [husbandry] [export] [banks] [<sprite>...] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -4703,6 +4703,103 @@ def render_tree(layout: dict, only=()):
         ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"{TREE_ICONS[name]}.png")
 
 
+# --- Assembling machines ------------------------------------------------------------------------
+
+def assembler_cell(prefix, x, y, w, d, h, m, body, arms=1, screen=True):
+    """An assembling cell: a steel cabinet on a plinth with a glazed front, robot arms working a part on a jig inside,
+    an input hopper on top and a hazard band round its foot."""
+    ra.box(f"{prefix}_plinth", (w + 0.2, d + 0.2, 0.12), (x, y, 0.06), m["dark"], bevel=0.02)
+    ra.box(f"{prefix}_band", (w + 0.24, d + 0.24, 0.05), (x, y, 0.09), m["yellow"])
+    # The back of the cabinet under a roof; the bay in front stays open under a frame, so the arms show.
+    ra.box(f"{prefix}_back", (w, d * 0.35, h), (x, y + d * 0.325, 0.12 + h / 2), body, bevel=0.03)
+    ra.box(f"{prefix}_roof", (w, d * 0.4, 0.12), (x, y + d * 0.3, 0.18 + h), body, bevel=0.03)
+    for sx in (-1, 1):
+        ra.box(f"{prefix}_post", (0.1, 0.1, h), (x + sx * (w / 2 - 0.05), y - d / 2 + 0.05, 0.12 + h / 2), m["steel"])
+        ra.box(f"{prefix}_side", (0.06, d * 0.65, h * 0.45), (x + sx * (w / 2 - 0.03), y - d * 0.175, 0.12 + h * 0.225), body)
+        ra.box(f"{prefix}_beam", (0.08, d * 0.65, 0.08), (x + sx * (w / 2 - 0.05), y - d * 0.175, 0.14 + h), m["steel"])
+    ra.box(f"{prefix}_lintel", (w, 0.1, 0.1), (x, y - d / 2 + 0.05, 0.14 + h), m["steel"])
+    ra.box(f"{prefix}_rail", (w - 0.2, 0.05, 0.05), (x, y - d / 2 + 0.05, 0.5), m["yellow"])
+    ra.box(f"{prefix}_floor", (w, d, 0.05), (x, y, 0.145), m["grey"])
+    ra.box(f"{prefix}_jig", (w * 0.3, d * 0.2, 0.25), (x, y - d * 0.15, 0.3), m["steel"], bevel=0.02)
+    ra.box(f"{prefix}_part", (w * 0.18, d * 0.12, 0.12), (x, y - d * 0.15, 0.49), m["copper"], bevel=0.02)
+    lit = ra.box(f"{prefix}_lamp", (w * 0.7, 0.06, 0.04), (x, y + d * 0.1, 0.12 + h - 0.05), m["window"])
+    for k in range(arms):
+        ax = x + (k - (arms - 1) / 2) * (w / max(arms, 1)) * 0.8
+        robot_arm(f"{prefix}_arm{k}", (ax, y + d * 0.05, 0.17), m, scale=min(h / 1.4, 1.2), turn=math.radians(-90))
+    # The hopper the ingredients go into, and the chute the products come out of.
+    ra.box(f"{prefix}_hopper", (w * 0.28, d * 0.3, 0.3), (x - w * 0.25, y + d * 0.2, 0.39 + h), m["steel"], bevel=0.02)
+    ra.box(f"{prefix}_hopper_mouth", (w * 0.22, d * 0.24, 0.02), (x - w * 0.25, y + d * 0.2, 0.55 + h), m["dark"])
+    ra.box(f"{prefix}_chute", (0.3, 0.4, 0.2), (x + w * 0.3, y - d / 2 - 0.1, 0.3), m["steel"], rotation=(math.radians(-20), 0, 0))
+    if screen:
+        ra.box(f"{prefix}_panel", (0.3, 0.08, 0.4), (x + w / 2 + 0.05, y - d * 0.3, 0.8), m["dark"], bevel=0.02)
+        ra.box(f"{prefix}_screen", (0.22, 0.01, 0.16), (x + w / 2 + 0.05, y - d * 0.3 - 0.045, 0.88), m["screen"])
+    return lit
+
+
+def build_assembler():
+    """The first assembling machine, on 2 × 2 tiles: one grey cell with a single arm, on a concrete pad, without power."""
+    m = tree_mats()
+    ra.box("as_pad", (3.8, 3.8, 0.05), (0, 0, 0.025), m["concrete"])
+    assembler_cell("as", 0, 0.1, 2.6, 2.2, 1.5, m, m["grey"], arms=1, screen=False)
+    # A hand crank and a flywheel do the work instead of a motor.
+    ra.cylinder("as_flywheel", 0.38, 0.08, (1.45, 0.2, 0.7), m["dark"], rotation=(0, math.radians(90), 0), verts=24)
+    ra.cylinder("as_hub", 0.08, 0.14, (1.45, 0.2, 0.7), m["steel"], rotation=(0, math.radians(90), 0), verts=12)
+    ra.box("as_crank", (0.05, 0.05, 0.35), (1.52, 0.2, 0.95), m["steel"])
+    ra.box("as_crate", (0.5, 0.5, 0.4), (-1.35, -1.25, 0.25), ra.wood("as_crate_wood", (0.25, 0.15, 0.07)), bevel=0.02)
+
+
+def build_fast_assembler():
+    """The fast assembling machine, on 3 × 3 tiles: a blue cell with two arms, a motor and a control panel, on power."""
+    m = tree_mats()
+    ra.box("fa_pad", (5.8, 5.8, 0.05), (0, 0, 0.025), m["concrete"])
+    assembler_cell("fa", -0.2, 0.3, 4.2, 3.4, 2.0, m, m["blue"], arms=2)
+    ra.box("fa_motor", (0.7, 0.9, 0.7), (2.4, 1.2, 0.45), m["steel"], bevel=0.04)
+    ra.cylinder("fa_motor_shaft", 0.12, 0.5, (2.4, 0.55, 0.45), m["dark"], rotation=(math.radians(90), 0, 0), verts=14)
+    for k in range(3):
+        ra.box("fa_fin", (0.72, 0.04, 0.5), (2.4, 0.9 + k * 0.2, 0.5), m["dark"])
+    ra.box("fa_cabinet", (0.6, 0.4, 1.2), (2.45, -1.6, 0.65), m["grey"], bevel=0.03)
+    ra.box("fa_cabinet_screen", (0.4, 0.01, 0.25), (2.45, -1.81, 0.95), m["screen"])
+
+
+def build_express_assembler():
+    """The express assembling machine, on 4 × 4 tiles: a white hall of two cells with three arms each, an overhead gantry,
+    a transformer and blinking screens, on power."""
+    m = tree_mats()
+    ra.box("ea_pad", (7.8, 7.8, 0.05), (0, 0, 0.025), m["concrete"])
+    assembler_cell("ea_l", -1.85, 0.6, 3.5, 4.4, 2.6, m, m["white"], arms=2)
+    assembler_cell("ea_r", 1.85, 0.6, 3.5, 4.4, 2.6, m, m["white"], arms=2)
+    # A gantry crane over both cells.
+    for x in (-3.7, 3.7):
+        for y in (-1.8, 2.9):
+            ra.box("ea_leg", (0.18, 0.18, 3.6), (x, y, 1.8), m["yellow"])
+    for y in (-1.8, 2.9):
+        ra.box("ea_rail", (7.6, 0.2, 0.2), (0, y, 3.6), m["yellow"])
+    ra.box("ea_bridge", (0.3, 4.9, 0.25), (0.9, 0.55, 3.75), m["yellow"])
+    ra.box("ea_trolley", (0.5, 0.5, 0.3), (0.9, -0.6, 3.55), m["dark"], bevel=0.02)
+    ra.box("ea_transformer", (1.0, 0.8, 0.9), (2.9, -3.1, 0.5), m["grey"], bevel=0.03)
+    for k in range(3):
+        ra.cylinder("ea_bushing", 0.05, 0.4, (2.6 + k * 0.3, -3.1, 1.15), ra.plain("ea_porcelain", (0.75, 0.72, 0.65), 0.3), verts=10)
+    ra.box("ea_console", (1.2, 0.5, 0.9), (-2.6, -3.0, 0.5), m["dark"], bevel=0.03)
+    ra.box("ea_console_screen", (1.0, 0.01, 0.35), (-2.6, -3.26, 0.75), m["screen"])
+
+
+# name: (canvas width, height, camera target height, builder); on 2 × 2, 3 × 3 and 4 × 4 tiles, drawn at their size.
+ASSEMBLERS = {
+    "assembler": (192, 176, 0.8, build_assembler),
+    "fast_assembler": (256, 240, 1.0, build_fast_assembler),
+    "express_assembler": (352, 320, 1.6, build_express_assembler),
+}
+
+
+def render_assemblers(layout: dict, only=()):
+    for name, (w, h, tz, build) in ASSEMBLERS.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build), true_scale=True)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
+
+
 def tree_icon_models():
     """Icons of the crafting tree, from lubricant to the launch rocket."""
     # Each icon starts from a fresh scene, so the paint is made again for each (see fresh below).
@@ -6432,7 +6529,7 @@ def render_banks(layout: dict, only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "office", "logistics", "husbandry", "export", "banks", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "assemblers", "office", "logistics", "husbandry", "export", "banks", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -6494,6 +6591,9 @@ if __name__ == "__main__":
     if "tree" in args or any(a in tree for a in args):
         # Names of crafting tree sprites render just those.
         render_tree(layout, [a for a in args if a in tree])
+    if "assemblers" in args or any(a in ASSEMBLERS for a in args):
+        # Names of assembling machines render just those.
+        render_assemblers(layout, [a for a in args if a in ASSEMBLERS])
     if "husbandry" in args or any(a in HUSBANDRY for a in args):
         # Names of husbandry sprites render just those.
         render_husbandry(layout, [a for a in args if a in HUSBANDRY])

@@ -316,7 +316,7 @@ public static class Processing
             // A café with cheesecake.
             new(Items.DiningTakings, 8, TimeSpan.FromSeconds(120), [(Items.Cheesecake, 1)], 2),
         ], Aurora: true),
-        // Cities: an assembly hall puts together what the other biomes make; a multi-storey factory does the same twice as fast on one tile.
+        // Cities: an assembly hall puts together what the other biomes make; a multi-storey factory does the same twice as fast on less ground (2 × 2).
         new(Items.AssemblyHall, false, Assembly, Powered: true),
         new(Items.MultistoreyFactory, false, Assembly.Select(r => r with { Time = r.Time / 2 }).ToList(), Powered: true),
         // The crafting tree: a machine shop makes parts, a robotic hall the top of the tree; steelworks make steel, sheet and alloys
@@ -328,6 +328,11 @@ public static class Processing
         new(Items.ContinuousCaster, false, Casting, Powered: true),
         new(Items.SteelCombine, false, Combined(CombinedSpeed, Converter, Rolling, Casting), Powered: true),
         new(Items.Megafactory, false, Combined(CombinedSpeed, MachineShop, Assembly, RoboticHall), Powered: true),
+        // Assembling machines make the workbench's recipes by themselves: the first one without power, as fast as the workbench, the
+        // fast and the express ones on power, twice and four times as fast.
+        new(Items.Assembler, false, Assembling(1)),
+        new(Items.FastAssembler, false, Assembling(2), Powered: true),
+        new(Items.ExpressAssembler, false, Assembling(4), Powered: true),
         // A municipal sorting plant sorts the town's rubbish.
         new(Items.CitySorter, false,
         [
@@ -476,6 +481,12 @@ public static class Processing
         new(Items.BronzeIngot, 5, TimeSpan.FromSeconds(10), [(Items.CopperIngot, 3), (Items.TinIngot, 1)], 4),
         new(Items.IridiumAlloy, 2, TimeSpan.FromSeconds(30), [(Items.Iridium, 1), (Items.MeteoricIron, 2), (Items.SteelIngot, 2)], 20),
     ];
+
+    /// <summary>What an assembling machine makes, <paramref name="faster"/> times as fast as the workbench: every workbench recipe whose
+    /// ingredients fit into it (<see cref="MaxInput"/> of each).</summary>
+    private static List<ProcessingRecipe> Assembling(double faster) =>
+        Workshop.Recipes.Where(r => r.Station == Items.Workbench && r.Ingredients.All(i => i.Quantity <= MaxInput))
+            .Select(r => new ProcessingRecipe(r.Id, r.Quantity, r.Time / faster, r.Ingredients, r.Xp)).ToList();
 
     /// <summary>Recipes of several machines in one, <paramref name="faster"/> times as fast.</summary>
     private static List<ProcessingRecipe> Combined(double faster, params List<ProcessingRecipe>[] lists) =>

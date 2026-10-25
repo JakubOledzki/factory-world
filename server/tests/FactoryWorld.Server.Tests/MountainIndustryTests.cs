@@ -309,15 +309,15 @@ public sealed class MountainIndustryTests(ServerFactory factory) : IClassFixture
         await GiveAsync(client, Items.Coal, 20);
         await GiveAsync(client, Items.IronOre, 4);
 
-        // A chest of ore, an inserter, the crusher, an inserter and the heap, in a line facing south; powered from the side.
+        // A chest of ore, an inserter, the crusher (2 × 2), an inserter and the heap, in a line facing south; powered from the side.
         var (tx, ty) = (PlotLayout.Spawn.X + 4, PlotLayout.Spawn.Y + 4);
         var chest = await PlaceAsync(client, x, y, Items.WoodenChest, tx, ty - 2);
         await PlaceAsync(client, x, y, Items.Inserter, tx, ty - 1, 0);
         var crusher = await PlaceAsync(client, x, y, Items.Crusher, tx, ty);
-        await PlaceAsync(client, x, y, Items.Inserter, tx, ty + 1, 0);
-        var heap = await PlaceAsync(client, x, y, Items.Heap, tx, ty + 2);
-        await PlaceAsync(client, x, y, Items.Pole, tx + 1, ty + 1);
-        var generator = await PlaceAsync(client, x, y, Items.Generator, tx + 2, ty + 1);
+        await PlaceAsync(client, x, y, Items.Inserter, tx, ty + 2, 0);
+        var heap = await PlaceAsync(client, x, y, Items.Heap, tx, ty + 3);
+        await PlaceAsync(client, x, y, Items.Pole, tx + 2, ty + 1);
+        var generator = await PlaceAsync(client, x, y, Items.Generator, tx + 3, ty + 1);
         Assert.Equal("generator", (await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Coal, quantity = 20 })).Type());
         Assert.Equal("machine", (await client.SendAsync("machine.recipe", new { machine = crusher, recipe = Items.CrushedIronOre })).Type());
         Assert.Equal("storage", (await client.SendAsync("storage.put", new { x, y, id = chest, item = Items.IronOre, quantity = 4 })).Type());

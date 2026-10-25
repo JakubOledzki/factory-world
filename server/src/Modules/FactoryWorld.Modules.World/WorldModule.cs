@@ -922,6 +922,13 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(l => l.Planted).HasColumnName("planted");
             e.Property(l => l.Cut).HasColumnName("cut");
         });
+        model.Entity<FootprintVersionRow>(e =>
+        {
+            e.ToTable("footprint_versions");
+            e.HasKey(v => v.Version);
+            e.Property(v => v.Version).HasColumnName("version").ValueGeneratedNever();
+            e.Property(v => v.At).HasColumnName("at");
+        });
     }
 }
 
@@ -1349,6 +1356,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, GetShopHandler>();
         services.AddSingleton<IMessageHandler, StockShopHandler>();
         services.AddSingleton<IMessageHandler, TakeFromShopHandler>();
+        services.AddScoped<FootprintMigration>();
     }
 
     public async Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken)
@@ -1356,5 +1364,12 @@ public sealed class WorldModule : IGameModule
         await services.MigrateModuleAsync<WorldDbContext>(cancellationToken);
         // Load the map before the first player asks for it.
         services.GetRequiredService<WorldMap>();
+    }
+
+    /// <summary>Once every module's tables are there: objects built before machines grew are moved or given back.</summary>
+    public async Task StartedAsync(IServiceProvider services, CancellationToken cancellationToken)
+    {
+        await using var scope = services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<FootprintMigration>().RunAsync(cancellationToken);
     }
 }
