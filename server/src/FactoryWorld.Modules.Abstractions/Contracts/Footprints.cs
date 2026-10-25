@@ -59,8 +59,8 @@ public static class Footprints
             AND {ty} BETWEEN {o}.tile_y - (f.size - 1) / 2 AND {o}.tile_y + f.size / 2))
         """;
 
-    /// <summary>Kinds whose size changed since plots were last brought in line (see the world's footprint migration), by version:
-    /// a new entry with a higher number moves or picks up what no longer fits on plots built before it.</summary>
+    /// <summary>Goes up by one whenever <see cref="Sizes"/> grows: on the next start the world's footprint migration moves, or gives back,
+    /// whatever no longer fits on plots built before.</summary>
     public const int Version = 1;
 
     /// <summary>What stands on more than one tile, and on how many each way.</summary>

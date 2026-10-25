@@ -175,17 +175,22 @@ func _draw() -> void:
 				_wire(_wire_point(all_poles[i]), _wire_point(all_poles[j]))
 	for cell: Vector2i in _placed:
 		var object: Dictionary = _placed[cell]
-		if _source(object["kind"]):
+		# A big object is in _placed once for every tile it covers: wire and mark it once, from where it stands.
+		if not _placed_anchor(cell, object):
+			continue
+		var kind: String = object["kind"]
+		var centre := (Vector2(cell) + Vector2(0.5, 0.5) + Footprints.shift(kind)) * tile
+		if _source(kind):
 			for pole in all_poles:
-				if covers(pole, cell):
+				if Footprints.tiles(kind, cell).any(func(t: Vector2i) -> bool: return covers(pole, t)):
 					_wire(_wire_point(cell), _wire_point(pole))
 					break
-		elif demand.has(object["kind"]):
-			var s := speed(object["id"]) if not _networks.is_empty() else (1.0 if covered(cell) else 0.0)
+		elif demand.has(kind):
+			var s := speed(object["id"]) if not _networks.is_empty() else (1.0 if Footprints.tiles(kind, cell).any(covered) else 0.0)
 			if s < 0.999 and not _cold.has(object["id"]):
-				_bolt(cell, DARK if s <= 0.0 else SHORT)
-			elif _cold.has(object["id"]) and _placed_anchor(cell, object):
-				_flake(cell)
+				_bolt(centre, DARK if s <= 0.0 else SHORT)
+			elif _cold.has(object["id"]):
+				_flake(centre)
 
 
 ## Whether a tile is where an object stands (its centre for a big one), so it is marked once.
@@ -194,8 +199,8 @@ func _placed_anchor(cell: Vector2i, object: Dictionary) -> bool:
 
 
 ## A snowflake over a machine slowed by the frost, pulsing.
-func _flake(cell: Vector2i) -> void:
-	var at := (Vector2(cell) + Vector2(0.5, 0.5)) * tile - Vector2(0, 64)
+func _flake(centre: Vector2) -> void:
+	var at := centre - Vector2(0, 64)
 	var pulse := 0.65 + 0.35 * sin(_blink * 3.0)
 	draw_circle(at, 13, Color(0.05, 0.08, 0.12, 0.75 * pulse))
 	for k in 3:
@@ -215,8 +220,8 @@ func _wire(a: Vector2, b: Vector2) -> void:
 
 
 ## A lightning bolt over a machine short of power, pulsing.
-func _bolt(cell: Vector2i, color: Color) -> void:
-	var at := (Vector2(cell) + Vector2(0.5, 0.5)) * tile - Vector2(0, 64)
+func _bolt(centre: Vector2, color: Color) -> void:
+	var at := centre - Vector2(0, 64)
 	var pulse := 0.65 + 0.35 * sin(_blink * 5.0)
 	var shape := PackedVector2Array([Vector2(2, -10), Vector2(-6, 1), Vector2(-1, 1), Vector2(-3, 10), Vector2(6, -2), Vector2(1, -2), Vector2(4, -10)])
 	for i in shape.size():

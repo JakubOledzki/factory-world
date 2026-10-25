@@ -1638,6 +1638,7 @@ func _draw_marks() -> void:
 	if _hovered.x >= 0 and (_placed.has(_hovered) or _animals.has(_hovered)):
 		var big := _placed.has(_hovered) and _big(_placed[_hovered]["kind"])
 		if big:
+			_draw_footprint(_placed[_hovered]["kind"], _anchor(_hovered), Color(0.96, 0.69, 0.25, 0.8))
 			_draw_ring(_object_centre(_placed[_hovered]["kind"], _anchor(_hovered)), Color(0.96, 0.69, 0.25, 0.8), _ring_size(_placed[_hovered]["kind"]))
 		else:
 			_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8))
@@ -1646,8 +1647,9 @@ func _draw_marks() -> void:
 	if _placing != "" and ground.x >= 0:
 		if FORESTERS.has(_placing) or FARMSTEADS.has(_placing):
 			_draw_forest(_placing, ground, _place_rotation)
-		_draw_ring(_object_centre(_placing, ground), Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8),
-			_ring_size(_placing))
+		var tint := Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8)
+		_draw_footprint(_placing, ground, tint)
+		_draw_ring(_object_centre(_placing, ground), tint, _ring_size(_placing))
 		_draw_ghost(ground)
 	elif _releasing != "" and ground.x >= 0:
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_release(ground) else Color(1.0, 0.42, 0.35, 0.8))
@@ -1700,6 +1702,16 @@ func _draw_ghost(cell: Vector2i) -> void:
 		var color := Color(0.56, 0.84, 0.35, 0.95)
 		_marks.draw_line(from, to, color, 3.0, true)
 		_marks.draw_colored_polygon([to + head * 4, to - head * 9 + side * 7, to - head * 9 - side * 7], color)
+
+
+## The tiles a machine of more than one tile covers, on the ground, so it shows where inserters fit along its sides.
+func _draw_footprint(kind: String, cell: Vector2i, color: Color) -> void:
+	if Footprints.size(kind) < 2:
+		return
+	for tile in Footprints.tiles(kind, cell):
+		var rect := Rect2(Vector2(tile) * TILE, TILE).grow(-2.0)
+		_marks.draw_rect(rect, Color(color, 0.12))
+		_marks.draw_rect(rect, Color(color, 0.55), false, 1.5)
 
 
 func _draw_ring(at: Vector2, color: Color, size := 1.0) -> void:
