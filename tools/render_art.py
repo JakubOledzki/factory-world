@@ -503,6 +503,7 @@ FURNITURE_AT = {
     "furniture_sorting_machine": (3.75, 2.0),
     "furniture_furnace": (5.0, 2.5),
     "furniture_anvil": (5.0, 2.25),
+    "furniture_wardrobe": (5.75, 3.25),
 }
 ROTATIONS = 4
 
@@ -686,6 +687,29 @@ def build_pallet(coll, at: Vector):
     box("pallet_box2", (0.35, 0.3, 0.25), at + Vector((0.22, -0.15, 0.27)), cardboard, coll, bevel=0.01, rotation=(0, 0, -0.2))
 
 
+def build_wardrobe(coll, at: Vector):
+    """A tall wooden wardrobe for sets of clothes: two doors and a drawer at the bottom, a coat
+    hanging on a hook at its side."""
+    oak = wood("wardrobe", (0.3, 0.17, 0.08))
+    dark = wood("wardrobe_trim", (0.17, 0.09, 0.04))
+    brass = plain("wardrobe_brass", (0.55, 0.38, 0.12), 0.35, metallic=1.0, variation=0.1, grime=0.3)
+    w, d, h = 1.3, 0.46, 1.95
+    box("wardrobe_body", (w, d, h), at + Vector((0, 0, h / 2 + 0.06)), oak, coll, bevel=0.01)
+    box("wardrobe_crown", (w + 0.06, d + 0.05, 0.06), at + Vector((0, 0, h + 0.09)), dark, coll, bevel=0.01)
+    box("wardrobe_plinth", (w - 0.04, d - 0.04, 0.06), at + Vector((0, 0, 0.03)), dark, coll)
+    front = -d / 2 - 0.008
+    for x in (-w / 4, w / 4):
+        box("wardrobe_door", (w / 2 - 0.05, 0.016, h - 0.42), at + Vector((x, front, 0.42 + (h - 0.42) / 2 + 0.04)), oak, coll, bevel=0.006)
+        box("wardrobe_panel", (w / 2 - 0.2, 0.012, h - 0.75), at + Vector((x, front - 0.008, 0.6 + (h - 0.75) / 2)), dark, coll, bevel=0.004)
+        cylinder("wardrobe_knob", 0.018, 0.04, at + Vector((x * 0.12, front - 0.03, 1.1)), brass, coll, rotation=(math.pi / 2, 0, 0))
+    box("wardrobe_drawer", (w - 0.08, 0.016, 0.26), at + Vector((0, front, 0.23)), oak, coll, bevel=0.006)
+    box("wardrobe_pull", (0.22, 0.03, 0.025), at + Vector((0, front - 0.025, 0.25)), brass, coll, bevel=0.006)
+    # A coat on a hook at the side.
+    coat = plain("wardrobe_coat", (0.05, 0.08, 0.12), 0.9, variation=0.25, grime=0.4)
+    cylinder("wardrobe_hook", 0.012, 0.08, at + Vector((w / 2 + 0.04, -0.05, 1.75)), brass, coll, rotation=(0, math.pi / 2, 0))
+    box("wardrobe_coat", (0.08, 0.36, 0.85), at + Vector((w / 2 + 0.06, -0.05, 1.3)), coat, coll, bevel=0.03)
+
+
 def build_gas(coll, at: Vector):
     gas = rusty_metal("gas", (0.35, 0.05, 0.03), 0.3)
     steel = rusty_metal("gas_valve", (0.18, 0.18, 0.19), 0.3)
@@ -857,6 +881,7 @@ FURNITURE_BUILDERS = {
     "furniture_barrel_red": lambda c, at: build_barrel(c, at, (0.3, 0.07, 0.04)),
     "furniture_tyres": build_tyres,
     "furniture_pallet": build_pallet,
+    "furniture_wardrobe": build_wardrobe,
 }
 
 

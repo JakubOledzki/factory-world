@@ -217,6 +217,18 @@ def mine_upgrade():
     p.save("mine_upgrade")
 
 
+def garage_upgrade():
+    p = Pen()
+    p.poly([(4, 30), (26, 14), (48, 30), (48, 35), (26, 19), (4, 35)], GOLD)  # roof
+    p.poly([(8, 32), (26, 19), (44, 32), (44, 58), (8, 58)], INK)  # building
+    p.rect(14, 38, 38, 58, DARK)  # door opening
+    for y in (41, 47, 53):
+        p.rect(15.5, y, 36.5, y + 3.5, SHADE)  # door slats
+    p.line([(54, 60), (54, 30)], GREEN, 4.5)  # arrow up
+    p.poly([(46, 32), (54, 20), (62, 32)], GREEN)
+    p.save("garage_upgrade")
+
+
 def city():
     p = Pen()
     p.poly([(6, 24), (32, 8), (58, 24)], INK)  # roof of the town hall
@@ -230,7 +242,7 @@ def city():
 
 def main() -> None:
     for draw in (backpack, garage, market, contracts, company, stats, achievements, world_map, logout,
-                 station, plant, mine_upgrade, city):
+                 station, plant, mine_upgrade, garage_upgrade, city):
         draw()
 
 

@@ -2,6 +2,7 @@ class_name StorageWindow
 extends GameWindow
 ## A chest, pile, heap or silo standing on a plot: what is in it, taken out to the inventory or
 ## put in from it. Inserters fill and empty it too, so the window asks again while it is open.
+## The shelf and the delivery pallet in the garage open in it too (open_in_garage).
 
 ## Items went between the inventory and the storage.
 signal inventory_changed
@@ -12,6 +13,8 @@ signal pick_up_requested(id: String)
 var storage := ""
 ## The plot the storage stands on.
 var plot := Vector2i(-1, -1)
+## The storage is the shelf or the pallet in the garage, not something on a plot.
+var in_garage := false
 
 var _state := {}
 var _items: Array = []
@@ -23,6 +26,7 @@ var _fill_label: Label
 var _stored := VBoxContainer.new()
 var _load := VBoxContainer.new()
 var _help: Label
+var _load_heading: Label
 var _pick_up_button: Button
 
 
@@ -37,7 +41,8 @@ func _init() -> void:
 	_stored.add_theme_constant_override("separation", 4)
 	content.add_child(_stored)
 	content.add_child(HSeparator.new())
-	content.add_child(_heading("Włóż z ekwipunku"))
+	_load_heading = _heading("Włóż z ekwipunku")
+	content.add_child(_load_heading)
 	_load.add_theme_constant_override("separation", 4)
 	content.add_child(_load)
 	_help = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
@@ -52,6 +57,19 @@ func open_at(at: Vector2i, id: String) -> void:
 		_state = {}
 	storage = id
 	plot = at
+	in_garage = false
+	_pick_up_button.visible = true
+	show_window()
+	refresh()
+
+
+## The shelf or the delivery pallet in the garage.
+func open_in_garage(id: String) -> void:
+	if id != storage:
+		_state = {}
+	storage = id
+	in_garage = true
+	_pick_up_button.visible = false
 	show_window()
 	refresh()
 
@@ -67,7 +85,7 @@ func refresh() -> void:
 		return
 	_refreshing = true
 	_next_poll = Time.get_ticks_msec() + 1000.0
-	var reply := await Net.request("storage.get", {"x": plot.x, "y": plot.y, "id": storage})
+	var reply := await Net.request("garage.storage", {"id": storage}) if in_garage else await Net.request("storage.get", {"x": plot.x, "y": plot.y, "id": storage})
 	_refreshing = false
 	_apply(reply)
 
@@ -81,8 +99,8 @@ func _apply(reply: Dictionary) -> void:
 
 
 func _process(_delta: float) -> void:
-	# Inserters may be filling or emptying it.
-	if visible and not _refreshing and Time.get_ticks_msec() >= _next_poll:
+	# Inserters may be filling or emptying it; nothing does in the garage.
+	if visible and not in_garage and not _refreshing and Time.get_ticks_msec() >= _next_poll:
 		refresh()
 
 
@@ -107,9 +125,13 @@ func _render() -> void:
 		return
 	set_title(_state["name"])
 	var stored := int(_state["stored"])
+	var can_put: bool = _state.get("canPut", true)
 	_fill.max_value = int(_state["slots"])
 	_fill.value = int(_state["usedSlots"])
-	if int(_state["slots"]) > 1:
+	_fill.visible = can_put
+	if not can_put:
+		_fill_label.text = "Czeka tu, co kupisz przy pełnym ekwipunku: %d szt." % stored if stored > 0 else "Nic nie czeka na odbiór."
+	elif int(_state["slots"]) > 1:
 		_fill_label.text = "Zajęte miejsca: %d z %d (po %d sztuk)" % [int(_state["usedSlots"]), int(_state["slots"]), int(_state["slotSize"])]
 	else:
 		_fill_label.text = "Zapełnienie: %d z %d" % [stored, int(_state["capacity"])]
@@ -133,6 +155,13 @@ func _render() -> void:
 
 	for child in _load.get_children():
 		child.free()
+	_load.visible = can_put
+	_load_heading.visible = can_put
+	_help.text = ""
+	if not can_put:
+		_help.text = "Gdy ekwipunek jest pełny, zakupy od handlarza i od graczy trafiają na tę paletę. Odbierzesz je, gdy zrobisz miejsce."
+		_fit.call_deferred()
+		return
 	var any := false
 	for stack: Dictionary in _items:
 		var item: String = stack["id"]
@@ -158,7 +187,9 @@ func _render() -> void:
 	if not any:
 		_load.add_child(UI.label("Nie masz nic, co by tu pasowało.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	var only: Variant = _state.get("only")
-	if only != null:
+	if in_garage:
+		_help.text = "Każdy rodzaj przedmiotu zajmuje osobne miejsca, po %d sztuk. Więcej miejsc dają ulepszenia regałów." % int(_state["slotSize"])
+	elif only != null:
 		_help.text = "Mieści tylko: %s, jeden rodzaj naraz." % ", ".join((only as Array).map(func(o: Dictionary) -> String: return o["name"].to_lower()))
 	else:
 		_help.text = "Każdy rodzaj przedmiotu zajmuje osobne miejsca. Podajnik ustawiony przodem do skrzyni wkłada do niej, tyłem wyjmuje."
@@ -173,11 +204,17 @@ func _holds(item: String) -> bool:
 
 
 func _put(item: String, quantity: int) -> void:
-	_changed(await Net.request("storage.put", {"x": plot.x, "y": plot.y, "id": storage, "item": item, "quantity": quantity}))
+	if in_garage:
+		_changed(await Net.request("garage.storage.put", {"id": storage, "item": item, "quantity": quantity}))
+	else:
+		_changed(await Net.request("storage.put", {"x": plot.x, "y": plot.y, "id": storage, "item": item, "quantity": quantity}))
 
 
 func _take(item: String, quantity: int) -> void:
-	_changed(await Net.request("storage.take", {"x": plot.x, "y": plot.y, "id": storage, "item": item, "quantity": quantity}))
+	if in_garage:
+		_changed(await Net.request("garage.storage.take", {"id": storage, "item": item, "quantity": quantity}))
+	else:
+		_changed(await Net.request("storage.take", {"x": plot.x, "y": plot.y, "id": storage, "item": item, "quantity": quantity}))
 
 
 func _changed(reply: Dictionary) -> void:

@@ -11,6 +11,8 @@ extends GameWindow
 
 ## A trade went through; the garage or the plot reloads the inventory and shows the new balance.
 signal traded(balance_cents: int, item: String)
+## A purchase did not fit in the inventory and went onto the delivery pallet in the garage.
+signal to_pallet(item: String)
 signal failed(reply: Dictionary)
 ## The player asked to put the computer the window was opened at back into the inventory.
 signal pick_up_requested(id: String)
@@ -680,6 +682,8 @@ func _send(type: String, payload: Dictionary, item: String, expected := "market.
 		failed.emit(reply)
 		await _reload()
 		return
+	if reply["payload"].get("toPallet", false):
+		to_pallet.emit(item)
 	# The screen reloads the inventory, then calls refresh().
 	traded.emit(int(reply["payload"]["balanceCents"]), item)
 

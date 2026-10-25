@@ -254,7 +254,7 @@ public sealed class GarageUpgradeTests(ServerFactory factory) : IClassFixture<Se
         await client.SendAsync("garage.pickup", new { id = pallet });
         await client.SendAsync("garage.place", new { kind = Items.Pallet, x = 2, y = 1 });
         pallet = Find(await client.SendAsync("garage.get"), Items.Pallet).GetProperty("id").GetGuid();
-        await client.SendAsync("garage.storage.take", new { id = pallet, item = Items.Nails, quantity = 5 });
+        await client.SendAsync("garage.storage.take", new { id = pallet, item = Items.Nails, quantity = 0 });
         Assert.Equal(5, (await client.InventoryAsync())[Items.Nails]);
 
         // Without a pallet in the garage a full inventory stops the purchase.
