@@ -52,7 +52,7 @@ const RADIUS := 0.25
 const REACH := 1.75
 ## Holding the right mouse button (or a finger, on a touch screen) this long on a placed object puts it back into the
 ## inventory; a finger may wander this many pixels before the hold is called off.
-const HOLD_TO_PICK_UP := 2.0
+const HOLD_TO_PICK_UP := 1.0
 const HOLD_SLIP := 24.0
 const STATION_REACH := 2.5
 ## Tiles are drawn in square chunks around the player.
