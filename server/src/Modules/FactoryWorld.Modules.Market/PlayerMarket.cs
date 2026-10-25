@@ -98,6 +98,7 @@ public sealed record ItemSummary(string Item, long? LowestCents, long Listed, lo
 
 public sealed class PlayerMarketService(
     GameDb db, IInventory inventory, IWallet wallet, ICharacterNames names, TimeProvider time, ITechnologies technologies, IEnumerable<IGarageDeliveries> deliveries)
+    : IExportMarket
 {
     /// <summary>Puts items up for sale: they leave the inventory now and wait on the listing.</summary>
     public Task<long> ListAsync(Guid seller, OfferRequest request, CancellationToken cancellationToken)
@@ -110,6 +111,17 @@ public sealed class PlayerMarketService(
             await InsertAsync(OfferKind.Listing, seller, request, cancellationToken);
             return await wallet.BalanceAsync(seller, cancellationToken);
         }, cancellationToken);
+    }
+
+    /// <summary>Lists what an export train brought to a buying market: the goods are already out of the seller's hands.</summary>
+    public async Task ListAsync(Guid seller, string item, long quantity, long priceCents, CancellationToken cancellationToken)
+    {
+        for (var left = quantity; left > 0; left -= MarketRules.MaxQuantity)
+        {
+            var request = new OfferRequest(item, Math.Min(left, MarketRules.MaxQuantity), priceCents);
+            Check(request);
+            await InsertAsync(OfferKind.Listing, seller, request, cancellationToken);
+        }
     }
 
     /// <summary>Orders items from other players: the whole price leaves the wallet now and waits on the order.</summary>

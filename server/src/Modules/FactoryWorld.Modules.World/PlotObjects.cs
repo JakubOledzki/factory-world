@@ -47,6 +47,7 @@ public static class PlotObjects
         Items.AutomatedWarehouse, Items.SteelCombine, Items.Megafactory, Items.FusionPlant,
         Items.Canteen, Items.Slaughterhouse, Items.Dairy, Items.PotatoDistillery, Items.BiogasPlant, Items.Stable, Items.Bellows,
         Items.Farmstead, Items.ManorFarm,
+        Items.ExportChest, Items.BuyMarket, Items.RailPort,
     };
 
     /// <summary>What stands on the glacier only, or on the glacier and the tundra.</summary>
@@ -112,7 +113,13 @@ public static class PlotObjects
             throw new GameException("city_cramped", "In a city only the ground by the station can be built on.");
         }
 
-        if (kind is Items.FreightTerminal or Items.CompanyHq or Items.ControlCenter or Items.Canteen or Items.Stable or Items.Bellows && others.Any(o => o.Kind == kind))
+        if (kind == Items.ExportChest && !ExportRules.NearStation(tileX, tileY))
+        {
+            throw new GameException("far_from_station", $"An export chest stands by the station, at most {ExportRules.StationReach} tiles from it.");
+        }
+
+        if (kind is Items.FreightTerminal or Items.CompanyHq or Items.ControlCenter or Items.Canteen or Items.Stable or Items.Bellows
+            or Items.ExportChest or Items.RailPort && others.Any(o => o.Kind == kind))
         {
             throw new GameException("has_one", "A plot has room for one of these.");
         }
@@ -141,7 +148,8 @@ public interface IPlacedHook
 
 public sealed class PlotObjectService(
     GameDb db, PlotService plots, IInventory inventory, IEnumerable<IMachineContents> machines, IEnumerable<IPlotAutomation> automation,
-    IEnumerable<IPlacedHook> placing, BeachService beach, OilService oil, IEnumerable<ICompanyPlots> companies, PlotObjectsQuery query)
+    IEnumerable<IPlacedHook> placing, BeachService beach, OilService oil, IEnumerable<ICompanyPlots> companies, PlotObjectsQuery query,
+    WorldMap map, Towns towns)
     : IPlacedObjects
 {
     public async Task<IReadOnlyList<PlacedOnPlot>> ObjectsAsync(int x, int y, CancellationToken cancellationToken)
@@ -196,6 +204,7 @@ public sealed class PlotObjectService(
             }
 
             await oil.RequireSiteAsync(kind, x, y, await ObjectsAsync(x, y, cancellationToken), cancellationToken);
+            await ExportSites.RequireAsync(db, map, towns, kind, x, y, cancellationToken);
             if (kind == Items.CompanyHq)
             {
                 // A company's headquarters stands on a plot brought into the company.

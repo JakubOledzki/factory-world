@@ -311,6 +311,9 @@ public static class NpcPrices
         [Items.HighBay] = 206_000,
         [Items.CitySorter] = 60_000,
         [Items.FreightTerminal] = 300_000,
+        [Items.ExportChest] = 30_000,
+        [Items.BuyMarket] = 150_000,
+        [Items.RailPort] = 250_000,
         [Items.CompanyHq] = 600_000,
         [Items.DesignOffice] = 20_000,
         [Items.Laboratory] = 60_000,
@@ -647,6 +650,7 @@ public sealed class MarketModule : IGameModule
         services.AddSingleton<IMarketPrices, MarketPrices>();
         services.AddScoped<MarketService>();
         services.AddScoped<PlayerMarketService>();
+        services.AddScoped<IExportMarket>(provider => provider.GetRequiredService<PlayerMarketService>());
         services.AddSingleton<IMessageHandler, PricesHandler>();
         services.AddSingleton<IMessageHandler, BuyHandler>();
         services.AddSingleton<IMessageHandler, SellHandler>();

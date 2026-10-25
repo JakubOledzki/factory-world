@@ -47,6 +47,8 @@ public static class Coast
         [Items.Shipyard] = null,
         [Items.Port] = null,
         [Items.Breakwater] = null,
+        // Trains roll onto the ferry from the sea shore.
+        [Items.RailPort] = Biome.Coast,
     };
 
     public static bool HasWater(Biome biome) => biome is Biome.Coast or Biome.Lakeshore;

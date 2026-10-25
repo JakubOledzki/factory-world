@@ -93,6 +93,8 @@ public static class TechTree
     public const string CityServices = "city_services";
     public const string WasteManagement = "waste_management";
     public const string FreightHub = "freight_hub";
+    public const string ExportMarket = "export_market";
+    public const string RailFerry = "rail_ferry";
     public const string Headquarters = "headquarters";
     public const string Tailoring = "tailoring";
     public const string Silviculture = "silviculture";
@@ -378,6 +380,12 @@ public static class TechTree
         new(FreightHub, "Centrum logistyczne", "Dworzec towarowy w mieście obniża opłaty kolejowe działki o 25% i pozwala jej wysyłać 10 kursów zamiast 5.",
             [Logistics, BuildingMaterials], [(Items.Concrete, 30), (Items.SteelIngot, 20), (Items.Bricks, 30)], TimeSpan.FromMinutes(4), 80,
             [Items.FreightTerminal]),
+        new(ExportMarket, "Rynek skupu", "Rynek skupu w mieście (jeden na miasto) wystawia na rynek graczy towary, które co godzinę przywozi pociąg ze skrzyni eksportowej przy stacji; właściciel rynku bierze prowizję od cudzych towarów.",
+            [Commerce, FreightHub], [(Items.Concrete, 40), (Items.Planks, 40), (Items.Bread, 40), (Items.Blueprint, 2)], TimeSpan.FromMinutes(5), 100,
+            [Items.BuyMarket, Items.ExportChest]),
+        new(RailFerry, "Port pociągowy", "Port pociągowy na wybrzeżu przeprawia pociągi z towarem na eksport przez morze, gdzie jadą trzy razy wolniej niż po lądzie; właściciel portu ustala opłatę za przeprawę.",
+            [ExportMarket, Seafaring], [(Items.SteelIngot, 30), (Items.Beams, 30), (Items.Concrete, 30)], TimeSpan.FromMinutes(5), 100,
+            [Items.RailPort]),
         new(Headquarters, "Siedziba spółki", "Siedziba w mieście pozwala spółce przyjąć 30 członków zamiast 20 i potraja jej wspólny magazyn.",
             [CityServices], [(Items.Concrete, 40), (Items.MarbleSlabs, 20), (Items.Blueprint, 2)], TimeSpan.FromMinutes(5), 100,
             [Items.CompanyHq]),
@@ -624,7 +632,7 @@ public static class TechTree
     [
         new("logistics", "Logistyka", Items.Belt,
             [Logistics, Automation, Storage, Sorting, FastLogistics, UndergroundBelts, LongInserters, BiggerGrippers, ExpressLogistics,
-             IndustrialGrippers, LogisticsDepot, CableTransport, ExpressCable, Drones]),
+             IndustrialGrippers, LogisticsDepot, CableTransport, ExpressCable, Drones, RailFerry]),
         new("mining", "Górnictwo", Items.IronOre,
             [Stonemasonry, Metallurgy, MiningAutomation, Crushing, Explosives, DeepMining, MeteoriteTools]),
         new("forestry", "Leśnictwo", Items.Wood,
@@ -642,7 +650,7 @@ public static class TechTree
         new("glacier", "Lodowiec", Items.Ice,
             [Heating, PolarTransport, Refrigeration, Glaciology, PolarTourism, DataCenter]),
         new("city", "Miasta", Items.Shop,
-            [Commerce, CityServices, WasteManagement, FreightHub, Assembly, UrbanConstruction, Headquarters, Tailoring]),
+            [Commerce, CityServices, WasteManagement, FreightHub, ExportMarket, Assembly, UrbanConstruction, Headquarters, Tailoring]),
         new("materials", "Materiały", Items.CarbonComposite,
             [Lubricant, Paint, CaseinGlue, InsulationBoard, Firebrick, PrecastConcrete, GlassLaminate, Coolant, IridiumAlloy, Provisions,
              ElectricWire, PaintedSheet, RefractoryLining, CarbonComposite, SuperconductingWire, RocketFuel]),

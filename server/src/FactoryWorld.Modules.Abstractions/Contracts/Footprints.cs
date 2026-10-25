@@ -38,7 +38,7 @@ public static class Footprints
     [
         Items.ForesterHut, Items.ForesterLodge, Items.ForestryStation, Items.SolarTower, Items.LargeWindTurbine, Items.IceHotel, Items.AssemblyHall,
         Items.RoboticHall, Items.OxygenConverter, Items.RollingMill, Items.ContinuousCaster, Items.AutomatedWarehouse, Items.FusionPlant,
-        Items.Canteen, Items.BiogasPlant, Items.Farmstead, Items.ManorFarm,
+        Items.Canteen, Items.BiogasPlant, Items.Farmstead, Items.ManorFarm, Items.BuyMarket,
     ];
 
     /// <summary>Kinds that cover 5 × 5 tiles, for queries.</summary>

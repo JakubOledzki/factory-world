@@ -332,6 +332,12 @@ public static class Items
     public const string Laboratory = "furniture_laboratory";
     public const string ServiceWorkshop = "furniture_service_workshop";
 
+    // Export by rail: a chest by the station whose goods a train takes every hour to a buying market in a town, which lists
+    // them on the players' market; across the sea the train goes on a ferry from a rail port (see ExportRules in World).
+    public const string ExportChest = "furniture_export_chest";
+    public const string BuyMarket = "furniture_buy_market";
+    public const string RailPort = "furniture_rail_port";
+
     // Clothes: sewn at a tailor's in town and worn in four slots; each makes some industry's work go faster
     // (or, for trade, makes the trader pay more), see Clothes.
     public const string Tailor = "furniture_tailor";
@@ -741,6 +747,9 @@ public static class Items
         [DesignOffice] = "Biuro projektowe",
         [Laboratory] = "Laboratorium",
         [ServiceWorkshop] = "Warsztat serwisowy",
+        [ExportChest] = "Skrzynia eksportowa",
+        [BuyMarket] = "Rynek skupu",
+        [RailPort] = "Port pociągowy",
         [Tailor] = "Pracownia krawiecka",
         [MinerHelmet] = "Kask górniczy z czołówką",
         [SouWester] = "Kapelusz rybacki",
@@ -988,7 +997,7 @@ public static class Items
 
     /// <summary>What stands in a city only.</summary>
     public static bool IsCityOnly(string id) => id is MultistoreyFactory or Shop or HighBay or FreightTerminal or CompanyHq or DesignOffice or Laboratory or ServiceWorkshop
-        or Tailor;
+        or Tailor or BuyMarket;
 
     public static bool IsClothing(string id) => Clothes.ContainsKey(id);
 

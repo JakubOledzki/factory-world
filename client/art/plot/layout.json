@@ -905,5 +905,17 @@
  "drone_port": {
   "anchorX": 36,
   "anchorY": 59
+ },
+ "export_chest": {
+  "anchorX": 36,
+  "anchorY": 43
+ },
+ "buy_market": {
+  "anchorX": 128,
+  "anchorY": 143
+ },
+ "rail_port": {
+  "anchorX": 64,
+  "anchorY": 94
  }
 }
