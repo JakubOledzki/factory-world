@@ -547,7 +547,7 @@ public static class TechTree
         new("glacier", "Lodowiec", Items.Ice,
             [Heating, PolarTransport, Refrigeration, Glaciology, PolarTourism, DataCenter]),
         new("city", "Miasta", Items.Shop,
-            [Commerce, CityServices, WasteManagement, FreightHub, Assembly, UrbanConstruction, Headquarters]),
+            [Commerce, CityServices, WasteManagement, FreightHub, Assembly, UrbanConstruction, Headquarters, Tailoring]),
         new("materials", "Materiały", Items.CarbonComposite,
             [Lubricant, Paint, CaseinGlue, InsulationBoard, Firebrick, PrecastConcrete, GlassLaminate, Coolant, IridiumAlloy, Provisions,
              ElectricWire, PaintedSheet, RefractoryLining, CarbonComposite, SuperconductingWire, RocketFuel]),
