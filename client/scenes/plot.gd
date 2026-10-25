@@ -150,6 +150,9 @@ const PLACED_SPRITES := {
 	"furniture_assembler": "assembler", "furniture_fast_assembler": "fast_assembler", "furniture_express_assembler": "express_assembler",
 	"furniture_drill": "drill", "furniture_heavy_drill": "heavy_drill", "furniture_quarry": "quarry",
 	"furniture_crusher": "crusher", "furniture_stonemason": "stonemason", "furniture_foundry": "foundry",
+	"furniture_roller_mill": "roller_mill", "furniture_flour_works": "flour_works",
+	"furniture_mechanized_quarry": "mechanized_quarry", "furniture_open_pit_mine": "open_pit_mine",
+	"furniture_cone_crusher": "cone_crusher", "furniture_ore_processing_plant": "ore_processing_plant",
 	"power_water_wheel": "water_wheel", "power_hydro_plant": "hydro_plant", "logistics_cable_station": "cable_station",
 	"furniture_fishing_boat": "fishing_boat", "furniture_rowing_boat": "rowing_boat", "furniture_smokehouse": "smokehouse",
 	"furniture_cannery": "cannery", "furniture_salt_pan": "salt_pan", "furniture_fish_farm": "fish_farm",
@@ -197,6 +200,8 @@ const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_
 	"furniture_sawmill", "furniture_electric_sawmill", "furniture_industrial_sawmill",
 	"furniture_assembler", "furniture_fast_assembler", "furniture_express_assembler",
 	"furniture_quarry", "furniture_crusher", "furniture_stonemason", "furniture_foundry",
+	"furniture_roller_mill", "furniture_flour_works", "furniture_mechanized_quarry", "furniture_open_pit_mine",
+	"furniture_cone_crusher", "furniture_ore_processing_plant",
 	"furniture_fishing_boat", "furniture_rowing_boat", "furniture_smokehouse", "furniture_cannery", "furniture_salt_pan",
 	"furniture_fish_farm", "furniture_distillery", "furniture_refinery", "furniture_cracker", "furniture_chemical_plant",
 	"furniture_glassworks", "furniture_arc_furnace", "furniture_water_well", "furniture_desalinator", "furniture_drying_yard",
@@ -237,7 +242,8 @@ const BREAKWATER := "furniture_breakwater"
 const BOATS := ["furniture_fishing_boat", "furniture_rowing_boat"]
 const COAST := 10
 const LAKESHORE := 11
-const QUARRY := "furniture_quarry"
+## Quarries of every level, which stand in the mountains only.
+const QUARRIES := ["furniture_quarry", "furniture_mechanized_quarry", "furniture_open_pit_mine"]
 const CABLE_STATION := "logistics_cable_station"
 ## Cable stations of both levels, and how far their cable reaches.
 const CABLE_STATIONS := {CABLE_STATION: 24, "logistics_express_cable_station": 48}
@@ -1360,7 +1366,7 @@ func _can_place(cell: Vector2i) -> bool:
 	if _placing in DRILLS:
 		var mine := _mine_beside(cell)
 		return mine >= 0 and _drill_at(mine).x < 0
-	if _placing == QUARRY:
+	if _placing in QUARRIES:
 		return int(_plot.get("biome", -1)) == MOUNTAINS
 	var biome := int(_plot.get("biome", -1))
 	if _placing == LIGHTHOUSE:

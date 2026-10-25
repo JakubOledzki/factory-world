@@ -5,7 +5,7 @@ icons of tools and raw materials into client/art/icons/.
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [tree] [assemblers] [logistics] [husbandry] [export] [banks] [<sprite>...] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [tree] [assemblers] [machine_levels] [logistics] [husbandry] [export] [banks] [<sprite>...] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -4800,6 +4800,272 @@ def render_assemblers(layout: dict, only=()):
         ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
 
 
+# --- Higher levels of the mill, the quarry and the crusher -----------------------------------------
+# The first level of each stands on 2 × 2 tiles, drawn for one; these on 3 × 3 and 4 × 4 are drawn at their size.
+
+def bucket_elevator(prefix, x, y, height, m, body):
+    """A bucket elevator: a narrow steel shaft lifting grain or gravel, with a head box on top and a spout down from it."""
+    ra.box(f"{prefix}_shaft", (0.45, 0.45, height), (x, y, 0.1 + height / 2), body, bevel=0.02)
+    ra.box(f"{prefix}_head", (0.7, 0.6, 0.5), (x, y, 0.1 + height + 0.25), body, bevel=0.03)
+    ra.box(f"{prefix}_boot", (0.7, 0.7, 0.45), (x, y, 0.32), m["dark"], bevel=0.02)
+    for k in range(int(height / 0.6)):
+        ra.box(f"{prefix}_rung", (0.5, 0.04, 0.04), (x, y - 0.25, 0.5 + k * 0.6), m["steel"])
+
+
+def sack_pallet(prefix, x, y, rows=2):
+    """Flour sacks stacked on a wooden pallet."""
+    sack = ra.plain(f"{prefix}_sack", (0.62, 0.58, 0.48), 0.95, variation=0.2, bump=0.4)
+    ra.box(f"{prefix}_pallet", (1.1, 0.9, 0.12), (x, y, 0.06), ra.wood(f"{prefix}_pallet_wood", (0.3, 0.2, 0.1)))
+    for row in range(rows):
+        for k in range(3 - row):
+            sk = ra.sphere(f"{prefix}_sack", 0.22, (x - 0.32 + k * 0.32 + row * 0.16, y, 0.3 + row * 0.3), sack, scale=(0.75, 1.0, 0.55), segments=14)
+            ra.displace(sk, 0.015, 0.2, 1)
+
+
+def incline_belt(prefix, start, end, width, m, load=None, loads=0):
+    """A conveyor on a steel frame climbing from start to end (points at belt height), with what it carries on it."""
+    a, b = Vector(start), Vector(end)
+    d = b - a
+    length = d.length
+    mid = (a + b) / 2
+    pitch = math.atan2(d.z, math.hypot(d.x, d.y))
+    yaw = math.atan2(d.y, d.x)
+    rot = (0, -pitch, yaw)
+    ra.box(f"{prefix}_frame", (length, width + 0.1, 0.14), mid - Vector((0, 0, 0.1)), m["yellow"], rotation=rot)
+    ra.box(f"{prefix}_belt", (length, width, 0.03), mid, m["dark"], rotation=rot)
+    for k in range(1, int(length / 1.4) + 1):
+        p = a + d * (k / (int(length / 1.4) + 1))
+        if p.z > 0.4:
+            ra.box(f"{prefix}_leg", (0.08, 0.08, p.z - 0.1), (p.x, p.y, (p.z - 0.1) / 2), m["steel"])
+    for k in range(loads):
+        p = a + d * ((k + 0.5) / loads)
+        ra.sphere(f"{prefix}_load", 0.09, p + Vector((random.uniform(-0.1, 0.1), 0, 0.06)), load, segments=8)
+
+
+def gravel_heap(name, at, radius, mat, height=0.55):
+    heap = ra.sphere(name, radius, at, mat, scale=(1.1, 0.9, height), segments=18)
+    ra.displace(heap, 0.05, 0.15, 2)
+    return heap
+
+
+def build_roller_mill():
+    """The roller mill, on 3 × 3 tiles: a white two-storey mill house with a blue roof and lit windows, a bucket elevator
+    lifting grain to its top, an intake hopper, a motor and flour sacks on a pallet, on power."""
+    m = tree_mats()
+    roof = ra.plain("rmill_roof", (0.08, 0.14, 0.3), 0.6, 0.2, variation=0.1, grime=0.3)
+    ra.box("rmill_pad", (5.8, 5.8, 0.05), (0, 0, 0.025), m["concrete"])
+    ra.box("rmill_house", (3.4, 2.6, 2.8), (-0.4, 0.7, 1.45), m["white"], bevel=0.03)
+    v = [(-2.2, -0.75, 2.85), (1.4, -0.75, 2.85), (1.4, 2.15, 2.85), (-2.2, 2.15, 2.85), (-2.2, 0.7, 3.8), (1.4, 0.7, 3.8)]
+    ra.mesh_from("rmill_roof", v, [(0, 1, 5, 4), (3, 4, 5, 2), (0, 4, 3), (1, 2, 5), (0, 3, 2, 1)], roof)
+    for row, z in enumerate((0.9, 2.1)):
+        for k in range(3):
+            ra.box("rmill_window", (0.45, 0.04, 0.55), (-1.5 + k * 1.1, -0.61, z), m["window"] if (row + k) % 2 == 0 else m["glass"])
+    ra.box("rmill_door", (0.9, 0.05, 1.3), (0.75, -0.62, 0.75), m["steel"], bevel=0.01)
+    bucket_elevator("rmill_lift", 2.0, 1.2, 3.4, m, m["blue"])
+    ra.box("rmill_spout", (1.1, 0.16, 0.16), (1.55, 1.2, 3.3), m["steel"], rotation=(0, math.radians(-25), 0))
+    v = [(1.55, 0.25, 0.9), (2.45, 0.25, 0.9), (2.45, -0.55, 0.9), (1.55, -0.55, 0.9)]
+    top = [(x + (0.25 if x > 2 else -0.25), y + (0.25 if y > 0 else -0.25), 1.5) for x, y, _ in v]
+    ra.mesh_from("rmill_hopper", top + v, [(0, 1, 5, 4), (1, 2, 6, 5), (2, 3, 7, 6), (3, 0, 4, 7), (4, 5, 6, 7)], m["steel"])
+    ra.box("rmill_hopper_legs", (0.8, 0.7, 0.9), (2.0, -0.15, 0.45), m["dark"])
+    grain = ra.plain("rmill_grain", (0.6, 0.45, 0.15), 0.9, variation=0.3, bump=0.4)
+    ra.box("rmill_grain", (1.2, 1.2, 0.02), (2.0, -0.15, 1.45), grain)
+    ra.box("rmill_motor", (0.7, 0.9, 0.6), (-2.5, 1.5, 0.4), m["blue"], bevel=0.04)
+    ra.cylinder("rmill_shaft", 0.1, 0.5, (-2.25, 1.0, 0.4), m["dark"], rotation=(math.radians(90), 0, 0), verts=12)
+    sack_pallet("rmill_s", -1.6, -1.6)
+
+
+def build_flour_works():
+    """The flour works, on 4 × 4 tiles: a red-brick mill hall with lit windows, three tall grain silos behind it joined by a
+    conveyor bridge to a bucket elevator, a loading spout over the yard and pallets of flour, on power."""
+    m = tree_mats()
+    brick = ra.plain("fworks_brick", (0.36, 0.11, 0.06), 0.85, variation=0.3, scale=14, bump=0.5)
+    roof = ra.plain("fworks_roof", (0.15, 0.16, 0.17), 0.6, 0.3, variation=0.1, grime=0.4)
+    silo = ra.plain("fworks_silo", (0.62, 0.63, 0.62), 0.35, 0.6, variation=0.08, grime=0.35)
+    ra.box("fworks_pad", (7.8, 7.8, 0.05), (0, 0, 0.025), m["concrete"])
+    # The silos stand along the back.
+    for k, x in enumerate((-2.6, -1.2, 0.2)):
+        ra.cylinder("fworks_silo", 0.65, 4.6, (x, 2.6, 2.35), silo, verts=28)
+        ra.cylinder("fworks_silo_cap", 0.67, 0.5, (x, 2.6, 4.9), silo, verts=28, radius2=0.12)
+        for z in (1.0, 2.2, 3.4):
+            ra.cylinder("fworks_silo_band", 0.665, 0.06, (x, 2.6, z), m["dark"], verts=28)
+    ra.box("fworks_bridge", (4.6, 0.4, 0.4), (-0.6, 2.6, 5.3), m["steel"])
+    bucket_elevator("fworks_lift", 1.9, 2.6, 5.0, m, m["blue"])
+    # The mill hall in front, its gable to the camera.
+    ra.box("fworks_hall", (5.0, 3.0, 3.0), (-0.6, 0.0, 1.55), brick, bevel=0.03)
+    v = [(-3.25, -1.65, 3.05), (2.05, -1.65, 3.05), (2.05, 1.65, 3.05), (-3.25, 1.65, 3.05), (-3.25, 0, 4.1), (2.05, 0, 4.1)]
+    ra.mesh_from("fworks_roof", v, [(0, 1, 5, 4), (3, 4, 5, 2), (0, 4, 3), (1, 2, 5), (0, 3, 2, 1)], roof)
+    for row, z in enumerate((1.0, 2.3)):
+        for k in range(4):
+            ra.box("fworks_window", (0.5, 0.04, 0.7), (-2.5 + k * 1.25, -1.51, z), m["window"] if (row * 3 + k) % 3 else m["glass"])
+    ra.box("fworks_door", (1.2, 0.05, 1.6), (1.3, -1.52, 0.9), m["steel"], bevel=0.01)
+    ra.box("fworks_sign", (2.2, 0.05, 0.35), (-0.6, -1.53, 2.95), m["white"])
+    # A loading spout over the yard, by the door, and flour waiting to go.
+    ra.box("fworks_spout_arm", (1.4, 0.2, 0.2), (2.6, -1.0, 2.4), m["steel"])
+    ra.cylinder("fworks_spout", 0.12, 1.0, (3.2, -1.0, 1.85), m["dark"], verts=12)
+    ra.box("fworks_transformer", (0.9, 0.7, 0.9), (3.1, 1.0, 0.5), m["grey"], bevel=0.03)
+    sack_pallet("fworks_s1", -2.3, -2.6)
+    sack_pallet("fworks_s2", -0.9, -2.6, rows=1)
+    sack_pallet("fworks_s3", 2.5, -2.7)
+
+
+def build_mechanized_quarry():
+    """The mechanised quarry, on 3 × 3 tiles: a stepped rock face with sawn cuts, a yellow electric rock saw on a gantry
+    cutting into it, cut blocks stacked in front and a belt carrying broken stone out, on power."""
+    m = tree_mats()
+    stone = rock("mquarry_rock", (0.15, 0.145, 0.14))
+    cut = ra.plain("mquarry_cut", (0.34, 0.32, 0.3), 0.85, variation=0.2, bump=0.3)
+    face = ra.sphere("mquarry_face", 2.6, (0, 1.6, 0.0), stone, scale=(1.05, 0.55, 0.85), segments=28)
+    ra.displace(face, 0.2, 0.5, 2)
+    for w, z, y in ((4.6, 0.25, 0.2), (3.6, 0.8, 0.6), (2.6, 1.4, 1.0), (1.6, 1.95, 1.3)):
+        ra.box("mquarry_step", (w, 1.0, 0.55), (0, y, z), cut, bevel=0.03)
+    # The saw: a gantry over the bottom step with a big blade biting into the face.
+    for x in (-1.9, 1.9):
+        ra.box("mquarry_leg", (0.18, 0.18, 2.1), (x, -0.4, 1.05), m["yellow"])
+    ra.box("mquarry_beam", (4.0, 0.25, 0.25), (0, -0.4, 2.15), m["yellow"])
+    ra.box("mquarry_head", (0.6, 0.5, 0.5), (0.5, -0.4, 1.8), m["dark"], bevel=0.03)
+    ra.cylinder("mquarry_blade", 0.75, 0.04, (0.5, -0.1, 1.15), ra.plain("mquarry_steel", (0.7, 0.7, 0.72), 0.2, 1.0, grime=0.2),
+                rotation=(0, math.radians(90), 0), verts=32)
+    ra.box("mquarry_cable", (0.04, 0.04, 2.0), (1.9, -0.4, 2.2), m["dark"], rotation=(0, math.radians(70), 0))
+    for k, (x, y) in enumerate(((-2.0, -1.8), (-1.45, -1.85), (-1.7, -1.8))):
+        ra.box("mquarry_block", (0.5, 0.45, 0.4), (x, y, 0.2 + (0.4 if k == 2 else 0)), cut, bevel=0.02)
+    incline_belt("mquarry_belt", (0.6, -0.9, 0.35), (2.3, -2.2, 0.9), 0.45, m, stone, loads=5)
+    gravel_heap("mquarry_heap", (2.3, -2.5, 0.0), 0.6, stone)
+    ra.box("mquarry_box", (0.4, 0.3, 0.7), (-2.5, 0.0, 0.4), m["grey"], bevel=0.02)
+    ra.box("mquarry_lamp", (0.1, 0.02, 0.1), (-2.5, -0.16, 0.6), m["screen"])
+
+
+def build_open_pit_mine():
+    """The open-pit mine, on 4 × 4 tiles: a pit cut down in terraces with a haul road, a yellow excavator on a bench, a long
+    belt lifting broken stone out to a heap at the rim and a power house, on power."""
+    m = tree_mats()
+    stone = rock("pit_rock", (0.16, 0.15, 0.14))
+    bench = ra.plain("pit_bench", (0.3, 0.28, 0.25), 0.9, variation=0.25, bump=0.4)
+    # The rim and the terraces, each a ring of rock a step lower and narrower, down to the floor of the pit.
+    ra.box("pit_rim_back", (7.8, 1.2, 0.9), (0, 3.3, 0.45), bench)
+    ra.box("pit_rim_left", (1.2, 6.6, 0.9), (-3.3, 0.0, 0.45), bench)
+    ra.box("pit_rim_right", (1.2, 6.6, 0.9), (3.3, 0.0, 0.45), bench)
+    for k, (w, d, z) in enumerate(((5.4, 5.4, 0.55), (4.2, 4.2, 0.3), (3.0, 3.0, 0.1))):
+        ra.box("pit_terrace", (w, d, 0.2), (0, 0.4 - k * 0.15, z), bench, bevel=0.05)
+    floor = ra.plain("pit_floor", (0.22, 0.2, 0.18), 0.95, variation=0.3, bump=0.5)
+    ra.box("pit_floor", (2.6, 2.6, 0.05), (0, 0.1, 0.03), floor)
+    for k in range(10):
+        a = k / 10 * math.tau
+        o = ra.sphere("pit_boulder", random.uniform(0.15, 0.3), (math.cos(a) * 2.6, 0.4 + math.sin(a) * 2.6, 0.75), stone, segments=10)
+        ra.displace(o, 0.04, 0.2, 1)
+    # The excavator on the lowest bench.
+    yellow = m["yellow"]
+    ra.box("pit_tracks", (1.2, 0.9, 0.3), (-0.6, 0.6, 0.3), m["dark"], bevel=0.04)
+    ra.box("pit_cab", (0.9, 0.8, 0.7), (-0.6, 0.6, 0.8), yellow, bevel=0.04)
+    ra.box("pit_window", (0.04, 0.5, 0.35), (-0.15, 0.6, 0.9), m["glass"])
+    ra.box("pit_boom", (1.4, 0.15, 0.15), (0.2, 0.6, 1.35), yellow, rotation=(0, math.radians(-30), 0))
+    ra.box("pit_stick", (0.12, 0.12, 0.9), (0.85, 0.6, 1.05), yellow, rotation=(0, math.radians(15), 0))
+    ra.box("pit_bucket", (0.4, 0.45, 0.3), (0.95, 0.6, 0.55), m["dark"], bevel=0.03)
+    gravel_heap("pit_pile", (0.4, -0.2, 0.05), 0.5, stone, height=0.45)
+    # The belt from the pit floor up over the rim to the heap at the front.
+    incline_belt("pit_belt", (0.6, -0.4, 0.4), (2.6, -3.0, 1.4), 0.5, m, stone, loads=7)
+    ra.box("pit_belt_head", (0.6, 0.6, 0.5), (2.6, -3.0, 1.55), m["steel"], bevel=0.03)
+    gravel_heap("pit_heap", (1.4, -3.2, 0.0), 0.8, stone)
+    ra.box("pit_house", (1.2, 0.9, 1.1), (-2.9, -2.9, 0.6), m["grey"], bevel=0.03)
+    ra.box("pit_house_door", (0.4, 0.04, 0.7), (-2.7, -3.36, 0.4), m["steel"])
+    ra.box("pit_house_lamp", (0.3, 0.02, 0.1), (-3.1, -3.36, 0.9), m["window"])
+
+
+def cone_crusher(prefix, x, y, z, size, m, body):
+    """A cone crusher: a squat drum with a cone-topped bowl, a feed hopper over it and a motor on the side."""
+    ra.cylinder(f"{prefix}_drum", 0.55 * size, 0.7 * size, (x, y, z + 0.35 * size), body, verts=28)
+    ra.cylinder(f"{prefix}_bowl", 0.62 * size, 0.18 * size, (x, y, z + 0.79 * size), m["dark"], verts=28)
+    ra.cylinder(f"{prefix}_cone", 0.6 * size, 0.55 * size, (x, y, z + 1.15 * size), body, verts=28, radius2=0.2 * size)
+    ra.cylinder(f"{prefix}_hopper", 0.25 * size, 0.4 * size, (x, y, z + 1.6 * size), m["steel"], verts=20, radius2=0.4 * size)
+    ra.box(f"{prefix}_motor", (0.5 * size, 0.4 * size, 0.4 * size), (x + 0.85 * size, y + 0.2 * size, z + 0.3 * size), m["blue"], bevel=0.03)
+    ra.box(f"{prefix}_vbelt", (0.4 * size, 0.06, 0.12 * size), (x + 0.5 * size, y + 0.2 * size, z + 0.4 * size), m["dark"])
+
+
+def build_cone_crusher():
+    """The cone crusher, on 3 × 3 tiles: a green cone crusher on a steel platform with a railing, a belt feeding ore into it
+    from a hopper, a heap of crushed ore under its chute and a control box, on power."""
+    m = tree_mats()
+    green = ra.rusty_metal("ccrush_green", (0.07, 0.2, 0.08), rust=0.25)
+    gravel = rock("ccrush_gravel", (0.22, 0.21, 0.2))
+    ore = rock("ccrush_ore", (0.24, 0.13, 0.08))
+    ra.box("ccrush_pad", (5.8, 5.8, 0.05), (0, 0, 0.025), m["concrete"])
+    for x in (-1.0, 1.0):
+        for y in (-0.2, 1.8):
+            ra.box("ccrush_leg", (0.15, 0.15, 1.2), (x, y, 0.6), m["dark"])
+    ra.box("ccrush_deck", (2.4, 2.4, 0.12), (0, 0.8, 1.26), m["steel"])
+    for x in (-1.15, 1.15):
+        ra.box("ccrush_rail", (0.05, 2.4, 0.05), (x, 0.8, 1.9), m["yellow"])
+        for y in (-0.35, 0.8, 1.95):
+            ra.box("ccrush_post", (0.05, 0.05, 0.6), (x, y, 1.6), m["yellow"])
+    cone_crusher("ccrush", 0, 0.8, 1.32, 1.2, m, green)
+    ra.box("ccrush_chute", (0.5, 1.0, 0.06), (0, -0.4, 0.9), m["dark"], rotation=(math.radians(35), 0, 0))
+    gravel_heap("ccrush_heap", (0, -1.4, 0.0), 0.75, gravel)
+    # The feed: a hopper at the side with a belt up to the crusher's mouth.
+    ra.box("ccrush_feed", (0.9, 0.9, 0.7), (-2.2, -1.6, 0.45), green, bevel=0.03)
+    gravel_heap("ccrush_feed_ore", (-2.2, -1.6, 0.8), 0.35, ore, height=0.35)
+    incline_belt("ccrush_belt", (-2.0, -1.0, 0.85), (-0.4, 0.7, 3.0), 0.4, m, ore, loads=5)
+    ra.box("ccrush_box", (0.5, 0.35, 0.9), (2.3, -1.6, 0.5), m["grey"], bevel=0.02)
+    ra.box("ccrush_screen", (0.3, 0.02, 0.2), (2.3, -1.79, 0.7), m["screen"])
+    ra.box("ccrush_lamp", (0.08, 0.02, 0.08), (2.3, -1.79, 0.45), ra.emission("ccrush_lamp", (0.2, 1.0, 0.3), 3.0))
+
+
+def build_ore_processing_plant():
+    """The ore processing plant, on 4 × 4 tiles: a corrugated steel hall with a saw-tooth roof over two crushers, a vibrating
+    screen on stilts sorting what comes out, belts between them, bins and heaps of crushed ore and sand, on power."""
+    m = tree_mats()
+    hall = ra.corrugated("oreplant_hall", (0.3, 0.33, 0.36), rust=0.15)
+    green = ra.rusty_metal("oreplant_green", (0.07, 0.2, 0.08), rust=0.2)
+    gravel = rock("oreplant_gravel", (0.22, 0.21, 0.2))
+    ore = rock("oreplant_ore", (0.24, 0.13, 0.08))
+    copper = rock("oreplant_copper", (0.12, 0.2, 0.16))
+    sand = ra.plain("oreplant_sand", (0.62, 0.52, 0.34), 0.95, variation=0.2, bump=0.3)
+    ra.box("oreplant_pad", (7.8, 7.8, 0.05), (0, 0, 0.025), m["concrete"])
+    # The hall at the back, open to the front so the crushers show.
+    ra.box("oreplant_back", (7.0, 0.2, 3.2), (0, 3.4, 1.6), hall)
+    for x in (-3.4, 3.4):
+        ra.box("oreplant_side", (0.2, 3.0, 3.2), (x, 2.0, 1.6), hall)
+    for x in (-3.4, -1.1, 1.2, 3.4):
+        ra.box("oreplant_column", (0.2, 0.2, 3.2), (x, 0.5, 1.6), m["steel"])
+    ra.box("oreplant_eave", (7.0, 0.25, 0.25), (0, 0.5, 3.25), m["steel"])
+    sawtooth("oreplant_roof", -3.5, 3.5, 0.4, 3.5, 3.3, 4, 0.8, m, hall)
+    cone_crusher("oreplant_c1", -1.9, 2.0, 0.1, 1.3, m, green)
+    cone_crusher("oreplant_c2", 0.6, 2.0, 0.1, 1.3, m, green)
+    # The screen: a tilted deck on stilts, with three spouts above three heaps.
+    for x in (1.6, 3.2):
+        for y in (-0.6, 0.4):
+            ra.box("oreplant_stilt", (0.12, 0.12, 1.8), (x, y, 0.9), m["dark"])
+    ra.box("oreplant_screen", (2.0, 1.3, 0.3), (2.4, -0.1, 1.95), m["yellow"], bevel=0.03, rotation=(0, math.radians(-8), 0))
+    for k, (x, mat) in enumerate(((1.6, ore), (2.4, copper), (3.2, sand))):
+        ra.box("oreplant_spout", (0.3, 0.5, 0.06), (x, -0.95, 1.4), m["dark"], rotation=(math.radians(40), 0, 0))
+        gravel_heap("oreplant_heap", (x, -1.8, 0.0), 0.5, mat, height=0.6)
+    incline_belt("oreplant_belt", (-0.7, 0.9, 0.5), (1.8, 0.0, 2.15), 0.4, m, gravel, loads=5)
+    # Ore waits in bins at the front left, to be fed in.
+    for k, (x, mat) in enumerate(((-3.0, ore), (-1.8, copper))):
+        ra.box("oreplant_bin", (1.0, 1.0, 0.6), (x, -2.6, 0.32), m["rusty"], bevel=0.03)
+        gravel_heap("oreplant_bin_ore", (x, -2.6, 0.6), 0.42, mat, height=0.35)
+    ra.box("oreplant_control", (1.0, 0.6, 1.0), (-0.4, -2.9, 0.55), m["grey"], bevel=0.03)
+    ra.box("oreplant_control_screen", (0.7, 0.01, 0.3), (-0.4, -3.21, 0.8), m["screen"])
+
+
+# name: (canvas width, height, camera target height, builder); on 3 × 3 and 4 × 4 tiles, drawn at their size.
+MACHINE_LEVELS = {
+    "roller_mill": (256, 272, 1.6, build_roller_mill),
+    "flour_works": (352, 368, 2.2, build_flour_works),
+    "mechanized_quarry": (256, 240, 1.0, build_mechanized_quarry),
+    "open_pit_mine": (352, 304, 0.8, build_open_pit_mine),
+    "cone_crusher": (256, 256, 1.3, build_cone_crusher),
+    "ore_processing_plant": (352, 336, 1.6, build_ore_processing_plant),
+}
+
+
+def render_machine_levels(layout: dict, only=()):
+    for name, (w, h, tz, build) in MACHINE_LEVELS.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build), true_scale=True)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
+
+
 def tree_icon_models():
     """Icons of the crafting tree, from lubricant to the launch rocket."""
     # Each icon starts from a fresh scene, so the paint is made again for each (see fresh below).
@@ -6529,7 +6795,7 @@ def render_banks(layout: dict, only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "assemblers", "office", "logistics", "husbandry", "export", "banks", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "assemblers", "machine_levels", "office", "logistics", "husbandry", "export", "banks", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -6594,6 +6860,9 @@ if __name__ == "__main__":
     if "assemblers" in args or any(a in ASSEMBLERS for a in args):
         # Names of assembling machines render just those.
         render_assemblers(layout, [a for a in args if a in ASSEMBLERS])
+    if "machine_levels" in args or any(a in MACHINE_LEVELS for a in args):
+        # Names of the higher levels of the mill, the quarry and the crusher render just those.
+        render_machine_levels(layout, [a for a in args if a in MACHINE_LEVELS])
     if "husbandry" in args or any(a in HUSBANDRY for a in args):
         # Names of husbandry sprites render just those.
         render_husbandry(layout, [a for a in args if a in HUSBANDRY])

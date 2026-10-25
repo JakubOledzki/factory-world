@@ -1,6 +1,17 @@
 [
 	{
 		"date": "2026-10-25",
+		"title": "Lepsze poziomy maszyn",
+		"changes": [
+			"Nowe badania odblokowują wyższe poziomy maszyn: piec ceglany i piec hutniczy mają teraz własne badania (Piece ceglane, Piece hutnicze) w gałęzi górnictwa.",
+			"Młyn ma dwa wyższe poziomy: młyn walcowy (3 × 3) miele 3 razy szybciej, a zakłady młyńskie (4 × 4) 6 razy szybciej i robią o połowę więcej mąki z tego samego zboża.",
+			"Kruszarka stożkowa (3 × 3) i zakład przeróbczy (4 × 4) kruszą 3 i 6 razy szybciej, a z rudy robią więcej kruszywa: 7 z 4 i 2 z 1.",
+			"Kamieniołom zmechanizowany (3 × 3) i kopalnia odkrywkowa (4 × 4) łamią w górach 3 i 6 razy więcej kamienia.",
+			"Każdy wyższy poziom robi się przy stole warsztatowym z maszyny poziomu niżej i działa na prąd."
+		]
+	},
+	{
+		"date": "2026-10-25",
 		"title": "Większe maszyny i stacje montażowe",
 		"changes": [
 			"Maszyny rosną z poziomem: piec kamienny, młyn, kruszarka, tartak i inne maszyny pierwszego poziomu zajmują 2 × 2 pola, więc przy jednym boku stoją dwa podajniki.",

@@ -4,7 +4,8 @@ namespace FactoryWorld.Modules.Abstractions.Contracts;
 /// The tiles an object covers on a plot: a square of <see cref="Size"/> × <see cref="Size"/> tiles. Belts, inserters, chests,
 /// poles and the like stand on one tile. Machines grow with their level: the first level of a machine (a stone furnace, a crusher,
 /// a mill, a sawmill, an assembling machine) covers 2 × 2, so two inserters fit along each side; the next (a brick furnace, an electric
-/// sawmill, a foundry, a refinery) 3 × 3 and the best (a blast furnace, an industrial sawmill) 4 × 4. A forester's building, a solar tower,
+/// sawmill, a roller mill, a cone crusher, a foundry, a refinery) 3 × 3 and the best (a blast furnace, an industrial sawmill, flour works,
+/// an open-pit mine, an ore processing plant) 4 × 4. A forester's building, a solar tower,
 /// the halls of the crafting tree and the like cover 3 × 3, the steel combine, the megafactory and a bank 5 × 5, a rail port 9 × 9.
 /// </summary>
 /// <remarks>An odd square stands centred on the object's tile (its <see cref="PlotObject.TileX"/>, <see cref="PlotObject.TileY"/>); an even
@@ -104,6 +105,9 @@ public static class Footprints
         [Items.ChemicalPlant] = 3,
         [Items.ArcFurnace] = 3,
         [Items.FastAssembler] = 3,
+        [Items.RollerMill] = 3,
+        [Items.MechanizedQuarry] = 3,
+        [Items.ConeCrusher] = 3,
         [Items.ForesterHut] = 3,
         [Items.ForesterLodge] = 3,
         [Items.ForestryStation] = 3,
@@ -127,6 +131,9 @@ public static class Footprints
         [Items.BlastFurnace] = 4,
         [Items.IndustrialSawmill] = 4,
         [Items.ExpressAssembler] = 4,
+        [Items.FlourWorks] = 4,
+        [Items.OpenPitMine] = 4,
+        [Items.OreProcessingPlant] = 4,
         // The largest buildings.
         [Items.SteelCombine] = 5,
         [Items.Megafactory] = 5,

@@ -22,7 +22,7 @@ public static class PlotObjects
     public static readonly IReadOnlySet<string> Placeable = new HashSet<string>
     {
         Items.Workbench, Items.Anvil, Items.ResearchTable, Items.Furnace, Items.BrickFurnace, Items.BlastFurnace,
-        Items.Mill, Items.OilPress, Items.PicklingBarrel, Items.Bakery, Items.Kitchen,
+        Items.Mill, Items.RollerMill, Items.FlourWorks, Items.OilPress, Items.PicklingBarrel, Items.Bakery, Items.Kitchen,
         Items.Belt, Items.FastBelt, Items.ExpressBelt, Items.Inserter, Items.FastInserter, Items.ExpressInserter, Items.Splitter,
         Items.UndergroundBelt, Items.LongInserter, Items.ExpressCableStation, Items.DronePort,
         Items.WoodenChest, Items.IronChest, Items.WoodPile, Items.Heap, Items.GrainSilo, Items.LogisticsDepot,
@@ -32,6 +32,7 @@ public static class PlotObjects
         Items.Sawmill, Items.ElectricSawmill, Items.IndustrialSawmill,
         Items.Assembler, Items.FastAssembler, Items.ExpressAssembler,
         Items.Drill, Items.HeavyDrill, Items.Quarry, Items.Crusher, Items.Stonemason, Items.Foundry,
+        Items.MechanizedQuarry, Items.OpenPitMine, Items.ConeCrusher, Items.OreProcessingPlant,
         Items.WaterWheel, Items.HydroPlant, Items.CableStation,
         Items.FishingBoat, Items.RowingBoat, Items.Smokehouse, Items.Cannery, Items.SaltPan, Items.FishFarm,
         Items.Shipyard, Items.Port, Items.Breakwater, Items.Lighthouse, Items.TidalPlant,
@@ -78,7 +79,7 @@ public static class PlotObjects
             }
         }
 
-        if (kind == Items.Quarry && biome != Biome.Mountains)
+        if (Items.IsQuarry(kind) && biome != Biome.Mountains)
         {
             throw new GameException("no_quarry", "A quarry is cut into the mountains only.");
         }

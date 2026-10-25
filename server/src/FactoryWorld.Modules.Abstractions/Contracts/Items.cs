@@ -117,6 +117,9 @@ public static class Items
 
     // Food processing: machines put on a plot turn crops into food, step by step.
     public const string Mill = "furniture_mill";
+    /// <summary>The mill's higher levels, bigger and faster, grinding more flour out of the same grain.</summary>
+    public const string RollerMill = "furniture_roller_mill";
+    public const string FlourWorks = "furniture_flour_works";
     public const string OilPress = "furniture_oil_press";
     public const string PicklingBarrel = "furniture_pickling_barrel";
     public const string Bakery = "furniture_bakery";
@@ -183,6 +186,12 @@ public static class Items
     public const string Crusher = "furniture_crusher";
     public const string Stonemason = "furniture_stonemason";
     public const string Foundry = "furniture_foundry";
+
+    // Higher levels of the quarry and the crusher, bigger and on power: they work faster and get more out of the same stone and ore.
+    public const string MechanizedQuarry = "furniture_mechanized_quarry";
+    public const string OpenPitMine = "furniture_open_pit_mine";
+    public const string ConeCrusher = "furniture_cone_crusher";
+    public const string OreProcessingPlant = "furniture_ore_processing_plant";
 
     // Water power: a water wheel and a small hydro plant give power without fuel, by a river or the sea.
     public const string WaterWheel = "power_water_wheel";
@@ -582,6 +591,8 @@ public static class Items
         [GrainSilo] = "Silos zbożowy",
         [LogisticsDepot] = "Magazyn logistyczny",
         [Mill] = "Młyn",
+        [RollerMill] = "Młyn walcowy",
+        [FlourWorks] = "Zakłady młyńskie",
         [OilPress] = "Tłocznia oleju",
         [PicklingBarrel] = "Beczka do kiszenia",
         [Bakery] = "Piec piekarski",
@@ -633,6 +644,10 @@ public static class Items
         [HeavyDrill] = "Wiertło udarowe",
         [Quarry] = "Kamieniołom",
         [Crusher] = "Kruszarka",
+        [MechanizedQuarry] = "Kamieniołom zmechanizowany",
+        [OpenPitMine] = "Kopalnia odkrywkowa",
+        [ConeCrusher] = "Kruszarka stożkowa",
+        [OreProcessingPlant] = "Zakład przeróbczy",
         [Stonemason] = "Warsztat kamieniarski",
         [Foundry] = "Odlewnia",
         [WaterWheel] = "Koło wodne",
@@ -955,6 +970,15 @@ public static class Items
 
     /// <summary>Fine dishes: what banquets, a company's listing, a mayor's festival and the restaurants of hotels need.</summary>
     public static bool IsFineDish(string id) => id is RoastBeef or Cheesecake;
+
+    /// <summary>Mills of every level.</summary>
+    public static bool IsMill(string id) => id is Mill or RollerMill or FlourWorks;
+
+    /// <summary>Quarries of every level, which stand in the mountains only.</summary>
+    public static bool IsQuarry(string id) => id is Quarry or MechanizedQuarry or OpenPitMine;
+
+    /// <summary>Crushers of every level.</summary>
+    public static bool IsCrusher(string id) => id is Crusher or ConeCrusher or OreProcessingPlant;
 
     /// <summary>Drills of every level, which stand at a mine and dig it by themselves.</summary>
     public static bool IsDrill(string id) => id is Drill or HeavyDrill;
