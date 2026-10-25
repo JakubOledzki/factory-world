@@ -452,4 +452,35 @@ public sealed class GlacierTests(ServerFactory factory) : IClassFixture<ServerFa
         Assert.Contains(sled.GetProperty("outgoing").EnumerateArray(),
             o => Math.Abs(o.GetProperty("arrivesAt").GetInt64() - (factory.Time.GetUtcNow() + trip * SledRules.DogTrip).ToUnixTimeMilliseconds()) <= 2);
     }
+
+    [Fact]
+    public async Task The_trader_sells_the_meteorite_pickaxe_only_once_meteorite_tools_are_researched()
+    {
+        Assert.Equal(TechTree.MeteoriteTools, TechTree.ByItem[Items.MeteoritePickaxe].Id);
+        Assert.Equal("mining", TechTree.BranchOf[TechTree.MeteoriteTools].Id);
+        Assert.Contains(TechTree.DeepMining, TechTree.ById[TechTree.MeteoriteTools].Requires);
+
+        using var client = await factory.ConnectAsync();
+        await client.RegisterWithCharacterAsync();
+        await using var scope = factory.Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 10_000_000, "test", CancellationToken.None);
+        async Task<bool> OfferedAsync() => (await client.SendAsync("market.prices")).Payload().GetProperty("items").EnumerateArray()
+            .Any(i => i.GetProperty("id").GetString() == Items.MeteoritePickaxe && i.GetProperty("buyCents").ValueKind == System.Text.Json.JsonValueKind.Number);
+
+        Assert.False(await OfferedAsync());
+        Assert.Equal("locked", (await client.SendAsync("market.buy", new { item = Items.MeteoritePickaxe, quantity = 1 })).ErrorCode());
+
+        var db = scope.ServiceProvider.GetRequiredService<GameDb>();
+        await using (var command = await db.CommandAsync(
+            "INSERT INTO research.technologies (owner_id, technology, starts_at, finishes_at, rewarded) VALUES (@owner, @id, @at, @at, true)", CancellationToken.None))
+        {
+            command.Parameters.AddWithValue("owner", client.AccountId);
+            command.Parameters.AddWithValue("id", TechTree.MeteoriteTools);
+            command.Parameters.AddWithValue("at", factory.Time.GetUtcNow() - TimeSpan.FromMinutes(1));
+            await command.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        Assert.True(await OfferedAsync());
+        Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.MeteoritePickaxe, quantity = 1 })).Type());
+    }
 }

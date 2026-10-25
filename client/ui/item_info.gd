@@ -417,7 +417,7 @@ const ITEMS := {
 	"tourist_takings": ["Utarg od turystów", "Pieniądze: gdy je wyjmiesz z hotelu lub punktu widokowego, trafiają prosto do portfela (5 $ za sztukę).",
 			"Hotel lodowy (4 szt. na minutę) i punkt widokowy (1 szt. na minutę); przy zorzy polarnej trzy razy szybciej."],
 	"tool_meteorite_pickaxe": ["Kilof z meteorytu", "Rozbija skały, lód i meteoryty oraz kopie w kopalni dwa razy szybciej niż żelazny.",
-			"Kowadło: 4 × żelazo meteorytowe + 1 × iryd + 2 × drewno (40 s)."],
+			"Kowadło: 4 × żelazo meteorytowe + 1 × iryd + 2 × drewno (40 s). Wymaga badania: Narzędzia z meteorytu."],
 	"power_wind_turbine": ["Turbina wiatrowa", "Daje do 40 kW, tyle, ile wieje wiatr (zmienia się co 10 min); na lodowcu +20%, w tundrze i na stepie +15%, na wybrzeżu +10%. W zamieć staje. Podłącz słupem.",
 			"Stół warsztatowy: 20 × sztabka żelaza + 15 × sztabka miedzi + 10 × deski (60 s). Wymaga badania: Energia wiatrowa."],
 	"power_large_wind_turbine": ["Duża turbina wiatrowa", "Na 3 × 3 polach: do 400 kW w pełnym wietrze. W zamieć staje.",

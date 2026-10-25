@@ -292,6 +292,7 @@ Nowy gracz robi przy stole tylko stół warsztatowy, piec kamienny i gwoździe; 
 | Kruszenie | Automatyzacja górnictwa | 100 kamienia, 30 sztabek żelaza | 3 min | kruszarka |
 | Materiały wybuchowe | Metalurgia | 20 siarki, 20 węgla | 2 min | dynamit |
 | Głębokie górnictwo | Automatyzacja górnictwa, Metalurgia | 30 stali, 20 belek, 20 brązu | 5 min | obudowa górnicza, wiertło udarowe, kilof stalowy |
+| Narzędzia z meteorytu | Głębokie górnictwo | 10 żelaza meteorytowego, 20 stali | 4 min | kilof z meteorytu (u handlarza, na rynku graczy i na kowadle) |
 | Elektrownia wodna | Energia wodna, Metalurgia | 20 stali, 40 cegieł, 30 miedzi | 5 min | mała elektrownia wodna |
 | Kolejka linowa | Logistyka, Metalurgia | 10 stali, 20 miedzi, 10 taśmociągów | 3 min | stacja kolejki linowej |
 | Rybołówstwo | | 20 śledzi, 40 drewna, 10 sztabek żelaza | 1,5 min | stocznia, kuter, łódź wiosłowa, wędzarnia, wędzony dorsz |
