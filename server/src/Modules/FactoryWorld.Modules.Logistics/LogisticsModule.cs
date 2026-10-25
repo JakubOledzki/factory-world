@@ -250,14 +250,24 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
         var reachable = objects.SelectMany(Footprints.Spread).Concat(await plots.FixturesAsync(x, y, cancellationToken)).ToList();
         var at = reachable.ToDictionary(o => (o.TileX, o.TileY));
         var ports = new Dictionary<Guid, IMachinePort>();
-        var opened = new List<IMachinePort>();
+        var opened = new List<(IMachinePorts Module, IMachinePort Port)>();
         var storageChanged = new HashSet<Guid>();
+        var reached = new List<PlotObject>();
         foreach (var tile in PlotLogistics.Reach(objects).Distinct())
         {
-            if (!at.TryGetValue(tile, out var o) || ports.ContainsKey(o.Id))
+            if (at.TryGetValue(tile, out var o) && !reached.Any(r => r.Id == o.Id))
             {
-                continue;
+                reached.Add(o);
             }
+        }
+
+        foreach (var module in machines)
+        {
+            await module.PrepareAsync(reached, cancellationToken);
+        }
+
+        foreach (var o in reached)
+        {
 
             if (Storages.Find(o.Kind) is { } kind)
             {
@@ -281,7 +291,7 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
                 if (await module.OpenAsync(o.Owner, o.Id, o.Kind, cancellationToken) is { } port)
                 {
                     ports[o.Id] = port;
-                    opened.Add(port);
+                    opened.Add((module, port));
                     break;
                 }
             }
@@ -289,14 +299,10 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
 
         var logistics = new PlotLogistics(reachable, contents, ports, grid);
         var simulated = logistics.Run(from, now);
-        foreach (var id in logistics.Changed.Concat(storageChanged).Distinct())
+        await WriteAsync(x, y, logistics.Changed.Concat(storageChanged).Distinct().Select(id => (id, contents[id])).ToList(), cancellationToken);
+        foreach (var module in opened.GroupBy(o => o.Module, o => o.Port))
         {
-            await WriteAsync(id, x, y, contents[id], cancellationToken);
-        }
-
-        foreach (var port in opened)
-        {
-            await port.SaveAsync(cancellationToken);
+            await module.Key.SaveAsync(module.ToList(), cancellationToken);
         }
 
         await grid.SaveAsync(cancellationToken);
@@ -339,17 +345,27 @@ public sealed class LogisticsService(GameDb db, IPlotObjects plots, IEnumerable<
         return contents;
     }
 
-    private async Task WriteAsync(Guid id, int x, int y, Contents contents, CancellationToken cancellationToken)
+    private Task WriteAsync(Guid id, int x, int y, Contents contents, CancellationToken cancellationToken) =>
+        WriteAsync(x, y, [(id, contents)], cancellationToken);
+
+    /// <summary>Writes what belts, inserters and storages on the plot hold, all in one query.</summary>
+    private async Task WriteAsync(int x, int y, IReadOnlyList<(Guid Id, Contents Contents)> changed, CancellationToken cancellationToken)
     {
+        if (changed.Count == 0)
+        {
+            return;
+        }
+
         await using var command = await db.CommandAsync(
             """
-            INSERT INTO logistics.contents (object_id, x, y, data) VALUES (@id, @x, @y, @data)
-            ON CONFLICT (object_id) DO UPDATE SET data = @data
+            INSERT INTO logistics.contents (object_id, x, y, data)
+            SELECT t.id, @x, @y, t.data FROM unnest(@ids, @data) AS t(id, data)
+            ON CONFLICT (object_id) DO UPDATE SET data = excluded.data
             """, cancellationToken);
-        command.Parameters.AddWithValue("id", id);
+        command.Parameters.AddWithValue("ids", changed.Select(c => c.Id).ToArray());
         command.Parameters.AddWithValue("x", x);
         command.Parameters.AddWithValue("y", y);
-        command.Parameters.AddWithValue("data", NpgsqlDbType.Jsonb, JsonSerializer.Serialize(contents, Json));
+        command.Parameters.AddWithValue("data", NpgsqlDbType.Jsonb | NpgsqlDbType.Array, changed.Select(c => JsonSerializer.Serialize(c.Contents, Json)).ToArray());
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 

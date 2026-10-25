@@ -675,49 +675,107 @@ public sealed record MachineReply(
 /// <summary>Rows of <c>crafting.machines</c>; a machine gets one when it is first used.</summary>
 internal static class MachineRows
 {
+    private const string Columns = "kind, recipe, inputs, fuel_item, fuel, heat, output, started_at, extras";
+
+    private const string Write =
+        """
+        INSERT INTO crafting.machines (object_id, owner_id, kind, recipe, inputs, fuel_item, fuel, heat, output, started_at, extras)
+        VALUES (@id, @owner, @kind, @recipe, @inputs, @fuelItem, @fuel, @heat, @output, @started, @extras)
+        ON CONFLICT (object_id) DO UPDATE SET
+            recipe = @recipe, inputs = @inputs, fuel_item = @fuelItem, fuel = @fuel, heat = @heat,
+            output = @output, started_at = @started, extras = @extras
+        """;
+
+    internal static (Type, Guid) Key(Guid id) => (typeof(MachineRows), id);
+
     /// <summary>The machine's kind and what it holds, locked until the transaction ends.</summary>
     public static async Task<(string Kind, MachineState State)?> ReadAsync(GameDb db, Guid id, CancellationToken cancellationToken)
     {
-        await using var command = await db.CommandAsync(
-            """
-            SELECT kind, recipe, inputs, fuel_item, fuel, heat, output, started_at, extras
-            FROM crafting.machines WHERE object_id = @id FOR UPDATE
-            """, cancellationToken);
-        command.Parameters.AddWithValue("id", id);
-        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken))
+        if (db.TakeReadAhead<(string, MachineState)?>(Key(id), out var known))
         {
-            return null;
+            return known;
         }
 
-        return (reader.GetString(0), new MachineState(
-            reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetFieldValue<int[]>(2),
-            reader.IsDBNull(3) ? null : reader.GetString(3), reader.GetInt32(4), reader.GetInt32(5), reader.GetInt32(6),
-            reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7), reader.GetFieldValue<int[]>(8)));
+        await using var command = await db.CommandAsync($"SELECT {Columns} FROM crafting.machines WHERE object_id = @id FOR UPDATE", cancellationToken);
+        command.Parameters.AddWithValue("id", id);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        return await reader.ReadAsync(cancellationToken) ? Row(reader) : null;
     }
+
+    /// <summary>Reads (and locks) the rows of these machines in one query, for <see cref="ReadAsync"/> to take one by one.</summary>
+    public static async Task ReadAheadAsync(GameDb db, IReadOnlyList<Guid> ids, CancellationToken cancellationToken)
+    {
+        if (ids.Count < 2 || db.Transaction is null)
+        {
+            return;
+        }
+
+        // Locked in the order of their ids, like any other transaction locking several of them.
+        await using var command = await db.CommandAsync(
+            $"SELECT object_id, {Columns} FROM crafting.machines WHERE object_id = ANY(@ids) ORDER BY object_id FOR UPDATE", cancellationToken);
+        command.Parameters.AddWithValue("ids", ids.ToArray());
+        var found = new Dictionary<Guid, (string, MachineState)>();
+        await using (var reader = await command.ExecuteReaderAsync(cancellationToken))
+        {
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                found[reader.GetGuid(0)] = Row(reader, 1);
+            }
+        }
+
+        foreach (var id in ids)
+        {
+            db.ReadAhead(Key(id), found.TryGetValue(id, out var row) ? row : null);
+        }
+    }
+
+    private static (string Kind, MachineState State) Row(NpgsqlDataReader reader, int at = 0) =>
+        (reader.GetString(at), new MachineState(
+            reader.IsDBNull(at + 1) ? null : reader.GetString(at + 1), reader.GetFieldValue<int[]>(at + 2),
+            reader.IsDBNull(at + 3) ? null : reader.GetString(at + 3), reader.GetInt32(at + 4), reader.GetInt32(at + 5), reader.GetInt32(at + 6),
+            reader.IsDBNull(at + 7) ? null : reader.GetFieldValue<DateTimeOffset>(at + 7), reader.GetFieldValue<int[]>(at + 8)));
 
     public static async Task WriteAsync(GameDb db, Guid owner, Guid id, string kind, MachineState s, CancellationToken cancellationToken)
     {
-        await using var command = await db.CommandAsync(
-            """
-            INSERT INTO crafting.machines (object_id, owner_id, kind, recipe, inputs, fuel_item, fuel, heat, output, started_at, extras)
-            VALUES (@id, @owner, @kind, @recipe, @inputs, @fuelItem, @fuel, @heat, @output, @started, @extras)
-            ON CONFLICT (object_id) DO UPDATE SET
-                recipe = @recipe, inputs = @inputs, fuel_item = @fuelItem, fuel = @fuel, heat = @heat,
-                output = @output, started_at = @started, extras = @extras
-            """, cancellationToken);
-        command.Parameters.AddWithValue("id", id);
-        command.Parameters.AddWithValue("owner", owner);
-        command.Parameters.AddWithValue("kind", kind);
-        command.Parameters.AddWithValue("recipe", (object?)s.Recipe ?? DBNull.Value);
-        command.Parameters.AddWithValue("inputs", s.Inputs.ToArray());
-        command.Parameters.AddWithValue("fuelItem", (object?)s.FuelItem ?? DBNull.Value);
-        command.Parameters.AddWithValue("fuel", s.Fuel);
-        command.Parameters.AddWithValue("heat", s.Heat);
-        command.Parameters.AddWithValue("output", s.Output);
-        command.Parameters.AddWithValue("extras", (s.Extras ?? []).ToArray());
-        command.Parameters.Add(new NpgsqlParameter("started", NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = (object?)s.StartedAt ?? DBNull.Value });
+        await using var command = await db.CommandAsync(Write, cancellationToken);
+        Fill(command.Parameters, owner, id, kind, s);
+        db.ForgetReadAhead(Key(id));
         await command.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    /// <summary>Writes several machines in one round trip.</summary>
+    public static async Task WriteAsync(GameDb db, IReadOnlyList<(Guid Owner, Guid Id, string Kind, MachineState State)> rows, CancellationToken cancellationToken)
+    {
+        if (rows.Count == 0)
+        {
+            return;
+        }
+
+        await using var batch = await db.BatchAsync(cancellationToken);
+        foreach (var (owner, id, kind, state) in rows)
+        {
+            var command = new NpgsqlBatchCommand(Write);
+            Fill(command.Parameters, owner, id, kind, state);
+            batch.BatchCommands.Add(command);
+            db.ForgetReadAhead(Key(id));
+        }
+
+        await batch.ExecuteNonQueryAsync(cancellationToken);
+    }
+
+    private static void Fill(NpgsqlParameterCollection parameters, Guid owner, Guid id, string kind, MachineState s)
+    {
+        parameters.AddWithValue("id", id);
+        parameters.AddWithValue("owner", owner);
+        parameters.AddWithValue("kind", kind);
+        parameters.AddWithValue("recipe", (object?)s.Recipe ?? DBNull.Value);
+        parameters.AddWithValue("inputs", s.Inputs.ToArray());
+        parameters.AddWithValue("fuelItem", (object?)s.FuelItem ?? DBNull.Value);
+        parameters.AddWithValue("fuel", s.Fuel);
+        parameters.AddWithValue("heat", s.Heat);
+        parameters.AddWithValue("output", s.Output);
+        parameters.AddWithValue("extras", (s.Extras ?? []).ToArray());
+        parameters.Add(new NpgsqlParameter("started", NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = (object?)s.StartedAt ?? DBNull.Value });
     }
 
     /// <summary>Everything the machine holds, as item stacks.</summary>
@@ -778,6 +836,7 @@ internal static class MachineRows
             }
         }
 
+        db.ForgetReadAhead(MachineRows.Key(id));
         await using var delete = await db.CommandAsync("DELETE FROM crafting.machines WHERE object_id = @id", cancellationToken);
         delete.Parameters.AddWithValue("id", id);
         await delete.ExecuteNonQueryAsync(cancellationToken);
@@ -1019,11 +1078,32 @@ public sealed class ProcessingPorts(GameDb db, IProductionStats stats, IPlotPowe
         return new Port(db, stats, owner, id, machine, state, clock);
     }
 
+    public Task PrepareAsync(IReadOnlyList<PlotObject> objects, CancellationToken cancellationToken) =>
+        MachineRows.ReadAheadAsync(db, objects.Where(o => Processing.ByKind.ContainsKey(o.Kind)).Select(o => o.Id).Distinct().ToList(), cancellationToken);
+
+    public async Task SaveAsync(IReadOnlyList<IMachinePort> ports, CancellationToken cancellationToken)
+    {
+        var changed = ports.OfType<Port>().Where(p => p.Changed).ToList();
+        foreach (var owner in changed.GroupBy(p => p.Owner))
+        {
+            await stats.RecordAsync(owner.Key, owner.SelectMany(p => p.Made).ToList(), cancellationToken);
+        }
+
+        await MachineRows.WriteAsync(db, changed.Select(p => (p.Owner, p.Id, p.Kind, p.State)).ToList(), cancellationToken);
+    }
+
     /// <summary>Every call is given the time on the plot; the machine works in its own (<paramref name="clock"/>).</summary>
     private sealed class Port(GameDb db, IProductionStats stats, Guid owner, Guid id, ProcessingMachine machine, MachineState state, IPowerClock clock) : IMachinePort
     {
         private readonly List<ProductionEntry> _made = [];
         private bool _changed;
+
+        public Guid Owner => owner;
+        public Guid Id => id;
+        public string Kind => machine.Kind;
+        public MachineState State => state;
+        public bool Changed => _changed;
+        public IReadOnlyList<ProductionEntry> Made => _made;
 
         private ProcessingRecipe? Recipe => machine.Recipe(state.Recipe);
 
