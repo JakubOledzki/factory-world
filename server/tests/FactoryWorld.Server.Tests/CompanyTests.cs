@@ -267,7 +267,7 @@ public sealed class CompanyTests(ServerFactory factory) : IClassFixture<ServerFa
         Assert.True((await member.Client.InventoryAsync())[Items.Wood] >= 1);
 
         // The owner builds; a worker uses the furnace and puts into the chest but builds nothing and takes nothing out.
-        var free = FreeTiles(tiles).Take(3).ToList();
+        var free = PlotTiles.Apart(FreeTiles(tiles).Where(t => PlotTiles.Clear(tiles, t.X, t.Y, 1))).Take(3).ToList();
         await GiveAsync(owner, Items.WoodenChest, 1);
         await GiveAsync(owner, Items.Furnace, 1);
         var chest = (await owner.SendAsync("plot.place", new { x = forest.X, y = forest.Y, kind = Items.WoodenChest, tileX = free[0].X, tileY = free[0].Y }))

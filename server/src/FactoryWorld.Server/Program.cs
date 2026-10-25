@@ -74,6 +74,11 @@ foreach (var module in modules)
     await module.InitializeAsync(app.Services, app.Lifetime.ApplicationStopping);
 }
 
+foreach (var module in modules)
+{
+    await module.StartedAsync(app.Services, app.Lifetime.ApplicationStopping);
+}
+
 app.UseCors();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
 

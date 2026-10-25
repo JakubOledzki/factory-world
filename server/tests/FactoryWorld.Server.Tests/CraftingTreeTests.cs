@@ -94,7 +94,7 @@ public sealed class CraftingTreeTests(ServerFactory factory) : IClassFixture<Ser
         Assert.Equal(5, Footprints.Size(Items.Megafactory));
         Assert.Equal(5, Footprints.Size(Items.SteelCombine));
         Assert.Equal(3, Footprints.Size(Items.RoboticHall));
-        Assert.Equal(1, Footprints.Size(Items.MachineShop));
+        Assert.Equal(2, Footprints.Size(Items.MachineShop));
         Assert.True(Items.IsGenerator(Items.FusionPlant));
         Assert.Contains(Items.Coolant, PowerRules.Generators[Items.FusionPlant].Burns);
         foreach (var kind in new[] { Items.MachineShop, Items.RoboticHall, Items.OxygenConverter, Items.RollingMill, Items.ContinuousCaster, Items.SteelCombine, Items.Megafactory })

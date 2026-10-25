@@ -367,6 +367,21 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("export_shipments", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.FootprintVersionRow", b =>
+                {
+                    b.Property<int>("Version")
+                        .HasColumnType("integer")
+                        .HasColumnName("version");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.HasKey("Version");
+
+                    b.ToTable("footprint_versions", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.ForestLedgerRow", b =>
                 {
                     b.Property<Guid>("PlayerId")

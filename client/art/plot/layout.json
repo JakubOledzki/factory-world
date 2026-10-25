@@ -925,5 +925,17 @@
  "bank_branch": {
   "anchorX": 128,
   "anchorY": 157
+ },
+ "assembler": {
+  "anchorX": 96,
+  "anchorY": 106
+ },
+ "fast_assembler": {
+  "anchorX": 128,
+  "anchorY": 143
+ },
+ "express_assembler": {
+  "anchorX": 176,
+  "anchorY": 196
  }
 }

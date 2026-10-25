@@ -62,11 +62,13 @@ public sealed class ProcessingTests(ServerFactory factory) : IClassFixture<Serve
         using var tiles = new MemoryStream();
         gzip.CopyTo(tiles);
         var bytes = tiles.ToArray();
-        // A free tile with two more east of it and the three under them, for a pole and a generator.
+        // Free ground for the machine with two tiles more east of it, for a pole and a generator.
+        var size = Footprints.Size(kind);
         bool Free(int i) => bytes[i] == (byte)TileObject.None;
-        var free = Enumerable.Range(PlotLayout.Size * 20, bytes.Length - PlotLayout.Size * 22)
-            .First(i => i % PlotLayout.Size < PlotLayout.Size - 3 && Enumerable.Range(0, 3).All(d => Free(i + d) && Free(i + d + PlotLayout.Size)));
-        var (tileX, tileY) = (free % PlotLayout.Size, free / PlotLayout.Size);
+        var free = Enumerable.Range(PlotLayout.Size * 20, bytes.Length - PlotLayout.Size * 30)
+            .First(i => i % PlotLayout.Size < PlotLayout.Size - size - 2
+                && Enumerable.Range(0, size + 2).All(dx => Enumerable.Range(0, size).All(dy => Free(i + dx + dy * PlotLayout.Size))));
+        var (tileX, tileY) = (free % PlotLayout.Size + Footprints.Low(kind), free / PlotLayout.Size + Footprints.Low(kind));
 
         await GiveAsync(client, kind, 1);
         var placed = await client.SendAsync("plot.place", new { x, y, kind, tileX, tileY });
@@ -76,8 +78,9 @@ public sealed class ProcessingTests(ServerFactory factory) : IClassFixture<Serve
             await GiveAsync(client, Items.Pole, 1);
             await GiveAsync(client, Items.Generator, 1);
             await GiveAsync(client, Items.Coal, 10);
-            Assert.Equal("plot.placed", (await client.SendAsync("plot.place", new { x, y, kind = Items.Pole, tileX = tileX + 1, tileY = tileY + 1 })).Type());
-            var generator = (await client.SendAsync("plot.place", new { x, y, kind = Items.Generator, tileX = tileX + 2, tileY = tileY + 1 }))
+            var east = tileX + Footprints.High(kind) + 1;
+            Assert.Equal("plot.placed", (await client.SendAsync("plot.place", new { x, y, kind = Items.Pole, tileX = east, tileY })).Type());
+            var generator = (await client.SendAsync("plot.place", new { x, y, kind = Items.Generator, tileX = east + 1, tileY }))
                 .Payload().GetProperty("object").GetProperty("id").GetString();
             Assert.Equal("generator", (await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Coal, quantity = 10 })).Type());
         }

@@ -175,7 +175,7 @@ public sealed class UpgradeTests(ServerFactory factory) : IClassFixture<ServerFa
     {
         for (var i = 20 * PlotLayout.Size; i < tiles.Length; i++)
         {
-            if (tiles[i] == (byte)TileObject.None)
+            if (PlotTiles.Clear(tiles, i % PlotLayout.Size, i / PlotLayout.Size))
             {
                 return (i % PlotLayout.Size, i / PlotLayout.Size);
             }

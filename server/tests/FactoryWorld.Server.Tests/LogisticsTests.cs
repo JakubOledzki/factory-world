@@ -353,7 +353,7 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         throw new InvalidOperationException("No such plot.");
     }
 
-    /// <summary>A plot of the player's with <paramref name="length"/> free tiles in a row from (tileX, tileY) east, and the row under it free too.</summary>
+    /// <summary>A plot of the player's with <paramref name="length"/> free tiles in a row from (tileX, tileY) east, and the two rows under it free too.</summary>
     private async Task<(int X, int Y, int TileX, int TileY)> PlotWithFreeRowAsync(GameClient client, int length)
     {
         await using (var scope = factory.Services.CreateAsyncScope())
@@ -372,7 +372,7 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         {
             for (var tx = 0; tx + Math.Max(length, 4) <= PlotLayout.Size; tx++)
             {
-                if (Enumerable.Range(tx, length).All(i => bytes[ty * PlotLayout.Size + i] == (byte)TileObject.None && bytes[(ty + 1) * PlotLayout.Size + i] == (byte)TileObject.None))
+                if (Enumerable.Range(tx, length).All(i => Enumerable.Range(ty, 3).All(row => bytes[row * PlotLayout.Size + i] == (byte)TileObject.None)))
                 {
                     return (x, y, tx, ty);
                 }
@@ -382,14 +382,14 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         throw new InvalidOperationException("No free row.");
     }
 
-    /// <summary>Powers a row of up to five tiles from (tileX, tileY): a pole and a generator with coal in the row under it.</summary>
+    /// <summary>Powers a row of up to five tiles from (tileX, tileY): a pole and a generator with coal two rows under it, past a 2 × 2 machine.</summary>
     private async Task PowerAsync(GameClient client, int x, int y, int tileX, int tileY, int coal = 20)
     {
         await GiveAsync(client, Items.Pole, 1);
         await GiveAsync(client, Items.Generator, 1);
         await GiveAsync(client, Items.Coal, coal);
-        await PlaceAsync(client, x, y, Items.Pole, tileX + 2, tileY + 1);
-        var generator = await PlaceAsync(client, x, y, Items.Generator, tileX + 3, tileY + 1);
+        await PlaceAsync(client, x, y, Items.Pole, tileX + 2, tileY + 2);
+        var generator = await PlaceAsync(client, x, y, Items.Generator, tileX + 3, tileY + 2);
         Assert.Equal("generator", (await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Coal, quantity = coal })).Type());
     }
 
@@ -538,19 +538,19 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
     {
         using var client = await PlayerAsync();
         using var other = await PlayerAsync();
-        var (x, y, tx, ty) = await PlotWithFreeRowAsync(client, 5);
+        var (x, y, tx, ty) = await PlotWithFreeRowAsync(client, 6);
         await GiveAsync(client, Items.WoodenChest, 2);
         await GiveAsync(client, Items.Inserter, 2);
         await GiveAsync(client, Items.Furnace, 1);
         await GiveAsync(client, Items.IronOre, 10);
         await GiveAsync(client, Items.Coal, 2);
 
-        // chest → inserter → furnace → inserter → chest
+        // chest → inserter → furnace (2 × 2) → inserter → chest
         var source = await PlaceAsync(client, x, y, Items.WoodenChest, tx, ty);
         await PlaceAsync(client, x, y, Items.Inserter, tx + 1, ty);
         var furnace = await PlaceAsync(client, x, y, Items.Furnace, tx + 2, ty);
-        await PlaceAsync(client, x, y, Items.Inserter, tx + 3, ty);
-        var target = await PlaceAsync(client, x, y, Items.WoodenChest, tx + 4, ty);
+        await PlaceAsync(client, x, y, Items.Inserter, tx + 4, ty);
+        var target = await PlaceAsync(client, x, y, Items.WoodenChest, tx + 5, ty);
         await client.SendAsync("storage.put", new { x, y, id = source, item = Items.IronOre, quantity = 10 });
         await client.SendAsync("storage.put", new { x, y, id = source, item = Items.Coal, quantity = 2 });
         await PowerAsync(client, x, y, tx, ty);
@@ -578,7 +578,7 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
     public async Task Inserters_work_a_mill_too_feeding_it_wheat_and_taking_its_flour()
     {
         using var client = await PlayerAsync();
-        var (x, y, tx, ty) = await PlotWithFreeRowAsync(client, 5);
+        var (x, y, tx, ty) = await PlotWithFreeRowAsync(client, 6);
         await GiveAsync(client, Items.GrainSilo, 1);
         await GiveAsync(client, Items.WoodenChest, 1);
         await GiveAsync(client, Items.Inserter, 2);
@@ -588,8 +588,8 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         var silo = await PlaceAsync(client, x, y, Items.GrainSilo, tx, ty);
         await PlaceAsync(client, x, y, Items.Inserter, tx + 1, ty);
         var mill = await PlaceAsync(client, x, y, Items.Mill, tx + 2, ty);
-        await PlaceAsync(client, x, y, Items.Inserter, tx + 3, ty);
-        var chest = await PlaceAsync(client, x, y, Items.WoodenChest, tx + 4, ty);
+        await PlaceAsync(client, x, y, Items.Inserter, tx + 4, ty);
+        var chest = await PlaceAsync(client, x, y, Items.WoodenChest, tx + 5, ty);
         Assert.Equal("machine", (await client.SendAsync("machine.recipe", new { machine = mill, recipe = Items.Flour })).Type());
         await client.SendAsync("storage.put", new { x, y, id = silo, item = Items.Wheat, quantity = 20 });
         await PowerAsync(client, x, y, tx, ty);

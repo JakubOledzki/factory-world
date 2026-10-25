@@ -114,6 +114,8 @@ public static class PowerRules
         [Items.OilPress] = 30,
         [Items.ElectricSawmill] = 40,
         [Items.IndustrialSawmill] = 80,
+        [Items.FastAssembler] = 40,
+        [Items.ExpressAssembler] = 100,
         [Items.Crusher] = 40,
         [Items.Drill] = 40,
         [Items.HeavyDrill] = 100,
@@ -150,6 +152,10 @@ public static class PowerRules
 
     public static bool Covers(PlotObject pole, int tileX, int tileY) =>
         Math.Abs(pole.TileX - tileX) <= SupplyRadius && Math.Abs(pole.TileY - tileY) <= SupplyRadius;
+
+    /// <summary>Whether a pole powers an object: it reaches any tile the object covers.</summary>
+    public static bool Covers(PlotObject pole, PlotObject o) =>
+        Footprints.Tiles(o.Kind, o.TileX, o.TileY).Any(t => Covers(pole, t.X, t.Y));
 
     public static bool Wired(PlotObject a, PlotObject b)
     {
@@ -205,7 +211,7 @@ public static class PowerRules
                 continue;
             }
 
-            var pole = poles.FindIndex(p => Covers(p, o.TileX, o.TileY));
+            var pole = poles.FindIndex(p => Covers(p, o));
             if (pole < 0)
             {
                 continue;
