@@ -521,6 +521,36 @@ public static class TechTree
             [], CompanyOnly: true),
     ];
 
+    /// <summary>
+    /// The branches of industry, each a tree of its own in the client: a tab per branch, in this order.
+    /// A technology may need one from another branch; the client shows that one at the side of the tree.
+    /// </summary>
+    public static readonly IReadOnlyList<Branch> Branches =
+    [
+        new("logistics", "Logistyka", Items.Belt, [Logistics, Automation, Storage, Sorting, CableTransport]),
+        new("mining", "Górnictwo", Items.IronOre,
+            [Stonemasonry, Metallurgy, MiningAutomation, Crushing, Explosives, DeepMining]),
+        new("forestry", "Leśnictwo", Items.Wood,
+            [ForestryIndustry, Silviculture, Woodworking, IndustrialForestry, Papermaking, Furniture, Charring, FireProtection, Beekeeping, ForestFoods]),
+        new("food", "Przetwórstwo", Items.Bread,
+            [Milling, OilPressing, Pickling, Baking, GrainStorage, Cooking, Confectionery]),
+        new("energy", "Energia", Items.WindTurbine, [Hydropower, HydroPlant, WindPower, LargeWind]),
+        new("oil", "Ropa i gaz", Items.CrudeOil,
+            [OilExtraction, Refining, EnhancedRecovery, OffshoreDrilling, Cracking, Petrochemistry, Combustion, Roads]),
+        new("coast", "Nabrzeże", Items.Herring, [Fishing, SaltWorks, FishProcessing, Seafaring, Aquaculture, TidalPower]),
+        new("desert", "Pustynia", Items.SolarPanel,
+            [Glassmaking, WaterSupply, SiliconWorks, BuildingMaterials, SolarPower, SolarTower]),
+        new("glacier", "Lodowiec", Items.Ice,
+            [Heating, PolarTransport, Refrigeration, Glaciology, PolarTourism, DataCenter]),
+        new("city", "Miasta", Items.Shop,
+            [Commerce, CityServices, WasteManagement, FreightHub, Assembly, UrbanConstruction, Headquarters]),
+        new("company", "Spółki", Items.CompanyHq, [Megaprojects, CorporateFinance]),
+    ];
+
+    /// <summary>The branch each technology belongs to.</summary>
+    public static readonly IReadOnlyDictionary<string, Branch> BranchOf =
+        Branches.SelectMany(b => b.Technologies.Select(t => (t, b))).ToDictionary(p => p.t, p => p.b);
+
     public static readonly IReadOnlyDictionary<string, Technology> ById = Technologies.ToDictionary(t => t.Id);
 
     /// <summary>The technology that unlocks each item it lists.</summary>
@@ -531,6 +561,10 @@ public static class TechTree
     public static int Tier(Technology technology) =>
         technology.Requires.Count == 0 ? 0 : 1 + technology.Requires.Max(r => Tier(ById[r]));
 }
+
+/// <summary>A branch of industry and its technologies, roots first.</summary>
+/// <param name="Icon">The item whose icon the branch's tab shows.</param>
+public sealed record Branch(string Id, string Name, string Icon, IReadOnlyList<string> Technologies);
 
 public enum ResearchStatus { Locked, Available, Active, Done }
 
@@ -1016,6 +1050,7 @@ public abstract class ResearchHandler(IServiceScopeFactory scopes) : IMessageHan
                 name = t.Name,
                 description = t.Description,
                 tier = TechTree.Tier(t),
+                branch = TechTree.BranchOf[t.Id].Id,
                 requires = t.Requires,
                 cost = t.Cost.Select(c => new { id = c.Item, name = Items.Names[c.Item], quantity = c.Quantity }),
                 seconds = t.Time.TotalSeconds,
@@ -1047,6 +1082,7 @@ public abstract class ResearchHandler(IServiceScopeFactory scopes) : IMessageHan
             } : null,
             // What speeds research up, and by how many seconds each piece.
             boosts = Items.ResearchBoost.Select(b => new { id = b.Key, name = Items.Names[b.Key], seconds = b.Value }),
+            branches = TechTree.Branches.Select(b => new { id = b.Id, name = b.Name, icon = b.Icon }),
             serverTime = state.ServerTime.ToUnixTimeMilliseconds(),
             finished = state.Finished.Where(TechTree.ById.ContainsKey).Select(id => new { id, name = TechTree.ById[id].Name }),
             xp = state.Xp is { } xp ? new { xp = xp.Xp, level = xp.Level, leveledUp = xp.LeveledUp } : null,
