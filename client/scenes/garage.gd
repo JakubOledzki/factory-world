@@ -10,6 +10,10 @@ const ROOM_LIGHT := Color(0.74, 0.7, 0.66)
 ## must stand to use it, and when the sorting window closes again after walking away.
 const REACH := 0.55
 const LEAVE := 1.2
+## Holding the right mouse button (or a finger, on a touch screen) this long on a piece of furniture puts it back
+## into the inventory; a finger may wander this many pixels before the hold is called off.
+const HOLD_TO_PICK_UP := 2.0
+const HOLD_SLIP := 24.0
 ## Walking paths use this grid. Metres.
 const GRID := 0.1
 const BIN := "furniture_trash_bin"
@@ -82,6 +86,13 @@ var _on_arrival := Callable()
 var _hovered: Furniture
 var _menu: PanelContainer
 var _menu_box: VBoxContainer
+## The furniture being held to put it away, the button holding it, where the mouse was then and for how long;
+## and the ring filling up next to it.
+var _hold: Furniture
+var _hold_button := MOUSE_BUTTON_NONE
+var _hold_from := Vector2.ZERO
+var _hold_for := 0.0
+var _hold_ring: Control
 
 ## The kind of furniture being placed, and its see-through copy following the mouse.
 var _placing := ""
@@ -224,6 +235,12 @@ func _build_room() -> void:
 	_toast.position = Vector2(240, 628)
 	_toast.modulate.a = 0.0
 	_overlay.add_child(_toast)
+
+	_hold_ring = Control.new()
+	_hold_ring.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_hold_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hold_ring.draw.connect(_draw_hold)
+	_overlay.add_child(_hold_ring)
 
 
 ## Shows the floor and walls of the upgrades bought (track → level), and the room as bright as
@@ -504,13 +521,17 @@ func _unhandled_input(event: InputEvent) -> void:
 			_menu.visible = false
 		elif event.button_index == MOUSE_BUTTON_LEFT:
 			if _hovered != null:
+				# On a touch screen a long press does what holding the right button does; the tap opens the menu.
+				if event.device == InputEvent.DEVICE_ID_EMULATION:
+					_start_hold(_hovered, MOUSE_BUTTON_LEFT)
 				_open_menu(_hovered, mouse)
 			else:
 				var target := RoomProjection.to_floor(mouse)
 				if Rect2(Vector2.ZERO, _room).has_point(target):
 					_walk_to(target)
 		elif event.button_index == MOUSE_BUTTON_RIGHT and _hovered != null:
-			_open_menu(_hovered, mouse)
+			# A short click opens the menu when the button is let go, a long hold puts the furniture away.
+			_start_hold(_hovered, MOUSE_BUTTON_RIGHT)
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("cancel"):
 		if _placing != "":
@@ -590,6 +611,61 @@ func _open_menu(object: Furniture, at: Vector2) -> void:
 	_menu.visible = true
 	_menu.position = (at + Vector2(12, 4)).clamp(Vector2.ZERO, get_viewport_rect().size - _menu.get_combined_minimum_size())
 	_update_hover()
+
+
+# --- Holding furniture to put it away ---------------------------------------------
+
+func _start_hold(object: Furniture, button: MouseButton) -> void:
+	_hold = object
+	_hold_button = button
+	_hold_from = get_viewport().get_mouse_position()
+	_hold_for = 0.0
+
+
+func _stop_hold() -> void:
+	_hold = null
+	_hold_ring.queue_redraw()
+
+
+## Counts the hold up and puts the furniture away once it was held long enough. Letting the right button go
+## earlier opens the menu, as a click does; moving off the furniture (or a finger away) calls the hold off.
+func _update_hold(delta: float) -> void:
+	if _hold == null:
+		return
+	var object := _hold
+	var finger := _hold_button == MOUSE_BUTTON_LEFT
+	if not is_instance_valid(object) or not _objects.has(object.id) or _placing != "":
+		_stop_hold()
+		return
+	# The menu a tap opens covers the furniture, so a finger only has to stay put.
+	var still := get_viewport().get_mouse_position().distance_to(_hold_from) <= HOLD_SLIP if finger \
+		else _object_at(get_global_mouse_position()) == object and get_viewport().gui_get_hovered_control() == null
+	if not Input.is_mouse_button_pressed(_hold_button):
+		_stop_hold()
+		if not finger and still:
+			_open_menu(object, get_global_mouse_position())
+		return
+	if not still:
+		_stop_hold()
+		return
+	_hold_for += delta
+	_hold_ring.queue_redraw()
+	if _hold_for < HOLD_TO_PICK_UP:
+		return
+	_stop_hold()
+	_menu.visible = false
+	_walk_up_to(object, _pick_up.bind(object, false))
+
+
+## The ring filling up next to the mouse (above the finger, where it is not covered) while furniture is held.
+func _draw_hold() -> void:
+	if _hold == null:
+		return
+	var at := _hold_ring.get_global_transform().affine_inverse() * (_hold_from + (Vector2(0, -64) if _hold_button == MOUSE_BUTTON_LEFT else Vector2(0, -34)))
+	var part := clampf(_hold_for / HOLD_TO_PICK_UP, 0.0, 1.0)
+	_hold_ring.draw_arc(at, 15.0, 0, TAU, 32, Color(0.05, 0.05, 0.06, 0.6), 5.0, true)
+	if part > 0.0:
+		_hold_ring.draw_arc(at, 15.0, -PI / 2, -PI / 2 + TAU * part, 32, Color(UI.GOLD, 0.95), 5.0, true)
 
 
 # --- Moving furniture --------------------------------------------------------------
@@ -1057,6 +1133,7 @@ func _process(delta: float) -> void:
 	if _placing != "":
 		_update_ghost()
 	_update_hover()
+	_update_hold(delta)
 	_update_bin()
 	_update_use()
 	if _garage.is_empty():

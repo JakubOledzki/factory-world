@@ -41,6 +41,14 @@ public static class TechTree
     public const string Drones = "drones";
     public const string Storage = "storage";
     public const string Milling = "milling";
+    public const string RollerMilling = "roller_milling";
+    public const string FlourIndustry = "flour_industry";
+    public const string BrickFurnaces = "brick_furnaces";
+    public const string BlastFurnaces = "blast_furnaces";
+    public const string MechanizedQuarrying = "mechanized_quarrying";
+    public const string OpenPitMining = "open_pit_mining";
+    public const string ConeCrushing = "cone_crushing";
+    public const string OreProcessing = "ore_processing";
     public const string OilPressing = "oil_pressing";
     public const string Pickling = "pickling";
     public const string Baking = "baking";
@@ -208,6 +216,12 @@ public static class TechTree
         new(Baking, "Piekarnictwo", "Piec piekarski wypieka chleb z mąki.",
             [Milling], [(Items.Flour, 20), (Items.Stone, 40), (Items.Sand, 10)], TimeSpan.FromMinutes(2), 40,
             [Items.Bakery]),
+        new(RollerMilling, "Młyny walcowe", "Młyn walcowy (3 × 3 pola) na prąd miele 3 razy szybciej niż młyn i robi o ćwierć więcej mąki z tego samego zboża.",
+            [Milling, Automation], [(Items.Flour, 40), (Items.IronIngot, 30), (Items.CopperIngot, 10)], TimeSpan.FromMinutes(3), 60,
+            [Items.RollerMill]),
+        new(FlourIndustry, "Przemysł młyński", "Zakłady młyńskie (4 × 4 pola) na prąd mielą 6 razy szybciej niż młyn i robią o połowę więcej mąki z tego samego zboża.",
+            [RollerMilling, Metallurgy], [(Items.Flour, 100), (Items.SteelIngot, 20), (Items.Bricks, 30)], TimeSpan.FromMinutes(5), 100,
+            [Items.FlourWorks]),
         new(Sorting, "Sortowanie", "Rozdzielacz dzieli taśmę na dwie i odsyła wybrane przedmioty na jedną stronę.",
             [Automation], [(Items.Belt, 10), (Items.Inserter, 4), (Items.CopperIngot, 10)], TimeSpan.FromMinutes(3), 60,
             [Items.Splitter]),
@@ -278,9 +292,27 @@ public static class TechTree
         new(Metallurgy, "Metalurgia", "Odlewnia stapia brąz i stal i wypala cegły; z brązu wykujesz lepszy kilof.",
             [], [(Items.CopperIngot, 30), (Items.TinIngot, 10), (Items.IronIngot, 30), (Items.Coal, 30)], TimeSpan.FromMinutes(3), 60,
             [Items.Foundry, Items.BronzePickaxe]),
+        new(BrickFurnaces, "Piece ceglane", "Piec ceglany (3 × 3 pola) przetapia rudę 2 razy szybciej niż kamienny i mieści po 100 rudy i węgla.",
+            [], [(Items.Stone, 60), (Items.Sand, 30), (Items.IronIngot, 15)], TimeSpan.FromMinutes(2), 40,
+            [Items.BrickFurnace]),
+        new(BlastFurnaces, "Piece hutnicze", "Piec hutniczy (4 × 4 pola) przetapia rudę 4 razy szybciej niż kamienny, mieści po 200 rudy i węgla, a węgiel starcza mu na 8 przetopień.",
+            [BrickFurnaces, Metallurgy], [(Items.Bricks, 40), (Items.SteelIngot, 20), (Items.Coal, 40)], TimeSpan.FromMinutes(4), 80,
+            [Items.BlastFurnace]),
+        new(MechanizedQuarrying, "Kamieniołom zmechanizowany", "Zmechanizowany kamieniołom (3 × 3 pola) na prąd łamie 3 razy więcej kamienia niż zwykły.",
+            [MiningAutomation, Metallurgy], [(Items.Stone, 200), (Items.SteelIngot, 15), (Items.CopperIngot, 20)], TimeSpan.FromMinutes(4), 80,
+            [Items.MechanizedQuarry]),
+        new(OpenPitMining, "Górnictwo odkrywkowe", "Kopalnia odkrywkowa (4 × 4 pola) na prąd łamie 6 razy więcej kamienia niż kamieniołom.",
+            [MechanizedQuarrying, Explosives], [(Items.Stone, 400), (Items.Dynamite, 20), (Items.SteelIngot, 30)], TimeSpan.FromMinutes(6), 120,
+            [Items.OpenPitMine]),
         new(Crushing, "Kruszenie", "Kruszarka mieli kamień na piasek, a rudę na kruszywo, z którego wytopisz więcej sztabek.",
             [MiningAutomation], [(Items.Stone, 100), (Items.IronIngot, 30)], TimeSpan.FromMinutes(3), 60,
             [Items.Crusher]),
+        new(ConeCrushing, "Kruszarki stożkowe", "Kruszarka stożkowa (3 × 3 pola) kruszy 3 razy szybciej niż kruszarka, a z 4 rud robi 7 kruszywa zamiast 6.",
+            [Crushing, Metallurgy], [(Items.Sand, 100), (Items.SteelIngot, 15), (Items.IronIngot, 30)], TimeSpan.FromMinutes(4), 80,
+            [Items.ConeCrusher]),
+        new(OreProcessing, "Przeróbka rud", "Zakład przeróbczy (4 × 4 pola) kruszy 6 razy szybciej niż kruszarka, a z każdej rudy robi 2 kruszywa.",
+            [ConeCrushing, DeepMining], [(Items.CrushedIronOre, 100), (Items.SteelIngot, 30), (Items.BronzeIngot, 20)], TimeSpan.FromMinutes(6), 120,
+            [Items.OreProcessingPlant]),
         new(Explosives, "Materiały wybuchowe", "Dynamit wydobywa z kopalni pięć urobków naraz.",
             [Metallurgy], [(Items.Sulfur, 20), (Items.Coal, 20)], TimeSpan.FromMinutes(2), 50,
             [Items.Dynamite]),
@@ -419,7 +451,7 @@ public static class TechTree
         new(Furniture, "Meblarstwo", "Stolarnia robi krzesła, stoły i szafy, a z drewna dębowego komody, na które czekają miasta.",
             [ForestryIndustry], [(Items.Planks, 40), (Items.Nails, 30)], TimeSpan.FromMinutes(2), 40,
             [Items.Carpentry, Items.Chair, Items.Table, Items.Wardrobe, Items.OakDresser]),
-        new(Charring, "Węglarstwo i smolarstwo", "Mielerz wypala z drewna węgiel drzewny, który pali się jak kopalny, a smolarnia warzy z żywicy smołę, terpentynę i kalafonię.",
+        new(Charring, "Węglarstwo i smolarstwo", "Mielerz wypala z drewna węgiel drzewny, który pali się jak kopalny i zastępuje go w odlewni przy stali, a smolarnia warzy z żywicy smołę, terpentynę i kalafonię.",
             [ForestryIndustry], [(Items.Wood, 60), (Items.Stone, 40)], TimeSpan.FromMinutes(2), 40,
             [Items.CharcoalKiln, Items.Charcoal, Items.TarKiln, Items.Tar, Items.Turpentine, Items.Rosin]),
         new(Beekeeping, "Pszczelarstwo", "Ul daje miód i wosk, szybciej przy kwitnących lipach; z miodu pieczesz pierniki, z wosku robisz świece.",
@@ -655,11 +687,12 @@ public static class TechTree
             [Logistics, Automation, Storage, Sorting, FastLogistics, UndergroundBelts, LongInserters, BiggerGrippers, ExpressLogistics,
              IndustrialGrippers, LogisticsDepot, CableTransport, ExpressCable, Drones, RailFerry, Assembling, FastAssembling, ExpressAssembling]),
         new("mining", "Górnictwo", Items.IronOre,
-            [Stonemasonry, Metallurgy, MiningAutomation, Crushing, Explosives, DeepMining, MeteoriteTools]),
+            [Stonemasonry, BrickFurnaces, Metallurgy, BlastFurnaces, MiningAutomation, Crushing, MechanizedQuarrying, ConeCrushing, Explosives,
+             DeepMining, OpenPitMining, OreProcessing, MeteoriteTools]),
         new("forestry", "Leśnictwo", Items.Wood,
             [ForestryIndustry, Silviculture, Woodworking, IndustrialForestry, Papermaking, Furniture, Charring, FireProtection, Beekeeping, ForestFoods]),
         new("food", "Przetwórstwo", Items.Bread,
-            [Milling, OilPressing, Pickling, Baking, GrainStorage, Cooking, Confectionery]),
+            [Milling, OilPressing, Pickling, Baking, RollerMilling, GrainStorage, Cooking, FlourIndustry, Confectionery]),
         new("husbandry", "Hodowla", Items.Cow,
             [Breeding, Dairying, Distilling, Farmsteads, Butchery, Biogas, WorksCanteens, WorkMeals, BioLab, Horsemanship, FineCuisine, ManorFarms]),
         new("energy", "Energia", Items.WindTurbine, [Hydropower, HydroPlant, WindPower, LargeWind]),

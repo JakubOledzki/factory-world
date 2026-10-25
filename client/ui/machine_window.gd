@@ -130,6 +130,10 @@ func _render() -> void:
 		for input: Dictionary in _state["inputs"]:
 			var room := int(_state["maxInput"]) - int(input["quantity"])
 			_slots.add_child(_stack_row(input["id"], "%s: %d" % [input["name"], int(input["quantity"])], [int(input["need"]), 10, 0], room))
+			# What else goes in for it, e.g. charcoal for coal: shown when the player has some.
+			for also: Dictionary in input.get("also", []):
+				if _count(also["id"]) > 0:
+					_slots.add_child(_stack_row(also["id"], "%s zamiast: %s" % [also["name"], input["name"].to_lower()], [int(input["need"]), 10, 0], room))
 		var take_inputs := UI.button("Wyjmij składniki", _take.bind("input"))
 		take_inputs.disabled = _state["inputs"].all(func(i: Dictionary) -> bool: return int(i["quantity"]) == 0)
 		_slots.add_child(take_inputs)
@@ -172,7 +176,7 @@ func _render() -> void:
 
 	var help: Array[String] = ["Maszyna pracuje dalej, gdy odejdziesz. Mieści %d sztuk gotowych produktów." % int(_state["maxOutput"])]
 	if _state["fired"]:
-		help.append("Potrzebuje opału: węgla albo drewna.")
+		help.append("Potrzebuje opału: węgla, węgla drzewnego albo drewna.")
 	if _state.get("powered", false):
 		help.append("Działa na prąd: postaw generator parowy z opałem i słup energetyczny najwyżej 2 pola od maszyny.")
 	_help.text = " ".join(help)

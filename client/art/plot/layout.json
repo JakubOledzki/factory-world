@@ -974,5 +974,29 @@
  "express_assembler": {
   "anchorX": 176,
   "anchorY": 196
+ },
+ "roller_mill": {
+  "anchorX": 128,
+  "anchorY": 172
+ },
+ "flour_works": {
+  "anchorX": 176,
+  "anchorY": 234
+ },
+ "mechanized_quarry": {
+  "anchorX": 128,
+  "anchorY": 143
+ },
+ "open_pit_mine": {
+  "anchorX": 176,
+  "anchorY": 170
+ },
+ "cone_crusher": {
+  "anchorX": 128,
+  "anchorY": 157
+ },
+ "ore_processing_plant": {
+  "anchorX": 176,
+  "anchorY": 204
  }
 }

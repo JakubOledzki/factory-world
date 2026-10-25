@@ -23,6 +23,8 @@ const BIG := {
 	"power_fusion_plant": 3, "furniture_canteen": 3, "furniture_biogas_plant": 3, "furniture_farmstead": 3, "furniture_manor_farm": 3,
 	"furniture_buy_market": 3, "furniture_bank_branch": 3,
 	"furniture_assembler": 2, "furniture_fast_assembler": 3, "furniture_express_assembler": 4,
+	"furniture_roller_mill": 3, "furniture_flour_works": 4, "furniture_mechanized_quarry": 3, "furniture_open_pit_mine": 4,
+	"furniture_cone_crusher": 3, "furniture_ore_processing_plant": 4,
 	"furniture_steel_combine": 5, "furniture_megafactory": 5, "furniture_bank": 5,
 	"furniture_rail_port": 9,
 }

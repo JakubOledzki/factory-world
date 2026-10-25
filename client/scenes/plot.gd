@@ -50,6 +50,10 @@ const SPEED := 3.2
 const RADIUS := 0.25
 ## How close (tiles, centre to centre) the player must be to work a tile, and to use the station.
 const REACH := 1.75
+## Holding the right mouse button (or a finger, on a touch screen) this long on a placed object puts it back into the
+## inventory; a finger may wander this many pixels before the hold is called off.
+const HOLD_TO_PICK_UP := 2.0
+const HOLD_SLIP := 24.0
 const STATION_REACH := 2.5
 ## Tiles are drawn in square chunks around the player.
 const CHUNK := 16
@@ -150,6 +154,9 @@ const PLACED_SPRITES := {
 	"furniture_assembler": "assembler", "furniture_fast_assembler": "fast_assembler", "furniture_express_assembler": "express_assembler",
 	"furniture_drill": "drill", "furniture_heavy_drill": "heavy_drill", "furniture_quarry": "quarry",
 	"furniture_crusher": "crusher", "furniture_stonemason": "stonemason", "furniture_foundry": "foundry",
+	"furniture_roller_mill": "roller_mill", "furniture_flour_works": "flour_works",
+	"furniture_mechanized_quarry": "mechanized_quarry", "furniture_open_pit_mine": "open_pit_mine",
+	"furniture_cone_crusher": "cone_crusher", "furniture_ore_processing_plant": "ore_processing_plant",
 	"power_water_wheel": "water_wheel", "power_hydro_plant": "hydro_plant", "logistics_cable_station": "cable_station",
 	"furniture_fishing_boat": "fishing_boat", "furniture_rowing_boat": "rowing_boat", "furniture_smokehouse": "smokehouse",
 	"furniture_cannery": "cannery", "furniture_salt_pan": "salt_pan", "furniture_fish_farm": "fish_farm",
@@ -197,6 +204,8 @@ const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_
 	"furniture_sawmill", "furniture_electric_sawmill", "furniture_industrial_sawmill",
 	"furniture_assembler", "furniture_fast_assembler", "furniture_express_assembler",
 	"furniture_quarry", "furniture_crusher", "furniture_stonemason", "furniture_foundry",
+	"furniture_roller_mill", "furniture_flour_works", "furniture_mechanized_quarry", "furniture_open_pit_mine",
+	"furniture_cone_crusher", "furniture_ore_processing_plant",
 	"furniture_fishing_boat", "furniture_rowing_boat", "furniture_smokehouse", "furniture_cannery", "furniture_salt_pan",
 	"furniture_fish_farm", "furniture_distillery", "furniture_refinery", "furniture_cracker", "furniture_chemical_plant",
 	"furniture_glassworks", "furniture_arc_furnace", "furniture_water_well", "furniture_desalinator", "furniture_drying_yard",
@@ -237,7 +246,8 @@ const BREAKWATER := "furniture_breakwater"
 const BOATS := ["furniture_fishing_boat", "furniture_rowing_boat"]
 const COAST := 10
 const LAKESHORE := 11
-const QUARRY := "furniture_quarry"
+## Quarries of every level, which stand in the mountains only.
+const QUARRIES := ["furniture_quarry", "furniture_mechanized_quarry", "furniture_open_pit_mine"]
 const CABLE_STATION := "logistics_cable_station"
 ## Cable stations of both levels, and how far their cable reaches.
 const CABLE_STATIONS := {CABLE_STATION: 24, "logistics_express_cable_station": 48}
@@ -498,6 +508,11 @@ var _faded := {}
 ## Objects standing in front of belts or inserters (over them on screen), a little see-through so those show.
 var _screening := {}
 var _hover_station := false
+## The object being held to put it away (its id, the button holding it and where the finger started), and how long so far.
+var _hold_id := ""
+var _hold_button := MOUSE_BUTTON_NONE
+var _hold_from := Vector2.ZERO
+var _hold_for := 0.0
 ## The tile being worked, and seconds of work left.
 var _work := Vector2i(-1, -1)
 var _work_left := 0.0
@@ -1383,7 +1398,7 @@ func _can_place(cell: Vector2i) -> bool:
 	if _placing in DRILLS:
 		var mine := _mine_beside(cell)
 		return mine >= 0 and _drill_at(mine).x < 0
-	if _placing == QUARRY:
+	if _placing in QUARRIES:
 		return int(_plot.get("biome", -1)) == MOUNTAINS
 	var biome := int(_plot.get("biome", -1))
 	if _placing == LIGHTHOUSE:
@@ -1654,6 +1669,8 @@ func _power_note(id: String) -> String:
 
 func _draw_marks() -> void:
 	_draw_power_reach()
+	if _hold_id != "":
+		_draw_hold()
 	if _hovered.x >= 0 and WORK.has(_work_kind(_hovered)) and not _fields.has(_hovered):
 		var ok := _holds(WORK[_work_kind(_hovered)]["tool"])
 		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8) if ok else Color(1.0, 0.42, 0.35, 0.8))
@@ -1771,8 +1788,14 @@ func _unhandled_input(event: InputEvent) -> void:
 			_set_zoom(_zoom * 1.1)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_set_zoom(_zoom / 1.1)
+		elif event.button_index == MOUSE_BUTTON_RIGHT:
+			_update_hover()
+			_start_hold(MOUSE_BUTTON_RIGHT)
 		elif event.button_index == MOUSE_BUTTON_LEFT:
 			_update_hover()
+			# On a touch screen a long press does what holding the right button does; the tap acts as always.
+			if event.device == InputEvent.DEVICE_ID_EMULATION:
+				_start_hold(MOUSE_BUTTON_LEFT)
 			var cell := Vector2i((get_global_mouse_position() / TILE).floor())
 			if _placing != "":
 				if _can_place(cell) and _big(_placing):
@@ -2854,6 +2877,83 @@ func _pick_up_placed(id: String) -> void:
 		_poll_farmsteads()
 
 
+# --- Holding an object to put it away -------------------------------------------------------
+
+## Starts holding the object under the mouse (if it is a placed one) with `button`.
+func _start_hold(button: MouseButton) -> void:
+	_hold_button = button
+	_hold_id = _held_id()
+	_hold_from = get_viewport().get_mouse_position()
+	_hold_for = 0.0
+
+
+func _stop_hold() -> void:
+	if _hold_id != "":
+		_hold_id = ""
+		_marks.queue_redraw()
+
+
+## The id of the placed object under the mouse, or "" when there is none (or the mouse is over the interface).
+func _held_id() -> String:
+	if _placing != "" or _releasing != "":
+		return ""
+	return str(_placed[_hovered]["id"]) if _placed.has(_hovered) else ""
+
+
+## Counts the hold up, calls it off when the button is let go or the mouse leaves the object, and puts the
+## object away once it was held long enough.
+func _update_hold(delta: float) -> void:
+	if _hold_id == "":
+		return
+	var finger := _hold_button == MOUSE_BUTTON_LEFT
+	var slipped := get_viewport().get_mouse_position().distance_to(_hold_from) > HOLD_SLIP
+	# The character walks after a tap and the plot slides under the finger, so a finger only has to stay put.
+	var left := slipped if finger else _held_id() != _hold_id
+	if not Input.is_mouse_button_pressed(_hold_button) or left or (finger and _touches.size() > 1):
+		_stop_hold()
+		return
+	_hold_for += delta
+	_marks.queue_redraw()
+	if _hold_for < HOLD_TO_PICK_UP:
+		return
+	var id := _hold_id
+	_stop_hold()
+	var cell := _placed_cell(id)
+	if cell.x < 0:
+		return
+	# Whatever the tap opened goes away: the object itself does.
+	_object_menu.hide()
+	_menu_object = Vector2i(-1, -1)
+	_hide_placed_windows()
+	_go_and(cell, func(at: Vector2i) -> void:
+		if _placed.has(at) and _placed[at]["id"] == id:
+			_pick_up_placed(id))
+
+
+## A tile of the placed object with this id, or (-1, -1) when it is gone.
+func _placed_cell(id: String) -> Vector2i:
+	for cell: Vector2i in _placed:
+		if _placed[cell]["id"] == id:
+			return cell
+	return Vector2i(-1, -1)
+
+
+## The ring filling up around the object being held.
+func _draw_hold() -> void:
+	var cell := _placed_cell(_hold_id)
+	if cell.x < 0:
+		return
+	var kind: String = _placed[cell]["kind"]
+	var size := _ring_size(kind) * 1.15
+	var at := _object_centre(kind, _anchor(cell)) if _big(kind) else _cell_centre(cell)
+	var part := clampf(_hold_for / HOLD_TO_PICK_UP, 0.0, 1.0)
+	_marks.draw_set_transform(at, 0, Vector2(1, TILE.y / TILE.x))
+	_marks.draw_arc(Vector2.ZERO, TILE.x * 0.55 * size, 0, TAU, 40, Color(0.05, 0.05, 0.06, 0.45), 6.0, true)
+	if part > 0.0:
+		_marks.draw_arc(Vector2.ZERO, TILE.x * 0.55 * size, -PI / 2, -PI / 2 + TAU * part, 40, Color(0.96, 0.69, 0.25, 0.95), 6.0, true)
+	_marks.draw_set_transform(Vector2.ZERO)
+
+
 func _open_object_menu(cell: Vector2i) -> void:
 	_menu_object = cell
 	_object_menu.clear()
@@ -3431,6 +3531,7 @@ func _process(delta: float) -> void:
 	_update_fade()
 	_camera.position = _player.position
 	_update_hover()
+	_update_hold(delta)
 	_update_work(delta)
 	_update_minimap_dot()
 	_update_stages()
