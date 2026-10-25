@@ -128,7 +128,7 @@ public sealed class PlotObjectRow
     public int Rotation { get; set; }
 }
 
-/// <summary>A forester's building on a plot: the wood it keeps and when it can start cutting the next tree.</summary>
+/// <summary>A forester's building on a plot: the wood it keeps, when it can start cutting the next tree and what it plants.</summary>
 public sealed class PlotForesterRow
 {
     public Guid ObjectId { get; set; }
@@ -139,9 +139,15 @@ public sealed class PlotForesterRow
 
     public Guid OwnerId { get; set; }
 
+    /// <summary>Plain wood: of pines, spruces, birches and lindens.</summary>
     public int Wood { get; set; }
 
+    public int OakWood { get; set; }
+
     public DateTimeOffset BusyUntil { get; set; }
+
+    /// <summary>The kind of tree it plants.</summary>
+    public string Species { get; set; } = Trees.Pine;
 }
 
 /// <summary>A well pumping oil or gas: what it holds, how far it is with its unit and the state of its seals.</summary>
@@ -380,7 +386,9 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(f => f.Y).HasColumnName("y");
             e.Property(f => f.OwnerId).HasColumnName("owner_id");
             e.Property(f => f.Wood).HasColumnName("wood");
+            e.Property(f => f.OakWood).HasColumnName("oak_wood").HasDefaultValue(0);
             e.Property(f => f.BusyUntil).HasColumnName("busy_until");
+            e.Property(f => f.Species).HasColumnName("species").HasMaxLength(16).HasDefaultValue(Trees.Pine);
             e.HasIndex(f => new { f.X, f.Y });
             e.HasIndex(f => f.OwnerId);
         });
@@ -976,6 +984,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, TakeFromDrillHandler>();
         services.AddSingleton<IMessageHandler, GetForestryHandler>();
         services.AddSingleton<IMessageHandler, TakeFromForesterHandler>();
+        services.AddSingleton<IMessageHandler, PlantForesterHandler>();
         services.AddHostedService<RailwayDispatcher>();
         services.AddSingleton<IMessageHandler, TillHandler>();
         services.AddSingleton<IMessageHandler, PlantHandler>();

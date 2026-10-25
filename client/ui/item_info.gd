@@ -182,7 +182,7 @@ const ITEMS := {
 	"power_pole": ["Słup energetyczny", "Zasila maszyny do 2 pól od siebie; słupy do 7 pól od siebie łączą się przewodami.",
 			"Stół warsztatowy: 2 × drewno + 1 × sztabka miedzi → 2 szt. (5 s). Kupisz też u handlarza."],
 	"furniture_forester_hut": ["Chata leśnika",
-			"Stoi na działce na 3 × 3 polach i sama sadzi las 11 × 11 pól wokół siebie, ścina urośnięte drzewa (jedno na 6 s) i sadzi nowe. Mieści 100 drewna; wyjmiesz je ręcznie albo podajnikiem. Nie stanie na lodowcu ani w górach.",
+			"Stoi na działce na 3 × 3 polach i sama sadzi las 11 × 11 pól wokół siebie, ścina urośnięte drzewa (jedno na 6 s) i sadzi nowe. W jego oknie wybierzesz, co sadzi: sosnę, świerk, brzozę, dąb albo lipę. Mieści 100 drewna; wyjmiesz je ręcznie albo podajnikiem. Nie stanie na lodowcu ani w górach.",
 			"Stół warsztatowy: 40 × drewno + 20 × kamień + 20 × gwoździe + 10 × sadzonka drzewa (60 s). Kupisz też u handlarza za 600 $. Wymaga badania: Gospodarka leśna."],
 	"furniture_forester_lodge": ["Leśniczówka",
 			"Drugi poziom: las 13 × 13 pól, drzewa rosną 1,5 raza szybciej, cięcie co 3 s, mieści 200 drewna.",

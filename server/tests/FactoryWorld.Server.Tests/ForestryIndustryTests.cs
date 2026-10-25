@@ -65,7 +65,7 @@ public sealed class ForestryIndustryTests(ServerFactory factory) : IClassFixture
             patch.Open.Add((i, 0));
         }
 
-        patch.Wild.Add((0, 1));
+        patch.Wild[(0, 1)] = Trees.Kinds[0];
         patch.Advance(Start);
         Assert.Equal(20, patch.Trees.Count);
         Assert.All(patch.Trees.Values, ready => Assert.Equal(Start + grow, ready));
@@ -86,7 +86,11 @@ public sealed class ForestryIndustryTests(ServerFactory factory) : IClassFixture
 
         // Full, it stands until wood is taken out, and then goes on from that moment.
         var full = new ForestPatch(Hut, grow, Hut.Capacity - 1, Start);
-        full.Wild.UnionWith([(0, 0), (1, 0), (2, 0)]);
+        foreach (var tile in new[] { (0, 0), (1, 0), (2, 0) })
+        {
+            full.Wild[tile] = Trees.Kinds[0];
+        }
+
         full.Advance(Start + TimeSpan.FromHours(1));
         Assert.Equal(Hut.Capacity, full.Wood);
         Assert.Equal(2, full.Wild.Count);
@@ -344,8 +348,60 @@ public sealed class ForestryIndustryTests(ServerFactory factory) : IClassFixture
 
         factory.Time.Advance(TimeSpan.FromSeconds(6 * Math.Min(wild, 5)));
         var forestry = (await client.SendAsync("forestry.get", new { x, y })).Payload();
-        Assert.Equal(Math.Min(wild, 5), Forester(forestry, hut).GetProperty("wood").GetInt32());
+        // An oak gives two pieces of oak wood, every other tree one of wood.
+        var wood = Forester(forestry, hut).GetProperty("wood").GetInt32();
+        Assert.InRange(wood, Math.Min(wild, 5), 2 * Math.Min(wild, 5));
         Assert.Equal(Math.Min(wild, 5), forestry.GetProperty("cleared").GetArrayLength());
+    }
+
+    private static int Standing(JsonElement forester, string species) =>
+        forester.GetProperty("kinds").EnumerateArray().First(k => k.GetProperty("id").GetString() == species).GetProperty("standing").GetInt32();
+
+    private static int Stored(JsonElement forester, string item) =>
+        forester.GetProperty("store").EnumerateArray().Where(s => s.GetProperty("id").GetString() == item).Sum(s => s.GetProperty("quantity").GetInt32());
+
+    [Fact]
+    public async Task A_forester_plants_the_kind_of_tree_picked_where_it_cuts_one_and_an_oak_forest_gives_oak_wood()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty, _) = await PlotAsync(client);
+        await GiveAsync(client, Items.ForesterHut, 1);
+        var hut = await PlaceAsync(client, x, y, Items.ForesterHut, tx, ty);
+        var placed = Forester((await client.SendAsync("forestry.get", new { x, y })).Payload(), hut);
+        Assert.Equal(Trees.Pine, placed.GetProperty("species").GetString());
+        Assert.Equal(5, placed.GetProperty("kinds").GetArrayLength());
+        var all = placed.GetProperty("trees").GetInt32();
+        Assert.Equal(all, Standing(placed, Trees.Pine));
+
+        Assert.Equal("bad_species", (await client.SendAsync("forester.plant", new { x, y, id = hut, species = "palm" })).ErrorCode());
+        var oak = Forester((await client.SendAsync("forester.plant", new { x, y, id = hut, species = Trees.Oak })).Payload(), hut);
+        Assert.Equal(Trees.Oak, oak.GetProperty("species").GetString());
+        // An oak grows three times as long as a pine: 30 min on grassland.
+        Assert.Equal(1800, oak.GetProperty("growSeconds").GetDouble());
+
+        // The pines growing already are cut as they are, and oaks go in where they stood.
+        factory.Time.Advance(TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(60));
+        var cut = Forester((await client.SendAsync("forestry.get", new { x, y })).Payload(), hut);
+        Assert.Equal(10, Stored(cut, Items.Wood));
+        Assert.Equal(10, Standing(cut, Trees.Oak));
+        Assert.Equal(all - 10, Standing(cut, Trees.Pine));
+
+        // Grown oaks give oak wood.
+        factory.Time.Advance(TimeSpan.FromMinutes(30));
+        var oaks = Forester((await client.SendAsync("forestry.get", new { x, y })).Payload(), hut);
+        Assert.Equal(all, Stored(oaks, Items.Wood));
+        Assert.Equal(18, Stored(oaks, Items.OakWood));
+        Assert.Equal(all, Standing(oaks, Trees.Oak));
+
+        var taken = (await client.SendAsync("forester.take", new { x, y, id = hut })).Payload().GetProperty("taken").EnumerateArray()
+            .ToDictionary(t => t.GetProperty("id").GetString()!, t => t.GetProperty("quantity").GetInt32());
+        Assert.Equal(new Dictionary<string, int> { [Items.Wood] = all, [Items.OakWood] = 18 }, taken);
+        var inventory = await client.InventoryAsync();
+        Assert.Equal(18, inventory.GetValueOrDefault(Items.OakWood));
+
+        // An oak cut by hand from its forest is an oak too.
+        var trees = (await client.SendAsync("plot.enter", new { x, y })).Payload().GetProperty("trees").EnumerateArray().ToList();
+        Assert.Equal(all, trees.Count(t => t.GetProperty("species").GetString() == Trees.Oak));
     }
 
     [Fact]

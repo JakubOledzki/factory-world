@@ -136,6 +136,25 @@ public static class Trees
 
     public static readonly IReadOnlyDictionary<string, TreeKind> ById = Kinds.ToDictionary(k => k.Id);
 
+    public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
+    {
+        [Pine] = "Sosna",
+        [Spruce] = "Świerk",
+        [Birch] = "Brzoza",
+        [Oak] = "Dąb",
+        [Linden] = "Lipa",
+    };
+
+    /// <summary>What sets each kind apart, in a few words for the player.</summary>
+    public static readonly IReadOnlyDictionary<string, string> Notes = new Dictionary<string, string>
+    {
+        [Pine] = "Ścięta ręcznie daje czasem żywicę",
+        [Spruce] = "Na tundrze rośnie dwa razy szybciej",
+        [Birch] = "Rośnie najszybciej",
+        [Oak] = "Rośnie 3 razy dłużej, ale drewno dębowe jest droższe",
+        [Linden] = "Kwitnie i przyspiesza pszczoły z uli obok",
+    };
+
     public static readonly IReadOnlyDictionary<TileObject, TreeKind> ByTile = Kinds.ToDictionary(k => k.Tile);
 
     public static readonly IReadOnlyDictionary<string, TreeKind> BySapling = Kinds.ToDictionary(k => k.Sapling);
