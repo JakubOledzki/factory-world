@@ -20,6 +20,7 @@ const ERRORS := {
 	"invalid_credentials": "Zły e-mail lub hasło.",
 	"too_many_attempts": "Za dużo nieudanych prób. Odśwież grę i spróbuj ponownie.",
 	"session_expired": "Sesja wygasła. Zaloguj się ponownie.",
+	"logged_in_elsewhere": "Zalogowano się na to konto na innym urządzeniu albo w innej karcie, więc tutaj gra została wylogowana. Konto może grać tylko w jednym miejscu naraz.",
 	"invalid_name": "Nazwa: 3–16 znaków, litery, cyfry lub _.",
 	"name_taken": "Ta nazwa jest już zajęta.",
 	"invalid_appearance": "Nieznana opcja wyglądu.",
@@ -219,6 +220,8 @@ const ERRORS := {
 }
 
 var token := ""
+## Why the player was sent back to the login screen (e.g. logged in elsewhere), shown there once.
+var logout_reason := ""
 ## Palettes and option counts of the character editor, from the server.
 var appearance_options := {}
 ## After the character changed: its clothes, look, tools or backpack.
@@ -241,6 +244,7 @@ func _ready() -> void:
 	if config.load(SESSION_FILE) == OK:
 		token = config.get_value("session", "token", "")
 	Net.connected.connect(_on_reconnected)
+	Net.message_received.connect(_on_message)
 
 
 func error_text(reply: Dictionary) -> String:
@@ -365,6 +369,19 @@ func logout() -> void:
 	await Net.request("auth.logout", {"token": token})
 	_save_token("")
 	character = {}
+	get_tree().change_scene_to_file(LOGIN_SCENE)
+
+
+## The account logged in on another device or browser tab: the server closes this connection, and the
+## game goes back to the login screen without logging in again by itself, so the two do not take turns.
+## The saved token stays: another tab of the same browser plays with it now.
+func _on_message(type: String, payload: Variant, _id: String) -> void:
+	if type != "auth.kicked":
+		return
+	token = ""
+	character = {}
+	var code: String = payload.get("code", "") if payload is Dictionary else ""
+	logout_reason = ERRORS.get(code, ERRORS["logged_in_elsewhere"])
 	get_tree().change_scene_to_file(LOGIN_SCENE)
 
 

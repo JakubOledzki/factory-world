@@ -163,7 +163,7 @@ func _render_delivering() -> void:
 func _delivery_card(contract: Dictionary) -> Control:
 	var item: String = contract["item"]
 	var left := int(contract["quantity"]) - int(contract["delivered"])
-	var card := _card(contract, _issuer(contract))
+	var card := _card(contract, _issuer(contract), _player(contract))
 	var buttons := HBoxContainer.new()
 	buttons.add_theme_constant_override("separation", 6)
 	var can_give := mini(_count(item), left)
@@ -191,7 +191,7 @@ func _render_board() -> void:
 	if board.is_empty():
 		_page.add_child(_note("Na tablicy nie ma teraz zleceń. Wystaw własne w zakładce Moje zlecenia."))
 	for contract: Dictionary in board:
-		var card := _card(contract, _issuer(contract))
+		var card := _card(contract, _issuer(contract), _player(contract))
 		var take := UI.button("Przyjmij", _send.bind("contracts.accept", {"id": int(contract["id"])}), true)
 		take.tooltip_text = "Masz %d szt." % _count(contract["item"])
 		card.get_child(0).add_child(take)
@@ -213,7 +213,7 @@ func _render_issued() -> void:
 		var state: String = contract["state"]
 		if state in ["open", "taken"]:
 			var who := "czeka na wykonawcę" if state == "open" else "realizuje: %s" % contract["contractor"]
-			var card := _card(contract, who)
+			var card := _card(contract, who, contract.get("contractor") if state == "taken" else null)
 			if state == "open":
 				var cancel := UI.button("Odwołaj", _send.bind("contracts.cancel", {"id": int(contract["id"])}))
 				cancel.tooltip_text = "Nagroda wróci do portfela."
@@ -293,7 +293,8 @@ func _new_form() -> Control:
 
 ## A card for an open order: icon, name and amount, who, progress, reward and time left on the
 ## left; the caller adds buttons to the returned card's row (its first child).
-func _card(contract: Dictionary, who: String) -> PanelContainer:
+## <player> (a name, or null) gets the dot that tells whether they are in the game.
+func _card(contract: Dictionary, who: String, player: Variant = null) -> PanelContainer:
 	var card := PanelContainer.new()
 	card.add_theme_stylebox_override("panel", get_theme_stylebox("normal", "LineEdit"))
 	var row := HBoxContainer.new()
@@ -307,7 +308,7 @@ func _card(contract: Dictionary, who: String) -> PanelContainer:
 	var title := UI.label("%s  ×%d" % [contract["name"], int(contract["quantity"])])
 	title.add_theme_font_override("font", UI.bold())
 	text.add_child(title)
-	text.add_child(UI.label(who, UI.MUTED))
+	text.add_child(Online.with_dot(UI.label(who, UI.MUTED), player))
 	var progress := HBoxContainer.new()
 	var bar := ProgressBar.new()
 	bar.show_percentage = false
@@ -356,6 +357,11 @@ func _send(type: String, payload: Dictionary) -> void:
 	else:
 		changed.emit(reply["payload"])
 	await _reload()
+
+
+## The player who issued the contract, or null for a company's.
+func _player(contract: Dictionary) -> Variant:
+	return null if contract["npc"] else contract["issuer"]
 
 
 func _issuer(contract: Dictionary) -> String:

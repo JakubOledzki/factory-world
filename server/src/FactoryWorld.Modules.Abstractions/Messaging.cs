@@ -23,6 +23,10 @@ public sealed class ClientContext
     /// sent right after the reply being handled.</summary>
     public Queue<Envelope> Outbox { get; } = new();
 
+    /// <summary>Set by the connection: sends the player this message and closes the connection, e.g. when the
+    /// account logged in somewhere else (<see cref="OnlinePlayers"/>). Null where there is no socket (bots).</summary>
+    public Action<Envelope>? Close { get; set; }
+
     public Guid RequireAccount() =>
         AccountId ?? throw new GameException("not_logged_in", "Log in first.");
 }

@@ -9,11 +9,13 @@ public sealed record CredentialsRequest(string Email, string Password);
 public sealed record TokenRequest(string Token);
 
 /// <summary>Base for auth handlers: each request gets its own database scope.</summary>
-public abstract class AccountHandler(IServiceScopeFactory scopes) : IMessageHandler
+public abstract class AccountHandler(IServiceScopeFactory scopes, OnlinePlayers online) : IMessageHandler
 {
     private const string FailedLoginsKey = "accounts.failedLogins";
 
     public abstract string Type { get; }
+
+    protected OnlinePlayers Online => online;
 
     public bool RequiresAccount => false;
 
@@ -25,9 +27,12 @@ public abstract class AccountHandler(IServiceScopeFactory scopes) : IMessageHand
 
     protected abstract Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, AccountService accounts, CancellationToken cancellationToken);
 
-    protected static Reply LoggedIn(ClientContext client, LoginResult result)
+    /// <summary>The account now plays on this connection only: wherever else it was logged in is closed.</summary>
+    protected Reply LoggedIn(ClientContext client, LoginResult result)
     {
+        online.Leave(client);
         client.AccountId = result.AccountId;
+        online.Enter(client, result.AccountId);
         client.Items.Remove(FailedLoginsKey);
         return new Reply("auth.ok", new { accountId = result.AccountId, token = result.Token });
     }
@@ -53,7 +58,7 @@ public abstract class AccountHandler(IServiceScopeFactory scopes) : IMessageHand
     }
 }
 
-public sealed class RegisterHandler(IServiceScopeFactory scopes) : AccountHandler(scopes)
+public sealed class RegisterHandler(IServiceScopeFactory scopes, OnlinePlayers online) : AccountHandler(scopes, online)
 {
     public override string Type => "auth.register";
 
@@ -64,7 +69,7 @@ public sealed class RegisterHandler(IServiceScopeFactory scopes) : AccountHandle
     }
 }
 
-public sealed class LoginHandler(IServiceScopeFactory scopes) : AccountHandler(scopes)
+public sealed class LoginHandler(IServiceScopeFactory scopes, OnlinePlayers online) : AccountHandler(scopes, online)
 {
     public override string Type => "auth.login";
 
@@ -76,7 +81,7 @@ public sealed class LoginHandler(IServiceScopeFactory scopes) : AccountHandler(s
         });
 }
 
-public sealed class ResumeHandler(IServiceScopeFactory scopes) : AccountHandler(scopes)
+public sealed class ResumeHandler(IServiceScopeFactory scopes, OnlinePlayers online) : AccountHandler(scopes, online)
 {
     public override string Type => "auth.resume";
 
@@ -89,7 +94,7 @@ public sealed class ResumeHandler(IServiceScopeFactory scopes) : AccountHandler(
         });
 }
 
-public sealed class LogoutHandler(IServiceScopeFactory scopes) : AccountHandler(scopes)
+public sealed class LogoutHandler(IServiceScopeFactory scopes, OnlinePlayers online) : AccountHandler(scopes, online)
 {
     public override string Type => "auth.logout";
 
@@ -97,6 +102,7 @@ public sealed class LogoutHandler(IServiceScopeFactory scopes) : AccountHandler(
     {
         var request = Payload.Read<TokenRequest>(payload);
         await accounts.LogoutAsync(request.Token ?? "", cancellationToken);
+        Online.Leave(client);
         client.AccountId = null;
         return new Reply("auth.loggedOut");
     }

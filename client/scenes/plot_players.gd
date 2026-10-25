@@ -81,6 +81,15 @@ func _add(id: String, p: Dictionary, at: Vector2) -> void:
 	label.size = Vector2(240, 24)
 	label.position = Vector2(-120.0, -NAME_HEIGHT) / player_scale
 	character.add_child(label)
+	# The dot that tells they are in the game, just before the centred name.
+	var text_width := UI.bold().get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+	var online := Online.dot(label.text, 10.0)
+	online.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	online.z_index = 10
+	online.scale = label.scale
+	online.size = Vector2(10, 10)
+	online.position = Vector2(-text_width / 2.0 - 16.0, -NAME_HEIGHT + 7.0) / player_scale
+	character.add_child(online)
 	var dot: Control = null
 	if minimap != null:
 		var rect := ColorRect.new()
