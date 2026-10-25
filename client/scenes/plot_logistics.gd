@@ -11,8 +11,14 @@ extends Node2D
 ## feeds it from behind; fast and express inserters swing in fewer ticks. They are painted red and blue.
 ## A cable station runs like a fast belt, but sends what reaches its end along a cable, over whatever
 ## stands below, to the next station ahead facing the same way (up to CABLE_SPAN tiles off).
+## An express cable station runs like an express belt and its cable reaches EXPRESS_CABLE_SPAN tiles.
 ## Pipes and pumps are the belts and inserters of fluids: a pipe joins only pipes and carries only
 ## fluids, a pump moves only fluids, and an inserter never touches them.
+## Underground belts pair up along a line, from the back: one takes what reaches its end down under
+## whatever stands on the tiles ahead, the next one (up to TUNNEL_SPAN tiles on) brings it up again; both
+## keep up with the belt feeding the first. A long-armed inserter reaches two tiles each way, and with
+## bigger grippers an inserter carries a few pieces at once. Drones fly from each drone port without a
+## filter to the ports set to take what it holds, while both have power.
 
 ## Emitted after each answer from the server, which may have changed the filters.
 signal filters_changed
@@ -21,22 +27,40 @@ const BELT := "logistics_belt"
 const INSERTER := "logistics_inserter"
 const SPLITTER := "logistics_splitter"
 const CABLE := "logistics_cable_station"
+const UNDERGROUND := "logistics_underground_belt"
+const DRONE_PORT := "logistics_drone_port"
 ## Tiles a cable runs at most, and places a tick a cable station moves items, as on the server.
 const CABLE_SPAN := 24
 const CABLE_SPEED := 2
+const EXPRESS_CABLE_SPAN := 48
+## Cable stations of both levels: the tiles their cable runs and the places a tick they move items.
+const CABLES := {CABLE: [CABLE_SPAN, CABLE_SPEED], "logistics_express_cable_station": [EXPRESS_CABLE_SPAN, 3]}
+## Tiles at most from an underground belt going down to the one coming up.
+const TUNNEL_SPAN := 5
 ## Height of the cable at the stations, in metres.
 const CABLE_HEIGHT := 2.3
 const CABLE_COLOR := Color("#2b2b30")
 const GONDOLA_COLOR := Color("#c8321e")
+const GONDOLA_COLORS := {"": GONDOLA_COLOR, "_express": Color("#2c62c8")}
 ## Places a tick an item moves along a belt of each level, and ticks an inserter's arm takes to swing one way.
 const BELT_SPEEDS := {"logistics_belt": 1, "logistics_fast_belt": 2, "logistics_express_belt": 3, "logistics_pipe": 3}
-const INSERTER_SWINGS := {"logistics_inserter": 4, "logistics_fast_inserter": 2, "logistics_express_inserter": 1, "logistics_pump": 1}
+const INSERTER_SWINGS := {"logistics_inserter": 4, "logistics_fast_inserter": 2, "logistics_express_inserter": 1,
+	"logistics_long_inserter": 3, "logistics_pump": 1}
+## Tiles away an inserter picks up behind it and drops in front, where not one.
+const INSERTER_REACH := {"logistics_long_inserter": 2}
 ## What carries fluids: a pipe instead of a belt, a pump instead of an inserter.
 const FLUID_CARRIERS := ["logistics_pipe", "logistics_pump"]
 ## Sprites of upgraded belts and inserters end in the level's name.
 const TIER_SUFFIXES := {"logistics_fast_belt": "_fast", "logistics_express_belt": "_express",
-	"logistics_fast_inserter": "_fast", "logistics_express_inserter": "_express", "logistics_pipe": "_pipe", "logistics_pump": "_pump"}
-const ARM_COLORS := {"": Color("#d9a21c"), "_fast": Color("#c8321e"), "_express": Color("#2c62c8")}
+	"logistics_fast_inserter": "_fast", "logistics_express_inserter": "_express", "logistics_pipe": "_pipe", "logistics_pump": "_pump",
+	"logistics_long_inserter": "_long", "logistics_express_cable_station": "_express"}
+const ARM_COLORS := {"": Color("#d9a21c"), "_fast": Color("#c8321e"), "_express": Color("#2c62c8"), "_long": Color("#3d8f3a")}
+## Sprites of underground belts by the side their opening faces: the way in at the back of one going
+## down, the way out at the front of one coming up.
+const TUNNEL_SPRITES := ["tunnel_s", "tunnel_e", "tunnel_n", "tunnel_w"]
+## Height drones fly at, in metres, and how long (ms) one takes to fly a tile.
+const DRONE_HEIGHT := 3.2
+const DRONE_TILE_MS := 120.0
 ## Belt sprites by rotation: south and north run up and down the screen, east and west across.
 const BELT_SPRITES := ["belt_ns", "belt_ew", "belt_ns", "belt_ew"]
 ## Sprites of belts turning a corner, by the two sides of the tile they join.
@@ -72,6 +96,11 @@ var _belts := {}
 var _inserters := {}
 ## Belts downstream first, as the server moves them.
 var _order: Array[Vector2i] = []
+## Underground belts going down and the one each brings its items up at, by tile.
+var _tunnels := {}
+## Drone ports by tile, and their speed on the power they have (0 stands still) by object id.
+var _drone_ports := {}
+var _drone_speeds := {}
 ## Storage summaries from the last answer, by object id.
 var _storages := {}
 ## The one item each inserter, storage or machine with a filter takes, by object id.
@@ -80,8 +109,9 @@ var _filters := {}
 var _time := 0.0
 var _textures := {}
 var _icons := {}
-## Drawn above everything standing on the plot: the cables between stations.
+## Drawn above everything standing on the plot: the cables between stations, and drones in flight.
 var _cables: CableLines
+var _drones: DroneFlights
 
 
 func _ready() -> void:
@@ -95,9 +125,9 @@ static func tier_suffix(kind: String) -> String:
 	return TIER_SUFFIXES.get(kind, "")
 
 
-## Belts or inserters to animate, or filters to keep up to date.
+## Belts or inserters to animate, drones to fly, or filters to keep up to date.
 func has_machinery() -> bool:
-	return not _belts.is_empty() or not _inserters.is_empty() or not _filters.is_empty()
+	return not _belts.is_empty() or not _inserters.is_empty() or not _filters.is_empty() or not _drone_ports.is_empty()
 
 
 ## The item an inserter, storage or machine is set to take, or "" without a filter.
@@ -132,6 +162,24 @@ func held(cell: Vector2i) -> String:
 	return hand if hand != null else ""
 
 
+## How many pieces an inserter holds.
+func held_count(cell: Vector2i) -> int:
+	return int(_inserters.get(cell, {}).get("count", 1)) if held(cell) != "" else 0
+
+
+## The sprite of the underground belt at a tile, by the way its opening faces: back for one going down
+## (or without a pair), front for one coming up.
+func tunnel_sprite(cell: Vector2i, rotation: int) -> String:
+	var up: bool = _belts.get(cell, {}).get("up", false)
+	return TUNNEL_SPRITES[(rotation + (0 if up else 2)) & 3]
+
+
+## Whether the underground belt at a tile brings items up, "up", takes them down, "down", or has no pair, "".
+func tunnel_role(cell: Vector2i) -> String:
+	var belt: Dictionary = _belts.get(cell, {})
+	return "up" if belt.get("up", false) else ("down" if belt.get("down", false) else "")
+
+
 ## Takes the objects standing on the plot (tile → { id, kind, rotation }); belts and inserters
 ## that were there before keep what they carry.
 func set_objects(placed: Dictionary) -> void:
@@ -140,7 +188,7 @@ func set_objects(placed: Dictionary) -> void:
 	for cell: Vector2i in placed:
 		var object: Dictionary = placed[cell]
 		var rotation := int(object.get("rotation", 0))
-		if BELT_SPEEDS.has(object["kind"]) or object["kind"] in [SPLITTER, CABLE]:
+		if BELT_SPEEDS.has(object["kind"]) or object["kind"] in [SPLITTER, UNDERGROUND] or CABLES.has(object["kind"]):
 			var old: Dictionary = _find(_belts, object["id"])
 			var items: Array = old.get("items", [])
 			if items.size() != belt_slots * belt_lanes:
@@ -148,13 +196,20 @@ func set_objects(placed: Dictionary) -> void:
 				items.resize(belt_slots * belt_lanes)
 			belts[cell] = {"id": object["id"], "rotation": rotation, "items": items, "moved": {}, "out": [], "bend": 0,
 				"splitter": object["kind"] == SPLITTER, "filter": old.get("filter", []), "filterSide": int(old.get("filterSide", 0)),
-				"turn": int(old.get("turn", 0)), "speed": CABLE_SPEED if object["kind"] == CABLE else int(BELT_SPEEDS.get(object["kind"], 1)),
-				"suffix": tier_suffix(object["kind"]), "cable": object["kind"] == CABLE, "fluid": object["kind"] in FLUID_CARRIERS}
+				"turn": int(old.get("turn", 0)),
+				"speed": int(CABLES[object["kind"]][1]) if CABLES.has(object["kind"]) else int(BELT_SPEEDS.get(object["kind"], 1)),
+				"suffix": tier_suffix(object["kind"]), "cable": CABLES.has(object["kind"]), "span": int(CABLES.get(object["kind"], [0])[0]),
+				"tunnel": object["kind"] == UNDERGROUND, "down": false, "up": false, "fluid": object["kind"] in FLUID_CARRIERS}
 		elif INSERTER_SWINGS.has(object["kind"]):
 			var old: Dictionary = _find(_inserters, object["id"])
 			inserters[cell] = {"id": object["id"], "rotation": rotation, "hand": old.get("hand"), "swing": int(old.get("swing", 0)),
 				"was": int(old.get("swing", 0)), "arm": old.get("arm"), "swingTicks": int(INSERTER_SWINGS[object["kind"]]),
-				"suffix": tier_suffix(object["kind"]), "speed": float(old.get("speed", 1.0)), "charge": float(old.get("charge", 0.0))}
+				"suffix": tier_suffix(object["kind"]), "speed": float(old.get("speed", 1.0)), "charge": float(old.get("charge", 0.0)),
+				"reach": int(INSERTER_REACH.get(object["kind"], 1)), "count": int(old.get("count", 1))}
+	_drone_ports = {}
+	for cell: Vector2i in placed:
+		if placed[cell]["kind"] == DRONE_PORT:
+			_drone_ports[cell] = placed[cell]["id"]
 	var kept := {}
 	for cell: Vector2i in inserters:
 		if inserters[cell]["arm"] != null:
@@ -177,6 +232,8 @@ func set_objects(placed: Dictionary) -> void:
 	if _cables == null and arms_parent != null:
 		_cables = CableLines.new(self)
 		arms_parent.add_child(_cables)
+		_drones = DroneFlights.new(self)
+		arms_parent.add_child(_drones)
 	queue_redraw()
 
 
@@ -213,12 +270,16 @@ func apply(state: Dictionary) -> void:
 			inserter["was"] = inserter["swing"]
 			inserter["speed"] = float(inserters_by_id[inserter["id"]].get("speed", 1.0))
 			inserter["charge"] = float(inserters_by_id[inserter["id"]].get("charge", 0.0))
+			inserter["count"] = int(inserters_by_id[inserter["id"]].get("count", 1))
 	_storages = {}
 	for summary: Dictionary in state.get("storages", []):
 		_storages[summary["id"]] = summary
 	_filters = {}
 	for f: Dictionary in state.get("filters", []):
 		_filters[f["id"]] = f["item"]
+	_drone_speeds = {}
+	for port: Dictionary in state.get("drones", []):
+		_drone_speeds[port["id"]] = float(port.get("speed", 0.0))
 	filters_changed.emit()
 	_time = float(state["simulatedAt"])
 	queue_redraw()
@@ -245,11 +306,13 @@ static func left_of(rotation: int) -> Vector2i:
 ## right, 0 when it runs straight. Splitters neither turn nor make a belt turn.
 func _bend(cell: Vector2i) -> int:
 	var belt: Dictionary = _belts[cell]
-	if belt["splitter"]:
+	if belt["splitter"] or belt["tunnel"]:
 		return 0
+	# An underground belt going down feeds no belt in front of it, only the one it comes up at.
 	var feeds := func(from: Vector2i) -> bool:
 		var other: Dictionary = _belts.get(cell + from, {})
-		return not other.is_empty() and not other["splitter"] and other["fluid"] == belt["fluid"] and facing(other["rotation"]) == -from
+		return not other.is_empty() and not other["splitter"] and not other["down"] and other["fluid"] == belt["fluid"] \
+			and facing(other["rotation"]) == -from
 	var left := left_of(belt["rotation"])
 	var from_left: bool = feeds.call(left)
 	var from_right: bool = feeds.call(-left)
@@ -275,19 +338,39 @@ func _connect(cell: Vector2i, way: Vector2i) -> Dictionary:
 
 ## Where each belt sends its items and the order to move them in: as on the server.
 func _link_belts() -> void:
+	_tunnels = _tunnel_links()
+	for cell: Vector2i in _tunnels:
+		_belts[cell]["down"] = true
+		_belts[_tunnels[cell]]["up"] = true
 	for cell: Vector2i in _belts:
 		_belts[cell]["bend"] = _bend(cell)
-		var belt: Dictionary = _belts[cell]
-		if belt["splitter"]:
-			# A splitter keeps up with the belt behind it.
+	# A splitter or an underground belt going down keeps up with the belt behind it, the one coming up
+	# with the one going down; over and over, as one may feed the next, until nothing changes.
+	for pass_number in _belts.size() + 1:
+		var changed := false
+		for cell: Vector2i in _belts:
+			var belt: Dictionary = _belts[cell]
+			if not belt["splitter"] and not (belt["tunnel"] and not belt["up"]):
+				continue
 			var feeder: Dictionary = _belts.get(cell - facing(belt["rotation"]), {})
-			belt["speed"] = int(feeder["speed"]) if not feeder.is_empty() and not feeder["splitter"] and feeder["rotation"] == belt["rotation"] else 1
+			if not feeder.is_empty() and not feeder["splitter"] and feeder["rotation"] == belt["rotation"] and int(feeder["speed"]) != int(belt["speed"]):
+				belt["speed"] = int(feeder["speed"])
+				changed = true
+		for cell: Vector2i in _tunnels:
+			var up: Dictionary = _belts[_tunnels[cell]]
+			changed = changed or int(up["speed"]) != int(_belts[cell]["speed"])
+			up["speed"] = int(_belts[cell]["speed"])
+		if not changed:
+			break
 	for cell: Vector2i in _belts:
 		var belt: Dictionary = _belts[cell]
 		var cable := _cable_target(cell)
 		if cable.x > -9999:
 			# Over the cable onto the start of the station ahead.
 			belt["out"] = [{"to": cable, "into": [0, 1], "entry": 0, "cable": true}]
+		elif _tunnels.has(cell):
+			# Under the ground onto the start of the one coming up.
+			belt["out"] = [{"to": _tunnels[cell], "into": [0, 1], "entry": 0, "tunnel": true}]
 		elif belt["splitter"]:
 			var left := left_of(belt["rotation"])
 			belt["out"] = [_connect(cell, left), _connect(cell, -left)]
@@ -299,18 +382,45 @@ func _link_belts() -> void:
 		_downstream(start, seen)
 
 
-## The station a cable station sends its items to: the nearest one ahead facing the same way, at
-## least two tiles off; (-9999, -9999) when there is none (it then passes items on like a belt).
+## The station a cable station sends its items to: the nearest one (of either level) ahead facing the
+## same way, at least two tiles off and within its span; (-9999, -9999) when there is none (it then
+## passes items on like a belt).
 func _cable_target(cell: Vector2i) -> Vector2i:
 	var belt: Dictionary = _belts[cell]
 	if not belt.get("cable", false):
 		return Vector2i(-9999, -9999)
 	var way := facing(belt["rotation"])
-	for d in range(2, CABLE_SPAN + 1):
+	for d in range(2, int(belt["span"]) + 1):
 		var other: Dictionary = _belts.get(cell + way * d, {})
 		if not other.is_empty() and other.get("cable", false) and int(other["rotation"]) == int(belt["rotation"]):
 			return cell + way * d
 	return Vector2i(-9999, -9999)
+
+
+## Which underground belt brings up what each one going down takes under: the nearest ahead facing the
+## same way, up to TUNNEL_SPAN tiles on; along a line they pair up from the back, as on the server.
+func _tunnel_links() -> Dictionary:
+	var tunnels: Array[Vector2i] = []
+	for cell: Vector2i in _belts:
+		if _belts[cell]["tunnel"]:
+			tunnels.append(cell)
+	tunnels.sort_custom(func(a: Vector2i, b: Vector2i) -> bool:
+		var fa := facing(_belts[a]["rotation"])
+		var fb := facing(_belts[b]["rotation"])
+		return fa.x * a.x + fa.y * a.y < fb.x * b.x + fb.y * b.y)
+	var links := {}
+	var exits := {}
+	for cell in tunnels:
+		if exits.has(cell):
+			continue
+		var rotation := int(_belts[cell]["rotation"])
+		for d in range(1, TUNNEL_SPAN + 1):
+			var other: Dictionary = _belts.get(cell + facing(rotation) * d, {})
+			if not other.is_empty() and other["tunnel"] and int(other["rotation"]) == rotation:
+				links[cell] = cell + facing(rotation) * d
+				exits[cell + facing(rotation) * d] = true
+				break
+	return links
 
 
 func _downstream(cell: Vector2i, seen: Dictionary) -> void:
@@ -338,6 +448,7 @@ func _process(_delta: float) -> void:
 	queue_redraw()
 	if _cables != null:
 		_cables.queue_redraw()
+		_drones.queue_redraw()
 	for cell: Vector2i in _inserters:
 		_inserters[cell]["arm"].queue_redraw()
 
@@ -499,8 +610,8 @@ func _draw() -> void:
 				continue
 			var lane := 0 if i < belt_slots else 1
 			var at := (i % belt_slots + 0.5) / belt_slots
-			if belt["moved"].has(i) and _came_by_cable(cell, i):
-				# Just off the cable: it rides the gondola, drawn with the cable.
+			if belt["moved"].has(i) and (_came_by_cable(cell, i) or _came_by_tunnel(cell, i)):
+				# Just off the cable: it rides the gondola, drawn with the cable; or still under the ground.
 				continue
 			if belt["moved"].has(i):
 				at -= (1.0 - f) * int(belt["moved"][i]) / belt_slots
@@ -516,6 +627,18 @@ func _came_by_cable(cell: Vector2i, i: int) -> bool:
 	var belt: Dictionary = _belts[cell]
 	if not belt.get("cable", false) or int(belt["moved"][i]) > i % belt_slots + 1:
 		return false
+	return _came_from_afar(cell)
+
+
+## Whether the item at place `i` of an underground belt coming up came out of the tunnel this tick:
+## it shows only once it is out.
+func _came_by_tunnel(cell: Vector2i, i: int) -> bool:
+	return i % belt_slots == 0 and _belts[cell].get("up", false) and _came_from_afar(cell)
+
+
+## Whether what comes onto the start of the belt at `cell` comes from further than the tile behind it.
+func _came_from_afar(cell: Vector2i) -> bool:
+	var belt: Dictionary = _belts[cell]
 	var behind: Dictionary = _belts.get(cell - facing(belt["rotation"]), {})
 	return behind.is_empty() or behind.get("out", [{}])[0].get("to", Vector2i(-9999, -9999)) != cell
 
@@ -562,7 +685,7 @@ class CableLines extends Node2D:
 				var v := u * 2.0 if u < 0.5 else (1.0 - u) * 2.0
 				var p := from_px.lerp(to_px, v) + side * t * s + sag * 4.0 * v * (1.0 - v)
 				draw_line(p, p + Vector2(0, 7), PlotLogistics.CABLE_COLOR, 1.5)
-				draw_rect(Rect2(p + Vector2(-6, 7), Vector2(12, 8)), PlotLogistics.GONDOLA_COLOR)
+				draw_rect(Rect2(p + Vector2(-6, 7), Vector2(12, 8)), PlotLogistics.GONDOLA_COLORS.get(belt["suffix"], PlotLogistics.GONDOLA_COLOR))
 			# What came over this tick rides down the cable to the station ahead.
 			var next: Dictionary = logistics._belts.get(to, {})
 			if next.is_empty():
@@ -603,7 +726,8 @@ class InserterArm extends Node2D:
 		var side := Vector2(-dir.y, dir.x)
 		# From the tile behind (swing 0) round the side to the tile in front (swing 1).
 		var angle := swing * PI
-		var reach := (-dir * cos(angle) + side * sin(angle)) * 0.78
+		# A long arm reaches a tile further.
+		var reach := (-dir * cos(angle) + side * sin(angle)) * (0.78 + int(inserter.get("reach", 1)) - 1)
 		var t := logistics.tile
 		var lift := PlotLogistics.PPM * cos(PI / 4)
 		var shoulder := Vector2(0, -1 - PlotLogistics.SHOULDER_HEIGHT * lift)
@@ -619,3 +743,63 @@ class InserterArm extends Node2D:
 		if held != null:
 			var size := PlotLogistics.ITEM_SIZE
 			draw_texture_rect(logistics._icon(held), Rect2(hand - Vector2(size / 2, size * 0.75), Vector2(size, size)), false)
+			if int(inserter.get("count", 1)) > 1:
+				# Bigger grippers: how many pieces it carries.
+				var font := ThemeDB.fallback_font
+				var text := "×%d" % int(inserter["count"])
+				draw_string_outline(font, hand + Vector2(size / 2 - 2, 2), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, 3, Color(0, 0, 0, 0.8))
+				draw_string(font, hand + Vector2(size / 2 - 2, 2), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color.WHITE)
+
+
+## Drones flying between drone ports, high over the plot: from each port without a filter to every
+## port set to take something it holds, there and back, with the item hanging under them on the way
+## there. A node of its own so it is drawn above everything standing on the plot.
+class DroneFlights extends Node2D:
+	var logistics: PlotLogistics
+
+	func _init(owner_node: PlotLogistics) -> void:
+		logistics = owner_node
+		z_index = 21
+
+	func _draw() -> void:
+		var t := logistics.tile
+		var lift := PlotLogistics.DRONE_HEIGHT * PlotLogistics.PPM * cos(PI / 4)
+		var now: float = logistics.server_now.call()
+		for from: Vector2i in logistics._drone_ports:
+			var sender: String = logistics._drone_ports[from]
+			if logistics._filters.has(sender) or float(logistics._drone_speeds.get(sender, 0.0)) <= 0.0:
+				continue
+			var held := {}
+			for stack: Dictionary in logistics.storage(sender).get("items", []):
+				held[stack["id"]] = true
+			for to: Vector2i in logistics._drone_ports:
+				var receiver: String = logistics._drone_ports[to]
+				var wanted: String = logistics._filters.get(receiver, "")
+				if to == from or wanted == "" or not held.has(wanted) or float(logistics._drone_speeds.get(receiver, 0.0)) <= 0.0:
+					continue
+				var a := (Vector2(from) + Vector2(0.5, 0.5)) * t - Vector2(0, lift)
+				var b := (Vector2(to) + Vector2(0.5, 0.5)) * t - Vector2(0, lift)
+				var trip := maxf(Vector2(from).distance_to(Vector2(to)), 1.0) * PlotLogistics.DRONE_TILE_MS
+				# Two drones on each route, half a round apart: out loaded, back empty.
+				for k in 2:
+					var u := fmod(now / (2.0 * trip) + k * 0.5 + float(absi(from.x * 7 + to.y * 13) % 10) / 10.0, 1.0)
+					var going := u < 0.5
+					var v := u * 2.0 if going else (1.0 - u) * 2.0
+					# Up off the pad, along, and down onto the other one.
+					var rise := minf(1.0, minf(v, 1.0 - v) * 8.0)
+					var p := a.lerp(b, v) + Vector2(0, lift * (1.0 - rise) * 0.6)
+					_drone(p, logistics._icon(wanted) if going else null, now)
+
+	func _drone(at: Vector2, carrying: Texture2D, now: float) -> void:
+		var body := Color("#2f3338")
+		if carrying != null:
+			var size := PlotLogistics.ITEM_SIZE * 0.8
+			draw_line(at, at + Vector2(0, 6), body, 1.0)
+			draw_texture_rect(carrying, Rect2(at + Vector2(-size / 2, 5), Vector2(size, size)), false)
+		# Its shadow far below would be lost among the machines; four rotors whirring round a body.
+		for corner: Vector2 in [Vector2(-7, -3), Vector2(7, -3), Vector2(-7, 3), Vector2(7, 3)]:
+			draw_line(at, at + corner, body, 2.0, true)
+			var spin := fmod(now / 40.0, TAU)
+			draw_arc(at + corner, 4.0, spin, spin + PI * 1.4, 8, Color(0.85, 0.88, 0.9, 0.55), 1.2, true)
+		draw_rect(Rect2(at - Vector2(4, 2.5), Vector2(8, 5)), body)
+		draw_circle(at + Vector2(0, -0.5), 1.4, Color("#5ad04a"))

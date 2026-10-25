@@ -485,6 +485,9 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
                     speed = state.Power.Clock(o.Id).Speed(state.SimulatedAt),
                     charge = Of(o.Id).Charge,
                 }),
+            // Drone ports: how fast their drones fly on the power they have (0 stays put).
+            drones = state.Objects.Where(o => o.Kind == Items.DronePort)
+                .Select(o => new { id = o.Id, speed = state.Power.Clock(o.Id).Speed(state.SimulatedAt) }),
             storages = state.Objects.Where(o => Storages.Find(o.Kind) is not null)
                 .Select(o => StorageSummary(Storages.Find(o.Kind)!, o, Of(o.Id))),
             power = state.Power.Summary(state.ServerTime),

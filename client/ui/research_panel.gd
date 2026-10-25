@@ -507,7 +507,10 @@ func _company(type: String, payload: Dictionary) -> void:
 
 static func _icon_for(technology: Dictionary) -> Texture2D:
 	var unlocks: Array = technology["unlocks"]
-	return UI.item_texture(unlocks[0]["id"]) if not unlocks.is_empty() else UI.texture("icons/toolbar_company")
+	if not unlocks.is_empty():
+		return UI.item_texture(unlocks[0]["id"])
+	# One that unlocks no item, like bigger grippers, shows an item of its own.
+	return UI.item_texture(technology["icon"]) if technology.get("icon") != null else UI.texture("icons/toolbar_company")
 
 
 ## Research data and computing power from the glacier speed the research being done up: a button for each held.

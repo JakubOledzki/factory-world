@@ -873,5 +873,37 @@
  "research_table": {
   "anchorX": 64,
   "anchorY": 70
+ },
+ "cable_station_express": {
+  "anchorX": 40,
+  "anchorY": 106
+ },
+ "inserter_long": {
+  "anchorX": 32,
+  "anchorY": 39
+ },
+ "tunnel_e": {
+  "anchorX": 36,
+  "anchorY": 43
+ },
+ "tunnel_n": {
+  "anchorX": 36,
+  "anchorY": 43
+ },
+ "tunnel_w": {
+  "anchorX": 36,
+  "anchorY": 43
+ },
+ "tunnel_s": {
+  "anchorX": 36,
+  "anchorY": 43
+ },
+ "logistics_depot": {
+  "anchorX": 40,
+  "anchorY": 78
+ },
+ "drone_port": {
+  "anchorX": 36,
+  "anchorY": 59
  }
 }
