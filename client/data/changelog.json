@@ -1,6 +1,15 @@
 [
 	{
 		"date": "2026-10-25",
+		"title": "Szybkie chowanie obiektów",
+		"changes": [
+			"Przytrzymaj prawy przycisk myszy na postawionym obiekcie przez 2 sekundy, a schowa się do ekwipunku razem z tym, co ma w środku. Wokół obiektu wypełnia się wtedy złote kółko.",
+			"Puszczenie przycisku albo zjechanie kursorem z obiektu przerywa chowanie. W garażu krótkie kliknięcie prawym przyciskiem dalej otwiera menu mebla.",
+			"Na telefonie to samo robi przytrzymanie palca na obiekcie przez 2 sekundy; zwykłe dotknięcie działa jak wcześniej."
+		]
+	},
+	{
+		"date": "2026-10-25",
 		"title": "Węgiel z drewna",
 		"changes": [
 			"Węgiel drzewny z mielerza zastępuje teraz węgiel kopalny w przepisach maszyn: odlewnia i konwertor tlenowy robią z niego stal, a piec łukowy krzem.",
