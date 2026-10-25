@@ -117,8 +117,8 @@ public sealed class CoastTests(ServerFactory factory) : IClassFixture<ServerFact
         Assert.Empty(Coast.Flotsam(40, 40, Biome.Lakeshore, PlotLayout.Generate(40, 40, Biome.Lakeshore), 20_000, true));
         Assert.All(calm, f => Assert.Equal((byte)TileObject.None, tiles[f.Y * PlotLayout.Size + f.X]));
         Assert.Contains(Coast.Find(99, false), f => f.Item == Items.Amber);
-        Assert.DoesNotContain(Coast.Find(91, false), f => f.Item == Items.Amber);
-        Assert.Contains(Coast.Find(91, true), f => f.Item == Items.Amber);
+        Assert.DoesNotContain(Coast.Find(98, false), f => f.Item == Items.Amber);
+        Assert.Contains(Coast.Find(98, true), f => f.Item == Items.Amber);
     }
 
     [Fact]

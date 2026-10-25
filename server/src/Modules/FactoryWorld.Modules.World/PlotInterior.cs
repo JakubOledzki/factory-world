@@ -209,11 +209,11 @@ public static class PlotLayout
     /// <summary>Of dunes dug, this many in a hundred give clay too.</summary>
     public const int ClayChance = 15;
 
-    /// <summary>Of dunes dug, this many in a thousand give up a fossil: an ammonite, an ancient coin or, rarest, a dinosaur bone.</summary>
-    public const int FossilPerMille = 20;
+    /// <summary>Of dunes dug, this many in a thousand give up a fossil: an ammonite, an ancient coin or a dinosaur bone.</summary>
+    public const int FossilPerMille = 4;
 
     /// <summary>Of meteorites broken, this many in a hundred give iridium too.</summary>
-    public const int IridiumChance = 25;
+    public const int IridiumChance = 5;
 
     /// <summary>A reed fence keeps the sand of a sandstorm off dug dunes this many tiles from it each way.</summary>
     public const int FenceShelter = 4;
@@ -229,7 +229,7 @@ public static class PlotLayout
         TileObject.Dune => [(Items.Sand, Oasis.Sandy((int)biome) ? 4 : 3), .. Dug(roll, rare)],
         TileObject.IceBlock => [(Items.Ice, 2)],
         TileObject.Snowdrift => [(Items.Ice, 1)],
-        TileObject.Meteorite => roll < IridiumChance ? [(Items.MeteoricIron, 2), (Items.Iridium, 1)] : [(Items.MeteoricIron, 2)],
+        TileObject.Meteorite => roll < IridiumChance ? [(Items.MeteoricIron, 1), (Items.Iridium, 1)] : [(Items.MeteoricIron, 1)],
         TileObject.Rock => roll switch
         {
             < 5 => [(Items.Stone, 2), (Items.CopperOre, 1)],
@@ -249,7 +249,7 @@ public static class PlotLayout
 
         if (rare < FossilPerMille)
         {
-            yield return (rare < 10 ? Items.Ammonite : rare < 17 ? Items.AncientCoin : Items.DinosaurBone, 1);
+            yield return (rare < 2 ? Items.Ammonite : rare < 3 ? Items.AncientCoin : Items.DinosaurBone, 1);
         }
     }
 

@@ -115,10 +115,9 @@ public static class CityRules
         (Items.CarrotCake, 1, 15), (Items.Bigos, 1, 15), (Items.FishSoup, 1, 15), (Items.FriedCarp, 1, 10), (Items.WindowPane, 1, 20),
         (Items.Concrete, 1, 40), (Items.Cement, 1, 30), (Items.IceCream, 1, 20), (Items.FrozenFish, 1, 15), (Items.Plywood, 1, 20),
         (Items.Gasoline, 1, 30), (Items.Diesel, 1, 30), (Items.SaltedHerring, 1, 15), (Items.CornBread, 1, 20),
-        (Items.Bicycle, 2, 4), (Items.Radio, 2, 6), (Items.SmokedSalmon, 2, 10), (Items.FrozenSalmon, 2, 8), (Items.Plastic, 2, 30),
+        (Items.SmokedSalmon, 2, 10), (Items.FrozenSalmon, 2, 8), (Items.Plastic, 2, 30),
         (Items.CircuitBoard, 2, 10), (Items.ElectricMotor, 2, 5), (Items.Tyres, 2, 3),
-        (Items.WashingMachine, 3, 3), (Items.OpticalFiber, 3, 10), (Items.Amber, 3, 5), (Items.Mirror, 3, 8),
-        (Items.Car, 4, 2),
+        (Items.OpticalFiber, 3, 10), (Items.Amber, 3, 5), (Items.Mirror, 3, 8),
         // Forestry: paper, furniture, honey and what the forest floor gives.
         (Items.Paper, 0, 40), (Items.Honey, 0, 20), (Items.Charcoal, 0, 30), (Items.MushroomSoup, 0, 15), (Items.BerryPierogi, 0, 15),
         (Items.Cardboard, 1, 30), (Items.Chair, 1, 8), (Items.Table, 1, 5), (Items.Candles, 1, 15), (Items.Gingerbread, 1, 15), (Items.HerbalTea, 1, 20),

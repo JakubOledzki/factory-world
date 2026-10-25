@@ -32,7 +32,7 @@ public static class Coast
     public const int FlotsamPerDay = 12;
 
     /// <summary>Chance of amber in a find, in percent; twice as high on a plot with a lighthouse.</summary>
-    public const int AmberPercent = 5;
+    public const int AmberPercent = 1;
 
     /// <summary>Kinds that stand right next to the water, and on which biome's shore (null for any shore).</summary>
     public static readonly IReadOnlyDictionary<string, Biome?> OnShore = new Dictionary<string, Biome?>

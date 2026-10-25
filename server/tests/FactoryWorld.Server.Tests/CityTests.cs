@@ -43,7 +43,7 @@ public sealed class CityTests(ServerFactory factory) : IClassFixture<ServerFacto
         Assert.All(today, n => Assert.Equal(0, CityRules.Goods.First(g => g.Item == n.Item).Level));
         var metropolis = CityRules.Needs(warsaw, 4, 100, Priced);
         Assert.Equal(7, metropolis.Count);
-        Assert.Equal(Items.Car, metropolis[0].Item);
+        Assert.Contains(metropolis, n => CityRules.Goods.First(g => g.Item == n.Item).Level == 3);
         Assert.All(CityRules.Goods, g => Assert.True(Priced(g.Item), g.Item));
 
         Assert.Equal(150, CityRules.NeedPriceCents(100, 0, false));
@@ -61,15 +61,15 @@ public sealed class CityTests(ServerFactory factory) : IClassFixture<ServerFacto
     [Fact]
     public void City_machines_assemble_goods_and_everything_made_in_a_city_goes_a_quarter_faster()
     {
-        var car = Processing.ByKind[Items.AssemblyHall].Recipe(Items.Car)!;
-        var faster = Processing.ByKind[Items.MultistoreyFactory].Recipe(Items.Car)!;
-        Assert.Equal(car.Time / 2, faster.Time);
+        var motor = Processing.ByKind[Items.AssemblyHall].Recipe(Items.ElectricMotor)!;
+        var faster = Processing.ByKind[Items.MultistoreyFactory].Recipe(Items.ElectricMotor)!;
+        Assert.Equal(motor.Time / 2, faster.Time);
         Assert.NotNull(Processing.ByKind[Items.CitySorter].Recipe(Items.WastePaper));
-        Assert.Equal(car.Time / 1.25, Processing.For(Items.AssemblyHall, (int)Biome.City)!.Recipe(Items.Car)!.Time);
-        Assert.Equal(car.Time, Processing.For(Items.AssemblyHall, (int)Biome.Forest)!.Recipe(Items.Car)!.Time);
+        Assert.Equal(motor.Time / 1.25, Processing.For(Items.AssemblyHall, (int)Biome.City)!.Recipe(Items.ElectricMotor)!.Time);
+        Assert.Equal(motor.Time, Processing.For(Items.AssemblyHall, (int)Biome.Forest)!.Recipe(Items.ElectricMotor)!.Time);
         Assert.True(Items.IsCityOnly(Items.Shop));
         Assert.False(Items.IsCityOnly(Items.AssemblyHall));
-        Assert.True(NpcPrices.Buys[Items.Car] > NpcPrices.Buys[Items.WashingMachine]);
+        Assert.All([Items.Bicycle, Items.Radio, Items.WashingMachine, Items.Car], i => Assert.Null(Processing.ByKind[Items.AssemblyHall].Recipe(i)));
     }
 
     // --- In a town --------------------------------------------------------------------------------

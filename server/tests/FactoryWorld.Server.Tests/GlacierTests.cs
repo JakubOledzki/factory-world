@@ -158,8 +158,8 @@ public sealed class GlacierTests(ServerFactory factory) : IClassFixture<ServerFa
 
         Assert.Equal([(Items.Ice, 2)], PlotLayout.Yield(TileObject.IceBlock, 50, Biome.Ice));
         Assert.Equal([(Items.Ice, 1)], PlotLayout.Yield(TileObject.Snowdrift, 50, Biome.Ice));
-        Assert.Equal([(Items.MeteoricIron, 2), (Items.Iridium, 1)], PlotLayout.Yield(TileObject.Meteorite, 10, Biome.Ice));
-        Assert.Equal([(Items.MeteoricIron, 2)], PlotLayout.Yield(TileObject.Meteorite, 60, Biome.Ice));
+        Assert.Equal([(Items.MeteoricIron, 1), (Items.Iridium, 1)], PlotLayout.Yield(TileObject.Meteorite, 2, Biome.Ice));
+        Assert.Equal([(Items.MeteoricIron, 1)], PlotLayout.Yield(TileObject.Meteorite, 10, Biome.Ice));
         Assert.Equal(2 * HarvestRules.TimeFor(TileObject.Rock, Items.Pickaxe, Biome.Ice), HarvestRules.TimeFor(TileObject.Meteorite, Items.Pickaxe, Biome.Ice));
         Assert.Equal(2, Items.Pickaxes[Items.MeteoritePickaxe]);
 

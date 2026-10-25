@@ -88,9 +88,9 @@ public sealed class DesertTests(ServerFactory factory) : IClassFixture<ServerFac
         Assert.Equal([(Items.Sand, 3)], PlotLayout.Yield(TileObject.Dune, 50, Biome.Coast));
         Assert.Equal([(Items.Sand, 4)], PlotLayout.Yield(TileObject.Dune, 50, Biome.Desert));
         Assert.Equal([(Items.Sand, 4), (Items.Clay, 1)], PlotLayout.Yield(TileObject.Dune, 5, Biome.Oasis));
-        Assert.Equal([(Items.Sand, 4), (Items.Ammonite, 1)], PlotLayout.Yield(TileObject.Dune, 50, Biome.Desert, 3));
-        Assert.Equal([(Items.Sand, 4), (Items.AncientCoin, 1)], PlotLayout.Yield(TileObject.Dune, 50, Biome.Desert, 12));
-        Assert.Equal([(Items.Sand, 4), (Items.DinosaurBone, 1)], PlotLayout.Yield(TileObject.Dune, 50, Biome.Desert, 19));
+        Assert.Equal([(Items.Sand, 4), (Items.Ammonite, 1)], PlotLayout.Yield(TileObject.Dune, 50, Biome.Desert, 1));
+        Assert.Equal([(Items.Sand, 4), (Items.AncientCoin, 1)], PlotLayout.Yield(TileObject.Dune, 50, Biome.Desert, 2));
+        Assert.Equal([(Items.Sand, 4), (Items.DinosaurBone, 1)], PlotLayout.Yield(TileObject.Dune, 50, Biome.Desert, 3));
         Assert.All([Items.Ammonite, Items.AncientCoin, Items.DinosaurBone], f => Assert.True(NpcPrices.Buys[f] >= 20_000));
     }
 
