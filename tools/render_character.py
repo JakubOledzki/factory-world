@@ -678,11 +678,11 @@ def clothes(rig):
         objs = jacket("Suit", navy, 0.022, hem=0.96, collar=False)
         white = cloth_mat("shirt_white", (0.8, 0.8, 0.78))
         tie = cloth_mat("tie", (0.4, 0.04, 0.05), 200, 0.5)
-        objs.append(panel("shirt", white, [(1.475, 34, 0.045, 0.056), (1.4, 18, 0.12, 0.112), (1.25, 4, 0.12, 0.111)], 4, 0.003))
-        objs.append(panel("tie", tie, [(1.45, 5, 0.05, 0.066), (1.4, 5, 0.12, 0.116), (1.2, 7, 0.12, 0.114), (1.17, 1, 0.12, 0.112)], 2, 0.003))
-        lapel = cloth_mat("lapel", (0.022, 0.03, 0.065), 320, 0.55, 0.1)
+        objs.append(panel("shirt", white, [(1.475, 36, 0.05, 0.068), (1.4, 22, 0.126, 0.134), (1.22, 4, 0.124, 0.13)], 4, 0.003))
+        objs.append(panel("tie", tie, [(1.45, 5, 0.054, 0.074), (1.4, 5, 0.126, 0.137), (1.2, 7, 0.124, 0.133), (1.17, 1, 0.124, 0.131)], 2, 0.003))
+        lapel = cloth_mat("lapel", (0.012, 0.016, 0.04), 320, 0.4, 0.1)
         for s, _ in sides():
-            objs.append(panel("lapel", lapel, [(1.47, 9, 0.06, 0.07, s * 34), (1.4, 8, 0.12, 0.117, s * 17), (1.26, 4, 0.12, 0.116, s * 5)], 2, 0.004))
+            objs.append(panel("lapel", lapel, [(1.47, 9, 0.064, 0.078, s * 36), (1.4, 8, 0.126, 0.137, s * 23), (1.22, 4, 0.124, 0.133, s * 7)], 2, 0.005))
         button = ra.plain("button", (0.02, 0.02, 0.02), 0.3)
         for i in range(2):
             objs.append(a(ra.sphere("button", 0.008, (0, -0.104, 1.08 + i * 0.08), button, scale=(1, 0.5, 1))))

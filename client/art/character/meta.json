@@ -1,10 +1,10 @@
 {
  "portrait": {
-  "width": 128,
-  "height": 320,
-  "feetX": 64,
-  "feetY": 313,
-  "pixelsPerMetre": 160.0
+  "width": 192,
+  "height": 480,
+  "feetX": 96,
+  "feetY": 472,
+  "pixelsPerMetre": 240.0
  },
  "walk": {
   "frameWidth": 96,
@@ -23,5 +23,23 @@
    "step_a",
    "step_b"
   ]
+ },
+ "faces": 4,
+ "beards": 4,
+ "clothes": {
+  "clothes_miner_helmet": "head",
+  "clothes_sou_wester": "head",
+  "clothes_straw_hat": "head",
+  "clothes_beanie": "head",
+  "clothes_flannel_jacket": "body",
+  "clothes_smith_apron": "body",
+  "clothes_oilskin": "body",
+  "clothes_suit_jacket": "body",
+  "clothes_overalls": "legs",
+  "clothes_work_trousers": "legs",
+  "clothes_suit_trousers": "legs",
+  "clothes_rubber_boots": "feet",
+  "clothes_work_boots": "feet",
+  "clothes_dress_shoes": "feet"
  }
 }

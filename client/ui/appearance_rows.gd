@@ -35,8 +35,9 @@ var _values := {}
 var _swatches := {}
 
 
-func _init() -> void:
-	columns = 4
+## `per_line` rows side by side: two fit a phone's wide screen without scrolling.
+func _init(per_line := 1) -> void:
+	columns = 4 * per_line
 	add_theme_constant_override("h_separation", 6)
 	add_theme_constant_override("v_separation", 4)
 	size_flags_horizontal = Control.SIZE_EXPAND_FILL

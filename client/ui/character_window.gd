@@ -31,7 +31,7 @@ var _clothes_page := VBoxContainer.new()
 var _look_page := VBoxContainer.new()
 var _slot_tiles := {}
 var _bonuses := VBoxContainer.new()
-var _rows := AppearanceRows.new()
+var _rows := AppearanceRows.new(2 if UI.touch() else 1)
 var _save: Button
 var _error := UI.label("", UI.ERROR, HORIZONTAL_ALIGNMENT_LEFT, true)
 var _menu := PopupMenu.new()
@@ -55,7 +55,7 @@ func _init() -> void:
 	var columns := HBoxContainer.new()
 	columns.add_theme_constant_override("separation", 18)
 	content.add_child(columns)
-	_preview.display_scale = 0.85
+	_preview.display_scale = 1.0 if UI.touch() else 0.85
 	_preview.options = Game.appearance_options
 	_preview.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	columns.add_child(_preview)
