@@ -623,9 +623,15 @@ func _show_plot() -> void:
 			if mine:
 				_plot_box.add_child(UI.button("Wejdź na działkę", Game.enter_plot.bind(plot), true))
 				_show_rename(plot)
+				_show_access()
 				_show_survey()
-			elif _plot.get("canEnter", false):
+			elif _plot.get("canEnter", false) and company != null and company["member"]:
 				_plot_box.add_child(UI.button("Wejdź na działkę spółki", Game.enter_plot.bind(plot), true))
+			elif _plot.get("canEnter", false):
+				_plot_box.add_child(_note("Działka publiczna: możesz po niej chodzić i oglądać, ale niczego nie ruszysz."))
+				_plot_box.add_child(UI.button("Odwiedź działkę", Game.enter_plot.bind(plot), true))
+			else:
+				_plot_box.add_child(_note("Działka prywatna: wchodzą tylko właściciel i jego spółka."))
 		elif _plot.get("priceCents") != null:
 			var price: int = _plot["priceCents"]
 			var price_row := HBoxContainer.new()
@@ -672,6 +678,32 @@ func _show_rename(plot: Vector2i) -> void:
 	row.add_child(field)
 	row.add_child(UI.button("Nazwij", save))
 	_plot_box.add_child(row)
+
+
+## Who may come onto the player's own plot: anyone (only to look around) or just them and their company.
+func _show_access() -> void:
+	var open: bool = _plot.get("public", false)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.add_child(UI.label("Dostęp:"))
+	row.add_child(UI.label("publiczna" if open else "prywatna", UI.GOOD if open else UI.GOLD))
+	_plot_box.add_child(row)
+	_plot_box.add_child(_note("Każdy może wejść i pochodzić, ale nie zajrzy do skrzyń, niczego nie zbierze, nie wydobędzie ani nie postawi."
+		if open else "Wchodzisz tylko ty i członkowie spółki, jeśli działka do niej należy."))
+	_plot_box.add_child(UI.button("Zmień na prywatną" if open else "Udostępnij wszystkim", _on_access.bind(not open)))
+
+
+func _on_access(open: bool) -> void:
+	var reply := await Net.request("plot.setPublic", {"x": _plot["x"], "y": _plot["y"], "public": open})
+	if reply["type"] != "world.plot":
+		_show_error(reply)
+		return
+	var plot: Dictionary = reply["payload"]
+	if _selected == Vector2i(plot["x"], plot["y"]):
+		_plot["public"] = plot.get("public", false)
+		_plot["canEnter"] = plot.get("canEnter", false)
+		_show_plot()
+	_show_toast("Działka jest teraz publiczna." if open else "Działka jest teraz prywatna.", UI.GOOD)
 
 
 ## Oil and gas under the player's own plot: unknown until they pay for a geological survey.
@@ -852,6 +884,13 @@ func _biome_name(id: int) -> String:
 
 func _small(text: String, color: Color) -> Label:
 	var l := UI.label(text, color)
+	l.add_theme_font_size_override("font_size", 13)
+	return l
+
+
+## A small muted line that wraps to the panel's width.
+func _note(text: String) -> Label:
+	var l := UI.label(text, UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
 	l.add_theme_font_size_override("font_size", 13)
 	return l
 

@@ -601,6 +601,12 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("price_cents");
 
+                    b.Property<bool>("Public")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("public");
+
                     b.HasKey("X", "Y");
 
                     b.HasIndex("OwnerId");

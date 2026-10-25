@@ -184,6 +184,9 @@ public enum PlotRight
     Owner,
     /// <summary>Set up and stop the station's train routes: the owner, and a company's partners and logistician.</summary>
     Routes,
+
+    /// <summary>Come onto the plot and walk about: everyone who may do anything there, and on a public plot anyone at all.</summary>
+    Visit,
 }
 
 /// <summary>A bought plot, for modules outside the world.</summary>
