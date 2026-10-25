@@ -7,7 +7,7 @@ using Microsoft.Extensions.DependencyInjection;
 namespace FactoryWorld.Modules.Market;
 
 /// <summary>
-/// The NPC trader: always sells trash, saplings, animals, nails, tools, backpacks, an anvil, a chainsaw, belts, inserters, wooden chests, machines (a forester's hut and a sawmill among them), the computer, generators, poles, flour, oil, bread and planks and always buys raw materials.
+/// The NPC trader: always sells trash, saplings, animals, nails, tools, backpacks, an anvil, a research table, a chainsaw, belts, inserters, wooden chests, machines (a forester's hut and a sawmill among them), the computer, generators, poles, flour, oil, bread and planks and always buys raw materials.
 /// Everything else it buys it sells too, but dear: <see cref="Markup"/> times what it pays, so buying is a last resort and never pays to sell back.
 /// These are its usual prices (cents); <see cref="TraderPrices"/> moves them with the day's drift and the market's events.
 /// What it pays is the floor of the market: a quick sale gets it at once, players' listings usually pay more.
@@ -34,6 +34,7 @@ public static class NpcPrices
         [Items.Workbench] = 50_000,
         [Items.Anvil] = 50_000,
         [Items.ClothesWardrobe] = 40_000,
+        [Items.ResearchTable] = 200_000,
         [Items.Axe] = 10_000,
         [Items.Shovel] = 10_000,
         [Items.Pickaxe] = 10_000,
@@ -124,6 +125,7 @@ public static class NpcPrices
         [Items.Wool] = 500,
         [Items.Milk] = 250,
         [Items.Anvil] = 23_000,
+        [Items.ResearchTable] = 40_000,
         [Items.Belt] = 700,
         [Items.Inserter] = 6500,
         [Items.Splitter] = 13_000,

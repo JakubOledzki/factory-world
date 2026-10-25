@@ -77,6 +77,7 @@ public static class GarageLayout
             [Items.Furnace] = (2, 2),
             [Items.Anvil] = (2, 1),
             [Items.ClothesWardrobe] = (3, 1),
+            [Items.ResearchTable] = (3, 2),
         };
 
     /// <summary>How a new garage is furnished.</summary>
@@ -90,6 +91,7 @@ public static class GarageLayout
         (Items.BarrelRed, 15, 3),
         (Items.Tyres, 12, 1),
         (Items.Pallet, 2, 1),
+        (Items.ResearchTable, 1, 10),
     ];
 
     /// <summary>Cells taken by a piece of furniture turned by `rotation` quarter turns.</summary>
@@ -104,6 +106,38 @@ public static class GarageLayout
     {
         var (w, d) = Size(kind, rotation);
         return x >= 0 && y >= 0 && x + w <= Width && y + d <= Depth;
+    }
+
+    /// <summary>Where a piece of furniture fits among the others: its spot in the starter layout
+    /// if that is free, else the first free cell from the back wall, turned or not; null when none is.</summary>
+    public static (int X, int Y, int Rotation)? FreeSpot(string kind, IReadOnlyList<PlacedObject> objects)
+    {
+        bool Fits(int x, int y, int rotation) =>
+            InsideRoom(kind, x, y, rotation) && !objects.Any(o => Overlaps(new PlacedObject(Guid.Empty, kind, x, y, rotation), o));
+
+        foreach (var (starter, sx, sy) in Starter)
+        {
+            if (starter == kind && Fits(sx, sy, 0))
+            {
+                return (sx, sy, 0);
+            }
+        }
+
+        for (var y = Depth - 1; y >= 0; y--)
+        {
+            for (var x = 0; x < Width; x++)
+            {
+                for (var rotation = 0; rotation < 2; rotation++)
+                {
+                    if (Fits(x, y, rotation))
+                    {
+                        return (x, y, rotation);
+                    }
+                }
+            }
+        }
+
+        return null;
     }
 
     public static bool Overlaps(PlacedObject a, PlacedObject b)
@@ -122,6 +156,10 @@ public sealed class Garage
 
     /// <summary>Set once the starter furniture has been put in, so it is never put in twice.</summary>
     public bool Furnished { get; set; }
+
+    /// <summary>Set once the garage has its research table: garages furnished before research
+    /// moved to its own table get one too, once.</summary>
+    public bool HasResearchTable { get; set; }
 }
 
 public sealed class GarageObject
@@ -163,6 +201,7 @@ public sealed class RecyclingDbContext(DbContextOptions<RecyclingDbContext> opti
             e.Property(g => g.OwnerId).HasColumnName("owner_id");
             e.Property(g => g.CreatedAt).HasColumnName("created_at");
             e.Property(g => g.Furnished).HasColumnName("furnished");
+            e.Property(g => g.HasResearchTable).HasColumnName("research_table");
         });
         model.Entity<GarageObject>(e =>
         {
@@ -386,15 +425,36 @@ public sealed class RecyclingService(
             }
         }
 
-        // Garages made before furniture existed get theirs here too, exactly once.
-        await using var furnish = await db.CommandAsync(
-            "UPDATE recycling.garages SET furnished = TRUE WHERE owner_id = @owner AND NOT furnished", cancellationToken);
-        furnish.Parameters.AddWithValue("owner", owner);
-        if (await furnish.ExecuteNonQueryAsync(cancellationToken) == 1)
+        // Garages made before furniture existed get theirs here too, exactly once. The starter
+        // furniture has the research table in it already.
+        await using (var furnish = await db.CommandAsync(
+            "UPDATE recycling.garages SET furnished = TRUE, research_table = TRUE WHERE owner_id = @owner AND NOT furnished", cancellationToken))
         {
-            foreach (var (kind, x, y) in GarageLayout.Starter)
+            furnish.Parameters.AddWithValue("owner", owner);
+            if (await furnish.ExecuteNonQueryAsync(cancellationToken) == 1)
             {
-                await InsertObjectAsync(owner, kind, x, y, 0, cancellationToken);
+                foreach (var (kind, x, y) in GarageLayout.Starter)
+                {
+                    await InsertObjectAsync(owner, kind, x, y, 0, cancellationToken);
+                }
+            }
+        }
+
+        // Garages furnished before research moved off the workbench get a research table, once:
+        // on its starter spot or the first free one, or into the inventory when the floor is full.
+        await using var give = await db.CommandAsync(
+            "UPDATE recycling.garages SET research_table = TRUE WHERE owner_id = @owner AND NOT research_table", cancellationToken);
+        give.Parameters.AddWithValue("owner", owner);
+        if (await give.ExecuteNonQueryAsync(cancellationToken) == 1)
+        {
+            var objects = await ObjectsAsync(owner, cancellationToken);
+            if (GarageLayout.FreeSpot(Items.ResearchTable, objects) is var (x, y, rotation))
+            {
+                await InsertObjectAsync(owner, Items.ResearchTable, x, y, rotation, cancellationToken);
+            }
+            else
+            {
+                await inventory.AddAsync(owner, Items.ResearchTable, 1, cancellationToken);
             }
         }
     }

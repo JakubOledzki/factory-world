@@ -25,6 +25,8 @@ public static class Items
 
     // A wardrobe in the garage keeps clothes and saved outfits to change into at once.
     public const string ClothesWardrobe = "furniture_wardrobe";
+    /// <summary>Where research is done; every garage has one from the start.</summary>
+    public const string ResearchTable = "furniture_research_table";
 
     // Upgraded furnaces: they stand on plots only and smelt faster, holding more.
     public const string BrickFurnace = "furniture_brick_furnace";
@@ -458,6 +460,7 @@ public static class Items
         [SortingMachine] = "Automatyczna sortownia",
         [Furnace] = "Piec kamienny",
         [Anvil] = "Kowadło",
+        [ResearchTable] = "Stół badawczy",
         [BrickFurnace] = "Piec ceglany",
         [BlastFurnace] = "Piec hutniczy",
         [Axe] = "Siekiera",

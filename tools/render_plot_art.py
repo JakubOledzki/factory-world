@@ -500,6 +500,7 @@ CRAFTING = {
     "workbench": (144, 128, 0.6, crafted(lambda: ra.build_workbench(None, Vector((0, 0, 0))))),
     "furnace": (96, 112, 0.6, crafted(lambda: ra.build_furnace(None, Vector((0, 0, 0)), 1.4))),
     "anvil": (96, 96, 0.5, crafted(lambda: ra.build_anvil(None, Vector((0, 0, 0)), 1.7))),
+    "research_table": (128, 112, 0.6, crafted(lambda: ra.build_research_table(None, Vector((0, 0, 0)), 1.2))),
     # The upgraded furnaces stand on plots only; the inventory shows them as their sprites.
     "brick_furnace": (112, 144, 0.9, crafted(build_brick_furnace)),
     "blast_furnace": (112, 160, 1.0, crafted(build_blast_furnace)),
