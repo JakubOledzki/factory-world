@@ -1,6 +1,18 @@
 [
 	{
 		"date": "2026-10-25",
+		"title": "Banki spółek",
+		"changes": [
+			"Spółka, która zbada „Bankowość”, stawia bank w mieście, a w innych miastach jego oddziały.",
+			"Każdy gracz zakłada konto w dowolnym banku, wpłaca, wypłaca i robi przelewy (okno „Banki”, klawisz B).",
+			"Pieniądze jadą jak pociąg: z twojej najbliższej działki do najbliższego budynku banku, więc oddziały w okolicy przyspieszają wpłaty.",
+			"Przelew w tym samym banku trwa minutę, do innego banku 6 godzin, a bez działki wpłata i wypłata trwają 30 minut.",
+			"Miasto mieści tyle budynków banków, ile pozwala jego wielkość: wieś 1, metropolia 5.",
+			"Bankowość kosztuje spółkę 100 mld $ (członkowie dokładają pieniądze z portfela), bank 10 mld $, a oddział 5 mld $ u handlarza."
+		]
+	},
+	{
+		"date": "2026-10-25",
 		"title": "Eksport koleją",
 		"changes": [
 			"Skrzynia eksportowa przy stacji: ustaw cenę każdego towaru, a pociąg co godzinę zabierze go na rynek graczy.",

@@ -917,5 +917,13 @@
  "rail_port": {
   "anchorX": 352,
   "anchorY": 412
+ },
+ "bank": {
+  "anchorX": 192,
+  "anchorY": 274
+ },
+ "bank_branch": {
+  "anchorX": 128,
+  "anchorY": 157
  }
 }

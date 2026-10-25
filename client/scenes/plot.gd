@@ -24,6 +24,7 @@ const ACTIONS := {
 	"inventory": [KEY_I],
 	"station": [KEY_T],
 	"company": [KEY_K],
+	"bank": [KEY_B],
 	"tool": [KEY_Q],
 	"plant": [KEY_P],
 	"upgrade_mine": [KEY_U],
@@ -183,6 +184,7 @@ const PLACED_SPRITES := {
 	"furniture_potato_distillery": "potato_distillery", "furniture_biogas_plant": "biogas_plant", "furniture_stable": "stable",
 	"furniture_bellows": "bellows", "furniture_farmstead": "farmstead", "furniture_manor_farm": "manor_farm",
 	"furniture_export_chest": "export_chest", "furniture_buy_market": "buy_market", "furniture_rail_port": "rail_port",
+	"furniture_bank": "bank", "furniture_bank_branch": "bank_branch",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
@@ -273,16 +275,21 @@ const CITY := 9
 const CITY_HALF_WIDTH := 30
 const CITY_ROWS := 60
 const CITY_ONLY := ["furniture_multistorey_factory", "furniture_shop", "storage_high_bay", "furniture_freight_terminal",
-	"furniture_company_hq", "furniture_design_office", "furniture_laboratory", "furniture_service_workshop", "furniture_tailor", BUY_MARKET]
+	"furniture_company_hq", "furniture_design_office", "furniture_laboratory", "furniture_service_workshop", "furniture_tailor", BUY_MARKET,
+	BANK, BANK_BRANCH]
 ## Makes every machine on power on the plot 20% faster; opens nothing.
 const CONTROL_CENTER := "furniture_control_center"
-const ONE_PER_PLOT := ["furniture_freight_terminal", "furniture_company_hq", CONTROL_CENTER, CANTEEN, STABLE, BELLOWS, EXPORT_CHEST, RAIL_PORT]
+const ONE_PER_PLOT := ["furniture_freight_terminal", "furniture_company_hq", CONTROL_CENTER, CANTEEN, STABLE, BELLOWS, EXPORT_CHEST, RAIL_PORT,
+	BANK, BANK_BRANCH]
 ## Export by rail: a chest by the station (at most EXPORT_REACH tiles from it) whose priced goods a train takes every hour to the
 ## nearest buying market, which stands in a town (one a town, on 3 × 3 tiles) and lists them on the players' market; across the
 ## sea the train goes on a ferry from a rail port on the coast. The market and the port open a window to set their commission or fee.
 const EXPORT_CHEST := "furniture_export_chest"
 const BUY_MARKET := "furniture_buy_market"
 const RAIL_PORT := "furniture_rail_port"
+## A company's bank in a town (5 × 5) and its branches in other towns (3 × 3); clicking one opens the bank's page.
+const BANK := "furniture_bank"
+const BANK_BRANCH := "furniture_bank_branch"
 const EXPORT_REACH := 3
 const ASSEMBLY_HALL := "furniture_assembly_hall"
 const SHOP := "furniture_shop"
@@ -294,10 +301,10 @@ const FOOTPRINT := 1
 ## (farmland, oasis) and keep the same clearing and path free.
 const FARMSTEADS := {"furniture_farmstead": 4, "furniture_manor_farm": 5}
 const FERTILE := [3, 12]
-## Buildings of the crafting tree on 3 × 3 tiles, and the two on 5 × 5 (HUGE_FOOTPRINT each way).
+## Buildings of the crafting tree on 3 × 3 tiles, and those on 5 × 5 (HUGE_FOOTPRINT each way).
 const LARGE := ["furniture_robotic_hall", "furniture_oxygen_converter", "furniture_rolling_mill", "furniture_continuous_caster",
-	"storage_automated_warehouse", "power_fusion_plant", CANTEEN, "furniture_biogas_plant", BUY_MARKET]
-const HUGE := ["furniture_steel_combine", "furniture_megafactory"]
+	"storage_automated_warehouse", "power_fusion_plant", CANTEEN, "furniture_biogas_plant", BUY_MARKET, BANK_BRANCH]
+const HUGE := ["furniture_steel_combine", "furniture_megafactory", BANK]
 const HUGE_FOOTPRINT := 2
 ## The rail port with its tracks and ferry ramp covers 9 × 9 tiles (GIANT_FOOTPRINT each way).
 const GIANT_FOOTPRINT := 4
@@ -561,6 +568,7 @@ var _well_window: WellWindow
 var _shop_window: ShopWindow
 var _export_window: ExportWindow
 var _export_post_window: ExportPostWindow
+var _bank_window: BankWindow
 var _hive_window: HiveWindow
 var _city_window: CityWindow
 var _city_button: Button
@@ -1735,8 +1743,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _releasing != "":
 			_stop_releasing()
 		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _achievements_window.visible \
-				or _mine_window.visible or _character_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _research_window, _furnace_window, _machine_window, _forester_window, _farmstead_window, _canteen_window, _generator_window, _storage_window, _splitter_window, _filter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window]:
+				or _mine_window.visible or _character_window.visible or _bank_window.visible or _using_window_open():
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _research_window, _furnace_window, _machine_window, _forester_window, _farmstead_window, _canteen_window, _generator_window, _storage_window, _splitter_window, _filter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window, _bank_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -1774,6 +1782,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_go_to_station()
 	elif event.is_action_pressed("company"):
 		_company_window.toggle()
+	elif event.is_action_pressed("bank"):
+		_bank_window.toggle()
 	elif event.is_action_pressed("stats"):
 		_stats_window.toggle()
 	elif event.is_action_pressed("achievements"):
@@ -2564,6 +2574,10 @@ func _place_object(cell: Vector2i) -> void:
 		_show_toast("%s stoi w mieście. Pociągi z całego lądu przywiozą tu towar na rynek graczy; kliknij go, aby ustawić prowizję." % object["name"])
 	elif kind == RAIL_PORT:
 		_show_toast("%s stoi na brzegu: pociągi z eksportem przeprawią się stąd promem. Kliknij go, aby ustawić opłatę." % object["name"])
+	elif kind == BANK:
+		_show_toast("%s stoi w mieście: gracze otworzą w nim konta. Oddziały w innych miastach skrócą im drogę pieniędzy." % object["name"])
+	elif kind == BANK_BRANCH:
+		_show_toast("%s stoi w mieście: wpłaty i wypłaty graczy z okolicy pójdą teraz tędy, krótszą drogą." % object["name"])
 	elif kind == CANTEEN:
 		_show_toast("%s stoi na działce. Wydaj w niej jedzenie, a maszyny na opał i na prąd przyspieszą o 20%%." % object["name"])
 	elif kind == STABLE:
@@ -2664,6 +2678,17 @@ func _use_placed(cell: Vector2i) -> void:
 		_export_window.open_at(_at)
 	elif object["kind"] in [BUY_MARKET, RAIL_PORT]:
 		_export_post_window.open_at(object["id"])
+	elif object["kind"] in [BANK, BANK_BRANCH]:
+		_open_bank_of(object["id"])
+
+
+## Opens the page of the bank a building on the plot belongs to.
+func _open_bank_of(id: String) -> void:
+	var reply := await Net.request("bank.building", {"id": id})
+	if reply["type"] != "bank.building":
+		_show_error(reply)
+		return
+	_bank_window.open_bank(str(reply["payload"]["bank"]))
 
 
 func _using_window_open() -> bool:
@@ -3662,6 +3687,7 @@ func _build_hud() -> void:
 	_market_button.visible = false
 	bar.add_child(_market_button)
 	bar.add_child(UI.toolbar_button("company", "Spółka  [K]", func() -> void: _company_window.toggle()))
+	bar.add_child(UI.toolbar_button("bank", "Banki  [B]\nKonta, wpłaty, wypłaty i przelewy", func() -> void: _bank_window.toggle()))
 	_city_button = UI.toolbar_button("city", "Miasto\nPotrzeby, rozwój, śmieci, usługi i ratusz", _toggle_city)
 	_city_button.visible = false
 	bar.add_child(_city_button)
@@ -3947,6 +3973,7 @@ func _build_windows() -> void:
 	_research_window = ResearchWindow.new()
 	_research_window.can_pick_up = true
 	_research_window.inventory_changed.connect(_reload_inventory)
+	_research_window.balance_changed.connect(_reload_balance)
 	_research_window.failed.connect(_show_error)
 	_research_window.researched.connect(_on_researched)
 	_research_window.pick_up_requested.connect(_pick_up_placed)
@@ -4079,6 +4106,11 @@ func _build_windows() -> void:
 	layer.add_child(_hive_window)
 	layer.add_child(_export_window)
 	layer.add_child(_export_post_window)
+	_bank_window = BankWindow.new()
+	_bank_window.position = Vector2(1280 - 520 - 12, 64)
+	_bank_window.balance_changed.connect(_reload_balance)
+	_bank_window.failed.connect(_show_error)
+	layer.add_child(_bank_window)
 	layer.add_child(_city_window)
 	_achievements_window = AchievementsWindow.new()
 	_achievements_window.failed.connect(_show_error)

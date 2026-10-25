@@ -240,9 +240,23 @@ def city():
     p.save("city")
 
 
+def bank():
+    p = Pen()
+    for k in range(4):  # a stack of coins, each with a dark rim below the next
+        y = 50 - k * 8
+        p.d.ellipse((5 * S, (y - 5) * S, 33 * S, (y + 5) * S), fill=SHADE if k % 2 else INK)
+        p.d.ellipse((5 * S, (y - 8) * S, 33 * S, (y + 2) * S), fill=CUT)
+    p.d.ellipse((5 * S, 13 * S, 33 * S, 23 * S), fill=INK)  # the top coin
+    p.dot(44, 38, 17, INK)  # a big coin with a dollar cut out
+    p.ring(44, 38, 13, SHADE, 2)
+    p.line([(49, 31), (46, 29.5), (41, 30), (39.5, 34), (44, 38), (48.5, 41), (47, 46), (42, 46.5), (38.5, 45)], CUT, 3)
+    p.line([(44, 25), (44, 51)], CUT, 2.5)
+    p.save("bank")
+
+
 def main() -> None:
     for draw in (backpack, garage, market, contracts, company, stats, achievements, world_map, logout,
-                 station, plant, mine_upgrade, garage_upgrade, city):
+                 station, plant, mine_upgrade, garage_upgrade, city, bank):
         draw()
 
 

@@ -12,10 +12,11 @@ namespace FactoryWorld.Modules.Research;
 /// <param name="Unlocks">Items (workbench recipes, machines, machine recipes) the player may make and buy once it is done.</param>
 /// <param name="CompanyOnly">Only a company researches it, for all its members (<see cref="CompanyTechs"/>).</param>
 /// <param name="Icon">The item whose icon it shows when it unlocks none (e.g. <see cref="GripperTechs"/>).</param>
+/// <param name="CostCents">Money used up besides the items, in cents; a company collects it as <see cref="TechTree.Money"/>.</param>
 public sealed record Technology(
     string Id, string Name, string Description, IReadOnlyList<string> Requires,
     IReadOnlyList<(string Item, int Quantity)> Cost, TimeSpan Time, int Xp, IReadOnlyList<string> Unlocks, bool CompanyOnly = false,
-    string? Icon = null);
+    string? Icon = null, long CostCents = 0);
 
 /// <summary>
 /// The technology tree. A new player can make the workbench, the stone furnace and nails, and
@@ -176,6 +177,10 @@ public static class TechTree
 
     public const string Megaprojects = CompanyTechs.Megaprojects;
     public const string CorporateFinance = CompanyTechs.CorporateFinance;
+    public const string Banking = CompanyTechs.Banking;
+
+    /// <summary>What members bring as money towards a company's research, in cents, in place of an item.</summary>
+    public const string Money = "money";
 
     public static readonly IReadOnlyList<Technology> Technologies =
     [
@@ -622,6 +627,9 @@ public static class TechTree
         new(CorporateFinance, "Finanse korporacyjne", "Tylko dla spółek: spółka wchodzi na giełdę, a gracze spoza niej kupują jej akcje.",
             [Commerce, Headquarters], [(Items.Paper, 500), (Items.Blueprint, 10), (Items.CircuitBoard, 50)], TimeSpan.FromMinutes(20), 200,
             [], CompanyOnly: true),
+        new(Banking, "Bankowość", "Tylko dla spółek: spółka stawia w mieście bank, a w innych miastach jego oddziały; gracze trzymają w nim pieniądze na kontach i robią przelewy.",
+            [CorporateFinance], [], TimeSpan.FromMinutes(20), 200,
+            [Items.Bank, Items.BankBranch], CompanyOnly: true, CostCents: 100_000_000_000_00),
     ];
 
     /// <summary>
@@ -662,7 +670,7 @@ public static class TechTree
             [RoboticHall, OxygenConverter, RollingMill, ControlCenter, ContinuousCaster, AutomatedWarehouse, SteelCombine, Megafactory]),
         new("space", "Kosmos i fuzja", Items.LaunchRocket,
             [RocketEngine, PlasmaChamber, Avionics, PlasmaControl, RocketStage, Satellite, FusionReactor, LaunchRocket, FusionPlant]),
-        new("company", "Spółki", Items.CompanyHq, [Megaprojects, CorporateFinance]),
+        new("company", "Spółki", Items.CompanyHq, [Megaprojects, CorporateFinance, Banking]),
     ];
 
     /// <summary>The branch each technology belongs to.</summary>
@@ -717,7 +725,7 @@ public sealed record CompanyResearch(
     string Name, bool Leads, string? Technology, DateTimeOffset? StartsAt, DateTimeOffset? FinishesAt,
     IReadOnlyDictionary<string, long> Delivered, IReadOnlySet<string> Done);
 
-public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterProgress progress, ICompanies companies, TimeProvider time)
+public sealed class ResearchService(GameDb db, IInventory inventory, IWallet wallet, ICharacterProgress progress, ICompanies companies, TimeProvider time)
     : ITechnologies, ICompanyTechnologies
 {
     /// <summary>How long the research takes the player: the orbital station of their company shortens it.</summary>
@@ -764,6 +772,11 @@ public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterP
             foreach (var (item, quantity) in technology.Cost)
             {
                 await inventory.RemoveAsync(owner, item, quantity, cancellationToken);
+            }
+
+            if (technology.CostCents > 0)
+            {
+                await wallet.DebitAsync(owner, technology.CostCents, $"research {technology.Id}", cancellationToken);
             }
 
             var now = time.GetUtcNow();
@@ -859,6 +872,11 @@ public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterP
                     foreach (var (item, quantity) in technology.Cost)
                     {
                         await inventory.AddAsync(owner, item, quantity, cancellationToken);
+                    }
+
+                    if (technology.CostCents > 0)
+                    {
+                        await wallet.CreditAsync(owner, technology.CostCents, $"research {technology.Id} cancelled", cancellationToken);
                     }
                 }
             }
@@ -1017,14 +1035,22 @@ public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterP
             }
 
             var technology = TechTree.ById[id];
-            var needed = technology.Cost.Where(c => c.Item == item).Sum(c => (long)c.Quantity) - company.Delivered.GetValueOrDefault(item);
+            var needed = Needed(technology, item) - company.Delivered.GetValueOrDefault(item);
             if (needed <= 0)
             {
                 throw new GameException("not_needed", "The research needs no more of this.");
             }
 
             var used = Math.Min(quantity, needed);
-            await inventory.RemoveAsync(owner, item, used, cancellationToken);
+            if (item == TechTree.Money)
+            {
+                await wallet.DebitAsync(owner, used, $"company research {id}", cancellationToken);
+            }
+            else
+            {
+                await inventory.RemoveAsync(owner, item, used, cancellationToken);
+            }
+
             await using (var upsert = await db.CommandAsync(
                 """
                 INSERT INTO research.company_contributions (company_id, technology, item, delivered) VALUES (@company, @technology, @item, @used)
@@ -1039,7 +1065,7 @@ public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterP
             }
 
             var delivered = new Dictionary<string, long>(company.Delivered) { [item] = company.Delivered.GetValueOrDefault(item) + used };
-            if (technology.Cost.All(c => delivered.GetValueOrDefault(c.Item) >= c.Quantity))
+            if (technology.Cost.All(c => delivered.GetValueOrDefault(c.Item) >= c.Quantity) && delivered.GetValueOrDefault(TechTree.Money) >= technology.CostCents)
             {
                 var now = time.GetUtcNow();
                 await using var start = await db.CommandAsync(
@@ -1068,7 +1094,14 @@ public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterP
 
             foreach (var (item, quantity) in company.Delivered.Where(d => d.Value > 0))
             {
-                await inventory.AddAsync(owner, item, quantity, cancellationToken);
+                if (item == TechTree.Money)
+                {
+                    await wallet.CreditAsync(owner, quantity, $"company research {id} cancelled", cancellationToken);
+                }
+                else
+                {
+                    await inventory.AddAsync(owner, item, quantity, cancellationToken);
+                }
             }
 
             await using (var delete = await db.CommandAsync(
@@ -1084,6 +1117,10 @@ public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterP
 
             return await ReadAsync(owner, [], null, cancellationToken);
         }, cancellationToken);
+
+    /// <summary>How much of an item, or of <see cref="TechTree.Money"/> in cents, the research uses up.</summary>
+    private static long Needed(Technology technology, string item) =>
+        item == TechTree.Money ? technology.CostCents : technology.Cost.Where(c => c.Item == item).Sum(c => (long)c.Quantity);
 
     /// <summary>The player's company, locked so its research changes one request at a time.</summary>
     private async Task<CompanyMembership> RequireCompanyAsync(Guid player, bool leads, CancellationToken cancellationToken)
@@ -1177,6 +1214,8 @@ public abstract class ResearchHandler(IServiceScopeFactory scopes) : IMessageHan
                 branch = TechTree.BranchOf[t.Id].Id,
                 requires = t.Requires,
                 cost = t.Cost.Select(c => new { id = c.Item, name = Items.Names[c.Item], quantity = c.Quantity }),
+                // Money it uses up besides the items.
+                costCents = t.CostCents,
                 seconds = t.Time.TotalSeconds,
                 xp = t.Xp,
                 unlocks = t.Unlocks.Select(u => new { id = u, name = Items.Names[u] }),
@@ -1203,7 +1242,11 @@ public abstract class ResearchHandler(IServiceScopeFactory scopes) : IMessageHan
                 startsAt = c.StartsAt?.ToUnixTimeMilliseconds(),
                 finishesAt = c.FinishesAt?.ToUnixTimeMilliseconds(),
                 delivered = c.Technology is { } id
-                    ? TechTree.ById[id].Cost.Select(p => new { id = p.Item, name = Items.Names[p.Item], needed = p.Quantity, delivered = c.Delivered.GetValueOrDefault(p.Item) })
+                    ? TechTree.ById[id].Cost.Select(p => new { id = p.Item, name = Items.Names[p.Item], needed = (long)p.Quantity, delivered = c.Delivered.GetValueOrDefault(p.Item) })
+                        // Money in cents, under the id "money".
+                        .Concat(TechTree.ById[id].CostCents > 0
+                            ? [new { id = TechTree.Money, name = "Pieniądze", needed = TechTree.ById[id].CostCents, delivered = c.Delivered.GetValueOrDefault(TechTree.Money) }]
+                            : [])
                     : null,
             } : null,
             // What speeds research up, and by how many seconds each piece.

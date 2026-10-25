@@ -12,8 +12,11 @@ extends VBoxContainer
 signal researched(finished: Array, xp: Variant)
 ## The cost was taken or given back; the screen reloads the inventory.
 signal inventory_changed
+## Money went from the wallet to the company's research or came back.
+signal balance_changed
 signal failed(reply: Dictionary)
 
+const MONEY := "money"
 const STATUS_COLORS := {"done": UI.GOOD, "active": UI.GOLD, "available": UI.TEXT, "locked": UI.MUTED}
 ## Where the tree starts inside its canvas: room for the column titles above.
 const TREE_MARGIN := Vector2(18, 40)
@@ -437,6 +440,8 @@ func _render_details() -> void:
 			var have := _count(cost["id"])
 			var text := "%d/%d" % [need, have]
 			_details.add_child(_item_row(cost["id"], cost["name"], text, UI.GOOD if have >= need or technology["status"] == "active" else UI.ERROR))
+		if int(technology.get("costCents", 0)) > 0:
+			_details.add_child(_money_row("Pieniądze", UI.money(int(technology["costCents"]))))
 	_details.add_child(UI.label("Czas: %s  ·  %d XP" % [_seconds(float(technology["seconds"])), int(technology["xp"])], UI.MUTED))
 
 	_render_company(technology)
@@ -470,6 +475,9 @@ func _render_company(technology: Dictionary) -> void:
 			for part: Dictionary in company["delivered"]:
 				var needed := int(part["needed"])
 				var delivered := int(part["delivered"])
+				if part["id"] == MONEY:
+					_details.add_child(_money_contribution(needed, delivered))
+					continue
 				var row := _item_row(part["id"], part["name"], "%d/%d" % [delivered, needed], UI.GOOD if delivered >= needed else UI.TEXT)
 				if delivered < needed:
 					var have := _count(part["id"])
@@ -503,6 +511,8 @@ func _company(type: String, payload: Dictionary) -> void:
 	_apply(reply)
 	if reply["type"] == "research":
 		inventory_changed.emit()
+		if payload.get("item") == MONEY or type == "research.companyCancel":
+			balance_changed.emit()
 
 
 static func _icon_for(technology: Dictionary) -> Texture2D:
@@ -551,6 +561,42 @@ func _requirement(need: Dictionary, branch: String) -> Button:
 	b.add_theme_color_override("font_color", STATUS_COLORS[need["status"]])
 	b.tooltip_text = "Pokaż w drzewku"
 	return b
+
+
+## A row for money in the cost, with a coin in place of an item icon.
+func _money_row(name: String, amount: String, color := UI.TEXT) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.add_child(UI.icon("coin", 26))
+	var name_label := UI.label(name)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_label)
+	row.add_child(UI.label(amount, color, HORIZONTAL_ALIGNMENT_RIGHT))
+	return row
+
+
+## Money members bring from their wallets towards the company's research: how much is in, and an amount to add.
+func _money_contribution(needed: int, delivered: int) -> VBoxContainer:
+	var box := VBoxContainer.new()
+	box.add_child(_money_row("Pieniądze", "%s/%s" % [UI.money(delivered), UI.money(needed)], UI.GOOD if delivered >= needed else UI.TEXT))
+	if delivered >= needed:
+		return box
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_END
+	var amount := SpinBox.new()
+	amount.min_value = 0.01
+	amount.max_value = (needed - delivered) / 100.0
+	amount.step = 0.01
+	amount.value = amount.max_value
+	amount.suffix = "$"
+	amount.custom_minimum_size.x = 200
+	amount.select_all_on_focus = true
+	row.add_child(amount)
+	var give := UI.button("Dołóż z portfela", func() -> void: _company("research.contribute", {"item": MONEY, "quantity": roundi(amount.value * 100.0)}))
+	give.disabled = _busy
+	row.add_child(give)
+	box.add_child(row)
+	return box
 
 
 func _item_row(item: String, name: String, amount: String, color := UI.TEXT) -> HBoxContainer:

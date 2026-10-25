@@ -398,6 +398,64 @@ public sealed class ExportShipmentRow
     public DateTimeOffset ArrivesAt { get; set; }
 }
 
+/// <summary>A company's bank, by the company's id, with the company's name when it put up its bank.</summary>
+public sealed class BankRow
+{
+    public Guid CompanyId { get; set; }
+
+    public required string Name { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+}
+
+/// <summary>A bank or a branch of it standing on a city plot.</summary>
+public sealed class BankBuildingRow
+{
+    public Guid ObjectId { get; set; }
+
+    public Guid CompanyId { get; set; }
+
+    public required string Kind { get; set; }
+
+    public int X { get; set; }
+
+    public int Y { get; set; }
+}
+
+/// <summary>A player's account in a bank and the money on it.</summary>
+public sealed class BankAccountRow
+{
+    public Guid CompanyId { get; set; }
+
+    public Guid PlayerId { get; set; }
+
+    public long BalanceCents { get; set; }
+
+    public DateTimeOffset OpenedAt { get; set; }
+}
+
+/// <summary>Money on its way into an account, out of one into a wallet, or from one account to another.</summary>
+public sealed class BankTransferRow
+{
+    public long Id { get; set; }
+
+    public required string Kind { get; set; }
+
+    public Guid PlayerId { get; set; }
+
+    public Guid ToPlayerId { get; set; }
+
+    public Guid? FromCompanyId { get; set; }
+
+    public Guid? ToCompanyId { get; set; }
+
+    public long Cents { get; set; }
+
+    public DateTimeOffset SentAt { get; set; }
+
+    public DateTimeOffset ArrivesAt { get; set; }
+}
+
 public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, GameDb gameDb) : ModuleDbContext(options, gameDb)
 {
     public const string Schema = "world";
@@ -691,6 +749,51 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(s => s.ArrivesAt).HasColumnName("arrives_at");
             e.HasIndex(s => s.ArrivesAt);
             e.HasIndex(s => new { s.FromX, s.FromY });
+        });
+        model.Entity<BankRow>(e =>
+        {
+            e.ToTable("banks");
+            e.HasKey(b => b.CompanyId);
+            e.Property(b => b.CompanyId).HasColumnName("company_id");
+            e.Property(b => b.Name).HasColumnName("name").HasMaxLength(64);
+            e.Property(b => b.CreatedAt).HasColumnName("created_at");
+        });
+        model.Entity<BankBuildingRow>(e =>
+        {
+            e.ToTable("bank_buildings");
+            e.HasKey(b => b.ObjectId);
+            e.Property(b => b.ObjectId).HasColumnName("object_id");
+            e.Property(b => b.CompanyId).HasColumnName("company_id");
+            e.Property(b => b.Kind).HasColumnName("kind").HasMaxLength(64);
+            e.Property(b => b.X).HasColumnName("x");
+            e.Property(b => b.Y).HasColumnName("y");
+            e.HasIndex(b => b.CompanyId);
+        });
+        model.Entity<BankAccountRow>(e =>
+        {
+            e.ToTable("bank_accounts");
+            e.HasKey(a => new { a.CompanyId, a.PlayerId });
+            e.Property(a => a.CompanyId).HasColumnName("company_id");
+            e.Property(a => a.PlayerId).HasColumnName("player_id");
+            e.Property(a => a.BalanceCents).HasColumnName("balance_cents");
+            e.Property(a => a.OpenedAt).HasColumnName("opened_at");
+            e.HasIndex(a => a.PlayerId);
+        });
+        model.Entity<BankTransferRow>(e =>
+        {
+            e.ToTable("bank_transfers");
+            e.Property(t => t.Id).HasColumnName("id");
+            e.Property(t => t.Kind).HasColumnName("kind").HasMaxLength(16);
+            e.Property(t => t.PlayerId).HasColumnName("player_id");
+            e.Property(t => t.ToPlayerId).HasColumnName("to_player_id");
+            e.Property(t => t.FromCompanyId).HasColumnName("from_company_id");
+            e.Property(t => t.ToCompanyId).HasColumnName("to_company_id");
+            e.Property(t => t.Cents).HasColumnName("cents");
+            e.Property(t => t.SentAt).HasColumnName("sent_at");
+            e.Property(t => t.ArrivesAt).HasColumnName("arrives_at");
+            e.HasIndex(t => t.ArrivesAt);
+            e.HasIndex(t => t.PlayerId);
+            e.HasIndex(t => new { t.ToPlayerId, t.ToCompanyId });
         });
         model.Entity<TownProgressRow>(e =>
         {
@@ -1171,6 +1274,17 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, PriceExportHandler>();
         services.AddSingleton<IMessageHandler, GetExportPostHandler>();
         services.AddSingleton<IMessageHandler, SetExportPostHandler>();
+        services.AddScoped<BankService>();
+        services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<BankService>());
+        services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<BankService>());
+        services.AddHostedService<BankDispatcher>();
+        services.AddSingleton<IMessageHandler, GetBankHandler>();
+        services.AddSingleton<IMessageHandler, OpenBankAccountHandler>();
+        services.AddSingleton<IMessageHandler, CloseBankAccountHandler>();
+        services.AddSingleton<IMessageHandler, DepositHandler>();
+        services.AddSingleton<IMessageHandler, WithdrawHandler>();
+        services.AddSingleton<IMessageHandler, BankTransferHandler>();
+        services.AddSingleton<IMessageHandler, BankOfBuildingHandler>();
         services.AddScoped<ForesterService>();
         services.AddScoped<FarmsteadService>();
         services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<FarmsteadService>());

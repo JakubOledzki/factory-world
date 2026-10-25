@@ -69,6 +69,9 @@ public static class NpcPrices
         [Items.Sawmill] = 40_000,
         [Items.Planks] = 300,
         [Items.FishingRod] = 10_000,
+        // A bank is bought only, never made, and the trader does not buy it back.
+        [Items.Bank] = 10_000_000_000_00,
+        [Items.BankBranch] = 5_000_000_000_00,
     };
 
     /// <summary>What the NPC pays the player.</summary>
