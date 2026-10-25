@@ -50,7 +50,7 @@ public sealed record Survey(DepositSize Oil, DepositSize Gas, Mineral? Mineral =
 /// </summary>
 public static class Deposits
 {
-    public const long SurveyPriceCents = 5_000_00;
+    public const long SurveyPriceCents = 100_000_00;
 
     public const int XpPerSurvey = 50;
 
