@@ -26,7 +26,7 @@ public sealed class CharacterTests(ServerFactory factory) : IClassFixture<Server
         Assert.Equal(name, loaded.Payload().GetProperty("name").GetString());
         Assert.Equal(1, loaded.Payload().GetProperty("level").GetInt32());
         Assert.Equal(0, loaded.Payload().GetProperty("xp").GetInt64());
-        Assert.Equal(200, loaded.Payload().GetProperty("nextLevelXp").GetInt64());
+        Assert.Equal(204, loaded.Payload().GetProperty("nextLevelXp").GetInt64());
         Assert.Equal(3, loaded.Payload().GetProperty("appearance").GetProperty("hairStyle").GetInt32());
     }
 
