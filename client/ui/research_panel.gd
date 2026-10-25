@@ -1,6 +1,6 @@
 class_name ResearchPanel
 extends VBoxContainer
-## The technology trees, a tab of the workbench window. Every branch of industry (logistics,
+## The technology trees, shown at the research table. Every branch of industry (logistics,
 ## mining, forestry, oil…) has a tree of its own, picked with the tabs on top. In a tree each
 ## technology is a card in the column of its depth within the branch, joined by curves to the
 ## ones it needs; what it needs from other branches shows as small icons on the card. The chosen

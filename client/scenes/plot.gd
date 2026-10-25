@@ -4,7 +4,7 @@ extends Node2D
 ## The character walks with WSAD or by clicking; clicking a tree, rock or dune walks up to it and
 ## works it with the tool in hand, and a mine is worked with a pickaxe for ore.
 ## The station window loads goods from the inventory and sends them by train to other plots.
-## A workbench, a furnace or a machine that processes crops (mill, oil press, pickling barrel,
+## A workbench, a research table, a furnace or a machine that processes crops (mill, oil press, pickling barrel,
 ## bakery, field kitchen) from the inventory can be put on a free tile and used there, and so can
 ## belts and inserters (turned with R) that move items between machines and chests, piles and silos.
 ## A computer put on the plot opens the market there, as in the garage.
@@ -131,7 +131,7 @@ const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalni
 ## What a player can put on a plot from the inventory, and its sprite there; belts are drawn by
 ## PlotLogistics, flat on the ground.
 const PLACED_SPRITES := {
-	"furniture_workbench": "workbench", "furniture_anvil": "anvil", "furniture_furnace": "furnace",
+	"furniture_workbench": "workbench", "furniture_anvil": "anvil", "furniture_research_table": "research_table", "furniture_furnace": "furnace",
 	"furniture_brick_furnace": "brick_furnace", "furniture_blast_furnace": "blast_furnace",
 	"logistics_fast_inserter": "inserter_fast", "logistics_express_inserter": "inserter_express",
 	"furniture_mill": "mill", "furniture_oil_press": "oil_press", "furniture_pickling_barrel": "pickling_barrel",
@@ -495,6 +495,7 @@ var _others: PlotPlayers
 var _next_presence_poll := 0.0
 var _polling_presence := false
 var _crafting_window: CraftingWindow
+var _research_window: ResearchWindow
 var _furnace_window: FurnaceWindow
 var _storage_window: StorageWindow
 var _splitter_window: SplitterWindow
@@ -1638,7 +1639,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			_stop_releasing()
 		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _achievements_window.visible \
 				or _mine_window.visible or _character_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _furnace_window, _machine_window, _forester_window, _generator_window, _storage_window, _splitter_window, _filter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window]:
+			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _research_window, _furnace_window, _machine_window, _forester_window, _generator_window, _storage_window, _splitter_window, _filter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -2508,6 +2509,8 @@ func _use_placed(cell: Vector2i) -> void:
 		_offer_filter(_storage_window, object, "storage")
 	elif object["kind"] in ["furniture_workbench", "furniture_anvil", SHIPYARD, "furniture_tailor"]:
 		_crafting_window.open_at(object["id"], object["kind"])
+	elif object["kind"] == ResearchWindow.TABLE:
+		_research_window.open_at(object["id"])
 	elif object["kind"] in GENERATORS or object["kind"] in HYDRO or object["kind"] in SOLAR or object["kind"] == BATTERY \
 			or object["kind"] in WIND or object["kind"] == HEATER:
 		_generator_window.open_at(_at, object["id"])
@@ -2529,13 +2532,14 @@ func _use_placed(cell: Vector2i) -> void:
 
 
 func _using_window_open() -> bool:
-	return _crafting_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
+	return _crafting_window.visible or _research_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
 		or _splitter_window.visible or _filter_window.visible or _generator_window.visible or _market_window.visible or _forester_window.visible \
 		or _drill_window.visible or _well_window.visible or _shop_window.visible or _hive_window.visible
 
 
 func _hide_placed_windows() -> void:
 	_crafting_window.hide_window()
+	_research_window.hide_window()
 	_furnace_window.hide_window()
 	_machine_window.hide_window()
 	_forester_window.hide_window()
@@ -2811,6 +2815,8 @@ func _on_crafted(done: Array, xp: Variant) -> void:
 func _on_researched(finished: Array, xp: Variant) -> void:
 	_gain(xp, _player.position, 0.0)
 	_show_toast("Zbadano: %s. Nowe przepisy czekają przy stole." % ", ".join(finished.map(func(t: Dictionary) -> String: return t["name"])), UI.GOOD)
+	# The workbench shows the recipes the research unlocked.
+	_crafting_window.refresh()
 
 
 func _on_furnace_changed(taken: Array, xp: Variant) -> void:
@@ -3738,8 +3744,13 @@ func _build_windows() -> void:
 	_crafting_window.finished.connect(_on_crafted)
 	_crafting_window.inventory_changed.connect(_reload_inventory)
 	_crafting_window.failed.connect(_show_error)
-	_crafting_window.researched.connect(_on_researched)
 	_crafting_window.pick_up_requested.connect(_pick_up_placed)
+	_research_window = ResearchWindow.new()
+	_research_window.can_pick_up = true
+	_research_window.inventory_changed.connect(_reload_inventory)
+	_research_window.failed.connect(_show_error)
+	_research_window.researched.connect(_on_researched)
+	_research_window.pick_up_requested.connect(_pick_up_placed)
 	_furnace_window = FurnaceWindow.new()
 	_furnace_window.can_pick_up = true
 	_furnace_window.position = Vector2(1280 - 400 - 12, 64)
@@ -3828,6 +3839,7 @@ func _build_windows() -> void:
 	layer.add_child(_filter_window)
 	layer.add_child(_station_window)
 	layer.add_child(_crafting_window)
+	layer.add_child(_research_window)
 	layer.add_child(_furnace_window)
 	layer.add_child(_machine_window)
 	layer.add_child(_forester_window)
@@ -3860,6 +3872,7 @@ func _reload_inventory() -> void:
 	_count_saplings(_items)
 	_slots.show_items(reply["payload"])
 	_crafting_window.set_items(_items)
+	_research_window.set_items(_items)
 	_furnace_window.set_items(_items)
 	_storage_window.set_items(_items)
 	_splitter_window.set_items(_items)
@@ -3940,6 +3953,8 @@ func _load() -> void:
 	_reload_inventory()
 	# Orders made while the player was away land in the inventory now.
 	_crafting_window.refresh()
+	# Research that ended while the player was away is announced now.
+	_research_window.refresh()
 	_poll_logistics()
 
 

@@ -829,5 +829,9 @@
   "anchorY": 155,
   "wireX": 189,
   "wireY": 168
+ },
+ "research_table": {
+  "anchorX": 64,
+  "anchorY": 70
  }
 }

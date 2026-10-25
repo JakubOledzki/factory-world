@@ -1,7 +1,7 @@
 extends Control
 ## The player's garage: the rendered room with furniture the player can move, and the
 ## character, who walks with WSAD or by clicking. Sorting by hand opens at the trash bin, the
-## automatic sorting machine at itself, crafting at the workbench or an anvil and smelting at a furnace; the inventory, the market and the orders are windows opened
+## automatic sorting machine at itself, crafting at the workbench or an anvil, research at the research table and smelting at a furnace; the inventory, the market and the orders are windows opened
 ## from the toolbar.
 
 ## The garage is lit by one bulb, so the character is drawn darker than in the editor.
@@ -17,8 +17,9 @@ const WORKBENCH := "furniture_workbench"
 const FURNACE := "furniture_furnace"
 const ANVIL := "furniture_anvil"
 const SORTER := "furniture_sorting_machine"
+const RESEARCH := "furniture_research_table"
 ## What [E] does next to each piece of furniture that can be used.
-const USE := {BIN: "Segreguj", WORKBENCH: "Wytwarzaj", ANVIL: "Kuj narzędzia", FURNACE: "Piec kamienny", SORTER: "Sortownia"}
+const USE := {BIN: "Segreguj", WORKBENCH: "Wytwarzaj", ANVIL: "Kuj narzędzia", RESEARCH: "Badania", FURNACE: "Piec kamienny", SORTER: "Sortownia"}
 
 ## Keyboard actions of this screen: name and keys.
 const ACTIONS := {
@@ -98,11 +99,12 @@ var _achievements_window: AchievementsWindow
 var _character_window: CharacterWindow
 var _portrait: CharacterPreview
 var _crafting_window: CraftingWindow
+var _research_window: ResearchWindow
 var _company_window: CompanyWindow
 var _furnace_window: FurnaceWindow
 var _sorter_window: SorterWindow
 var _stats_window: StatsWindow
-## The piece of furniture whose window is open (workbench, furnace or sorting machine), to close
+## The piece of furniture whose window is open (workbench, research table, furnace or sorting machine), to close
 ## it when the player walks away.
 var _using: Furniture
 ## Last known state of each furnace by id, to show the fire while it burns.
@@ -223,26 +225,34 @@ func _usable_near() -> Furniture:
 	return best
 
 
-## Opens what a piece of furniture does: sorting at the bin, crafting at a workbench, a furnace.
+## Opens what a piece of furniture does: sorting at the bin, crafting at a workbench, research
+## at the research table, a furnace.
 func _use(object: Furniture) -> void:
+	if object.kind == BIN:
+		_sorting_window.show_window()
+		return
+	_using = object
+	for window: GameWindow in _using_windows():
+		window.hide_window()
 	match object.kind:
-		BIN:
-			_sorting_window.show_window()
 		WORKBENCH, ANVIL:
-			_using = object
-			_furnace_window.hide_window()
-			_sorter_window.hide_window()
 			_crafting_window.open_at(object.id, object.kind)
+		RESEARCH:
+			_research_window.open_at(object.id)
 		FURNACE:
-			_using = object
-			_crafting_window.hide_window()
-			_sorter_window.hide_window()
 			_furnace_window.open_at(object.id)
 		SORTER:
-			_using = object
-			_crafting_window.hide_window()
-			_furnace_window.hide_window()
 			_sorter_window.open_at(object.id)
+
+
+## The windows of furniture used where it stands; they close when the player walks away.
+func _using_windows() -> Array[GameWindow]:
+	var windows: Array[GameWindow] = [_crafting_window, _research_window, _furnace_window, _sorter_window]
+	return windows
+
+
+func _using_window_open() -> bool:
+	return _using_windows().any(func(window: GameWindow) -> bool: return window.visible)
 
 
 ## Shows the furniture the server sent: adds new pieces, moves and removes the others.
@@ -443,7 +453,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _menu.visible:
 			_menu.visible = false
 		else:
-			for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _sorter_window, _stats_window, _company_window, _achievements_window]:
+			for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _research_window, _furnace_window, _sorter_window, _stats_window, _company_window, _achievements_window]:
 				window.hide_window()
 			_character_window.hide_window()
 	elif event.is_action_pressed("rotate") and _placing != "":
@@ -454,10 +464,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			pass
 		elif object.kind == BIN:
 			_sorting_window.toggle()
-		elif (object.kind in [WORKBENCH, ANVIL] and _crafting_window.visible or object.kind == FURNACE and _furnace_window.visible or object.kind == SORTER and _sorter_window.visible) and _using == object:
-			_crafting_window.hide_window()
-			_furnace_window.hide_window()
-			_sorter_window.hide_window()
+		elif _using == object and _using_window_open():
+			for window: GameWindow in _using_windows():
+				window.hide_window()
 		else:
 			_use(object)
 	elif event.is_action_pressed("inventory"):
@@ -753,7 +762,10 @@ func _build_windows() -> void:
 	_crafting_window.finished.connect(_on_crafted)
 	_crafting_window.inventory_changed.connect(_reload_inventory)
 	_crafting_window.failed.connect(_show_error)
-	_crafting_window.researched.connect(_on_researched)
+	_research_window = ResearchWindow.new()
+	_research_window.inventory_changed.connect(_reload_inventory)
+	_research_window.failed.connect(_show_error)
+	_research_window.researched.connect(_on_researched)
 	_furnace_window = FurnaceWindow.new()
 	_furnace_window.position = Vector2(1280 - 400 - 12, 64)
 	_furnace_window.updated.connect(func(furnace: Dictionary) -> void: _furnaces[furnace["id"]] = furnace)
@@ -784,7 +796,7 @@ func _build_windows() -> void:
 		if wallet["type"] == "wallet":
 			_set_balance(int(wallet["payload"]["balanceCents"])))
 	add_child(_character_window)
-	for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _furnace_window, _sorter_window, _stats_window, _company_window, _achievements_window]:
+	for window: GameWindow in [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _research_window, _furnace_window, _sorter_window, _stats_window, _company_window, _achievements_window]:
 		add_child(window)
 
 
@@ -860,6 +872,8 @@ func _load() -> void:
 	_set_balance(int(replies[2]["payload"]["balanceCents"]))
 	# Orders made while the player was away land in the inventory now.
 	_crafting_window.refresh()
+	# Research that ended while the player was away is announced now.
+	_research_window.refresh()
 	for object: Furniture in _objects.values():
 		if object.kind == FURNACE:
 			var furnace := await Net.request("furnace.get", {"furnace": object.id})
@@ -901,6 +915,7 @@ func _apply_inventory(inventory: Dictionary) -> void:
 	_market_window.set_player(_items, _balance)
 	_contracts_window.set_player(_items, _balance)
 	_crafting_window.set_items(_items)
+	_research_window.set_items(_items)
 	_furnace_window.set_items(_items)
 	_sorter_window.set_items(_items)
 
@@ -971,12 +986,11 @@ func _update_bin() -> void:
 ## furnace window after walking away, and shows the fire of burning furnaces.
 func _update_use() -> void:
 	if _using != null and (not is_instance_valid(_using) or not _objects.has(_using.id) or not _near(_using, LEAVE)):
-		_crafting_window.hide_window()
-		_furnace_window.hide_window()
-		_sorter_window.hide_window()
+		for window: GameWindow in _using_windows():
+			window.hide_window()
 		_using = null
 	var object := _usable_near()
-	var open := object != null and (object.kind == BIN and _sorting_window.visible or _using == object and (_crafting_window.visible or _furnace_window.visible or _sorter_window.visible))
+	var open := object != null and (object.kind == BIN and _sorting_window.visible or _using == object and _using_window_open())
 	_prompt.visible = object != null and not open and _placing == ""
 	if _prompt.visible:
 		_prompt.text = "[E] %s" % USE[object.kind]
@@ -1014,6 +1028,8 @@ func _on_researched(finished: Array, xp: Variant) -> void:
 	if xp != null:
 		_gain_xp(xp)
 	_show_toast("Zbadano: %s. Nowe przepisy czekają przy stole." % ", ".join(finished.map(func(t: Dictionary) -> String: return t["name"])), UI.GOOD)
+	# The workbench shows the recipes the research unlocked.
+	_crafting_window.refresh()
 
 
 ## Something came out of the sorting machine (or trash went in): the inventory changed.

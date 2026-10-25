@@ -176,7 +176,7 @@ const ERRORS := {
 	"too_many_taken": "Naraz możesz realizować najwyżej 5 zleceń innych graczy.",
 	"bad_reward": "Nagroda musi wynosić od 0,01 $ do 10 000 000 $.",
 	"bad_deadline": "Termin: od 1 do 168 godzin.",
-	"locked": "Najpierw odblokuj to w drzewku technologii (stół warsztatowy, zakładka Badania).",
+	"locked": "Najpierw odblokuj to w drzewku technologii (stół badawczy w garażu).",
 	"no_technology": "Nie ma takiej technologii.",
 	"already_researched": "Ta technologia jest już zbadana.",
 	"research_busy": "Trwa już inne badanie. Poczekaj albo je przerwij.",
