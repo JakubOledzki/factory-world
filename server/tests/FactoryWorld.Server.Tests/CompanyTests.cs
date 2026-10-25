@@ -228,6 +228,73 @@ public sealed class CompanyTests(ServerFactory factory) : IClassFixture<ServerFa
     }
 
     [Fact]
+    public async Task Anyone_may_walk_about_a_public_plot_but_do_nothing_there()
+    {
+        using var owner = await PlayerAsync();
+        using var visitor = await PlayerAsync();
+        var forest = await BuyAsync(owner, Biome.Forest);
+        var (x, y) = forest;
+
+        // A plot is private until its owner opens it, and only the owner may.
+        var closed = (await visitor.SendAsync("world.plot", new { x, y })).Payload();
+        Assert.False(closed.GetProperty("public").GetBoolean());
+        Assert.False(closed.GetProperty("canEnter").GetBoolean());
+        Assert.Equal("not_owner", (await visitor.SendAsync("plot.enter", new { x, y })).ErrorCode());
+        Assert.Equal("not_owner", (await visitor.SendAsync("plot.setPublic", new { x, y, @public = true })).ErrorCode());
+
+        var opened = await owner.SendAsync("plot.setPublic", new { x, y, @public = true });
+        Assert.Equal("world.plot", opened.Type());
+        Assert.True(opened.Payload().GetProperty("public").GetBoolean());
+
+        // Now anyone may come in, look around and be seen, but has no other right there.
+        var seen = (await visitor.SendAsync("world.plot", new { x, y })).Payload();
+        Assert.True(seen.GetProperty("public").GetBoolean());
+        Assert.True(seen.GetProperty("canEnter").GetBoolean());
+        var entered = await visitor.SendAsync("plot.enter", new { x, y });
+        Assert.Equal(["visit"], entered.Payload().GetProperty("rights").EnumerateArray().Select(r => r.GetString()));
+        object At(double px, double py) => new { x, y, posX = px, posY = py, facing = "down", walking = false };
+        Assert.Equal("plot.presence", (await visitor.SendAsync("plot.presence", At(125.5, 12.5))).Type());
+        Assert.Equal(1, (await owner.SendAsync("plot.presence", At(125.5, 11.5))).Payload().GetProperty("players").GetArrayLength());
+
+        // The owner's chest with something in it: the visitor sees the belts at work but not what the chest holds.
+        await GiveAsync(owner, Items.WoodenChest, 1);
+        await GiveAsync(owner, Items.Wood, 5);
+        var tiles = await TilesAsync(owner, forest);
+        var (cx, cy) = FreeTiles(tiles).First();
+        var placed = await owner.SendAsync("plot.place", new { x, y, kind = Items.WoodenChest, tileX = cx, tileY = cy, rotation = 0 });
+        Assert.Equal("plot.placed", placed.Type());
+        var chest = placed.Payload().GetProperty("object").GetProperty("id").GetGuid();
+        Assert.Equal("storage", (await owner.SendAsync("storage.put", new { x, y, id = chest, item = Items.Wood, quantity = 5 })).Type());
+        var owners = (await owner.SendAsync("logistics.get", new { x, y })).Payload();
+        Assert.Equal(1, owners.GetProperty("storages").GetArrayLength());
+        var visitors = await visitor.SendAsync("logistics.get", new { x, y });
+        Assert.Equal("logistics", visitors.Type());
+        Assert.Equal(0, visitors.Payload().GetProperty("storages").GetArrayLength());
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IEquipment>().GiveToolAsync(visitor.Client.AccountId, Items.Axe, CancellationToken.None);
+        }
+
+        var tree = Array.IndexOf(tiles, (byte)TileObject.Tree);
+        Assert.Equal("not_owner", (await visitor.SendAsync("plot.harvest", new { x, y, tileX = tree % PlotLayout.Size, tileY = tree / PlotLayout.Size })).ErrorCode());
+        Assert.Equal("not_owner", (await visitor.SendAsync("storage.get", new { x, y, id = chest })).ErrorCode());
+        Assert.Equal("not_owner", (await visitor.SendAsync("storage.take", new { x, y, id = chest, item = Items.Wood, quantity = 1 })).ErrorCode());
+        Assert.Equal("not_owner", (await visitor.SendAsync("plot.pickup", new { x, y, id = chest })).ErrorCode());
+        Assert.Equal("not_owner", (await visitor.SendAsync("station.get", new { x, y })).ErrorCode());
+        await GiveAsync(visitor, Items.WoodenChest, 1);
+        var (fx, fy) = FreeTiles(tiles).Skip(3).First();
+        Assert.Equal("not_owner", (await visitor.SendAsync("plot.place", new { x, y, kind = Items.WoodenChest, tileX = fx, tileY = fy, rotation = 0 })).ErrorCode());
+
+        // Made private again, the plot is closed to the visitor, who soon stops being seen there too.
+        Assert.False((await owner.SendAsync("plot.setPublic", new { x, y, @public = false })).Payload().GetProperty("public").GetBoolean());
+        Assert.Equal("not_owner", (await visitor.SendAsync("plot.enter", new { x, y })).ErrorCode());
+        Assert.False((await visitor.SendAsync("world.plot", new { x, y })).Payload().GetProperty("canEnter").GetBoolean());
+        factory.Time.Advance(TimeSpan.FromSeconds(31));
+        Assert.Equal("not_owner", (await visitor.SendAsync("plot.presence", At(125.5, 12.5))).ErrorCode());
+    }
+
+    [Fact]
     public async Task Members_work_on_a_plot_brought_into_the_company_as_far_as_their_role_allows()
     {
         var (owner, member, _) = await CompanyAsync();
@@ -254,7 +321,7 @@ public sealed class CompanyTests(ServerFactory factory) : IClassFixture<ServerFa
 
         // A worker enters and gathers with their own axe; the wood is theirs.
         var entered = await member.SendAsync("plot.enter", new { x = forest.X, y = forest.Y });
-        Assert.Equal(["work"], entered.Payload().GetProperty("rights").EnumerateArray().Select(r => r.GetString()));
+        Assert.Equal(["work", "visit"], entered.Payload().GetProperty("rights").EnumerateArray().Select(r => r.GetString()));
         var tiles = await TilesAsync(member, forest);
         var tree = Array.IndexOf(tiles, (byte)TileObject.Tree);
         await using (var scope = factory.Services.CreateAsyncScope())

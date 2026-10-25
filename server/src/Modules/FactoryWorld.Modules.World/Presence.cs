@@ -166,7 +166,7 @@ public sealed class PresenceHandler(IServiceScopeFactory scopes, PlotPresence pr
     /// <summary>The plot this connection may be seen on, and when its rights there were last checked.</summary>
     private const string Allowed = "world.presence";
 
-    /// <summary>A player taken out of a company stops being seen on its plots within this long.</summary>
+    /// <summary>A player taken out of a company, or kept off a plot made private, stops being seen there within this long.</summary>
     private static readonly TimeSpan Recheck = TimeSpan.FromSeconds(30);
 
     public string Type => "plot.presence";
@@ -183,7 +183,7 @@ public sealed class PresenceHandler(IServiceScopeFactory scopes, PlotPresence pr
             try
             {
                 await scope.ServiceProvider.GetRequiredService<PlotService>()
-                    .RequireOwnerAsync(player, request.X, request.Y, cancellationToken, PlotRight.Work);
+                    .RequireOwnerAsync(player, request.X, request.Y, cancellationToken, PlotRight.Visit);
             }
             catch (GameException)
             {

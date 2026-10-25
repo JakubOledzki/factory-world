@@ -320,10 +320,10 @@ public sealed class PlotService(
     GameDb db, WorldMap map, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats,
     IEnumerable<ICompanyPlots> companies, BeachService beach, PestService pests, ForestLedger ledger, IOutfit outfit, TimeProvider time)
 {
-    /// <summary>The tiles of a plot as they are now; only its owner and members of its company may enter.</summary>
+    /// <summary>The tiles of a plot as they are now; only its owner and members of its company may enter, or anyone when it is public.</summary>
     public async Task<byte[]> TilesAsync(Guid player, int x, int y, CancellationToken cancellationToken)
     {
-        var biome = await RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
+        var biome = await RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Visit);
         return await TilesAsync(x, y, biome, cancellationToken);
     }
 
@@ -739,7 +739,8 @@ public sealed class PlotService(
         return map.BiomeAt(x, y);
     }
 
-    /// <summary>Everything for the owner; for anyone else what their role in the plot's company allows, if anything.</summary>
+    /// <summary>Everything for the owner; for anyone else what their role in the plot's company allows, if anything,
+    /// and on a public plot at least a visit.</summary>
     public async Task<IReadOnlySet<PlotRight>> RightsAsync(Guid player, int x, int y, CancellationToken cancellationToken)
     {
         if (!map.Contains(x, y))
@@ -747,17 +748,23 @@ public sealed class PlotService(
             throw new GameException("bad_plot", "There is no such plot.");
         }
 
-        await using (var command = await db.CommandAsync("SELECT owner_id FROM world.plots WHERE x = @x AND y = @y", cancellationToken))
+        bool open;
+        await using (var command = await db.CommandAsync("SELECT owner_id, public FROM world.plots WHERE x = @x AND y = @y", cancellationToken))
         {
             command.Parameters.AddWithValue("x", x);
             command.Parameters.AddWithValue("y", y);
-            switch (await command.ExecuteScalarAsync(cancellationToken))
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
             {
-                case Guid owner when owner == player:
-                    return AllRights;
-                case not Guid:
-                    return NoRights;
+                return NoRights;
             }
+
+            if (reader.GetGuid(0) == player)
+            {
+                return AllRights;
+            }
+
+            open = reader.GetBoolean(1);
         }
 
         var rights = new HashSet<PlotRight>();
@@ -767,7 +774,24 @@ public sealed class PlotService(
         }
 
         rights.Remove(PlotRight.Owner);
+        // Members of the plot's company may always come; anyone else only when the owner made it public, and then only to look.
+        if (rights.Count > 0 || open)
+        {
+            rights.Add(PlotRight.Visit);
+        }
+
         return rights;
+    }
+
+    /// <summary>Lets anyone come onto the owner's plot to look around, or only the owner and their company.</summary>
+    public async Task SetPublicAsync(Guid player, int x, int y, bool open, CancellationToken cancellationToken)
+    {
+        await RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Owner);
+        await using var command = await db.CommandAsync("UPDATE world.plots SET public = @open WHERE x = @x AND y = @y", cancellationToken);
+        command.Parameters.AddWithValue("x", x);
+        command.Parameters.AddWithValue("y", y);
+        command.Parameters.AddWithValue("open", open);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static readonly IReadOnlySet<PlotRight> AllRights = Enum.GetValues<PlotRight>().ToHashSet();
@@ -779,7 +803,8 @@ public sealed record EnterRequest(int X, int Y);
 
 public sealed record HarvestRequest(int X, int Y, int TileX, int TileY);
 
-/// <summary>Enters one of the player's plots: its tiles (gzip, base64) and where things stand.</summary>
+/// <summary>Enters a plot the player may visit: its tiles (gzip, base64) and where things stand. A visitor of a public plot
+/// gets its rights without <c>work</c>, so the client lets them only walk about.</summary>
 public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, TimeProvider time) : IMessageHandler
 {
     public string Type => "plot.enter";

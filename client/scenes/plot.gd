@@ -397,6 +397,8 @@ var _my_plots: Array[Vector2i] = []
 var _balance := 0
 var _items: Array = []
 var _ready_to_play := false
+## On someone else's public plot: the player may only walk about and look, the server allows nothing more.
+var _visitor := false
 ## Tilled tiles: Vector2i → { crop, readyAt } (crop and readyAt null on an empty field).
 var _fields := {}
 var _crops := {}
@@ -802,6 +804,7 @@ func _sprite_anchor(sprite: String) -> Vector2:
 
 func _apply_plot(plot: Dictionary) -> void:
 	_plot = plot
+	_visitor = not "work" in plot.get("rights", ["work"])
 	_size = plot["size"]
 	_harvest_seconds = plot["harvestSeconds"]
 	_chop_seconds = plot.get("chopSeconds", _harvest_seconds)
@@ -1782,6 +1785,8 @@ func _draw_forest(kind: String, cell: Vector2i, rotation: int) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not _ready_to_play or _pinch_zoom(event):
 		return
+	if _visitor and _visitor_input(event):
+		return
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			_set_zoom(_zoom * 1.1)
@@ -1890,6 +1895,22 @@ func _unhandled_input(event: InputEvent) -> void:
 		Game.open_world_map()
 	elif event.is_action_pressed("garage"):
 		Game.open_garage()
+
+
+## On a public plot of someone else a click only walks there, and nothing is used, built or gathered; true if it took the event.
+func _visitor_input(event: InputEvent) -> bool:
+	if event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			var cell := Vector2i((get_global_mouse_position() / TILE).floor())
+			if _tile(cell) >= 0:
+				_walk_to(cell)
+		get_viewport().set_input_as_handled()
+		return true
+	for action: String in ["interact", "rotate", "plant", "upgrade_mine", "station", "market"]:
+		if event.is_action_pressed(action):
+			_show_toast("To nie twoja działka: możesz tu tylko chodzić i oglądać.", UI.MUTED)
+			return true
+	return false
 
 
 ## Zooms with two fingers on a touch screen or a pinch on a touchpad; true if it did.
@@ -2337,7 +2358,9 @@ func _spray_forest() -> void:
 
 ## Turns planting on or off: while on, a click on free ground plants a sapling from the inventory.
 func _set_planting(on: bool) -> void:
-	if on and _tree_grow_seconds <= 0.0:
+	if on and _visitor:
+		on = false
+	elif on and _tree_grow_seconds <= 0.0:
 		_show_toast("Na lodowcu i w górach drzewa nie rosną.", UI.ERROR)
 		on = false
 	elif on and _saplings <= 0:
@@ -2428,6 +2451,9 @@ func _start_releasing(kind: String) -> void:
 		return
 	if not _animal_kinds.get(kind, {}).get("lives", true):
 		_show_toast("Wielbłąd żyje tylko na pustyni i w oazie." if kind == "animal_camel" else "Na pustyni żyją tylko wielbłądy.", UI.ERROR)
+		return
+	if _visitor:
+		_show_toast("Na cudzej działce nie wypuścisz zwierząt.", UI.ERROR)
 		return
 	_set_planting(false)
 	_stop_placing()
@@ -2602,6 +2628,9 @@ func _apply_animal(reply: Dictionary, spent: String) -> void:
 
 ## Starts putting a workbench or furnace from the inventory on the plot: a click on free ground places it.
 func _start_placing(kind: String) -> void:
+	if _visitor:
+		_show_toast("Na cudzej działce niczego nie postawisz.", UI.ERROR)
+		return
 	_set_planting(false)
 	_stop_releasing()
 	_stop_work()
@@ -2844,7 +2873,7 @@ func _toggle_market() -> void:
 
 
 func _update_market_button() -> void:
-	_market_button.visible = _computer().x >= 0
+	_market_button.visible = _computer().x >= 0 and not _visitor
 
 
 ## After any trade in the market window: new balance and inventory.
@@ -3552,7 +3581,7 @@ func _process(delta: float) -> void:
 	if _station_window.visible and not _near_station():
 		_station_window.hide_window()
 	var at_mine := _nearest_mine()
-	_mine_button.visible = at_mine >= 0
+	_mine_button.visible = at_mine >= 0 and not _visitor
 	if _mine_window.visible and at_mine != _mine_open:
 		_mine_window.hide_window()
 	if _using.x >= 0 and (not _placed.has(_using) or not _near(_using, REACH + 1.5)):
@@ -3560,11 +3589,13 @@ func _process(delta: float) -> void:
 		_using = Vector2i(-1, -1)
 	if (_logistics.has_machinery() or _power.has_power()) and Time.get_ticks_msec() >= _next_logistics_poll:
 		_poll_logistics()
-	if _has_foresters() and Time.get_ticks_msec() >= _next_forestry_poll:
+	# A visitor sees the belts move, but not the foresters', farmsteads' or station's stock.
+	if not _visitor and _has_foresters() and Time.get_ticks_msec() >= _next_forestry_poll:
 		_poll_forestry()
-	if (_has_farmsteads() or not _farm_fields.is_empty()) and Time.get_ticks_msec() >= _next_farm_poll:
+	if not _visitor and (_has_farmsteads() or not _farm_fields.is_empty()) and Time.get_ticks_msec() >= _next_farm_poll:
 		_poll_farmsteads()
-	_poll_station()
+	if not _visitor:
+		_poll_station()
 	if Time.get_ticks_msec() >= _next_presence_poll:
 		_poll_presence()
 
@@ -3747,7 +3778,9 @@ func _screen(world: Vector2) -> Vector2:
 func _update_prompt() -> void:
 	var text := ""
 	var placed := _nearest_placed()
-	if _work.x < 0 and placed.x >= 0:
+	if _visitor:
+		pass
+	elif _work.x < 0 and placed.x >= 0:
 		if not (_using == placed and _using_window_open()):
 			text = "[E] %s" % _placed[placed]["name"]
 	elif _work.x < 0 and _near_station() and not _station_window.visible:
@@ -4023,6 +4056,9 @@ func _update_hint() -> void:
 		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile else "Motyką orze się tylko żyzne gleby.",
 		"tool_shears": "Kliknij owcę, aby ją ostrzyc nożycami, albo inne zwierzę, aby je nakarmić." if _pasture else "Na tej działce nie da się trzymać zwierząt.",
 	}
+	if _visitor:
+		_hint.text = "Zwiedzasz cudzą działkę: możesz po niej chodzić i oglądać, ale nie zajrzysz do skrzyń, niczego nie zbierzesz, nie wydobędziesz ani nie postawisz."
+		return
 	if _placing in MACHINERY:
 		_hint.text = "Stawianie: kliknij wolne pole, aby postawić %s %s %s. [R] obraca, Esc kończy." % [
 			_item_name(_placing).to_lower(), DIRECTION_ARROWS[_place_rotation], DIRECTIONS[_place_rotation]]
@@ -4396,6 +4432,10 @@ func _load() -> void:
 	_city_button.visible = city != null
 	if city != null:
 		_subtitle.text = "%s %s  ·  5 × 5 km" % [city["levelName"], city["name"]]
+	if _visitor:
+		_subtitle.text += "  ·  zwiedzanie"
+		_plant_button.visible = false
+		_show_toast("Działka publiczna: możesz po niej chodzić i oglądać.", UI.MUTED)
 	_update_hint()
 	_loading.queue_free()
 	_reload_inventory()

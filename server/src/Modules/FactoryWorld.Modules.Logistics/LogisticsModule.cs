@@ -76,9 +76,14 @@ public sealed class LogisticsService(
 
     /// <summary>The player's plot with its belts, inserters and storage as they are now.</summary>
     public Task<LogisticsState> StateAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
+        StateAsync(player, x, y, PlotRight.Work, cancellationToken);
+
+    /// <summary>The plot as <see cref="StateAsync(Guid, int, int, CancellationToken)"/> has it, for anyone who may do
+    /// <paramref name="right"/> there (a visitor of a public plot only sees the belts move).</summary>
+    public Task<LogisticsState> StateAsync(Guid player, int x, int y, PlotRight right, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, right);
             return await RunAsync(x, y, cancellationToken);
         }, cancellationToken);
 
@@ -435,12 +440,23 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
     {
         var request = Payload.Read<LogisticsRequest>(payload);
         await using var scope = scopes.CreateAsyncScope();
-        var state = await scope.ServiceProvider.GetRequiredService<LogisticsService>()
-            .StateAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
-        return new Reply("logistics", Json(request.X, request.Y, state, request.Names));
+        var logistics = scope.ServiceProvider.GetRequiredService<LogisticsService>();
+        var player = client.RequireAccount();
+        try
+        {
+            var state = await logistics.StateAsync(player, request.X, request.Y, cancellationToken);
+            return new Reply("logistics", Json(request.X, request.Y, state, request.Names));
+        }
+        catch (GameException e) when (e.Code == "not_owner")
+        {
+            // A visitor of a public plot sees the belts and inserters at work, but not what lies in the storages.
+            var state = await logistics.StateAsync(player, request.X, request.Y, PlotRight.Visit, cancellationToken);
+            return new Reply("logistics", Json(request.X, request.Y, state, request.Names, visitor: true));
+        }
     }
 
-    public static object Json(int x, int y, LogisticsState state, bool names = false)
+    /// <param name="visitor">Leaves out what the storages hold, for someone only looking around the plot.</param>
+    public static object Json(int x, int y, LogisticsState state, bool names = false, bool visitor = false)
     {
         Contents Of(Guid id) => state.Contents.GetValueOrDefault(id) ?? new Contents();
         var cables = LogisticsRules.CableLinks(state.Objects);
@@ -494,7 +510,7 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
             // Drone ports: how fast their drones fly on the power they have (0 stays put).
             drones = state.Objects.Where(o => o.Kind == Items.DronePort)
                 .Select(o => new { id = o.Id, speed = state.Power.Clock(o.Id).Speed(state.SimulatedAt) }),
-            storages = state.Objects.Where(o => Storages.Find(o.Kind) is not null)
+            storages = visitor ? [] : state.Objects.Where(o => Storages.Find(o.Kind) is not null)
                 .Select(o => StorageSummary(Storages.Find(o.Kind)!, o, Of(o.Id))),
             power = state.Power.Summary(state.ServerTime),
         };

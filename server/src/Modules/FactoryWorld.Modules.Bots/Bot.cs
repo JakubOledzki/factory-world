@@ -365,6 +365,8 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                 if (!known.ContainsKey(key))
                 {
                     _plots.Add(new BotPlot(key.Item1, key.Item2, (int)plot.Long("biome")));
+                    // Anyone may come and look at how a bot plays.
+                    await SendAsync("plot.setPublic", new { x = key.Item1, y = key.Item2, @public = true }, cancellationToken);
                 }
             }
         }
@@ -793,6 +795,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                     }
 
                     _plots.Add(new BotPlot(x, y, biome));
+                    await SendAsync("plot.setPublic", new { x, y, @public = true }, cancellationToken);
                     if (bought.Payload.Get("tool")?.Text("id") is { } given && _tools.Count == 0)
                     {
                         _tools = [given];

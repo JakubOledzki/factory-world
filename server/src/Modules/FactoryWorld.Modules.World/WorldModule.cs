@@ -21,6 +21,9 @@ public sealed class Plot
     public long PriceCents { get; set; }
 
     public DateTimeOffset BoughtAt { get; set; }
+
+    /// <summary>Whether anyone may come onto it to look around; otherwise only the owner and their company.</summary>
+    public bool Public { get; set; }
 }
 
 /// <summary>A tile of a plot whose tree, rock or dune has been gathered.</summary>
@@ -474,6 +477,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(p => p.Biome).HasColumnName("biome");
             e.Property(p => p.PriceCents).HasColumnName("price_cents");
             e.Property(p => p.BoughtAt).HasColumnName("bought_at");
+            e.Property(p => p.Public).HasColumnName("public").HasDefaultValue(false);
             e.HasIndex(p => p.OwnerId);
         });
         model.Entity<PlotHarvest>(e =>
@@ -937,9 +941,11 @@ public sealed record PlotOwner(Guid AccountId, string? Name);
 /// <param name="PriceCents">What the asking player would pay for it now; null when it cannot be bought.</param>
 /// <param name="Survey">What lies under the plot, shown only to its owner once they paid for a survey.</param>
 /// <param name="Company">The company its owner brought it into, if any.</param>
-/// <param name="CanEnter">Whether the asking player may go onto it: its owner or a member of its company.</param>
+/// <param name="CanEnter">Whether the asking player may go onto it: its owner, a member of its company, or anyone when it is public.</param>
+/// <param name="Public">Whether its owner lets anyone come onto it to look around.</param>
 public sealed record PlotState(
-    int X, int Y, Biome Biome, PlotOwner? Owner, long? PriceCents, Survey? Survey = null, PlotCompany? Company = null, bool CanEnter = false);
+    int X, int Y, Biome Biome, PlotOwner? Owner, long? PriceCents, Survey? Survey = null, PlotCompany? Company = null, bool CanEnter = false,
+    bool Public = false);
 
 /// <param name="Tool">The tool that came with the plot, or null.</param>
 public sealed record Purchase(PlotState Plot, long BalanceCents, XpGain Xp, string? Tool);
@@ -1012,10 +1018,21 @@ public sealed class WorldService(
     public async Task<PlotState> PlotAsync(Guid viewer, int x, int y, CancellationToken cancellationToken)
     {
         var biome = BiomeAt(x, y);
-        await using var command = await db.CommandAsync("SELECT owner_id FROM world.plots WHERE x = @x AND y = @y", cancellationToken);
-        command.Parameters.AddWithValue("x", x);
-        command.Parameters.AddWithValue("y", y);
-        if (await command.ExecuteScalarAsync(cancellationToken) is Guid owner)
+        Guid? found = null;
+        var open = false;
+        await using (var command = await db.CommandAsync("SELECT owner_id, public FROM world.plots WHERE x = @x AND y = @y", cancellationToken))
+        {
+            command.Parameters.AddWithValue("x", x);
+            command.Parameters.AddWithValue("y", y);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                found = reader.GetGuid(0);
+                open = reader.GetBoolean(1);
+            }
+        }
+
+        if (found is { } owner)
         {
             var name = (await names.NamesAsync([owner], cancellationToken)).GetValueOrDefault(owner);
             // Deposits stay secret from everyone but the owner who paid for the survey.
@@ -1026,7 +1043,7 @@ public sealed class WorldService(
                 company ??= await registry.CompanyAsync(viewer, x, y, cancellationToken);
             }
 
-            return new PlotState(x, y, biome, new PlotOwner(owner, name), null, survey, company, owner == viewer || company?.Member == true);
+            return new PlotState(x, y, biome, new PlotOwner(owner, name), null, survey, company, owner == viewer || company?.Member == true || open, open);
         }
 
         long? price = Biomes.All[biome].Buyable
@@ -1120,7 +1137,7 @@ public abstract class WorldHandler(IServiceScopeFactory scopes) : IMessageHandle
 
     protected abstract Task<Reply> RunAsync(WorldService world, Guid player, JsonElement? payload, CancellationToken cancellationToken);
 
-    protected static object PlotJson(PlotState plot, Guid player) => new
+    public static object PlotJson(PlotState plot, Guid player) => new
     {
         x = plot.X,
         y = plot.Y,
@@ -1131,6 +1148,8 @@ public abstract class WorldHandler(IServiceScopeFactory scopes) : IMessageHandle
         surveyPriceCents = plot.Owner?.AccountId == player ? Deposits.SurveyPriceCents : (long?)null,
         company = plot.Company is { } company ? new { name = company.Name, member = company.Member } : null,
         canEnter = plot.CanEnter,
+        // Public: anyone may come to look around; private: only the owner and the members of its company.
+        @public = plot.Public,
     };
 }
 
@@ -1200,6 +1219,25 @@ public sealed class GetPlotHandler(IServiceScopeFactory scopes) : WorldHandler(s
     }
 }
 
+public sealed record PublicRequest(int X, int Y, bool Public);
+
+/// <summary>The owner opens their plot to everyone (only to look around) or keeps it to themselves and their company;
+/// answers with the plot like "world.plot".</summary>
+public sealed class SetPlotPublicHandler(IServiceScopeFactory scopes) : IMessageHandler
+{
+    public string Type => "plot.setPublic";
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<PublicRequest>(payload);
+        var player = client.RequireAccount();
+        await using var scope = scopes.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<PlotService>().SetPublicAsync(player, request.X, request.Y, request.Public, cancellationToken);
+        var plot = await scope.ServiceProvider.GetRequiredService<WorldService>().PlotAsync(player, request.X, request.Y, cancellationToken);
+        return new Reply("world.plot", WorldHandler.PlotJson(plot, player));
+    }
+}
+
 public sealed class BuyPlotHandler(IServiceScopeFactory scopes) : WorldHandler(scopes)
 {
     public override string Type => "world.buy";
@@ -1256,6 +1294,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, AreaHandler>();
         services.AddSingleton<IMessageHandler, GetPlotHandler>();
         services.AddSingleton<IMessageHandler, BuyPlotHandler>();
+        services.AddSingleton<IMessageHandler, SetPlotPublicHandler>();
         services.AddSingleton<PlotPresence>();
         services.AddSingleton<IMessageHandler, EnterPlotHandler>();
         services.AddSingleton<IMessageHandler, PresenceHandler>();
