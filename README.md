@@ -49,7 +49,8 @@ Adres serwera dla klienta ustawia się w Godot w *Project Settings → factory_w
 Wersja przeglądarkowa działa też na telefonie i tablecie: wystarczy otworzyć adres gry w przeglądarce i obrócić telefon poziomo.
 Na ekranie dotykowym gra pokazuje większe litery i przyciski, joystick do chodzenia (lewy dolny róg) i przyciski akcji
 *Użyj*, *Obróć*, *Anuluj* (prawa strona), zamiast klawiszy E, R i Esc. Dotknięcie gry działa jak kliknięcie myszą,
-dwoma palcami przybliża się mapę świata i działkę, a długie okna przewija się palcem. Przycisk *Pełny ekran* chowa pasek
+dwoma palcami przybliża się mapę świata i działkę, a długie okna przewija się palcem. Przytrzymanie palca na przedmiocie
+pokazuje jego opis i ceny (to samo, co na komputerze Ctrl + mysz). Przycisk *Pełny ekran* chowa pasek
 przeglądarki (Android); na iPhonie ten sam efekt daje *Udostępnij → Do ekranu początkowego*.
 Sterowanie dotykowe na komputerze włącza `?touch=1` w adresie (`?touch=0` je wyłącza).
 
