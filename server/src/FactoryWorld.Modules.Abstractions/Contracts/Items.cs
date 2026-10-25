@@ -1090,6 +1090,13 @@ public static class Items
     /// <summary>Coal and charcoal, which furnaces burn alike.</summary>
     public static bool IsCoal(string id) => id is Coal or Charcoal;
 
+    /// <summary>Whether <paramref name="item"/> goes into a machine where a recipe asks for <paramref name="ingredient"/>:
+    /// the item itself, or charcoal for coal, so steel and silicon can be made of wood.</summary>
+    public static bool Fills(string ingredient, string item) => item == ingredient || (ingredient == Coal && item == Charcoal);
+
+    /// <summary>What else than itself goes into a machine for <paramref name="ingredient"/>.</summary>
+    public static IReadOnlyList<string> StandIns(string ingredient) => ingredient == Coal ? [Charcoal] : [];
+
     /// <summary>Fossils the dunes give up now and then, a collection of three.</summary>
     public static bool IsFossil(string id) => id is Ammonite or AncientCoin or DinosaurBone;
 }
