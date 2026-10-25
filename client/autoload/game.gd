@@ -331,6 +331,9 @@ func gain_xp(gain: Dictionary) -> void:
 	character["level"] = level
 	character["levelXp"] = xp_for_level(level)
 	character["nextLevelXp"] = xp_for_level(level + 1) if level < MAX_LEVEL else null
+	# A new level may bring a bonus (every fifth level), which the server adds to "bonuses".
+	if gain.get("leveledUp", false):
+		reload_character()
 
 
 func logout() -> void:

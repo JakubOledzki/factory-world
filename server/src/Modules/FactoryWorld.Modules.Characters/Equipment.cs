@@ -236,12 +236,14 @@ public sealed class InventorySize(GameDb db) : IInventorySize
     }
 }
 
-/// <summary>What the worn clothes give: the bonuses of each piece, added up per industry.</summary>
-public sealed class Outfit(Equipment equipment) : IOutfit
+/// <summary>What the worn clothes give, the bonuses of each piece added up per industry, with the level's on top
+/// (<see cref="LevelBonuses"/>).</summary>
+public sealed class Outfit(Equipment equipment, ICharacterXp xp) : IOutfit
 {
     public async Task<int> BonusAsync(Guid accountId, string industry, CancellationToken cancellationToken) =>
         Bonuses(await equipment.OutfitAsync(accountId, false, cancellationToken) ?? new Dictionary<string, string>())
-            .GetValueOrDefault(industry);
+            .GetValueOrDefault(industry)
+        + LevelBonuses.For(Leveling.LevelForXp(await xp.XpAsync(accountId, cancellationToken) ?? 0)).GetValueOrDefault(industry);
 
     /// <summary>Percent per industry the clothes give together; industries they do not help left out.</summary>
     public static IReadOnlyDictionary<string, int> Bonuses(IReadOnlyDictionary<string, string> outfit) =>
