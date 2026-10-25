@@ -779,11 +779,11 @@ public sealed class PlotRegistry(GameDb db) : IPlotRegistry
 {
     public async Task<OwnedPlot?> FindAsync(int x, int y, CancellationToken cancellationToken)
     {
-        await using var command = await db.CommandAsync("SELECT owner_id, biome FROM world.plots WHERE x = @x AND y = @y", cancellationToken);
+        await using var command = await db.CommandAsync("SELECT owner_id, biome, price_cents FROM world.plots WHERE x = @x AND y = @y", cancellationToken);
         command.Parameters.AddWithValue("x", x);
         command.Parameters.AddWithValue("y", y);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        return await reader.ReadAsync(cancellationToken) ? new OwnedPlot(x, y, reader.GetGuid(0), reader.GetInt16(1)) : null;
+        return await reader.ReadAsync(cancellationToken) ? new OwnedPlot(x, y, reader.GetGuid(0), reader.GetInt16(1), reader.GetInt64(2)) : null;
     }
 }
 

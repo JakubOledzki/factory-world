@@ -284,8 +284,20 @@ internal static class StationStock
 
 public sealed class StationService(
     GameDb db, WorldMap map, PlotService plots, IInventory inventory, IWallet wallet, ICharacterNames names,
-    IEnumerable<IPlotAutomation> automation, BeachService beach, CityService cities, TimeProvider time)
+    IEnumerable<IPlotAutomation> automation, BeachService beach, CityService cities, IEnumerable<ICompanies> companies, TimeProvider time)
 {
+    /// <summary>What the player's company's big projects take off their rail or sea fees.</summary>
+    private async Task<double> PerksAsync(Guid player, bool bySea, CancellationToken cancellationToken)
+    {
+        var projects = new HashSet<string>();
+        foreach (var company in companies)
+        {
+            projects.UnionWith(await company.ProjectsAsync(player, cancellationToken));
+        }
+
+        return CompanyPerks.FeeFactor(projects, bySea);
+    }
+
     /// <summary>The station of one of the player's plots, after unloading every train that has arrived.</summary>
     public Task<StationState> StateAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
         ChangeAsync(player, x, y, PlotRight.Work, () => Task.CompletedTask, cancellationToken);
@@ -330,6 +342,7 @@ public sealed class StationService(
                 (fee, trip) = (SeaRules.FeeCents(fee), SeaRules.TripTime(trip, lighthouse));
             }
 
+            fee = (long)Math.Ceiling(fee * await PerksAsync(player, bySea, cancellationToken));
             if (bySled)
             {
                 (fee, trip) = (0, await SledTripAsync(x, y, km, trip, cancellationToken));
@@ -402,7 +415,7 @@ public sealed class StationService(
     public async Task<StationState> AddRouteAsync(
         Guid player, int x, int y, int toX, int toY, IReadOnlyList<string> items, int everyMinutes, CancellationToken cancellationToken)
     {
-        await ChangeAsync(player, x, y, PlotRight.Owner, async () =>
+        await ChangeAsync(player, x, y, PlotRight.Routes, async () =>
         {
             if (!RailRules.RouteMinutes.Contains(everyMinutes))
             {
@@ -448,7 +461,7 @@ public sealed class StationService(
 
     /// <summary>Stops a route; trains already on their way still arrive.</summary>
     public Task<StationState> RemoveRouteAsync(Guid player, int x, int y, long id, CancellationToken cancellationToken) =>
-        ChangeAsync(player, x, y, PlotRight.Owner, async () =>
+        ChangeAsync(player, x, y, PlotRight.Routes, async () =>
         {
             await using var delete = await db.CommandAsync(
                 "DELETE FROM world.train_routes WHERE id = @id AND from_x = @x AND from_y = @y", cancellationToken);
@@ -617,7 +630,8 @@ public sealed class StationService(
             {
                 var km = RailRules.DistanceKm(map, x, y, toX, toY);
                 var quantity = cargo.Sum(c => c.Quantity);
-                var fee = (long)Math.Ceiling(RailRules.FeeCents(km, quantity) * await cities.RailFactorAsync(x, y, cancellationToken));
+                var fee = (long)Math.Ceiling(RailRules.FeeCents(km, quantity) * await cities.RailFactorAsync(x, y, cancellationToken)
+                    * await PerksAsync(owner, false, cancellationToken));
                 if (await wallet.BalanceAsync(owner, cancellationToken) < fee)
                 {
                     problem = "no_money";
@@ -801,7 +815,8 @@ public sealed class StationService(
             .Select(s => s.Trip with { Receiver = Receiver(s.Trip.ToX, s.Trip.ToY) }).ToList();
         return new StationState(x, y, items, incoming, outgoing,
             routes.Select(r => r with { Receiver = Receiver(r.ToX, r.ToY) }).ToList(), time.GetUtcNow(),
-            await cities.RailFactorAsync(x, y, cancellationToken), await cities.MaxRoutesAsync(x, y, cancellationToken));
+            await cities.RailFactorAsync(x, y, cancellationToken) * await PerksAsync(player, false, cancellationToken),
+            await cities.MaxRoutesAsync(x, y, cancellationToken));
     }
 }
 

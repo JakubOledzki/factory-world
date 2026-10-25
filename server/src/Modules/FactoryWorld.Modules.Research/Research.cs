@@ -10,9 +10,10 @@ namespace FactoryWorld.Modules.Research;
 /// <param name="Requires">Technologies that must be researched first.</param>
 /// <param name="Cost">Items used up when the research starts.</param>
 /// <param name="Unlocks">Items (workbench recipes, machines, machine recipes) the player may make and buy once it is done.</param>
+/// <param name="CompanyOnly">Only a company researches it, for all its members (<see cref="CompanyTechs"/>).</param>
 public sealed record Technology(
     string Id, string Name, string Description, IReadOnlyList<string> Requires,
-    IReadOnlyList<(string Item, int Quantity)> Cost, TimeSpan Time, int Xp, IReadOnlyList<string> Unlocks);
+    IReadOnlyList<(string Item, int Quantity)> Cost, TimeSpan Time, int Xp, IReadOnlyList<string> Unlocks, bool CompanyOnly = false);
 
 /// <summary>
 /// The technology tree. A new player can make the workbench, the stone furnace and nails, and
@@ -89,6 +90,8 @@ public static class TechTree
     public const string Beekeeping = "beekeeping";
     public const string ForestFoods = "forest_foods";
     public const string FireProtection = "fire_protection";
+    public const string Megaprojects = CompanyTechs.Megaprojects;
+    public const string CorporateFinance = CompanyTechs.CorporateFinance;
 
     public static readonly IReadOnlyList<Technology> Technologies =
     [
@@ -290,6 +293,12 @@ public static class TechTree
         new(FireProtection, "Ochrona lasu", "Strażnica chroni drzewa wokół siebie przed ogniem, a zakłady chemiczne robią z terpentyny środek na kornika.",
             [Silviculture, Charring], [(Items.Bricks, 20), (Items.IronIngot, 20), (Items.Turpentine, 5)], TimeSpan.FromMinutes(3), 60,
             [Items.FireStation, Items.Insecticide]),
+        new(Megaprojects, "Wielkie budowy", "Tylko dla spółek: członkowie razem stawiają platformę wiertniczą, port, pole lustrzane albo kolej międzykontynentalną.",
+            [BuildingMaterials, Headquarters], [(Items.Concrete, 500), (Items.SteelIngot, 500), (Items.Blueprint, 10)], TimeSpan.FromMinutes(30), 300,
+            [], CompanyOnly: true),
+        new(CorporateFinance, "Finanse korporacyjne", "Tylko dla spółek: spółka wchodzi na giełdę, a gracze spoza niej kupują jej akcje.",
+            [Commerce, Headquarters], [(Items.Paper, 500), (Items.Blueprint, 10), (Items.CircuitBoard, 50)], TimeSpan.FromMinutes(20), 200,
+            [], CompanyOnly: true),
     ];
 
     public static readonly IReadOnlyDictionary<string, Technology> ById = Technologies.ToDictionary(t => t.Id);
@@ -308,11 +317,15 @@ public enum ResearchStatus { Locked, Available, Active, Done }
 /// <summary>The player's research now, after handing out XP for what finished.</summary>
 /// <param name="Started">Every technology the player started, done ones included.</param>
 /// <param name="Finished">Technologies that finished since the player last asked.</param>
+/// <param name="Shared">Technologies the player has because their company researched them.</param>
+/// <param name="Company">The company's research, when the player is in a company.</param>
 public sealed record ResearchState(
     IReadOnlyDictionary<string, (DateTimeOffset StartsAt, DateTimeOffset FinishesAt)> Started,
     DateTimeOffset ServerTime,
     IReadOnlyList<string> Finished,
-    XpGain? Xp)
+    XpGain? Xp,
+    IReadOnlySet<string>? Shared = null,
+    CompanyResearch? Company = null)
 {
     public bool IsDone(string id) => Started.TryGetValue(id, out var r) && r.FinishesAt <= ServerTime;
 
@@ -323,7 +336,17 @@ public sealed record ResearchState(
         : ResearchStatus.Locked;
 }
 
-public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterProgress progress, TimeProvider time) : ITechnologies
+/// <summary>What a company researches together: one technology at a time, which starts once members brought its whole cost.</summary>
+/// <param name="Technology">The one being collected for or researched; null when none.</param>
+/// <param name="StartsAt">Null while members are still bringing its cost.</param>
+/// <param name="Delivered">How much of each cost item members brought so far.</param>
+/// <param name="Done">What the company researched, for every member.</param>
+public sealed record CompanyResearch(
+    string Name, bool Leads, string? Technology, DateTimeOffset? StartsAt, DateTimeOffset? FinishesAt,
+    IReadOnlyDictionary<string, long> Delivered, IReadOnlySet<string> Done);
+
+public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterProgress progress, ICompanies companies, TimeProvider time)
+    : ITechnologies, ICompanyTechnologies
 {
     public Task<ResearchState> StateAsync(Guid owner, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -337,6 +360,10 @@ public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterP
         db.InTransactionAsync(async () =>
         {
             var technology = TechTree.ById.GetValueOrDefault(id) ?? throw new GameException("no_technology", "There is no such technology.");
+            if (technology.CompanyOnly)
+            {
+                throw new GameException("company_only", "Only a company researches this, together.");
+            }
 
             // One start at a time per player, so two at once cannot both pass the check below.
             await using (var lockOwner = await db.CommandAsync("SELECT pg_advisory_xact_lock(@key)", cancellationToken))
@@ -478,6 +505,11 @@ public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterP
             }
         }
 
+        if (await companies.MembershipAsync(player, cancellationToken) is { } membership)
+        {
+            done.UnionWith(await CompanyDoneAsync(membership.Company, cancellationToken));
+        }
+
         return TechTree.ByItem.Where(p => !done.Contains(p.Value.Id)).ToDictionary(p => p.Key, p => p.Value.Name);
     }
 
@@ -527,7 +559,217 @@ public sealed class ResearchService(GameDb db, IInventory inventory, ICharacterP
             }
         }
 
-        return new ResearchState(started, time.GetUtcNow(), finished, xp);
+        var now = time.GetUtcNow();
+        if (await companies.MembershipAsync(owner, cancellationToken) is not { } membership)
+        {
+            return new ResearchState(started, now, finished, xp);
+        }
+
+        var company = await CompanyStateAsync(membership, cancellationToken);
+        var shared = new HashSet<string>();
+        foreach (var id in company.Done)
+        {
+            if (!started.TryGetValue(id, out var own) || own.Item2 > now)
+            {
+                shared.Add(id);
+                started[id] = (now, now);
+            }
+        }
+
+        return new ResearchState(started, now, finished, xp, shared, company);
+    }
+
+    public async Task<bool> ResearchedAsync(Guid company, string technology, CancellationToken cancellationToken) =>
+        (await CompanyDoneAsync(company, cancellationToken)).Contains(technology);
+
+    /// <summary>The owner or a partner picks what the company researches next; members then bring its cost (<see cref="ContributeAsync"/>).</summary>
+    public Task<ResearchState> StartCompanyAsync(Guid owner, string id, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            var technology = TechTree.ById.GetValueOrDefault(id) ?? throw new GameException("no_technology", "There is no such technology.");
+            await RequireCompanyAsync(owner, true, cancellationToken);
+            var (finished, xp) = await CompleteDueAsync(owner, cancellationToken);
+            var state = await ReadAsync(owner, finished, xp, cancellationToken);
+            var company = state.Company!;
+            if (company.Done.Contains(id))
+            {
+                throw new GameException("already_researched", "The company has researched this already.");
+            }
+
+            if (company.Technology is not null)
+            {
+                throw new GameException("research_busy", "The company is researching something else; finish or cancel it first.");
+            }
+
+            // What it needs counts when the company or this player has it.
+            if (!technology.Requires.All(state.IsDone))
+            {
+                throw new GameException("research_locked", "Research the technologies it needs first.");
+            }
+
+            await using (var insert = await db.CommandAsync(
+                "INSERT INTO research.company_technologies (company_id, technology) VALUES (@company, @technology)", cancellationToken))
+            {
+                insert.Parameters.AddWithValue("company", (await companies.MembershipAsync(owner, cancellationToken))!.Company);
+                insert.Parameters.AddWithValue("technology", id);
+                await insert.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            return await ReadAsync(owner, finished, xp, cancellationToken);
+        }, cancellationToken);
+
+    /// <summary>A member brings part of the cost of what the company researches; with the whole cost in, the research starts.</summary>
+    public Task<ResearchState> ContributeAsync(Guid owner, string item, long quantity, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            if (quantity < 1)
+            {
+                throw new GameException("bad_quantity", "Bring at least one.");
+            }
+
+            var membership = await RequireCompanyAsync(owner, false, cancellationToken);
+            var company = await CompanyStateAsync(membership, cancellationToken);
+            if (company.Technology is not { } id || company.StartsAt is not null)
+            {
+                throw new GameException("no_research", "The company is not collecting for any research.");
+            }
+
+            var technology = TechTree.ById[id];
+            var needed = technology.Cost.Where(c => c.Item == item).Sum(c => (long)c.Quantity) - company.Delivered.GetValueOrDefault(item);
+            if (needed <= 0)
+            {
+                throw new GameException("not_needed", "The research needs no more of this.");
+            }
+
+            var used = Math.Min(quantity, needed);
+            await inventory.RemoveAsync(owner, item, used, cancellationToken);
+            await using (var upsert = await db.CommandAsync(
+                """
+                INSERT INTO research.company_contributions (company_id, technology, item, delivered) VALUES (@company, @technology, @item, @used)
+                ON CONFLICT (company_id, technology, item) DO UPDATE SET delivered = company_contributions.delivered + excluded.delivered
+                """, cancellationToken))
+            {
+                upsert.Parameters.AddWithValue("company", membership.Company);
+                upsert.Parameters.AddWithValue("technology", id);
+                upsert.Parameters.AddWithValue("item", item);
+                upsert.Parameters.AddWithValue("used", used);
+                await upsert.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            var delivered = new Dictionary<string, long>(company.Delivered) { [item] = company.Delivered.GetValueOrDefault(item) + used };
+            if (technology.Cost.All(c => delivered.GetValueOrDefault(c.Item) >= c.Quantity))
+            {
+                var now = time.GetUtcNow();
+                await using var start = await db.CommandAsync(
+                    "UPDATE research.company_technologies SET starts_at = @start, finishes_at = @end WHERE company_id = @company AND technology = @technology",
+                    cancellationToken);
+                start.Parameters.AddWithValue("company", membership.Company);
+                start.Parameters.AddWithValue("technology", id);
+                start.Parameters.AddWithValue("start", now);
+                start.Parameters.AddWithValue("end", now + technology.Time);
+                await start.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            return await ReadAsync(owner, [], null, cancellationToken);
+        }, cancellationToken);
+
+    /// <summary>The owner or a partner calls off the company's research that is not done; what members brought goes to the one who calls it off.</summary>
+    public Task<ResearchState> CancelCompanyAsync(Guid owner, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            var membership = await RequireCompanyAsync(owner, true, cancellationToken);
+            var company = await CompanyStateAsync(membership, cancellationToken);
+            if (company.Technology is not { } id)
+            {
+                throw new GameException("no_research", "The company is not researching anything.");
+            }
+
+            foreach (var (item, quantity) in company.Delivered.Where(d => d.Value > 0))
+            {
+                await inventory.AddAsync(owner, item, quantity, cancellationToken);
+            }
+
+            await using (var delete = await db.CommandAsync(
+                """
+                DELETE FROM research.company_contributions WHERE company_id = @company AND technology = @technology;
+                DELETE FROM research.company_technologies WHERE company_id = @company AND technology = @technology;
+                """, cancellationToken))
+            {
+                delete.Parameters.AddWithValue("company", membership.Company);
+                delete.Parameters.AddWithValue("technology", id);
+                await delete.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            return await ReadAsync(owner, [], null, cancellationToken);
+        }, cancellationToken);
+
+    /// <summary>The player's company, locked so its research changes one request at a time.</summary>
+    private async Task<CompanyMembership> RequireCompanyAsync(Guid player, bool leads, CancellationToken cancellationToken)
+    {
+        var membership = await companies.MembershipAsync(player, cancellationToken)
+            ?? throw new GameException("no_company", "You are not in a company.");
+        if (leads && !membership.Leads)
+        {
+            throw new GameException("not_allowed", "Only the owner and partners choose the company's research.");
+        }
+
+        await using var lockCompany = await db.CommandAsync("SELECT pg_advisory_xact_lock(@key)", cancellationToken);
+        lockCompany.Parameters.AddWithValue("key", BitConverter.ToInt64(membership.Company.ToByteArray()) ^ 0x636f6d70616e79);
+        await lockCompany.ExecuteNonQueryAsync(cancellationToken);
+        return membership;
+    }
+
+    private async Task<HashSet<string>> CompanyDoneAsync(Guid company, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            "SELECT technology FROM research.company_technologies WHERE company_id = @company AND finishes_at <= @now", cancellationToken);
+        command.Parameters.AddWithValue("company", company);
+        command.Parameters.AddWithValue("now", time.GetUtcNow());
+        var done = new HashSet<string>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            done.Add(reader.GetString(0));
+        }
+
+        return done;
+    }
+
+    private async Task<CompanyResearch> CompanyStateAsync(CompanyMembership membership, CancellationToken cancellationToken)
+    {
+        string? current = null;
+        DateTimeOffset? startsAt = null, finishesAt = null;
+        await using (var command = await db.CommandAsync(
+            "SELECT technology, starts_at, finishes_at FROM research.company_technologies WHERE company_id = @company AND (finishes_at IS NULL OR finishes_at > @now)",
+            cancellationToken))
+        {
+            command.Parameters.AddWithValue("company", membership.Company);
+            command.Parameters.AddWithValue("now", time.GetUtcNow());
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                current = reader.GetString(0);
+                startsAt = reader.IsDBNull(1) ? null : reader.GetFieldValue<DateTimeOffset>(1);
+                finishesAt = reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTimeOffset>(2);
+            }
+        }
+
+        var delivered = new Dictionary<string, long>();
+        if (current is not null)
+        {
+            await using var command = await db.CommandAsync(
+                "SELECT item, delivered FROM research.company_contributions WHERE company_id = @company AND technology = @technology", cancellationToken);
+            command.Parameters.AddWithValue("company", membership.Company);
+            command.Parameters.AddWithValue("technology", current);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                delivered[reader.GetString(0)] = reader.GetInt64(1);
+            }
+        }
+
+        return new CompanyResearch(membership.Name, membership.Leads, current, startsAt, finishesAt, delivered,
+            await CompanyDoneAsync(membership.Company, cancellationToken));
     }
 }
 
@@ -564,7 +806,21 @@ public abstract class ResearchHandler(IServiceScopeFactory scopes) : IMessageHan
                 },
                 startsAt = state.Started.TryGetValue(t.Id, out var r) ? r.StartsAt.ToUnixTimeMilliseconds() : (long?)null,
                 finishesAt = state.Started.TryGetValue(t.Id, out var f) ? f.FinishesAt.ToUnixTimeMilliseconds() : (long?)null,
+                companyOnly = t.CompanyOnly,
+                // Researched by the player's company, not by them.
+                shared = state.Shared?.Contains(t.Id) == true,
             }),
+            company = state.Company is { } c ? new
+            {
+                name = c.Name,
+                leads = c.Leads,
+                technology = c.Technology,
+                startsAt = c.StartsAt?.ToUnixTimeMilliseconds(),
+                finishesAt = c.FinishesAt?.ToUnixTimeMilliseconds(),
+                delivered = c.Technology is { } id
+                    ? TechTree.ById[id].Cost.Select(p => new { id = p.Item, name = Items.Names[p.Item], needed = p.Quantity, delivered = c.Delivered.GetValueOrDefault(p.Item) })
+                    : null,
+            } : null,
             // What speeds research up, and by how many seconds each piece.
             boosts = Items.ResearchBoost.Select(b => new { id = b.Key, name = Items.Names[b.Key], seconds = b.Value }),
             serverTime = state.ServerTime.ToUnixTimeMilliseconds(),
@@ -613,4 +869,35 @@ public sealed class CancelResearchHandler(IServiceScopeFactory scopes) : Researc
 
     protected override Task<ResearchState> RunAsync(ResearchService research, Guid owner, JsonElement? payload, CancellationToken cancellationToken) =>
         research.CancelAsync(owner, cancellationToken);
+}
+
+/// <summary>The company picks what it researches together.</summary>
+public sealed class StartCompanyResearchHandler(IServiceScopeFactory scopes) : ResearchHandler(scopes)
+{
+    public override string Type => "research.companyStart";
+
+    protected override Task<ResearchState> RunAsync(ResearchService research, Guid owner, JsonElement? payload, CancellationToken cancellationToken) =>
+        research.StartCompanyAsync(owner, Payload.Read<StartResearchRequest>(payload).Technology ?? "", cancellationToken);
+}
+
+public sealed record ContributeRequest(string Item, long Quantity);
+
+/// <summary>A member brings part of the cost of the company's research.</summary>
+public sealed class ContributeResearchHandler(IServiceScopeFactory scopes) : ResearchHandler(scopes)
+{
+    public override string Type => "research.contribute";
+
+    protected override Task<ResearchState> RunAsync(ResearchService research, Guid owner, JsonElement? payload, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<ContributeRequest>(payload);
+        return research.ContributeAsync(owner, request.Item ?? "", request.Quantity, cancellationToken);
+    }
+}
+
+public sealed class CancelCompanyResearchHandler(IServiceScopeFactory scopes) : ResearchHandler(scopes)
+{
+    public override string Type => "research.companyCancel";
+
+    protected override Task<ResearchState> RunAsync(ResearchService research, Guid owner, JsonElement? payload, CancellationToken cancellationToken) =>
+        research.CancelCompanyAsync(owner, cancellationToken);
 }

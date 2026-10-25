@@ -366,6 +366,8 @@ public static class NpcPrices
 public sealed class MarketPrices : IMarketPrices
 {
     public long? BuysCents(string item) => NpcPrices.Buys.TryGetValue(item, out var cents) ? cents : null;
+
+    public long? SellsCents(string item) => NpcPrices.Sells.TryGetValue(item, out var cents) ? cents : null;
 }
 
 public sealed record TradeRequest(string Item, int Quantity);

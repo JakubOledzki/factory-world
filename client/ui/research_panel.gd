@@ -158,7 +158,10 @@ func _status_text(technology: Dictionary, full := false) -> String:
 	match technology["status"]:
 		"done": return "Zbadane"
 		"active": return "Badanie: %s" % _left(technology)
-		"available": return "Gotowe do zbadania" if _can_pay(technology) else "Brakuje materiałów"
+		"available":
+			if technology.get("companyOnly", false):
+				return "Tylko dla spółek"
+			return "Gotowe do zbadania" if _can_pay(technology) else "Brakuje materiałów"
 	var missing: Array = technology["requires"].filter(func(id: String) -> bool: return _technology(id).get("status") != "done")
 	if missing.size() > 1 and not full:
 		return "Wymaga %d badań" % missing.size()
@@ -227,7 +230,7 @@ func _card(technology: Dictionary, at: Vector2) -> Button:
 	b.custom_minimum_size = CARD
 	b.clip_text = true
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-	b.icon = UI.item_texture(technology["unlocks"][0]["id"])
+	b.icon = _icon_for(technology)
 	b.expand_icon = false
 	b.add_theme_constant_override("icon_max_width", 36)
 	b.text = "%s\n%s" % [technology["name"], _status_text(technology)]
@@ -256,7 +259,12 @@ func _render_details() -> void:
 		return
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 8)
-	head.add_child(UI.item_icon(technology["unlocks"][0]["id"], 40))
+	var icon := TextureRect.new()
+	icon.texture = _icon_for(technology)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.custom_minimum_size = Vector2(40, 40)
+	head.add_child(icon)
 	var title := UI.label(technology["name"], UI.GOLD)
 	title.add_theme_font_override("font", UI.bold())
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -266,7 +274,12 @@ func _render_details() -> void:
 	_status = UI.label(_status_text(technology, true), STATUS_COLORS[technology["status"]], HORIZONTAL_ALIGNMENT_LEFT, true)
 	_details.add_child(_status)
 
-	_details.add_child(UI.label("Odblokowuje:", UI.MUTED))
+	if technology.get("shared", false):
+		_details.add_child(UI.label("Zbadała to twoja spółka: masz to, dopóki w niej jesteś.", UI.GOOD, HORIZONTAL_ALIGNMENT_LEFT, true))
+	if technology.get("companyOnly", false):
+		_details.add_child(UI.label("Tylko dla spółek: bada ją spółka, razem, dla wszystkich członków.", UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT, true))
+	if not technology["unlocks"].is_empty():
+		_details.add_child(UI.label("Odblokowuje:", UI.MUTED))
 	for unlock: Dictionary in technology["unlocks"]:
 		_details.add_child(_item_row(unlock["id"], unlock["name"], ""))
 	if technology["status"] != "done":
@@ -278,8 +291,9 @@ func _render_details() -> void:
 			_details.add_child(_item_row(cost["id"], cost["name"], text, UI.GOOD if have >= need or technology["status"] == "active" else UI.ERROR))
 	_details.add_child(UI.label("Czas: %s  ·  %d XP" % [_seconds(float(technology["seconds"])), int(technology["xp"])], UI.MUTED))
 
+	_render_company(technology)
 	var busy := not active.is_empty()
-	_start_button.visible = technology["status"] in ["available", "locked"]
+	_start_button.visible = technology["status"] in ["available", "locked"] and not technology.get("companyOnly", false)
 	_start_button.disabled = technology["status"] != "available" or busy or not _can_pay(technology) or _busy
 	if technology["status"] == "locked":
 		_start_button.text = "Najpierw zbadaj wymagane"
@@ -293,6 +307,59 @@ func _render_details() -> void:
 	_cancel_button.disabled = _busy
 	if technology["status"] == "active":
 		_render_boosts()
+
+
+## The company's research: members bring the cost together, then it is researched once for all of them.
+func _render_company(technology: Dictionary) -> void:
+	var company: Variant = _state.get("company")
+	if company == null:
+		return
+	_details.add_child(HSeparator.new())
+	var current: Variant = company["technology"]
+	if current == technology["id"]:
+		if company["startsAt"] == null:
+			_details.add_child(UI.label("Spółka %s zbiera na to badanie. Dołóż, co masz:" % company["name"], UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT, true))
+			for part: Dictionary in company["delivered"]:
+				var needed := int(part["needed"])
+				var delivered := int(part["delivered"])
+				var row := _item_row(part["id"], part["name"], "%d/%d" % [delivered, needed], UI.GOOD if delivered >= needed else UI.TEXT)
+				if delivered < needed:
+					var have := _count(part["id"])
+					var give := UI.button("Dołóż", func() -> void: _company("research.contribute", {"item": part["id"], "quantity": mini(have, needed - delivered)}))
+					give.disabled = have < 1 or _busy
+					row.add_child(give)
+				_details.add_child(row)
+		else:
+			var left := maxf(float(company["finishesAt"]) - _server_now(), 0.0) / 1000.0
+			_details.add_child(UI.label("Spółka %s bada to dla wszystkich członków: zostało %s." % [company["name"], _seconds(ceilf(left))], UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT, true))
+		if company["leads"]:
+			var cancel := UI.button("Odwołaj badanie spółki", func() -> void: _company("research.companyCancel", {}))
+			cancel.tooltip_text = "To, co członkowie dołożyli, trafi do twojego ekwipunku."
+			_details.add_child(cancel)
+	elif current != null:
+		_details.add_child(UI.label("Spółka bada teraz: %s." % _technology(current).get("name", current), UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	elif technology["status"] != "done" and company["leads"]:
+		var start := UI.button("Badaj w spółce", func() -> void: _company("research.companyStart", {"technology": technology["id"]}), true)
+		start.tooltip_text = "Członkowie razem dokładają koszt, a technologię dostaną wszyscy."
+		start.disabled = technology["status"] == "locked" or _busy
+		_details.add_child(start)
+	elif technology["status"] != "done":
+		_details.add_child(UI.label("Badania spółki wybierają prezes i wspólnicy.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+
+
+func _company(type: String, payload: Dictionary) -> void:
+	_busy = true
+	_render()
+	var reply := await Net.request(type, payload)
+	_busy = false
+	_apply(reply)
+	if reply["type"] == "research":
+		inventory_changed.emit()
+
+
+static func _icon_for(technology: Dictionary) -> Texture2D:
+	var unlocks: Array = technology["unlocks"]
+	return UI.item_texture(unlocks[0]["id"]) if not unlocks.is_empty() else UI.texture("icons/toolbar_company")
 
 
 ## Research data and computing power from the glacier speed the research being done up: a button for each held.

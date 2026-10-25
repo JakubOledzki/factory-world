@@ -752,6 +752,10 @@ func _build_windows() -> void:
 	_company_window = CompanyWindow.new()
 	_company_window.position = Vector2(1280 - 520 - 12, 64)
 	_company_window.inventory_changed.connect(_reload_inventory)
+	_company_window.balance_changed.connect(func() -> void:
+		var wallet := await Net.request("wallet.get")
+		if wallet["type"] == "wallet":
+			_set_balance(int(wallet["payload"]["balanceCents"])))
 	_company_window.failed.connect(_show_error)
 	_stats_window = StatsWindow.new()
 	_stats_window.position = Vector2(1280 - 640 - 12, 64)

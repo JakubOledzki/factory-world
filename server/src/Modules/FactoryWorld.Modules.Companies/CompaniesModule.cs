@@ -16,6 +16,24 @@ public sealed record CompanyPlotRequest(int X, int Y);
 
 public sealed record WarehouseRequest(string? Item, long Quantity);
 
+public sealed record CentsRequest(long Cents);
+
+public sealed record PercentRequest(int Percent);
+
+public sealed record AssignRequest(int X, int Y, string? Name);
+
+public sealed record ListRequest(bool Listed);
+
+public sealed record SharesRequest(Guid Company, long Shares);
+
+public sealed record ProjectRequest(string? Project, string? Item, long Quantity, bool FromWarehouse);
+
+public sealed record OrderRequest(int Slot, long Quantity);
+
+public sealed record TaskRequest(long Id, string? Item, long Quantity, long WageCents, string? Name);
+
+public sealed record DealRequest(long Id, string? Company, string? Item, long PerDay, long PriceCents, int Days, bool Sell);
+
 /// <summary>Every company message answers with the player's company as it is now.</summary>
 public abstract class CompanyHandler(IServiceScopeFactory scopes) : IMessageHandler
 {
@@ -49,7 +67,10 @@ public abstract class CompanyHandler(IServiceScopeFactory scopes) : IMessageHand
             invited = c.Invited,
             // A headquarters on one of its plots: more members and a bigger warehouse.
             hq = c.Hq,
-            plots = c.Plots.Select(p => new { x = p.X, y = p.Y, biome = p.Biome, owner = p.OwnerName, mine = p.OwnerId == view.Player }),
+            plots = c.Plots.Select(p => new { x = p.X, y = p.Y, biome = p.Biome, owner = p.OwnerName, mine = p.OwnerId == view.Player, manager = p.Manager }),
+            money = Roles.HandlesMoney(c.Role),
+            leads = Roles.Leads(c.Role),
+            economy = c.Economy is { } e ? EconomyJson(e, view.Player) : null,
             warehouse = new
             {
                 capacity = CompanyRules.CapacityFor(c.Hq),
@@ -71,6 +92,165 @@ public abstract class CompanyHandler(IServiceScopeFactory scopes) : IMessageHand
         maxMembers = CompanyRules.MaxMembersFor(view.Company?.Hq == true),
         roles = Roles.All,
     };
+
+    private static string ItemName(string item) => Items.Names.GetValueOrDefault(item, item);
+
+    private static object EconomyJson(CompanyEconomy e, Guid player)
+    {
+        string NameOf(Guid id) => e.Names.GetValueOrDefault(id, "?");
+        var total = e.Shares.Values.Sum();
+        return new
+        {
+            cashCents = e.CashCents,
+            incomeCents = e.IncomeCents,
+            dividendPercent = e.DividendPercent,
+            nextDividendAt = e.NextDividendAt.ToUnixTimeMilliseconds(),
+            listed = e.Listed,
+            mayList = e.MayList,
+            mayBuild = e.MayBuild,
+            valueCents = e.ValueCents,
+            profitCents = e.ProfitCents,
+            sharePriceCents = e.SharePriceCents,
+            shares = new
+            {
+                total,
+                yours = e.Shares.GetValueOrDefault(player),
+                holders = e.Shares.OrderByDescending(s => s.Value).Select(s => new
+                {
+                    name = NameOf(s.Key),
+                    shares = s.Value,
+                    percent = total > 0 ? Math.Round(100.0 * s.Value / total, 1) : 0,
+                    you = s.Key == player,
+                }),
+            },
+            projects = e.Projects.Select(p => new
+            {
+                id = p.Project.Id,
+                name = p.Project.Name,
+                description = p.Project.Description,
+                started = p.Started,
+                buildSeconds = p.Project.Build.TotalSeconds,
+                builtAt = p.BuiltAt?.ToUnixTimeMilliseconds(),
+                parts = p.Project.Parts.Select(part => new
+                {
+                    id = part.Item,
+                    name = ItemName(part.Item),
+                    needed = part.Quantity,
+                    delivered = p.Delivered.GetValueOrDefault(part.Item),
+                }),
+                reward = p.Project.Reward.Select(r => new { id = r.Item, name = ItemName(r.Item), quantity = r.Quantity }),
+            }),
+            orders = e.Orders.Select(o => new
+            {
+                slot = o.Order.Slot,
+                id = o.Order.Item,
+                name = ItemName(o.Order.Item),
+                quantity = o.Order.Quantity,
+                delivered = o.Delivered,
+                rewardCents = o.Order.RewardCents,
+                endsAt = o.Order.EndsAt.ToUnixTimeMilliseconds(),
+            }),
+            tasks = e.Tasks.Select(t => new
+            {
+                id = t.Id,
+                item = t.Item,
+                name = ItemName(t.Item),
+                quantity = t.Quantity,
+                delivered = t.Delivered,
+                wageCents = t.WageCents,
+                paidCents = t.PaidCents,
+                assignee = t.Assignee is { } a ? NameOf(a) : null,
+                yours = t.Assignee is null || t.Assignee == player,
+                by = NameOf(t.CreatedBy),
+                done = t.DoneAt is not null,
+            }),
+            deals = e.Deals.Select(d => new
+            {
+                id = d.Id,
+                weSupply = d.WeSupply,
+                offeredByUs = d.OfferedByUs,
+                other = d.Other,
+                item = d.Item,
+                name = ItemName(d.Item),
+                perDay = d.PerDay,
+                priceCents = d.PriceCents,
+                days = d.Days,
+                state = d.State,
+                acceptedAt = d.AcceptedAt?.ToUnixTimeMilliseconds(),
+                settled = d.Settled,
+                missed = d.Missed,
+            }),
+            trophies = e.Trophies.Select(t => new { season = t.Season, place = t.Place, valueCents = t.ValueCents }),
+        };
+    }
+}
+
+/// <summary>A company message with its own payload; the reply is the player's company, like every other.</summary>
+public sealed class CompanyAction<TRequest>(
+    IServiceScopeFactory scopes, string type, Func<CompanyService, Guid, TRequest, CancellationToken, Task<CompanyView>> run) : CompanyHandler(scopes)
+    where TRequest : class
+{
+    public override string Type => type;
+
+    protected override Task<CompanyView> RunAsync(CompanyService companies, Guid player, JsonElement? payload, CancellationToken cancellationToken) =>
+        run(companies, player, Payload.Read<TRequest>(payload), cancellationToken);
+}
+
+/// <summary>The stock exchange: listed companies and the player's shares.</summary>
+public sealed class ExchangeHandler<TRequest>(
+    IServiceScopeFactory scopes, string type, Func<CompanyService, Guid, TRequest, CancellationToken, Task<CompanyExchange>> run) : IMessageHandler
+    where TRequest : class
+{
+    public string Type => type;
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var request = payload is null && new NoRequest() is TRequest none ? none : Payload.Read<TRequest>(payload);
+        var exchange = await run(scope.ServiceProvider.GetRequiredService<CompanyService>(), client.RequireAccount(), request, cancellationToken);
+        return new Reply("company.exchange", new
+        {
+            companies = exchange.Companies.Select(c => new
+            {
+                id = c.Id,
+                name = c.Name,
+                listed = c.Listed,
+                priceCents = c.PriceCents,
+                shares = c.Shares,
+                profitCents = c.ProfitCents,
+                valueCents = c.ValueCents,
+                yours = c.Yours,
+                mine = c.Mine,
+            }),
+            buybackPercent = CompanyMoney.BuybackPercent,
+        });
+    }
+}
+
+public sealed record NoRequest;
+
+/// <summary>Company rankings and this season's standing.</summary>
+public sealed class RankingsHandler(IServiceScopeFactory scopes) : IMessageHandler
+{
+    public string Type => "company.rankings";
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        await using var scope = scopes.CreateAsyncScope();
+        var rankings = await scope.ServiceProvider.GetRequiredService<CompanyService>().RankingsAsync(client.RequireAccount(), cancellationToken);
+        object List(IReadOnlyList<RankedCompany> list) =>
+            list.Select((r, i) => new { place = i + 1, name = r.Name, value = r.Value, yours = r.Id == rankings.Yours });
+        return new Reply("company.rankings", new
+        {
+            season = rankings.Season,
+            endsAt = rankings.EndsAt.ToUnixTimeMilliseconds(),
+            richest = List(rankings.Richest),
+            production = List(rankings.Production),
+            plots = List(rankings.Plots),
+            lastSeason = List(rankings.LastSeason),
+            prizesCents = Seasons.PrizesCents,
+        });
+    }
 }
 
 public sealed class GetCompanyHandler(IServiceScopeFactory scopes) : CompanyHandler(scopes)
@@ -201,7 +381,9 @@ public sealed class CompaniesModule : IGameModule
     {
         services.AddModuleDbContext<CompaniesDbContext>(CompaniesDbContext.Schema);
         services.AddScoped<CompanyService>();
-        services.AddScoped<ICompanyPlots, CompanyPlots>();
+        services.AddScoped<CompanyPlots>();
+        services.AddScoped<ICompanyPlots>(provider => provider.GetRequiredService<CompanyPlots>());
+        services.AddScoped<ICompanies>(provider => provider.GetRequiredService<CompanyPlots>());
         services.AddSingleton<IMessageHandler, GetCompanyHandler>();
         services.AddSingleton<IMessageHandler, CreateCompanyHandler>();
         services.AddSingleton<IMessageHandler, InviteHandler>();
@@ -215,6 +397,35 @@ public sealed class CompaniesModule : IGameModule
         services.AddSingleton<IMessageHandler, RemovePlotHandler>();
         services.AddSingleton<IMessageHandler, PutHandler>();
         services.AddSingleton<IMessageHandler, TakeHandler>();
+        services.AddSingleton<IMessageHandler, RankingsHandler>();
+
+        void Action<T>(string type, Func<CompanyService, Guid, T, CancellationToken, Task<CompanyView>> run)
+            where T : class =>
+            services.AddSingleton<IMessageHandler>(p => new CompanyAction<T>(p.GetRequiredService<IServiceScopeFactory>(), type, run));
+        void Exchange<T>(string type, Func<CompanyService, Guid, T, CancellationToken, Task<CompanyExchange>> run)
+            where T : class =>
+            services.AddSingleton<IMessageHandler>(p => new ExchangeHandler<T>(p.GetRequiredService<IServiceScopeFactory>(), type, run));
+
+        Action<CentsRequest>("company.deposit", (c, player, r, ct) => c.DepositAsync(player, r.Cents, ct));
+        Action<CentsRequest>("company.withdraw", (c, player, r, ct) => c.WithdrawAsync(player, r.Cents, ct));
+        Action<WarehouseRequest>("company.sell", (c, player, r, ct) => c.SellAsync(player, r.Item, r.Quantity, ct));
+        Action<WarehouseRequest>("company.buy", (c, player, r, ct) => c.BuyAsync(player, r.Item, r.Quantity, ct));
+        Action<PercentRequest>("company.dividend", (c, player, r, ct) => c.SetDividendAsync(player, r.Percent, ct));
+        Action<AssignRequest>("company.assign", (c, player, r, ct) => c.AssignAsync(player, r.X, r.Y, r.Name, ct));
+        Action<ListRequest>("company.list", (c, player, r, ct) => c.ListAsync(player, r.Listed, ct));
+        Action<CompanyRequest>("company.takeover", (c, player, r, ct) => c.TakeoverAsync(player, r.Company, ct));
+        Action<ProjectRequest>("company.project.start", (c, player, r, ct) => c.StartProjectAsync(player, r.Project, ct));
+        Action<ProjectRequest>("company.project.give", (c, player, r, ct) => c.GiveToProjectAsync(player, r.Project, r.Item, r.Quantity, r.FromWarehouse, ct));
+        Action<OrderRequest>("company.order.deliver", (c, player, r, ct) => c.DeliverOrderAsync(player, r.Slot, r.Quantity, ct));
+        Action<TaskRequest>("company.task.create", (c, player, r, ct) => c.CreateTaskAsync(player, r.Item, r.Quantity, r.WageCents, r.Name, ct));
+        Action<TaskRequest>("company.task.deliver", (c, player, r, ct) => c.DeliverTaskAsync(player, r.Id, r.Quantity, ct));
+        Action<TaskRequest>("company.task.cancel", (c, player, r, ct) => c.CancelTaskAsync(player, r.Id, ct));
+        Action<DealRequest>("company.deal.offer", (c, player, r, ct) => c.OfferDealAsync(player, r.Company, r.Item, r.PerDay, r.PriceCents, r.Days, r.Sell, ct));
+        Action<DealRequest>("company.deal.accept", (c, player, r, ct) => c.AcceptDealAsync(player, r.Id, ct));
+        Action<DealRequest>("company.deal.cancel", (c, player, r, ct) => c.CancelDealAsync(player, r.Id, ct));
+        Exchange<NoRequest>("company.exchange", (c, player, _, ct) => c.ExchangeAsync(player, ct));
+        Exchange<SharesRequest>("company.shares.buy", (c, player, r, ct) => c.BuySharesAsync(player, r.Company, r.Shares, ct));
+        Exchange<SharesRequest>("company.shares.sell", (c, player, r, ct) => c.SellSharesAsync(player, r.Company, r.Shares, ct));
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>
