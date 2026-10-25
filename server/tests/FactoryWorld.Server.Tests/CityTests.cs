@@ -225,7 +225,7 @@ public sealed class CityTests(ServerFactory factory) : IClassFixture<ServerFacto
         Assert.Equal("no_city", (await client.SendAsync("plot.place",
             new { x = fx, y = fy, kind = Items.Shop, tileX = 100, tileY = 30, rotation = 0 })).ErrorCode());
         await GiveAsync(client, Items.CompanyHq, 1);
-        Assert.Equal("no_company", (await client.SendAsync("plot.place",
+        Assert.Equal("hq_off_company", (await client.SendAsync("plot.place",
             new { x = plot.X, y = plot.Y, kind = Items.CompanyHq, tileX = PlotLayout.Spawn.X - 10, tileY = 30, rotation = 0 })).ErrorCode());
 
         var shop = await PlaceAsync(client, plot.X, plot.Y, Items.Shop, PlotLayout.Spawn.X + 5, 30);
@@ -327,7 +327,7 @@ public sealed class CityTests(ServerFactory factory) : IClassFixture<ServerFacto
         Assert.False(plain.GetProperty("company").GetProperty("hq").GetBoolean());
 
         await GiveAsync(client, Items.CompanyHq, 2);
-        Assert.Equal("no_company", (await client.SendAsync("plot.place",
+        Assert.Equal("hq_off_company", (await client.SendAsync("plot.place",
             new { x = plot.X, y = plot.Y, kind = Items.CompanyHq, tileX = PlotLayout.Spawn.X - 10, tileY = 30, rotation = 0 })).ErrorCode());
         Assert.Equal("company", (await client.SendAsync("company.addPlot", new { x = plot.X, y = plot.Y })).Type());
         await PlaceAsync(client, plot.X, plot.Y, Items.CompanyHq, PlotLayout.Spawn.X - 10, 30);

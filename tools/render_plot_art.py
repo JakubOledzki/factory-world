@@ -3346,6 +3346,286 @@ def glacier_icon_models():
     }
 
 
+# --- City -----------------------------------------------------------------------------------------
+
+def city_mats():
+    """The paint of the city: plaster, brick, concrete and glass, shop awnings and lit windows."""
+    return {
+        "plaster": ra.plain("ct_plaster", (0.55, 0.5, 0.42), 0.8, variation=0.12, scale=8, grime=0.4),
+        "brick": ra.plain("ct_brick", (0.3, 0.09, 0.05), 0.85, variation=0.35, scale=14, bump=0.5),
+        "concrete": ra.plain("ct_concrete", (0.32, 0.32, 0.31), 0.9, variation=0.15),
+        "glass": ra.plain("ct_glass", (0.05, 0.1, 0.14), 0.05, 0.3, variation=0.05, grime=0.1),
+        "steel": ra.rusty_metal("ct_steel", (0.3, 0.31, 0.33), rust=0.08),
+        "dark": ra.rusty_metal("ct_dark", (0.04, 0.045, 0.05), rust=0.1),
+        "blue": ra.plain("ct_blue", (0.05, 0.15, 0.4), 0.5, 0.2, variation=0.1, grime=0.3),
+        "red": ra.plain("ct_red", (0.45, 0.05, 0.04), 0.6, variation=0.15, grime=0.3),
+        "green": ra.plain("ct_green", (0.08, 0.3, 0.12), 0.6, variation=0.15, grime=0.3),
+        "yellow": ra.plain("ct_yellow", (0.7, 0.5, 0.05), 0.5, variation=0.1, grime=0.3),
+        "white": ra.plain("ct_white", (0.72, 0.72, 0.7), 0.45, 0.2, variation=0.08, grime=0.3),
+        "window": ra.emission("ct_window", (1.0, 0.72, 0.38), 3.0),
+        "sign": ra.emission("ct_sign", (0.3, 0.8, 1.0), 4.0),
+        "timber": ra.wood("ct_timber", (0.22, 0.13, 0.06)),
+        "asphalt": ra.plain("ct_asphalt", (0.05, 0.05, 0.055), 0.9, variation=0.2),
+    }
+
+
+def windows(prefix, x0, x1, y, z0, z1, cols, rows, m, lit=0.5):
+    """A grid of windows on the front of a building (facing −y at `y`), some of them lit."""
+    for c in range(cols):
+        for r in range(rows):
+            x = x0 + (x1 - x0) * (c + 0.5) / cols
+            z = z0 + (z1 - z0) * (r + 0.5) / rows
+            ra.box(prefix, ((x1 - x0) / cols * 0.6, 0.02, (z1 - z0) / rows * 0.55), (x, y, z),
+                   m["window"] if random.random() < lit else m["glass"])
+
+
+def build_assembly_hall():
+    """An assembly hall on 3 × 3 tiles: a long saw-tooth roofed shed of brick and steel, roller doors, a loading dock with a car on it."""
+    m = city_mats()
+    ra.box("ah_pad", (5.8, 5.8, 0.06), (0, 0, 0.03), m["concrete"])
+    ra.box("ah_hall", (5.0, 3.8, 2.2), (0, 0.6, 1.16), m["brick"], bevel=0.03)
+    for k in range(5):
+        x = -2.0 + k * 1.0
+        ra.mesh_from("ah_tooth", [(x - 0.5, -1.3, 2.26), (x + 0.5, -1.3, 2.26), (x + 0.5, 2.5, 2.26), (x - 0.5, 2.5, 2.26),
+                                  (x + 0.5, -1.3, 2.9), (x + 0.5, 2.5, 2.9)],
+                     [(0, 1, 4), (3, 5, 2), (0, 4, 5, 3), (1, 2, 5, 4), (0, 3, 2, 1)], m["steel"])
+        ra.box("ah_skylight", (0.02, 3.7, 0.55), (x + 0.48, 0.6, 2.58), m["window"] if k % 2 else m["glass"])
+    for x in (-1.5, 0.0, 1.5):
+        ra.box("ah_door", (1.0, 0.04, 1.3), (x, -1.32, 0.71), ra.corrugated("ah_roller", (0.3, 0.32, 0.36), 0.1))
+    ra.box("ah_band", (5.02, 0.04, 0.25), (0, -1.33, 1.6), m["blue"])
+    ra.box("ah_dock", (2.0, 1.2, 0.3), (-1.4, -2.0, 0.15), m["concrete"])
+    ra.box("ah_car", (0.9, 0.45, 0.28), (-1.4, -2.0, 0.48), m["red"], bevel=0.08)
+    ra.box("ah_cabin", (0.5, 0.4, 0.2), (-1.45, -2.0, 0.7), m["glass"], bevel=0.05)
+    for x in (-1.75, -1.05):
+        for y in (-2.22, -1.78):
+            ra.cylinder("ah_wheel", 0.1, 0.06, (x, y, 0.38), m["dark"], rotation=(math.radians(90), 0, 0), verts=14)
+    for k in range(3):
+        ra.box("ah_crate", (0.4, 0.4, 0.35), (1.2 + k * 0.45, -2.1, 0.24), m["timber"], bevel=0.02)
+    ra.cylinder("ah_stack", 0.18, 1.6, (2.2, 2.0, 3.0), m["steel"], verts=16)
+
+
+def build_multistorey_factory():
+    """A multi-storey factory: a narrow tower of concrete floors with ribbon windows lit inside, a goods lift up its side and roof fans."""
+    m = city_mats()
+    ra.box("mf_pad", (1.7, 1.5, 0.05), (0, 0, 0.025), m["concrete"])
+    for k in range(5):
+        ra.box("mf_floor", (1.4, 1.1, 0.08), (0, 0.1, 0.1 + k * 0.62), m["concrete"])
+        ra.box("mf_ribbon", (1.36, 1.06, 0.5), (0, 0.1, 0.4 + k * 0.62), m["glass"])
+        windows("mf_lit", -0.65, 0.65, -0.45, 0.18 + k * 0.62, 0.66 + k * 0.62, 5, 1, m, lit=0.6)
+    ra.box("mf_roof", (1.44, 1.14, 0.1), (0, 0.1, 3.2), m["concrete"])
+    ra.box("mf_lift", (0.3, 0.3, 3.3), (0.82, 0.1, 1.65), m["yellow"])
+    for k in range(2):
+        ra.cylinder("mf_fan", 0.18, 0.15, (-0.35 + k * 0.6, 0.25, 3.33), m["steel"], verts=16)
+    ra.box("mf_sign", (0.8, 0.03, 0.18), (0, -0.47, 3.05), m["sign"])
+
+
+def build_shop():
+    """A corner shop: a brick front with a big lit shop window, a striped awning, crates of goods outside and a sign."""
+    m = city_mats()
+    ra.box("sh_pavement", (1.7, 1.4, 0.05), (0, 0, 0.025), m["concrete"])
+    ra.box("sh_house", (1.4, 1.0, 1.5), (0, 0.15, 0.8), m["plaster"], bevel=0.02)
+    ra.box("sh_window", (0.8, 0.02, 0.6), (-0.2, -0.36, 0.55), m["window"])
+    ra.box("sh_door", (0.3, 0.02, 0.7), (0.45, -0.36, 0.4), m["dark"])
+    for k in range(6):
+        ra.box("sh_stripe", (0.24, 0.35, 0.03), (-0.6 + k * 0.24, -0.5, 1.02), m["red"] if k % 2 else m["white"], rotation=(-0.4, 0, 0))
+    ra.box("sh_sign", (1.0, 0.04, 0.2), (0, -0.37, 1.35), m["green"])
+    ra.box("sh_sign_text", (0.7, 0.01, 0.08), (0, -0.395, 1.35), m["window"])
+    for k, color in enumerate(("red", "yellow", "green")):
+        ra.box("sh_crate", (0.25, 0.2, 0.15), (-0.5 + k * 0.28, -0.6, 0.12), m["timber"], bevel=0.01)
+        ra.sphere("sh_fruit", 0.09, (-0.5 + k * 0.28, -0.6, 0.22), m[color], scale=(1.2, 0.9, 0.5), segments=10)
+    windows("sh_upper", -0.6, 0.6, -0.36, 1.05, 1.5, 3, 1, m, lit=0.4)
+
+
+def build_high_bay():
+    """A high-bay warehouse: a tall, windowless block of blue cladding with a stacker crane rail on top and a loading door."""
+    m = city_mats()
+    ra.box("hb_pad", (1.6, 1.4, 0.05), (0, 0, 0.025), m["concrete"])
+    ra.box("hb_block", (1.3, 1.1, 2.8), (0, 0.1, 1.45), ra.corrugated("hb_sheet", (0.08, 0.18, 0.4), 0.05), bevel=0.02)
+    ra.box("hb_door", (0.6, 0.03, 0.7), (0, -0.46, 0.4), ra.corrugated("hb_roller", (0.3, 0.32, 0.36), 0.1))
+    for k in range(4):
+        ra.box("hb_band", (1.32, 0.02, 0.04), (0, -0.46, 1.0 + k * 0.5), m["white"])
+    ra.box("hb_rail", (1.4, 0.06, 0.06), (0, 0.1, 2.92), m["yellow"])
+    ra.box("hb_pallet", (0.4, 0.4, 0.3), (0.5, -0.6, 0.2), m["timber"])
+
+
+def build_city_sorter():
+    """A municipal sorting plant: a green shed with a conveyor climbing from a heap of rubbish, coloured bins for what comes out."""
+    m = city_mats()
+    ra.box("cs2_pad", (1.7, 1.4, 0.05), (0, 0, 0.025), m["concrete"])
+    ra.box("cs2_shed", (1.0, 0.9, 1.0), (0.25, 0.2, 0.55), ra.corrugated("cs2_sheet", (0.1, 0.28, 0.12), 0.2), bevel=0.02)
+    ra.box("cs2_belt", (0.9, 0.25, 0.04), (-0.4, -0.05, 0.55), m["dark"], rotation=(0, -0.6, 0))
+    heap = ra.sphere("cs2_heap", 0.3, (-0.65, -0.1, 0.05), ra.plain("cs2_trash", (0.2, 0.18, 0.14), 0.9, variation=0.6, scale=20),
+                     scale=(1, 0.9, 0.6), segments=14)
+    ra.displace(heap, 0.06, 0.2, 2)
+    for k, color in enumerate(("blue", "yellow", "green", "red")):
+        ra.box("cs2_bin", (0.22, 0.22, 0.3), (-0.3 + k * 0.28, -0.55, 0.2), m[color], bevel=0.02)
+
+
+def build_freight_terminal():
+    """A freight terminal: a long platform roof on steel columns over stacked shipping containers and a gantry crane."""
+    m = city_mats()
+    ra.box("ft_pad", (1.9, 1.5, 0.05), (0, 0, 0.025), m["concrete"])
+    for x in (-0.8, 0.8):
+        for y in (-0.55, 0.55):
+            ra.box("ft_leg", (0.08, 0.08, 1.6), (x, y, 0.8), m["yellow"])
+    ra.box("ft_beam", (1.8, 0.1, 0.12), (0, -0.55, 1.62), m["yellow"])
+    ra.box("ft_beam", (1.8, 0.1, 0.12), (0, 0.55, 1.62), m["yellow"])
+    ra.box("ft_trolley", (0.25, 1.2, 0.15), (0.2, 0, 1.55), m["dark"])
+    ra.cylinder("ft_cable", 0.015, 0.6, (0.2, 0, 1.2), m["dark"], verts=6)
+    colors = ("red", "blue", "green", "yellow")
+    for k in range(3):
+        for j in range(2):
+            ra.box("ft_box", (0.7, 0.3, 0.3), (-0.4 + j * 0.85, -0.3 + k * 0.32, 0.2), ra.corrugated(f"ft_c{k}{j}",
+                   ra_color(m, colors[(k + j) % 4]), 0.2))
+    ra.box("ft_box", (0.7, 0.3, 0.3), (-0.4, 0.02, 0.51), ra.corrugated("ft_top", (0.5, 0.25, 0.05), 0.2))
+
+
+def ra_color(m, name):
+    return {"red": (0.45, 0.06, 0.04), "blue": (0.06, 0.18, 0.42), "green": (0.08, 0.32, 0.12), "yellow": (0.7, 0.5, 0.05)}[name]
+
+
+def build_company_hq():
+    """Company headquarters: a glass office tower with a stone foot, a lit logo on top and a flag at the door."""
+    m = city_mats()
+    marble = ra.plain("hq_marble", (0.7, 0.68, 0.64), 0.25, variation=0.2, scale=6, grime=0.1, bump=0.2)
+    ra.box("hq_plaza", (1.8, 1.6, 0.05), (0, 0, 0.025), marble)
+    ra.box("hq_foot", (1.4, 1.2, 0.6), (0, 0.1, 0.35), marble, bevel=0.02)
+    ra.box("hq_tower", (1.1, 0.9, 3.0), (0, 0.15, 2.15), m["glass"])
+    for k in range(10):
+        ra.box("hq_floor", (1.12, 0.92, 0.03), (0, 0.15, 0.7 + k * 0.3), m["steel"])
+    windows("hq_lit", -0.5, 0.5, -0.31, 0.7, 3.6, 4, 10, m, lit=0.35)
+    ra.box("hq_logo", (0.6, 0.04, 0.25), (0, -0.32, 3.45), m["sign"])
+    ra.box("hq_door", (0.4, 0.02, 0.4), (0, -0.51, 0.25), m["window"])
+    ra.cylinder("hq_pole", 0.02, 1.0, (0.6, -0.6, 0.5), m["steel"], verts=8)
+    ra.box("hq_flag", (0.3, 0.01, 0.18), (0.75, -0.6, 0.88), m["blue"])
+
+
+def build_design_office():
+    """A design office: a tidy two-storey office with tall windows, drawing boards seen inside and a rolled blueprint sign."""
+    m = city_mats()
+    ra.box("do_pavement", (1.6, 1.3, 0.05), (0, 0, 0.025), m["concrete"])
+    ra.box("do_house", (1.3, 0.9, 1.6), (0, 0.15, 0.85), m["white"], bevel=0.02)
+    windows("do_win", -0.6, 0.6, -0.31, 0.2, 1.55, 4, 2, m, lit=0.7)
+    ra.box("do_roof", (1.36, 0.96, 0.08), (0, 0.15, 1.69), m["dark"])
+    ra.cylinder("do_roll", 0.08, 0.7, (0, -0.4, 1.85), ra.plain("do_blueprint", (0.08, 0.2, 0.55), 0.6), rotation=(0, math.radians(90), 0), verts=14)
+    ra.box("do_door", (0.3, 0.02, 0.5), (0.45, -0.31, 0.3), m["blue"])
+
+
+def build_laboratory():
+    """A laboratory: a white block with a row of fume hood chimneys on the roof, blue-lit windows and gas bottles by the wall."""
+    m = city_mats()
+    ra.box("lb_pad", (1.6, 1.3, 0.05), (0, 0, 0.025), m["concrete"])
+    ra.box("lb_block", (1.3, 0.9, 1.1), (0, 0.15, 0.6), m["white"], bevel=0.02)
+    for k in range(4):
+        ra.box("lb_win", (0.22, 0.02, 0.35), (-0.45 + k * 0.3, -0.31, 0.65), m["sign"] if k % 2 else m["glass"])
+    for k in range(3):
+        ra.cylinder("lb_chimney", 0.06, 0.4, (-0.4 + k * 0.4, 0.35, 1.35), m["steel"], verts=12)
+    ra.sphere("lb_dome", 0.25, (0.35, 0.0, 1.15), m["white"], scale=(1, 1, 0.7), segments=16)
+    for k in range(3):
+        ra.cylinder("lb_bottle", 0.06, 0.4, (-0.6 + k * 0.14, -0.45, 0.22), m["green"] if k % 2 else m["blue"], verts=12)
+
+
+def build_service_workshop():
+    """A service workshop: a brick garage with a raised door, a car on a lift inside, tyres stacked and a toolbox outside."""
+    m = city_mats()
+    ra.box("sw_pad", (1.7, 1.4, 0.05), (0, 0, 0.025), m["concrete"])
+    ra.box("sw_back", (1.4, 0.9, 1.1), (0, 0.25, 0.6), m["brick"], bevel=0.02)
+    ra.box("sw_opening", (0.9, 0.02, 0.7), (-0.15, -0.21, 0.4), m["window"])
+    ra.box("sw_roller", (0.9, 0.04, 0.2), (-0.15, -0.22, 0.85), ra.corrugated("sw_roll", (0.3, 0.32, 0.36), 0.1))
+    ra.box("sw_sign", (1.0, 0.03, 0.15), (0, -0.22, 1.05), m["red"])
+    for k in range(3):
+        ra.cylinder("sw_tyre", 0.15, 0.08, (0.55, -0.45, 0.06 + k * 0.09), m["dark"], verts=18)
+    ra.box("sw_toolbox", (0.25, 0.15, 0.2), (-0.6, -0.5, 0.12), m["red"], bevel=0.02)
+
+
+CITY = {
+    # name: (canvas width, height, camera target height, builder); the assembly hall stands on 3 × 3 tiles.
+    "assembly_hall": (256, 240, 1.0, build_assembly_hall),
+    "multistorey_factory": (128, 224, 1.6, build_multistorey_factory),
+    "shop": (128, 144, 0.7, build_shop),
+    "high_bay": (128, 200, 1.4, build_high_bay),
+    "city_sorter": (128, 128, 0.5, build_city_sorter),
+    "freight_terminal": (144, 144, 0.7, build_freight_terminal),
+    "company_hq": (128, 240, 1.8, build_company_hq),
+    "design_office": (128, 152, 0.8, build_design_office),
+    "laboratory": (128, 136, 0.6, build_laboratory),
+    "service_workshop": (128, 128, 0.5, build_service_workshop),
+}
+
+
+def render_city(layout: dict, only=()):
+    for name, (w, h, tz, build) in CITY.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build), true_scale=True)
+        icon = "item_storage_high_bay" if name == "high_bay" else f"furniture_{name}"
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"{icon}.png")
+
+
+def city_icon_models():
+    """Icons of what cities assemble and want."""
+    def board():
+        ra.box("pcb", (0.4, 0.3, 0.02), (0, 0, 0.02), ra.plain("ic_pcb", (0.02, 0.22, 0.08), 0.5))
+        for k in range(3):
+            ra.box("chip", (0.08, 0.08, 0.03), (-0.1 + k * 0.1, 0.05, 0.045), ra.plain("ic_pcb_chip", (0.03, 0.03, 0.035), 0.4))
+        for k in range(6):
+            ra.box("trace", (0.3, 0.008, 0.004), (0, -0.1 + k * 0.025, 0.032), ra.plain("ic_trace", (0.7, 0.55, 0.2), 0.3, 1.0))
+        ra.cylinder("cap", 0.025, 0.06, (0.14, -0.08, 0.06), ra.plain("ic_cap", (0.1, 0.2, 0.5), 0.4), verts=12)
+
+    def motor():
+        steel = ra.rusty_metal("ic_motor", (0.3, 0.32, 0.35), rust=0.05)
+        ra.cylinder("body", 0.13, 0.3, (0, 0, 0.14), steel, rotation=(0, math.radians(90), 0), verts=24)
+        for k in range(6):
+            ra.box("fin", (0.26, 0.01, 0.3), (0, 0, 0.14), steel, rotation=(k * math.pi / 6, 0, 0))
+        ra.cylinder("shaft", 0.025, 0.12, (0.2, 0, 0.14), steel, rotation=(0, math.radians(90), 0), verts=10)
+        ra.box("box", (0.1, 0.08, 0.06), (0, 0, 0.29), ra.plain("ic_motor_box", (0.05, 0.15, 0.4), 0.5))
+
+    def bicycle():
+        frame = ra.plain("ic_bike", (0.5, 0.05, 0.04), 0.4, 0.3)
+        for x in (-0.17, 0.17):
+            ra.cylinder("wheel", 0.12, 0.02, (x, 0, 0.13), ra.plain("ic_tyre", (0.02, 0.02, 0.02), 0.8), rotation=(math.radians(90), 0, 0), verts=24)
+        ra.cylinder("tube", 0.012, 0.36, (0, 0, 0.18), frame, rotation=(0, math.radians(90), 0), verts=8)
+        ra.cylinder("tube2", 0.012, 0.2, (-0.05, 0, 0.22), frame, rotation=(0, math.radians(45), 0), verts=8)
+        ra.box("seat", (0.08, 0.03, 0.02), (-0.08, 0, 0.3), ra.plain("ic_seat", (0.05, 0.04, 0.03), 0.7))
+        ra.box("bar", (0.02, 0.12, 0.02), (0.13, 0, 0.3), frame)
+
+    def radio():
+        ra.box("case", (0.36, 0.14, 0.22), (0, 0, 0.12), ra.wood("ic_radio_wood", (0.3, 0.16, 0.07)), bevel=0.02)
+        ra.cylinder("speaker", 0.06, 0.01, (-0.08, -0.07, 0.12), ra.plain("ic_grill", (0.6, 0.55, 0.45), 0.8), rotation=(math.radians(90), 0, 0), verts=20)
+        ra.box("dial", (0.12, 0.01, 0.05), (0.09, -0.07, 0.15), ra.emission("ic_dial", (1.0, 0.7, 0.3), 3.0))
+        ra.cylinder("knob", 0.02, 0.02, (0.09, -0.075, 0.07), ra.plain("ic_knob", (0.05, 0.05, 0.05), 0.5), rotation=(math.radians(90), 0, 0), verts=12)
+        ra.cylinder("aerial", 0.005, 0.25, (0.14, 0.03, 0.33), ra.plain("ic_aerial", (0.6, 0.6, 0.62), 0.2, 1.0), rotation=(0, 0.4, 0), verts=6)
+
+    def washing_machine():
+        ra.box("case", (0.3, 0.28, 0.36), (0, 0, 0.18), ra.plain("ic_wm", (0.75, 0.75, 0.74), 0.35), bevel=0.02)
+        ra.cylinder("door", 0.09, 0.02, (0, -0.14, 0.16), ra.plain("ic_wm_door", (0.25, 0.3, 0.35), 0.1, 0.5), rotation=(math.radians(90), 0, 0), verts=24)
+        ra.box("panel", (0.28, 0.01, 0.05), (0, -0.14, 0.32), ra.plain("ic_wm_panel", (0.2, 0.2, 0.22), 0.4))
+
+    def car():
+        paint = ra.plain("ic_car", (0.5, 0.04, 0.03), 0.25, 0.4, variation=0.05)
+        ra.box("body", (0.44, 0.2, 0.1), (0, 0, 0.1), paint, bevel=0.04)
+        ra.box("cabin", (0.22, 0.18, 0.08), (-0.02, 0, 0.19), ra.plain("ic_car_glass", (0.05, 0.08, 0.12), 0.05, 0.3), bevel=0.03)
+        for x in (-0.14, 0.14):
+            for y in (-0.1, 0.1):
+                ra.cylinder("wheel", 0.05, 0.04, (x, y, 0.05), ra.plain("ic_car_tyre", (0.02, 0.02, 0.02), 0.8), rotation=(math.radians(90), 0, 0), verts=16)
+        ra.box("light", (0.01, 0.04, 0.02), (0.22, -0.06, 0.11), ra.emission("ic_car_light", (1.0, 0.9, 0.6), 3.0))
+
+    def blueprint():
+        paper = ra.plain("ic_bp", (0.08, 0.2, 0.55), 0.6)
+        ra.box("sheet", (0.4, 0.3, 0.005), (0, 0, 0.01), paper)
+        lines = ra.plain("ic_bp_line", (0.8, 0.85, 0.9), 0.5)
+        for k in range(4):
+            ra.box("line", (0.3, 0.006, 0.002), (0, -0.09 + k * 0.06, 0.015), lines)
+        ra.box("frame", (0.006, 0.18, 0.002), (0.05, 0, 0.016), lines)
+        ra.cylinder("roll", 0.035, 0.32, (0, 0.15, 0.04), paper, rotation=(0, math.radians(90), 0), verts=14)
+
+    return {
+        "item_circuit_board": board, "item_electric_motor": motor, "item_bicycle": bicycle, "item_radio": radio,
+        "item_washing_machine": washing_machine, "item_car": car, "item_blueprint": blueprint,
+    }
+
+
 # --- Power ----------------------------------------------------------------------------------------
 
 def build_generator():
@@ -4004,7 +4284,7 @@ def icon_models():
 
 def render_icons(only=()):
     ICONS.mkdir(parents=True, exist_ok=True)
-    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models()}.items():
+    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models(), **city_icon_models()}.items():
         if only and name not in only:
             continue
         random.seed(zlib.crc32(name.encode()))
@@ -4016,7 +4296,7 @@ def render_icons(only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "office", "logistics", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "office", "logistics", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -4067,6 +4347,9 @@ if __name__ == "__main__":
     if "glacier" in args or any(a in glacier for a in args):
         # Names of glacier sprites render just those.
         render_glacier(layout, [a for a in args if a in glacier])
+    if "city" in args or any(a in CITY for a in args):
+        # Names of city sprites render just those.
+        render_city(layout, [a for a in args if a in CITY])
     if "logistics" in args or any(a in LOGISTICS for a in args):
         # Names of logistics sprites render just those.
         render_logistics(layout, [a for a in args if a in LOGISTICS])

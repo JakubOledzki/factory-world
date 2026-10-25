@@ -337,7 +337,9 @@ func _trip(quantity: int) -> Dictionary:
 	return {
 		"km": km,
 		"seconds": maxf(rates["minTripSeconds"], km / 100.0 * rates["secondsPer100Km"]),
-		"fee": int(rates["baseFeeCents"]) + ceili(km / 100.0 * quantity * float(rates["centsPerItemPer100Km"])),
+		# Cheaper from a city plot, with a freight terminal or with the mayor's rail bonus.
+		"fee": ceili((int(rates["baseFeeCents"]) + ceili(km / 100.0 * quantity * float(rates["centsPerItemPer100Km"])))
+			* float(rates.get("feeFactor", 1.0))),
 	}
 
 

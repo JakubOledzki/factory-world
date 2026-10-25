@@ -675,5 +675,45 @@
   "anchorY": 88,
   "wireX": 66,
   "wireY": 72
+ },
+ "assembly_hall": {
+  "anchorX": 128,
+  "anchorY": 143
+ },
+ "multistorey_factory": {
+  "anchorX": 64,
+  "anchorY": 148
+ },
+ "shop": {
+  "anchorX": 64,
+  "anchorY": 88
+ },
+ "high_bay": {
+  "anchorX": 64,
+  "anchorY": 132
+ },
+ "city_sorter": {
+  "anchorX": 64,
+  "anchorY": 75
+ },
+ "freight_terminal": {
+  "anchorX": 72,
+  "anchorY": 88
+ },
+ "company_hq": {
+  "anchorX": 64,
+  "anchorY": 161
+ },
+ "design_office": {
+  "anchorX": 64,
+  "anchorY": 94
+ },
+ "laboratory": {
+  "anchorX": 64,
+  "anchorY": 82
+ },
+ "service_workshop": {
+  "anchorX": 64,
+  "anchorY": 75
  }
 }

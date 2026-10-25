@@ -191,7 +191,7 @@ public sealed class PlotObjectService(
 
                 if (company is not { Member: true })
                 {
-                    throw new GameException("no_company", "Headquarters stand on a plot of your company.");
+                    throw new GameException("hq_off_company", "Headquarters stand on a plot of your company.");
                 }
             }
 

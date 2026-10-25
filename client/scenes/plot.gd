@@ -139,6 +139,10 @@ const PLACED_SPRITES := {
 	"furniture_ice_core_drill": "ice_core_drill", "furniture_polar_station": "polar_station", "furniture_ice_hotel": "ice_hotel",
 	"furniture_viewpoint": "viewpoint", "furniture_dog_kennel": "dog_kennel", "furniture_snowmobile_garage": "snowmobile_garage",
 	"furniture_track_foundation": "track_foundation",
+	"furniture_assembly_hall": "assembly_hall", "furniture_multistorey_factory": "multistorey_factory", "furniture_shop": "shop",
+	"storage_high_bay": "high_bay", "furniture_city_sorter": "city_sorter", "furniture_freight_terminal": "freight_terminal",
+	"furniture_company_hq": "company_hq", "furniture_design_office": "design_office", "furniture_laboratory": "laboratory",
+	"furniture_service_workshop": "service_workshop",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
@@ -152,7 +156,9 @@ const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_
 	"furniture_fish_farm", "furniture_distillery", "furniture_refinery", "furniture_cracker", "furniture_chemical_plant",
 	"furniture_glassworks", "furniture_arc_furnace", "furniture_water_well", "furniture_desalinator", "furniture_drying_yard",
 	"furniture_cement_kiln", "furniture_concrete_mixer", "furniture_ice_melter", "furniture_cold_store", "furniture_server_room",
-	"furniture_ice_core_drill", "furniture_polar_station", "furniture_ice_hotel", "furniture_viewpoint"]
+	"furniture_ice_core_drill", "furniture_polar_station", "furniture_ice_hotel", "furniture_viewpoint",
+	"furniture_assembly_hall", "furniture_multistorey_factory", "furniture_city_sorter", "furniture_design_office",
+	"furniture_laboratory", "furniture_service_workshop"]
 ## Wells, which pump the oil or gas the survey found under the plot, and open the well window.
 const WELLS := ["furniture_pumpjack", "furniture_gas_well", "furniture_offshore_platform"]
 ## Asphalt road: walked over like a belt, and faster.
@@ -204,6 +210,16 @@ const ICE_HOTEL := "furniture_ice_hotel"
 const TRACK_FOUNDATION := "furniture_track_foundation"
 ## Tourist buildings, which earn more while the aurora shines.
 const TOURISM := ["furniture_ice_hotel", "furniture_viewpoint"]
+## Cities: only the ground by the station is built on (CITY_HALF_WIDTH tiles either side of its middle, the first CITY_ROWS rows),
+## and some buildings stand only there; a freight terminal and headquarters once a plot.
+const CITY := 9
+const CITY_HALF_WIDTH := 30
+const CITY_ROWS := 60
+const CITY_ONLY := ["furniture_multistorey_factory", "furniture_shop", "storage_high_bay", "furniture_freight_terminal",
+	"furniture_company_hq", "furniture_design_office", "furniture_laboratory", "furniture_service_workshop"]
+const ONE_PER_PLOT := ["furniture_freight_terminal", "furniture_company_hq"]
+const ASSEMBLY_HALL := "furniture_assembly_hall"
+const SHOP := "furniture_shop"
 ## Forester's buildings of every level and how far their forest reaches from the building's tile;
 ## each covers 3 × 3 tiles (FOOTPRINT each way) and keeps a clearing FOREST_CLEARING tiles out.
 const FORESTERS := {"furniture_forester_hut": 5, "furniture_forester_lodge": 6, "furniture_forestry_station": 7}
@@ -228,9 +244,11 @@ const GENERATOR := "power_generator"
 const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator"]
 ## Placed objects with nothing to open: a click shows the menu to pick them up.
 const MENU_ONLY := ["power_pole", "furniture_port", "furniture_lighthouse", "furniture_breakwater", ROAD, REED_FENCE,
-	"furniture_water_injector", "furniture_oil_separator", "furniture_dog_kennel", "furniture_snowmobile_garage", TRACK_FOUNDATION]
+	"furniture_water_injector", "furniture_oil_separator", "furniture_dog_kennel", "furniture_snowmobile_garage", TRACK_FOUNDATION,
+	"furniture_freight_terminal", "furniture_company_hq"]
 const POLE := "power_pole"
-const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo", "storage_tank"]
+const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo", "storage_tank",
+	"storage_high_bay"]
 ## Where a rotation faces, as players read it: 0 south, 1 east, 2 north, 3 west.
 const DIRECTIONS := ["na południe", "na wschód", "na północ", "na zachód"]
 const DIRECTION_ARROWS := ["↓", "→", "↑", "←"]
@@ -429,6 +447,9 @@ var _market_button: Button
 var _generator_window: GeneratorWindow
 var _drill_window: DrillWindow
 var _well_window: WellWindow
+var _shop_window: ShopWindow
+var _city_window: CityWindow
+var _city_button: Button
 var _achievements_window: AchievementsWindow
 var _clock_offset := 0.0
 var _next_station_poll := 0.0
@@ -640,6 +661,16 @@ func _apply_plot(plot: Dictionary) -> void:
 	edge.width = 6
 	edge.default_color = Color(0.9, 0.7, 0.3, 0.35)
 	_ground.add_child(edge)
+	if int(plot["biome"]) == CITY:
+		# In a city only the ground by the station is built on.
+		var mid := int(plot["spawn"]["x"])
+		var area := Rect2(Vector2((mid - CITY_HALF_WIDTH) * TILE.x, 0), Vector2((CITY_HALF_WIDTH * 2 + 1) * TILE.x, CITY_ROWS * TILE.y))
+		var fence := Line2D.new()
+		fence.points = PackedVector2Array([area.position, Vector2(area.end.x, area.position.y), area.end,
+			Vector2(area.position.x, area.end.y), area.position])
+		fence.width = 3
+		fence.default_color = Color(0.85, 0.85, 0.9, 0.4)
+		_ground.add_child(fence)
 
 	# The railway across the plot.
 	var rail := Sprite2D.new()
@@ -709,9 +740,16 @@ func _sandy() -> bool:
 	return int(_plot.get("biome", -1)) in SANDY
 
 
-## Whether an object of `kind` stands on 3 × 3 tiles: a forester's building, a solar tower, a large wind turbine or an ice hotel.
+## Whether an object of `kind` stands on 3 × 3 tiles: a forester's building, a solar tower, a large wind turbine, an ice hotel
+## or an assembly hall.
 func _big(kind: String) -> bool:
-	return FORESTERS.has(kind) or kind in [SOLAR_TOWER, LARGE_WIND, ICE_HOTEL]
+	return FORESTERS.has(kind) or kind in [SOLAR_TOWER, LARGE_WIND, ICE_HOTEL, ASSEMBLY_HALL]
+
+
+## Whether a tile of a city plot can be built on: by the station only.
+func _in_city_area(cell: Vector2i) -> bool:
+	var spawn: Dictionary = _plot.get("spawn", {})
+	return absi(cell.x - int(spawn.get("x", 125))) <= CITY_HALF_WIDTH and cell.y < CITY_ROWS
 
 
 func _biome() -> int:
@@ -1102,9 +1140,14 @@ func _can_place(cell: Vector2i) -> bool:
 		return false
 	# The player steps off a big building's ground before it goes up (_place_big), so standing there is fine.
 	var big := _big(_placing)
+	var city := _biome() == CITY
 	for at in _footprint(_placing, cell):
-		if not _free_ground(at, not big):
+		if not _free_ground(at, not big) or (city and not _in_city_area(at)):
 			return false
+	if _placing in CITY_ONLY and not city:
+		return false
+	if _placing in ONE_PER_PLOT and _count_placed(_placing) > 0:
+		return false
 	if _placing in DRILLS:
 		var mine := _mine_beside(cell)
 		return mine >= 0 and _drill_at(mine).x < 0
@@ -2264,6 +2307,8 @@ func _use_placed(cell: Vector2i) -> void:
 		_generator_window.open_at(_at, object["id"])
 	elif object["kind"] in WELLS:
 		_well_window.open_at(_at, object["id"])
+	elif object["kind"] == SHOP:
+		_shop_window.open_at(object["id"])
 	elif object["kind"] in DRILLS:
 		_drill_window.open_at(_at, object["id"])
 	elif FORESTERS.has(object["kind"]):
@@ -2273,7 +2318,7 @@ func _use_placed(cell: Vector2i) -> void:
 func _using_window_open() -> bool:
 	return _crafting_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
 		or _splitter_window.visible or _generator_window.visible or _market_window.visible or _forester_window.visible \
-		or _drill_window.visible or _well_window.visible
+		or _drill_window.visible or _well_window.visible or _shop_window.visible
 
 
 func _hide_placed_windows() -> void:
@@ -2284,6 +2329,7 @@ func _hide_placed_windows() -> void:
 	_generator_window.hide_window()
 	_drill_window.hide_window()
 	_well_window.hide_window()
+	_shop_window.hide_window()
 	_storage_window.hide_window()
 	_splitter_window.hide_window()
 	_market_window.hide_window()
@@ -3089,6 +3135,9 @@ func _build_hud() -> void:
 	_market_button.visible = false
 	bar.add_child(_market_button)
 	bar.add_child(UI.toolbar_button("company", "Spółka  [K]", func() -> void: _company_window.toggle()))
+	_city_button = UI.toolbar_button("city", "Miasto\nPotrzeby, rozwój, śmieci, usługi i ratusz", _toggle_city)
+	_city_button.visible = false
+	bar.add_child(_city_button)
 	_plant_button = UI.toolbar_button("plant", "", func() -> void: _set_planting(not _planting))
 	# The number of saplings, in the button's corner.
 	_plant_count = UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_RIGHT)
@@ -3412,6 +3461,18 @@ func _build_windows() -> void:
 	_well_window.inventory_changed.connect(_on_furnace_changed)
 	_well_window.failed.connect(_show_error)
 	_well_window.pick_up_requested.connect(_pick_up_placed)
+	_shop_window = ShopWindow.new()
+	_shop_window.position = Vector2(1280 - 480 - 12, 64)
+	_shop_window.inventory_changed.connect(_reload_inventory)
+	_shop_window.balance_changed.connect(_reload_balance)
+	_shop_window.failed.connect(_show_error)
+	_shop_window.pick_up_requested.connect(_pick_up_placed)
+	_city_window = CityWindow.new()
+	_city_window.position = Vector2(1280 - 520 - 12, 64)
+	_city_window.inventory_changed.connect(_reload_inventory)
+	_city_window.balance_changed.connect(_reload_balance)
+	_city_window.failed.connect(_show_error)
+	_city_window.toast.connect(func(text: String) -> void: _show_toast(text, UI.GOLD))
 	_company_window = CompanyWindow.new()
 	_company_window.position = Vector2(1280 - 520 - 12, 64)
 	_company_window.inventory_changed.connect(_reload_inventory)
@@ -3439,6 +3500,8 @@ func _build_windows() -> void:
 	layer.add_child(_generator_window)
 	layer.add_child(_drill_window)
 	layer.add_child(_well_window)
+	layer.add_child(_shop_window)
+	layer.add_child(_city_window)
 	_achievements_window = AchievementsWindow.new()
 	_achievements_window.failed.connect(_show_error)
 	layer.add_child(_achievements_window)
@@ -3521,6 +3584,10 @@ func _load() -> void:
 	_update_market_button()
 	_title.text = "Działka %d × %d" % [_at.x, _at.y]
 	_subtitle.text = "%s  ·  5 × 5 km" % _biome_names.get(int(plot["payload"]["biome"]), "?")
+	var city: Variant = plot["payload"].get("city")
+	_city_button.visible = city != null
+	if city != null:
+		_subtitle.text = "%s %s  ·  5 × 5 km" % [city["levelName"], city["name"]]
 	_update_hint()
 	_loading.queue_free()
 	_reload_inventory()
@@ -3554,6 +3621,13 @@ func _float_text(text: String, color: Color, at: Vector2, delay := 0.0, item := 
 	tween.parallel().tween_property(row, "position:y", start.y - 50, 1.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tween.tween_property(row, "modulate:a", 0.0, 0.4)
 	tween.tween_callback(row.queue_free)
+
+
+func _toggle_city() -> void:
+	if _city_window.visible:
+		_city_window.hide_window()
+	else:
+		_city_window.open_at(_at)
 
 
 func _show_toast(text: String, color := UI.TEXT) -> void:
