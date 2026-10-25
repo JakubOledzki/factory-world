@@ -219,11 +219,12 @@ public static class PlotLayout
     public const int FenceShelter = 4;
 
     /// <summary>What gathering an object on a plot of <paramref name="biome"/> gives, for a roll of 0-99 and a <paramref name="rare"/> one of 0-999:
-    /// a palm in an oasis gives dates, a dune on sand 30% more sand, and now and then clay or a fossil.</summary>
-    public static IReadOnlyList<(string Item, int Quantity)> Yield(TileObject obj, int roll, Biome biome = Biome.Ocean, int rare = 999) => obj switch
+    /// a palm in an oasis gives dates, a dune on sand 30% more sand, and now and then clay or a fossil. A tree cut with a better
+    /// <paramref name="saw"/> gives more.</summary>
+    public static IReadOnlyList<(string Item, int Quantity)> Yield(TileObject obj, int roll, Biome biome = Biome.Ocean, int rare = 999, Saw? saw = null) => obj switch
     {
-        TileObject.Tree when biome == Biome.Oasis => [(Items.Wood, 1), (Items.Dates, 2)],
-        _ when Trees.ByTile.TryGetValue(obj, out var kind) => Trees.Yield(kind, roll, rare),
+        TileObject.Tree when biome == Biome.Oasis => [(Items.Wood, 1 + (saw?.ExtraWood ?? 0)), (Items.Dates, 2)],
+        _ when Trees.ByTile.TryGetValue(obj, out var kind) => Trees.Yield(kind, roll, rare, saw: saw),
         TileObject.Mushrooms => roll < Forestry.HerbChance ? [(Items.Mushrooms, 2), (Items.Herbs, 1)] : [(Items.Mushrooms, 2)],
         TileObject.Bush => Forestry.BushYield(biome, roll),
         TileObject.Dune => [(Items.Sand, Oasis.Sandy((int)biome) ? 4 : 3), .. Dug(roll, rare)],
@@ -285,13 +286,13 @@ public static class HarvestRules
     public static readonly TimeSpan ChopTime = TimeSpan.FromSeconds(5);
 
     /// <summary>A chainsaw cuts a tree 70% faster than an axe.</summary>
-    public static readonly TimeSpan SawTime = ChopTime * 0.3;
+    public static readonly TimeSpan SawTime = ChopTime * Items.Saws[Items.Chainsaw].Time;
 
     /// <summary>How long gathering an object takes with the tool in hand on a plot of <paramref name="biome"/>: a rock
     /// breaks faster in the mountains and with a better pickaxe.</summary>
     public static TimeSpan TimeFor(TileObject obj, string? tool = null, Biome biome = Biome.Ocean) => obj switch
     {
-        _ when Trees.IsTree(obj) => tool == Items.Chainsaw ? SawTime : ChopTime,
+        _ when Trees.IsTree(obj) => ChopTime * (Items.Saws.TryGetValue(tool ?? "", out var saw) ? saw.Time : 1),
         TileObject.Water => Coast.FishTime(biome),
         TileObject.Rock or TileObject.IceBlock => Time / (Mining.Speed(biome) * Items.Pickaxes.GetValueOrDefault(tool ?? "", 1)),
         // A meteorite is twice as hard as a rock.
@@ -312,7 +313,8 @@ public static class HarvestRules
     };
 }
 
-public sealed record Harvest(TileObject Object, IReadOnlyList<(string Item, int Quantity)> Items, XpGain Xp);
+/// <param name="Felled">The trees next to the one cut that a saw felled at the same cut.</param>
+public sealed record Harvest(TileObject Object, IReadOnlyList<(string Item, int Quantity)> Items, XpGain Xp, IReadOnlyList<(int X, int Y)>? Felled = null);
 
 public sealed class PlotService(
     GameDb db, WorldMap map, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats,
@@ -488,8 +490,8 @@ public sealed class PlotService(
                 throw new GameException("nothing_here", "There is nothing to gather here.");
             }
 
-            pace(HarvestRules.TimeFor(obj, PlotLayout.ToolFor(obj) is { } tool ? await RequireToolAsync(player, tool, cancellationToken) : null, biome)
-                 / await SpeedAsync(player, HarvestRules.Industry(obj), cancellationToken, (x, y, tileX, tileY)));
+            var held = PlotLayout.ToolFor(obj) is { } tool ? await RequireToolAsync(player, tool, cancellationToken) : null;
+            pace(HarvestRules.TimeFor(obj, held, biome) / await SpeedAsync(player, HarvestRules.Industry(obj), cancellationToken, (x, y, tileX, tileY)));
             if (obj == TileObject.Water)
             {
                 // The water is never fished out; a storm at sea or on a lake keeps everyone ashore but those on a breakwater.
@@ -505,11 +507,27 @@ public sealed class PlotService(
             await MarkHarvestedAsync(x, y, tileX, tileY, obj is TileObject.Dune or TileObject.IceBlock or TileObject.Mushrooms && current == obj, cancellationToken);
             if (Trees.IsTree(obj))
             {
-                await ledger.RecordAsync(player, 0, 1, cancellationToken);
+                var saw = Items.Saws.GetValueOrDefault(held!);
+                var cut = PlotLayout.Yield(obj, Random.Shared.Next(100), biome, Random.Shared.Next(1000), saw);
+                return await GiveTreesAsync(player, obj, cut, await FellAroundAsync(x, y, biome, tileX, tileY, saw, cancellationToken), cancellationToken);
             }
 
             return await GiveAsync(player, obj, PlotLayout.Yield(obj, Random.Shared.Next(100), biome, Random.Shared.Next(1000)), cancellationToken);
         }, cancellationToken);
+
+    /// <summary>Records that a tile not gathered before was gathered now; false when it was.</summary>
+    private async Task<bool> TryMarkHarvestedAsync(int x, int y, int tileX, int tileY, CancellationToken cancellationToken)
+    {
+        await using var insert = await db.CommandAsync(
+            "INSERT INTO world.plot_harvests (x, y, tile_x, tile_y, harvested_at) VALUES (@x, @y, @tx, @ty, @now) ON CONFLICT DO NOTHING",
+            cancellationToken);
+        insert.Parameters.AddWithValue("x", x);
+        insert.Parameters.AddWithValue("y", y);
+        insert.Parameters.AddWithValue("tx", tileX);
+        insert.Parameters.AddWithValue("ty", tileY);
+        insert.Parameters.AddWithValue("now", time.GetUtcNow());
+        return await insert.ExecuteNonQueryAsync(cancellationToken) > 0;
+    }
 
     /// <summary>Records that a tile was gathered now; <paramref name="always"/> also when it was before. Fails when it was and may not be again.</summary>
     private async Task MarkHarvestedAsync(int x, int y, int tileX, int tileY, bool always, CancellationToken cancellationToken)
@@ -572,9 +590,19 @@ public sealed class PlotService(
         }
 
         // The bark beetle may be in a tree of a monoculture planted by hand.
+        var tool = await RequireToolAsync(player, Items.Axe, cancellationToken);
+        pace(HarvestRules.TimeFor(tree.Kind.Tile, tool) / await SpeedAsync(player, Industries.Forestry, cancellationToken, (x, y, tileX, tileY)));
+        var saw = Items.Saws.GetValueOrDefault(tool);
+        var cut = await CutDownAsync(x, y, tileX, tileY, tree, saw, cancellationToken);
+        return await GiveTreesAsync(player, tree.Kind.Tile, cut, await FellAroundAsync(x, y, map.BiomeAt(x, y), tileX, tileY, saw, cancellationToken), cancellationToken);
+    }
+
+    /// <summary>Takes a grown planted tree off its tile and says what it gives cut with <paramref name="saw"/>.</summary>
+    private async Task<IReadOnlyList<(string Item, int Quantity)>> CutDownAsync(
+        int x, int y, int tileX, int tileY, (DateTimeOffset ReadyAt, TreeKind Kind, bool ByHand) tree, Saw? saw, CancellationToken cancellationToken)
+    {
+        // The bark beetle may be in a tree of a monoculture planted by hand.
         var infested = tree.ByHand && (await pests.StateAsync(x, y, cancellationToken)).Infested.Contains((tileX, tileY));
-        pace(HarvestRules.TimeFor(tree.Kind.Tile, await RequireToolAsync(player, Items.Axe, cancellationToken))
-             / await SpeedAsync(player, Industries.Forestry, cancellationToken, (x, y, tileX, tileY)));
         await using (var delete = await db.CommandAsync(
             "DELETE FROM world.plot_trees WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty", cancellationToken))
         {
@@ -585,8 +613,66 @@ public sealed class PlotService(
             await delete.ExecuteNonQueryAsync(cancellationToken);
         }
 
-        await ledger.RecordAsync(player, 0, 1, cancellationToken);
-        return await GiveAsync(player, tree.Kind.Tile, Trees.Yield(tree.Kind, Random.Shared.Next(100), Random.Shared.Next(1000), infested), cancellationToken);
+        return Trees.Yield(tree.Kind, Random.Shared.Next(100), Random.Shared.Next(1000), infested, saw);
+    }
+
+    /// <summary>The tiles next to a tile, the four at its sides before the four at its corners.</summary>
+    private static readonly (int X, int Y)[] Around = [(1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1)];
+
+    /// <summary>Fells as many grown trees next to the one cut on (<paramref name="tileX"/>, <paramref name="tileY"/>) as
+    /// <paramref name="saw"/> takes down at a cut, planted or wild: the tiles they stood on and what each gave.</summary>
+    private async Task<IReadOnlyList<((int X, int Y) Tile, IReadOnlyList<(string Item, int Quantity)> Items)>> FellAroundAsync(
+        int x, int y, Biome biome, int tileX, int tileY, Saw? saw, CancellationToken cancellationToken)
+    {
+        var felled = new List<((int, int), IReadOnlyList<(string, int)>)>();
+        if (saw is not { Fells: > 0 })
+        {
+            return felled;
+        }
+
+        var tiles = await TilesAsync(x, y, biome, cancellationToken);
+        foreach (var (dx, dy) in Around)
+        {
+            if (felled.Count == saw.Fells)
+            {
+                break;
+            }
+
+            var (tx, ty) = (tileX + dx, tileY + dy);
+            if (!PlotLayout.Inside(tx, ty))
+            {
+                continue;
+            }
+
+            if (await PlantedAtAsync(x, y, tx, ty, cancellationToken) is { } planted)
+            {
+                if (planted.ReadyAt <= time.GetUtcNow())
+                {
+                    felled.Add(((tx, ty), await CutDownAsync(x, y, tx, ty, planted, saw, cancellationToken)));
+                }
+
+                continue;
+            }
+
+            var obj = (TileObject)tiles[ty * PlotLayout.Size + tx];
+            if (Trees.IsTree(obj) && await TryMarkHarvestedAsync(x, y, tx, ty, cancellationToken))
+            {
+                felled.Add(((tx, ty), PlotLayout.Yield(obj, Random.Shared.Next(100), biome, Random.Shared.Next(1000), saw)));
+            }
+        }
+
+        return felled;
+    }
+
+    /// <summary>Gives what a cut tree and those felled with it gave, and counts them all as cut for the forest certificate.</summary>
+    private async Task<Harvest> GiveTreesAsync(
+        Guid player, TileObject obj, IReadOnlyList<(string Item, int Quantity)> cut,
+        IReadOnlyList<((int X, int Y) Tile, IReadOnlyList<(string Item, int Quantity)> Items)> felled, CancellationToken cancellationToken)
+    {
+        await ledger.RecordAsync(player, 0, 1 + felled.Count, cancellationToken);
+        var items = cut.Concat(felled.SelectMany(f => f.Items)).GroupBy(i => i.Item).Select(g => (g.Key, g.Sum(i => i.Quantity))).ToList();
+        var harvest = await GiveAsync(player, obj, items, cancellationToken, 1 + felled.Count);
+        return harvest with { Felled = felled.Select(f => f.Tile).ToList() };
     }
 
     /// <summary>How many times faster the player's clothes and last meal make work in an industry (1 for none); for forestry and mining
@@ -608,14 +694,14 @@ public sealed class PlotService(
         return speed;
     }
 
-    /// <summary>The tool in the player's tool bar that does the work of <paramref name="tool"/>: a chainsaw does an axe's,
+    /// <summary>The tool in the player's tool bar that does the work of <paramref name="tool"/>: a saw does an axe's,
     /// and a bronze or steel pickaxe an iron one's, faster, so the fastest goes first.</summary>
     public async Task<string> RequireToolAsync(Guid player, string tool, CancellationToken cancellationToken)
     {
         var held = await equipment.ToolsAsync(player, cancellationToken);
-        if (tool == Items.Axe && held.Contains(Items.Chainsaw))
+        if (tool == Items.Axe && Items.BestSaw(held) is { } saw)
         {
-            return Items.Chainsaw;
+            return saw;
         }
 
         if (tool == Items.Pickaxe && Items.Pickaxes.Where(p => held.Contains(p.Key)).OrderByDescending(p => p.Value).Select(p => p.Key).FirstOrDefault() is { } best)
@@ -626,7 +712,9 @@ public sealed class PlotService(
         return held.Contains(tool) ? tool : throw new GameException("wrong_tool", $"You need {Items.Names[tool]} in your hand.");
     }
 
-    private async Task<Harvest> GiveAsync(Guid player, TileObject obj, IReadOnlyList<(string Item, int Quantity)> items, CancellationToken cancellationToken)
+    /// <summary>Gives what was gathered and the experience for it, for each of <paramref name="times"/> objects gathered at once.</summary>
+    private async Task<Harvest> GiveAsync(
+        Guid player, TileObject obj, IReadOnlyList<(string Item, int Quantity)> items, CancellationToken cancellationToken, int times = 1)
     {
         foreach (var (item, quantity) in items)
         {
@@ -634,7 +722,7 @@ public sealed class PlotService(
         }
 
         await stats.RecordAsync(player, items.Select(i => ProductionEntry.Made(i.Item, i.Quantity, time.GetUtcNow())).ToList(), cancellationToken);
-        var xp = await progress.AddXpAsync(player, HarvestRules.XpPerHarvest, cancellationToken);
+        var xp = await progress.AddXpAsync(player, HarvestRules.XpPerHarvest * times, cancellationToken);
         return new Harvest(obj, items, xp);
     }
 
@@ -757,6 +845,8 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             mines = mines.Select(MineHandler.MineJson),
             chopSeconds = HarvestRules.ChopTime.TotalSeconds,
             sawSeconds = HarvestRules.SawTime.TotalSeconds,
+            // How long each saw takes over a tree, and how many trees next to it it fells at the same cut.
+            saws = Items.Saws.ToDictionary(s => s.Key, s => new { seconds = (HarvestRules.ChopTime * s.Value.Time).TotalSeconds, fells = s.Value.Fells }),
             treeGrowSeconds = Forestry.GrowTime(biome)?.TotalSeconds,
             trees = trees.Select(PlantTreeHandler.TreeJson),
             // The kinds of tree with their saplings and growing times here, the bark beetle in a monoculture planted by hand,
@@ -896,6 +986,8 @@ public sealed class HarvestHandler(IServiceScopeFactory scopes, TimeProvider tim
             // What was gathered, e.g. "bridge" for a bridge laid over a crevasse.
             @object = harvest.Object.ToString().ToLowerInvariant(),
             items = harvest.Items.Select(i => new { id = i.Item, name = Items.Names[i.Item], quantity = i.Quantity }),
+            // The trees next to it that a saw felled at the same cut.
+            felled = (harvest.Felled ?? []).Select(t => new { tileX = t.X, tileY = t.Y }),
             xp = new { xp = harvest.Xp.Xp, level = harvest.Xp.Level, leveledUp = harvest.Xp.LeveledUp },
         });
     }

@@ -315,6 +315,9 @@ Nowy gracz robi przy stole tylko stół warsztatowy, piec kamienny i gwoździe; 
 | Gospodarka leśna | | 20 sadzonek, 50 drewna | 1,5 min | chata leśnika, tartak, deski, belki, pellet drzewny |
 | Przemysł drzewny | Gospodarka leśna, Automatyzacja | 40 desek, 20 belek, 20 sztabek żelaza | 3 min | leśniczówka, tartak elektryczny, sklejka |
 | Leśnictwo przemysłowe | Przemysł drzewny | 20 sklejki, 40 belek, 20 sztabek miedzi | 5 min | nadleśnictwo, tartak przemysłowy |
+| Pilarstwo | Przemysł drzewny, Metalurgia | 80 drewna, 15 stali, 10 brązu | 3 min | piła stalowa: drzewo w 1 s, +1 drewna (u handlarza za 3 000 $, na rynku graczy i na kowadle) |
+| Harwestery | Pilarstwo, Leśnictwo przemysłowe | 30 sklejki, 25 stali, 20 sztabek miedzi | 5 min | piła harwesterowa: drzewo w 1 s razem z 2 sąsiednimi, +1 drewna z każdego, 2 razy częściej sadzonki (5 000 $) |
+| Piła z meteorytu | Harwestery, Narzędzia z meteorytu | 10 żelaza meteorytowego, 1 iryd, 20 sklejki | 6 min | piła meteorytowa: drzewo w 0,5 s razem z 4 sąsiednimi, +2 drewna z każdego, całe drewno z drzew z kornikiem (40 000 $) |
 | Kamieniarstwo | | 100 kamienia, 10 sztabek żelaza | 1,5 min | warsztat kamieniarski |
 | Energia wodna | | 40 drewna, 20 sztabek żelaza, 10 miedzi | 2 min | koło wodne |
 | Automatyzacja górnictwa | Automatyzacja | 40 sztabek żelaza, 20 miedzi, 4 podajniki | 3 min | wiertło górnicze, kamieniołom |

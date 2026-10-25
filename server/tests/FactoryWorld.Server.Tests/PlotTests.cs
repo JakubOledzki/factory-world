@@ -1,6 +1,9 @@
 using System.IO.Compression;
 using System.Text.Json;
+using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Abstractions.Contracts;
+using FactoryWorld.Modules.Market;
+using FactoryWorld.Modules.Research;
 using FactoryWorld.Modules.World;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -205,6 +208,63 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         var (rx, ry) = Find((await EnterAsync(client, mountains)).Tiles, TileObject.Rock);
         factory.Time.Advance(HarvestRules.ChopTime);
         Assert.Equal("wrong_tool", (await client.SendAsync("plot.harvest", new { x = mountains.X, y = mountains.Y, tileX = rx, tileY = ry })).ErrorCode());
+    }
+
+    [Fact]
+    public async Task Saws_better_than_the_chainsaw_are_researched_and_fell_more_trees_with_more_wood()
+    {
+        Assert.Equal(TimeSpan.FromSeconds(1), HarvestRules.TimeFor(TileObject.Tree, Items.SteelSaw));
+        Assert.Equal(TimeSpan.FromSeconds(0.5), HarvestRules.TimeFor(TileObject.Tree, Items.MeteoriteSaw));
+        Assert.Equal(Items.MeteoriteSaw, Items.BestSaw([Items.Chainsaw, Items.MeteoriteSaw, Items.SteelSaw]));
+        Assert.Equal(Items.HarvesterSaw, Items.BestSaw([Items.SteelSaw, Items.HarvesterSaw]));
+        Assert.Equal([(Items.OakWood, 3)], PlotLayout.Yield(TileObject.OakTree, 99, saw: Items.Saws[Items.SteelSaw]));
+        // A harvester's saw makes saplings fall twice as often; a meteorite one gets all the wood out of a tree the beetle is in.
+        Assert.Equal([(Items.Wood, 2), (Items.Sapling, 1)], PlotLayout.Yield(TileObject.Tree, 50, saw: Items.Saws[Items.HarvesterSaw]));
+        Assert.Equal([(Items.Wood, 1)], Trees.Yield(Trees.ById[Trees.Pine], 99, infested: true, saw: Items.Saws[Items.HarvesterSaw]));
+        Assert.Equal([(Items.Wood, 3)], Trees.Yield(Trees.ById[Trees.Pine], 99, infested: true, saw: Items.Saws[Items.MeteoriteSaw]));
+        Assert.Equal(TechTree.Sawing, TechTree.ByItem[Items.SteelSaw].Id);
+        Assert.Equal(TechTree.Harvesters, TechTree.ByItem[Items.HarvesterSaw].Id);
+        Assert.Equal(TechTree.MeteoriteSaws, TechTree.ByItem[Items.MeteoriteSaw].Id);
+        Assert.All([TechTree.Sawing, TechTree.Harvesters, TechTree.MeteoriteSaws], t => Assert.Equal("forestry", TechTree.BranchOf[t].Id));
+
+        using var client = await PlayerAsync();
+        var forest = await BuyAsync(client, Biome.Forest);
+        // Nobody gets a saw before researching it, not from the trader and not from other players.
+        Assert.Equal("locked", (await client.SendAsync("market.buy", new { item = Items.HarvesterSaw, quantity = 1 })).ErrorCode());
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<GameDb>();
+            foreach (var technology in new[] { TechTree.Sawing, TechTree.Harvesters })
+            {
+                await using var command = await db.CommandAsync(
+                    "INSERT INTO research.technologies (owner_id, technology, starts_at, finishes_at, rewarded) VALUES (@owner, @id, @at, @at, true)", CancellationToken.None);
+                command.Parameters.AddWithValue("owner", client.AccountId);
+                command.Parameters.AddWithValue("id", technology);
+                command.Parameters.AddWithValue("at", factory.Time.GetUtcNow() - TimeSpan.FromMinutes(1));
+                await command.ExecuteNonQueryAsync(CancellationToken.None);
+            }
+        }
+
+        var balance = await client.BalanceAsync();
+        Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item = Items.HarvesterSaw, quantity = 1 })).Type());
+        Assert.Equal(balance - NpcPrices.Sells[Items.HarvesterSaw], await client.BalanceAsync());
+        Assert.Equal(Items.HarvesterSaw, Tool((await client.SendAsync("character.equip", new { item = Items.HarvesterSaw })).Payload()));
+
+        // A tree with at least two trees at its sides falls together with two of them.
+        var (plot, tiles) = await EnterAsync(client, forest);
+        Assert.Equal(1, plot.GetProperty("saws").GetProperty(Items.HarvesterSaw).GetProperty("seconds").GetDouble(), 6);
+        bool TreeAt(int x, int y) => PlotLayout.Inside(x, y) && Trees.IsTree(tiles[y * PlotLayout.Size + x]);
+        var (tx, ty) = Enumerable.Range(0, PlotLayout.Size * PlotLayout.Size).Select(i => (X: i % PlotLayout.Size, Y: i / PlotLayout.Size))
+            .First(t => tiles[t.Y * PlotLayout.Size + t.X] == (byte)TileObject.Tree
+                && new[] { (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, 1), (1, -1), (-1, -1) }.Count(d => TreeAt(t.X + d.Item1, t.Y + d.Item2)) >= 2);
+        factory.Time.Advance(HarvestRules.ChopTime);
+        var cut = (await client.SendAsync("plot.harvest", new { x = forest.X, y = forest.Y, tileX = tx, tileY = ty })).Payload();
+        var felled = cut.GetProperty("felled").EnumerateArray().Select(f => (f.GetProperty("tileX").GetInt32(), f.GetProperty("tileY").GetInt32())).ToList();
+        Assert.Equal(2, felled.Count);
+        var after = (await EnterAsync(client, forest)).Tiles;
+        Assert.All(felled.Append((tx, ty)), t => Assert.Equal((byte)TileObject.None, after[t.Item2 * PlotLayout.Size + t.Item1]));
+        // Every tree gives a log more than with an axe.
+        Assert.True((await client.InventoryAsync()).Where(i => i.Key == Items.Wood || i.Key.EndsWith("_wood")).Sum(i => i.Value) >= 6);
     }
 
     [Fact]

@@ -181,6 +181,9 @@ public static class Workshop
         new(Items.FireStation, 1, TimeSpan.FromSeconds(90), [(Items.Bricks, 40), (Items.IronIngot, 20), (Items.Planks, 20), (Items.CopperIngot, 5)], 40),
         new(Items.Candles, 2, TimeSpan.FromSeconds(10), [(Items.Wax, 1)], 2),
         new(Items.MeteoritePickaxe, 1, TimeSpan.FromSeconds(40), [(Items.MeteoricIron, 4), (Items.Iridium, 1), (Items.Wood, 2)], 20, Items.Anvil),
+        new(Items.SteelSaw, 1, TimeSpan.FromSeconds(35), [(Items.SteelIngot, 4), (Items.BronzeIngot, 2), (Items.Wood, 2)], 14, Items.Anvil),
+        new(Items.HarvesterSaw, 1, TimeSpan.FromSeconds(45), [(Items.SteelIngot, 6), (Items.CopperIngot, 4), (Items.Plywood, 10)], 20, Items.Anvil),
+        new(Items.MeteoriteSaw, 1, TimeSpan.FromSeconds(50), [(Items.MeteoricIron, 4), (Items.Iridium, 1), (Items.SteelIngot, 4)], 25, Items.Anvil),
         // Clothes, sewn at a tailor's in town.
         new(Items.Tailor, 1, TimeSpan.FromSeconds(90), [(Items.Planks, 20), (Items.IronIngot, 10), (Items.Wool, 20), (Items.Glass, 5)], 35),
         new(Items.MinerHelmet, 1, TimeSpan.FromSeconds(60), [(Items.SteelIngot, 3), (Items.Plastic, 2), (Items.Glass, 1), (Items.CopperIngot, 1)], 20, Items.Tailor),

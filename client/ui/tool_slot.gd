@@ -9,7 +9,7 @@ signal changed
 ## When the server refused, with its error reply.
 signal failed(reply: Dictionary)
 
-const TOOLS := ["tool_axe", "tool_chainsaw", "tool_shovel", "tool_pickaxe", "tool_bronze_pickaxe", "tool_steel_pickaxe", "tool_meteorite_pickaxe", "tool_hoe", "tool_shears"]
+const TOOLS := ["tool_axe", "tool_chainsaw", "tool_steel_saw", "tool_harvester_saw", "tool_meteorite_saw", "tool_shovel", "tool_pickaxe", "tool_bronze_pickaxe", "tool_steel_pickaxe", "tool_meteorite_pickaxe", "tool_hoe", "tool_shears"]
 ## Backpacks from the cheapest; each adds inventory tiles, any gives a second tool slot,
 ## the dearest a third. Follows the server's Items.Backpacks.
 const BACKPACKS := ["backpack_school", "backpack_hiking", "backpack_trekking", "backpack_expedition", "backpack_tycoon"]
