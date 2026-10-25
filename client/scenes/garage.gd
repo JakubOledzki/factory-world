@@ -729,13 +729,13 @@ func _refresh_character() -> void:
 	_xp_text.text = "%d / %d XP" % [xp, next_xp] if next_xp != null else "%d XP" % xp
 
 
-## Applies an XP gain from the server; level thresholds follow the server's formula 200 × (L − 1)².
+## Applies an XP gain from the server; level thresholds follow the server's formula (Game.xp_for_level).
 func _gain_xp(gain: Dictionary) -> void:
 	var level: int = gain["level"]
 	Game.character["xp"] = gain["xp"]
 	Game.character["level"] = level
-	Game.character["levelXp"] = 200 * (level - 1) * (level - 1)
-	Game.character["nextLevelXp"] = 200 * level * level
+	Game.character["levelXp"] = Game.xp_for_level(level)
+	Game.character["nextLevelXp"] = Game.xp_for_level(level + 1) if level < Game.MAX_LEVEL else null
 	_refresh_character()
 	if gain.get("leveledUp", false):
 		_banner("Awans! Poziom %d" % level)
