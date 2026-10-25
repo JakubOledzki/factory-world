@@ -13,8 +13,6 @@ const POLL := 5000.0
 var hive := ""
 
 var _state := {}
-var _refreshing := false
-var _next_poll := 0.0
 var _summary: Label
 var _honey: Label
 var _wax: Label
@@ -24,6 +22,7 @@ var _take: Button
 
 func _init() -> void:
 	super("Ul", 400)
+	poll_every = POLL
 	_summary = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
 	content.add_child(_summary)
 	content.add_child(HSeparator.new())
@@ -62,10 +61,7 @@ func open_at(id: String) -> void:
 func refresh() -> void:
 	if hive == "":
 		return
-	_refreshing = true
-	_next_poll = Time.get_ticks_msec() + POLL
-	var reply := await Net.request("hive.get", {"id": hive})
-	_refreshing = false
+	var reply := await fetch("hive.get", {"id": hive})
 	_apply(reply)
 
 
@@ -98,8 +94,3 @@ func _render() -> void:
 func _take_out() -> void:
 	if _apply(await Net.request("hive.take", {"id": hive})):
 		inventory_changed.emit()
-
-
-func _process(_delta: float) -> void:
-	if visible and not _refreshing and Time.get_ticks_msec() >= _next_poll:
-		refresh()

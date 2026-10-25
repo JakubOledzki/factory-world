@@ -18,8 +18,6 @@ var well := ""
 var plot := Vector2i(-1, -1)
 
 var _state := {}
-var _refreshing := false
-var _next_poll := 0.0
 
 var _deposit: Label
 var _pace: Label
@@ -36,6 +34,7 @@ var _left: Label
 
 func _init() -> void:
 	super("Szyb", 420)
+	poll_every = POLL
 	_deposit = UI.label("", UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT, true)
 	content.add_child(_deposit)
 	_pace = UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
@@ -91,10 +90,7 @@ func open_at(at: Vector2i, id: String) -> void:
 func refresh() -> void:
 	if well == "":
 		return
-	_refreshing = true
-	_next_poll = Time.get_ticks_msec() + POLL
-	var reply := await Net.request("well.get", {"x": plot.x, "y": plot.y, "id": well})
-	_refreshing = false
+	var reply := await fetch("well.get", {"x": plot.x, "y": plot.y, "id": well})
 	_apply(reply)
 
 
@@ -160,10 +156,6 @@ func _render() -> void:
 func _number(value: float) -> String:
 	return str(snappedf(value, 0.1)).trim_suffix(".0").replace(".", ",")
 
-
-func _process(_delta: float) -> void:
-	if visible and not _refreshing and Time.get_ticks_msec() >= _next_poll:
-		refresh()
 
 
 func _take_product() -> void:
