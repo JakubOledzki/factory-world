@@ -386,16 +386,19 @@ public sealed class ForestryIndustryTests(ServerFactory factory) : IClassFixture
         Assert.Equal(10, Standing(cut, Trees.Oak));
         Assert.Equal(all - 10, Standing(cut, Trees.Pine));
 
+        // Room for all the pines and the first oaks, however big the forest is.
+        Assert.Equal("forestry", (await client.SendAsync("forester.take", new { x, y, id = hut })).Type());
+
         // Grown oaks give oak wood.
         factory.Time.Advance(TimeSpan.FromMinutes(30));
         var oaks = Forester((await client.SendAsync("forestry.get", new { x, y })).Payload(), hut);
-        Assert.Equal(all, Stored(oaks, Items.Wood));
+        Assert.Equal(all - 10, Stored(oaks, Items.Wood));
         Assert.Equal(18, Stored(oaks, Items.OakWood));
         Assert.Equal(all, Standing(oaks, Trees.Oak));
 
         var taken = (await client.SendAsync("forester.take", new { x, y, id = hut })).Payload().GetProperty("taken").EnumerateArray()
             .ToDictionary(t => t.GetProperty("id").GetString()!, t => t.GetProperty("quantity").GetInt32());
-        Assert.Equal(new Dictionary<string, int> { [Items.Wood] = all, [Items.OakWood] = 18 }, taken);
+        Assert.Equal(new Dictionary<string, int> { [Items.Wood] = all - 10, [Items.OakWood] = 18 }, taken);
         var inventory = await client.InventoryAsync();
         Assert.Equal(18, inventory.GetValueOrDefault(Items.OakWood));
 
