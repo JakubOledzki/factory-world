@@ -301,7 +301,7 @@ public sealed class StationService(
     IEnumerable<IPlotAutomation> automation, BeachService beach, CityService cities, IEnumerable<ICompanies> companies, TimeProvider time)
 {
     /// <summary>What the player's company's big projects take off their rail or sea fees.</summary>
-    private async Task<double> PerksAsync(Guid player, bool bySea, CancellationToken cancellationToken)
+    internal async Task<double> PerksAsync(Guid player, bool bySea, CancellationToken cancellationToken)
     {
         var projects = new HashSet<string>();
         foreach (var company in companies)
@@ -962,7 +962,7 @@ public sealed class StationPorts(GameDb db, TimeProvider time) : IMachinePorts
     }
 }
 
-/// <summary>Sends the trains of routes when they are due, whether or not anyone looks at the stations.</summary>
+/// <summary>Sends the trains of routes, and moves freight trains between plots, when they are due, whether or not anyone looks at the stations.</summary>
 public sealed class RailwayDispatcher(IServiceScopeFactory scopes, ILogger<RailwayDispatcher> logger) : BackgroundService
 {
     public static readonly TimeSpan Period = TimeSpan.FromSeconds(2);
@@ -977,6 +977,8 @@ public sealed class RailwayDispatcher(IServiceScopeFactory scopes, ILogger<Railw
                 // Many due at once (e.g. after a restart) go out a batch per moment.
                 await using var scope = scopes.CreateAsyncScope();
                 await scope.ServiceProvider.GetRequiredService<StationService>().RunDueRoutesAsync(200, stoppingToken);
+                // Freight trains between a player's plots too.
+                await scope.ServiceProvider.GetRequiredService<FreightService>().RunDueAsync(200, stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {

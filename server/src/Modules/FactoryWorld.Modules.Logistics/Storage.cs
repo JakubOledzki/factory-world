@@ -30,6 +30,15 @@ public static class Storages
         new(Items.HighBay, 60, 200),
         // An automated warehouse: robots stack 3 × 3 tiles of racks.
         new(Items.AutomatedWarehouse, 120, 500),
+        // Freight chests for trains between plots: the bigger ones are researched one after another.
+        new(Items.LoadingChest, 8, 100),
+        new(Items.LoadingChest2, 16, 100),
+        new(Items.LoadingChest3, 32, 200),
+        new(Items.LoadingChest4, 64, 250),
+        new(Items.ReceivingChest, 8, 100),
+        new(Items.ReceivingChest2, 16, 100),
+        new(Items.ReceivingChest3, 32, 200),
+        new(Items.ReceivingChest4, 64, 250),
         new(Items.WoodPile, 1, 400, new HashSet<string> { Items.Wood }),
         // A heap of loose bulk goods outgrows an iron chest: twice its 2400 pieces, but of one kind only.
         new(Items.Heap, 1, 5000, new HashSet<string>

@@ -572,13 +572,17 @@ func _show_plot() -> void:
 	var info: Dictionary = _biomes.get(biome, {})
 
 	var head := HBoxContainer.new()
-	var title := UI.label("Działka %d × %d" % [plot.x, plot.y], UI.GOLD)
+	var plot_name: Variant = _plot.get("name")
+	var named := plot_name != null and str(plot_name) != ""
+	var title := UI.label(str(plot_name) if named else "Działka %d × %d" % [plot.x, plot.y], UI.GOLD)
 	title.add_theme_font_override("font", UI.bold())
 	title.add_theme_font_size_override("font_size", 18)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(title)
 	head.add_child(UI.button("×", _close_panel))
 	_plot_box.add_child(head)
+	if named:
+		_plot_box.add_child(_small("Działka %d × %d" % [plot.x, plot.y], UI.MUTED))
 
 	var biome_row := _biome_row(biome, _biome_name(biome))
 	(biome_row.get_child(1) as Label).add_theme_font_override("font", UI.bold())
@@ -618,6 +622,7 @@ func _show_plot() -> void:
 					UI.GOLD if company["member"] else UI.MUTED))
 			if mine:
 				_plot_box.add_child(UI.button("Wejdź na działkę", Game.enter_plot.bind(plot), true))
+				_show_rename(plot)
 				_show_survey()
 			elif _plot.get("canEnter", false):
 				_plot_box.add_child(UI.button("Wejdź na działkę spółki", Game.enter_plot.bind(plot), true))
@@ -643,6 +648,30 @@ func _show_plot() -> void:
 	_panel.visible = true
 	_panel.reset_size()
 	_overlay.queue_redraw()
+
+
+## The owner names the plot: the name shows here and in the routes of trains between their plots.
+func _show_rename(plot: Vector2i) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	var field := UI.line_edit("Nazwa działki")
+	field.max_length = 32
+	field.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var current: Variant = _plot.get("name")
+	field.text = str(current) if current != null else ""
+	var save := func() -> void:
+		var reply := await Net.request("world.rename", {"x": plot.x, "y": plot.y, "name": field.text.strip_edges()})
+		if reply["type"] != "world.plot":
+			_show_error(reply)
+			return
+		if _selected == plot:
+			_plot = reply["payload"]
+			_show_plot()
+		_show_toast("Nazwa zapisana." if reply["payload"].get("name") != null else "Działka nie ma już nazwy.", UI.GOLD)
+	field.text_submitted.connect(func(_t: String) -> void: save.call())
+	row.add_child(field)
+	row.add_child(UI.button("Nazwij", save))
+	_plot_box.add_child(row)
 
 
 ## Oil and gas under the player's own plot: unknown until they pay for a geological survey.

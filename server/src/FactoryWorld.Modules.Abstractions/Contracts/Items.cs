@@ -357,6 +357,18 @@ public static class Items
     public const string BuyMarket = "furniture_buy_market";
     public const string RailPort = "furniture_rail_port";
 
+    // Freight between the player's own plots (see FreightRules in World): a train of a route takes the goods out of the loading
+    // chests of one plot once they hold all it should carry, and puts them into the receiving chests of another. Four sizes each,
+    // each researched; they are storages, so inserters fill and empty them and a filter keeps them to one item.
+    public const string LoadingChest = "storage_loading_chest";
+    public const string LoadingChest2 = "storage_loading_chest_2";
+    public const string LoadingChest3 = "storage_loading_chest_3";
+    public const string LoadingChest4 = "storage_loading_chest_4";
+    public const string ReceivingChest = "storage_receiving_chest";
+    public const string ReceivingChest2 = "storage_receiving_chest_2";
+    public const string ReceivingChest3 = "storage_receiving_chest_3";
+    public const string ReceivingChest4 = "storage_receiving_chest_4";
+
     // Banks of companies in towns: players keep money on accounts there, and it takes as long to get in or out as the way
     // from their nearest plot to the nearest of the bank's buildings (see BankRules in World).
     public const string Bank = "furniture_bank";
@@ -786,6 +798,14 @@ public static class Items
         [ExportChest] = "Skrzynia eksportowa",
         [BuyMarket] = "Rynek skupu",
         [RailPort] = "Port pociągowy",
+        [LoadingChest] = "Skrzynia ładująca",
+        [LoadingChest2] = "Skrzynia ładująca II",
+        [LoadingChest3] = "Skrzynia ładująca III",
+        [LoadingChest4] = "Skrzynia ładująca IV",
+        [ReceivingChest] = "Skrzynia odbierająca",
+        [ReceivingChest2] = "Skrzynia odbierająca II",
+        [ReceivingChest3] = "Skrzynia odbierająca III",
+        [ReceivingChest4] = "Skrzynia odbierająca IV",
         [Bank] = "Bank",
         [BankBranch] = "Oddział banku",
         [Tailor] = "Pracownia krawiecka",
@@ -1067,6 +1087,12 @@ public static class Items
 
     /// <summary>A bank's building: its first one or a branch.</summary>
     public static bool IsBank(string id) => id is Bank or BankBranch;
+
+    /// <summary>The chests a freight train between plots loads from.</summary>
+    public static bool IsLoadingChest(string id) => id is LoadingChest or LoadingChest2 or LoadingChest3 or LoadingChest4;
+
+    /// <summary>The chests a freight train between plots unloads into.</summary>
+    public static bool IsReceivingChest(string id) => id is ReceivingChest or ReceivingChest2 or ReceivingChest3 or ReceivingChest4;
 
     public static bool IsClothing(string id) => Clothes.ContainsKey(id);
 
