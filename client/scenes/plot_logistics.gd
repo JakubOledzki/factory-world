@@ -14,6 +14,9 @@ extends Node2D
 ## Pipes and pumps are the belts and inserters of fluids: a pipe joins only pipes and carries only
 ## fluids, a pump moves only fluids, and an inserter never touches them.
 
+## Emitted after each answer from the server, which may have changed the filters.
+signal filters_changed
+
 const BELT := "logistics_belt"
 const INSERTER := "logistics_inserter"
 const SPLITTER := "logistics_splitter"
@@ -71,6 +74,8 @@ var _inserters := {}
 var _order: Array[Vector2i] = []
 ## Storage summaries from the last answer, by object id.
 var _storages := {}
+## The one item each inserter, storage or machine with a filter takes, by object id.
+var _filters := {}
 ## Server time (ms) of the last tick worked out here.
 var _time := 0.0
 var _textures := {}
@@ -90,8 +95,19 @@ static func tier_suffix(kind: String) -> String:
 	return TIER_SUFFIXES.get(kind, "")
 
 
+## Belts or inserters to animate, or filters to keep up to date.
 func has_machinery() -> bool:
-	return not _belts.is_empty() or not _inserters.is_empty()
+	return not _belts.is_empty() or not _inserters.is_empty() or not _filters.is_empty()
+
+
+## The item an inserter, storage or machine is set to take, or "" without a filter.
+func filter(id: String) -> String:
+	return _filters.get(id, "")
+
+
+## Objects with a filter: object id → item.
+func filters() -> Dictionary:
+	return _filters
 
 
 func is_belt(object: Dictionary) -> bool:
@@ -200,6 +216,10 @@ func apply(state: Dictionary) -> void:
 	_storages = {}
 	for summary: Dictionary in state.get("storages", []):
 		_storages[summary["id"]] = summary
+	_filters = {}
+	for f: Dictionary in state.get("filters", []):
+		_filters[f["id"]] = f["item"]
+	filters_changed.emit()
 	_time = float(state["simulatedAt"])
 	queue_redraw()
 

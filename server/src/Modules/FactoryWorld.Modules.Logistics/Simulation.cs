@@ -114,6 +114,10 @@ public sealed class Contents
     /// the other side. Without one it sends items left and right in turn.</summary>
     public List<string>? Filter { get; set; }
 
+    /// <summary>The one item an inserter, a storage or a machine is set to take (its filter): an inserter
+    /// picks up nothing else, a storage or a machine lets nothing else in. Null takes anything.</summary>
+    public string? Only { get; set; }
+
     /// <summary>The side a splitter sends filtered items to: 0 left, 1 right (as the splitter runs).</summary>
     public int FilterSide { get; set; }
 
@@ -189,6 +193,22 @@ public sealed class StoragePort(StorageKind kind, Contents contents, Action chan
     public DateTimeOffset? NextChange(DateTimeOffset now) => null;
 
     public Task SaveAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}
+
+/// <summary>A machine or a storage as inserters dropping into it see it while it has a filter: it takes its one item only.</summary>
+public sealed class FilteredPort(IMachinePort port, string only) : IMachinePort
+{
+    public string? Output(DateTimeOffset now, Func<string, bool> wanted) => port.Output(now, wanted);
+
+    public void Take(string item, DateTimeOffset now) => port.Take(item, now);
+
+    public bool Accepts(string item, DateTimeOffset now) => item == only && port.Accepts(item, now);
+
+    public void Put(string item, DateTimeOffset now) => port.Put(item, now);
+
+    public DateTimeOffset? NextChange(DateTimeOffset now) => port.NextChange(now);
+
+    public Task SaveAsync(CancellationToken cancellationToken) => port.SaveAsync(cancellationToken);
 }
 
 /// <summary>
@@ -348,9 +368,10 @@ public sealed class PlotLogistics
                 inserter.FromPort = ports.GetValueOrDefault(source.Id);
             }
 
-            if (at.TryGetValue(to, out var target) && !belts.ContainsKey(to))
+            if (at.TryGetValue(to, out var target) && !belts.ContainsKey(to) && ports.GetValueOrDefault(target.Id) is { } port)
             {
-                inserter.ToPort = ports.GetValueOrDefault(target.Id);
+                // A storage or a machine with a filter lets in only its item.
+                inserter.ToPort = contents.GetValueOrDefault(target.Id)?.Only is { } only ? new FilteredPort(port, only) : port;
             }
 
             _inserters.Add(inserter);
@@ -633,14 +654,16 @@ public sealed class PlotLogistics
 
     private string? Pick(Inserter inserter, DateTimeOffset now)
     {
+        // An inserter with a filter picks up its item only.
+        var only = inserter.Contents.Only;
         Func<string, bool> wanted;
         if (inserter.ToBelt is not null)
         {
-            wanted = item => Items.IsFluid(item) == inserter.Fluid;
+            wanted = item => Items.IsFluid(item) == inserter.Fluid && (only is null || item == only);
         }
         else if (inserter.ToPort is { } port)
         {
-            wanted = item => Items.IsFluid(item) == inserter.Fluid && port.Accepts(item, now);
+            wanted = item => Items.IsFluid(item) == inserter.Fluid && (only is null || item == only) && port.Accepts(item, now);
         }
         else
         {
