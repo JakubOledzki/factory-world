@@ -169,6 +169,11 @@ const PLACED_SPRITES := {
 	"furniture_paper_mill": "paper_mill", "furniture_carpentry": "carpentry", "furniture_charcoal_kiln": "charcoal_kiln",
 	"furniture_tar_kiln": "tar_kiln", "furniture_beehive": "beehive", "furniture_fire_watchtower": "fire_watchtower",
 	"furniture_fire_station": "fire_station",
+	"furniture_machine_shop": "machine_shop", "furniture_robotic_hall": "robotic_hall",
+	"furniture_oxygen_converter": "oxygen_converter", "furniture_rolling_mill": "rolling_mill",
+	"furniture_control_center": "control_center", "furniture_continuous_caster": "continuous_caster",
+	"storage_automated_warehouse": "automated_warehouse", "furniture_steel_combine": "steel_combine",
+	"furniture_megafactory": "megafactory", "power_fusion_plant": "fusion_plant",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
@@ -185,7 +190,8 @@ const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_
 	"furniture_ice_core_drill", "furniture_polar_station", "furniture_ice_hotel", "furniture_viewpoint",
 	"furniture_assembly_hall", "furniture_multistorey_factory", "furniture_city_sorter", "furniture_design_office",
 	"furniture_laboratory", "furniture_service_workshop", "furniture_paper_mill", "furniture_carpentry", "furniture_charcoal_kiln",
-	"furniture_tar_kiln"]
+	"furniture_tar_kiln", "furniture_machine_shop", "furniture_robotic_hall", "furniture_oxygen_converter", "furniture_rolling_mill",
+	"furniture_continuous_caster", "furniture_steel_combine", "furniture_megafactory"]
 ## A beehive opens its own window; a fire watchtower and a fire station only stand guard over the forest.
 const BEEHIVE := "furniture_beehive"
 const WATCHTOWER := "furniture_fire_watchtower"
@@ -248,13 +254,20 @@ const CITY_HALF_WIDTH := 30
 const CITY_ROWS := 60
 const CITY_ONLY := ["furniture_multistorey_factory", "furniture_shop", "storage_high_bay", "furniture_freight_terminal",
 	"furniture_company_hq", "furniture_design_office", "furniture_laboratory", "furniture_service_workshop"]
-const ONE_PER_PLOT := ["furniture_freight_terminal", "furniture_company_hq"]
+## Makes every machine on power on the plot 20% faster; opens nothing.
+const CONTROL_CENTER := "furniture_control_center"
+const ONE_PER_PLOT := ["furniture_freight_terminal", "furniture_company_hq", CONTROL_CENTER]
 const ASSEMBLY_HALL := "furniture_assembly_hall"
 const SHOP := "furniture_shop"
 ## Forester's buildings of every level and how far their forest reaches from the building's tile;
 ## each covers 3 × 3 tiles (FOOTPRINT each way) and keeps a clearing FOREST_CLEARING tiles out.
 const FORESTERS := {"furniture_forester_hut": 5, "furniture_forester_lodge": 6, "furniture_forestry_station": 7}
 const FOOTPRINT := 1
+## Buildings of the crafting tree on 3 × 3 tiles, and the two on 5 × 5 (HUGE_FOOTPRINT each way).
+const LARGE := ["furniture_robotic_hall", "furniture_oxygen_converter", "furniture_rolling_mill", "furniture_continuous_caster",
+	"storage_automated_warehouse", "power_fusion_plant"]
+const HUGE := ["furniture_steel_combine", "furniture_megafactory"]
+const HUGE_FOOTPRINT := 2
 const FOREST_CLEARING := 2
 ## How often (ms) the foresters are asked for, to draw the trees they plant and cut.
 const FORESTRY_POLL := 3000.0
@@ -272,14 +285,14 @@ const MACHINERY := [BELT, "logistics_fast_belt", "logistics_express_belt", INSER
 	"logistics_express_inserter", SPLITTER, CABLE_STATION, "logistics_pipe", "logistics_pump"]
 const GENERATOR := "power_generator"
 ## Generators that burn fuel, which open the generator window.
-const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator"]
+const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator", "power_fusion_plant"]
 ## Placed objects with nothing to open: a click shows the menu to pick them up.
 const MENU_ONLY := ["power_pole", "furniture_port", "furniture_lighthouse", "furniture_breakwater", ROAD, REED_FENCE,
 	"furniture_water_injector", "furniture_oil_separator", "furniture_dog_kennel", "furniture_snowmobile_garage", TRACK_FOUNDATION,
-	"furniture_freight_terminal", "furniture_company_hq", WATCHTOWER, FIRE_STATION]
+	"furniture_freight_terminal", "furniture_company_hq", WATCHTOWER, FIRE_STATION, CONTROL_CENTER]
 const POLE := "power_pole"
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo", "storage_tank",
-	"storage_high_bay"]
+	"storage_high_bay", "storage_automated_warehouse"]
 ## Where a rotation faces, as players read it: 0 south, 1 east, 2 north, 3 west.
 const DIRECTIONS := ["na południe", "na wschód", "na północ", "na zachód"]
 const DIRECTION_ARROWS := ["↓", "→", "↑", "←"]
@@ -804,10 +817,17 @@ func _sandy() -> bool:
 	return int(_plot.get("biome", -1)) in SANDY
 
 
-## Whether an object of `kind` stands on 3 × 3 tiles: a forester's building, a solar tower, a large wind turbine, an ice hotel
-## or an assembly hall.
+## Whether an object of `kind` stands on more than one tile (see _reach).
 func _big(kind: String) -> bool:
-	return FORESTERS.has(kind) or kind in [SOLAR_TOWER, LARGE_WIND, ICE_HOTEL, ASSEMBLY_HALL]
+	return _reach(kind) > 0
+
+
+## How many tiles an object of `kind` covers each way from its own: 1 (3 × 3) for a forester's building, a solar tower,
+## a large wind turbine, an ice hotel, an assembly hall and the LARGE buildings; 2 (5 × 5) for the HUGE ones.
+func _reach(kind: String) -> int:
+	if kind in HUGE:
+		return HUGE_FOOTPRINT
+	return FOOTPRINT if FORESTERS.has(kind) or kind in LARGE or kind in [SOLAR_TOWER, LARGE_WIND, ICE_HOTEL, ASSEMBLY_HALL] else 0
 
 
 ## Whether a tile of a city plot can be built on: by the station only.
@@ -1293,15 +1313,15 @@ func _in_footprint(kind: String, cell: Vector2i) -> bool:
 	return Vector2i(_player.floor_pos.floor()) in _footprint(kind, cell)
 
 
-## Puts up a 3 × 3 building: first walks to the nearest free tile just outside its ground, so the player
+## Puts up a big building: first walks to the nearest free tile just outside its ground, so the player
 ## is never walled in by it, then places it.
 func _place_big(cell: Vector2i) -> void:
 	_stop_work()
 	var kind := _placing
-	if not _in_footprint(kind, cell) and _near(cell, REACH + FOOTPRINT):
+	if not _in_footprint(kind, cell) and _near(cell, REACH + _reach(kind)):
 		_place_object(cell)
 		return
-	var reach := FOOTPRINT + 1
+	var reach := _reach(kind) + 1
 	var best := Vector2i(-1, -1)
 	for dy in range(-reach, reach + 1):
 		for dx in range(-reach, reach + 1):
@@ -1318,10 +1338,10 @@ func _place_big(cell: Vector2i) -> void:
 			_place_object(cell))
 
 
-## The tiles an object of `kind` standing on `cell` covers: 3 × 3 for a forester's building, else just its own.
+## The tiles an object of `kind` standing on `cell` covers: a square _reach(kind) tiles each way.
 func _footprint(kind: String, cell: Vector2i) -> Array[Vector2i]:
 	var cells: Array[Vector2i] = []
-	var reach := FOOTPRINT if _big(kind) else 0
+	var reach := _reach(kind)
 	for dy in range(-reach, reach + 1):
 		for dx in range(-reach, reach + 1):
 			cells.append(cell + Vector2i(dx, dy))
@@ -1464,14 +1484,14 @@ func _draw_marks() -> void:
 	var ground := _ground_cell()
 	if _hovered.x >= 0 and (_placed.has(_hovered) or _animals.has(_hovered)):
 		var big := _placed.has(_hovered) and _big(_placed[_hovered]["kind"])
-		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8), 2.4 if big else 1.0)
+		_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8), 1.0 + 1.4 * _reach(_placed[_hovered]["kind"]) if big else 1.0)
 		if big and FORESTERS.has(_placed[_hovered]["kind"]):
 			_draw_forest(_placed[_hovered]["kind"], _hovered, int(_placed[_hovered].get("rotation", 0)))
 	if _placing != "" and ground.x >= 0:
 		if FORESTERS.has(_placing):
 			_draw_forest(_placing, ground, _place_rotation)
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8),
-			2.4 if _big(_placing) else 1.0)
+			1.0 + 1.4 * _reach(_placing))
 		_draw_ghost(ground)
 	elif _releasing != "" and ground.x >= 0:
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8) if _can_release(ground) else Color(1.0, 0.42, 0.35, 0.8))
