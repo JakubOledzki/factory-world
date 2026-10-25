@@ -23,14 +23,14 @@ public static class SorterRules
 
     /// <summary>What the machine holds after sorting until <paramref name="now"/>; <paramref name="made"/>
     /// gets each sorted item with the moment it was done.</summary>
-    public static SorterState Advance(SorterState s, DateTimeOffset now, Func<string> roll, List<(string Item, DateTimeOffset At)> made)
+    /// <param name="time">How long one bag takes (<see cref="GarageUpgrades.SortTime"/>).</param>
+    public static SorterState Advance(SorterState s, DateTimeOffset now, TimeSpan time, Func<string> roll, List<(string Item, DateTimeOffset At)> made)
     {
         if (s.StartedAt is not { } started)
         {
             return s;
         }
 
-        var time = RecyclingRules.SortTime;
         var possible = (int)Math.Min(int.MaxValue, Math.Max(0, (now - started).Ticks / time.Ticks));
         var n = Math.Min(possible, Math.Min(s.Queued, MaxStored - s.StoredCount));
         var stored = new Dictionary<string, int>(s.Stored);
@@ -164,7 +164,8 @@ internal static class SorterRows
         made.SelectMany(m => new[] { ProductionEntry.Used(Items.Trash, 1, m.At), ProductionEntry.Made(m.Item, 1, m.At) }).ToList();
 }
 
-public sealed record SorterReply(Guid Id, SorterState State, DateTimeOffset ServerTime, IReadOnlyList<(string Item, int Quantity)> Taken, XpGain? Xp);
+public sealed record SorterReply(
+    Guid Id, SorterState State, DateTimeOffset ServerTime, IReadOnlyList<(string Item, int Quantity)> Taken, XpGain? Xp, TimeSpan SortTime);
 
 public sealed class SorterService(GameDb db, IInventory inventory, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
 {
@@ -172,7 +173,7 @@ public sealed class SorterService(GameDb db, IInventory inventory, ICharacterPro
         db.InTransactionAsync(async () =>
         {
             var state = await OpenAsync(owner, id, cancellationToken);
-            return new SorterReply(id, state, time.GetUtcNow(), [], null);
+            return new SorterReply(id, state, time.GetUtcNow(), [], null, await SortTimeAsync(owner, cancellationToken));
         }, cancellationToken);
 
     /// <summary>Puts trash from the inventory into the machine's queue.</summary>
@@ -193,7 +194,7 @@ public sealed class SorterService(GameDb db, IInventory inventory, ICharacterPro
             await inventory.RemoveAsync(owner, Items.Trash, quantity, cancellationToken);
             state = SorterRules.Start(state with { Queued = state.Queued + quantity }, time.GetUtcNow());
             await SorterRows.WriteAsync(db, owner, id, state, cancellationToken);
-            return new SorterReply(id, state, time.GetUtcNow(), [], null);
+            return new SorterReply(id, state, time.GetUtcNow(), [], null, await SortTimeAsync(owner, cancellationToken));
         }, cancellationToken);
 
     /// <summary>Takes sorted items out: one kind (<paramref name="item"/>), all of them (null), or the
@@ -239,8 +240,33 @@ public sealed class SorterService(GameDb db, IInventory inventory, ICharacterPro
             }
 
             await SorterRows.WriteAsync(db, owner, id, state, cancellationToken);
-            return new SorterReply(id, state, time.GetUtcNow(), taken, xp);
+            return new SorterReply(id, state, time.GetUtcNow(), taken, xp, await SortTimeAsync(owner, cancellationToken));
         }, cancellationToken);
+
+    /// <summary>Sorts every machine in the garage up to now, e.g. before the heating changes how fast they go.</summary>
+    public async Task CatchUpAllAsync(Guid owner, CancellationToken cancellationToken)
+    {
+        var ids = new List<Guid>();
+        await using (var command = await db.CommandAsync(
+            "SELECT id FROM recycling.garage_objects WHERE owner_id = @owner AND kind = @kind", cancellationToken))
+        {
+            command.Parameters.AddWithValue("owner", owner);
+            command.Parameters.AddWithValue("kind", Items.SortingMachine);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                ids.Add(reader.GetGuid(0));
+            }
+        }
+
+        foreach (var id in ids)
+        {
+            await OpenAsync(owner, id, cancellationToken);
+        }
+    }
+
+    private async Task<TimeSpan> SortTimeAsync(Guid owner, CancellationToken cancellationToken) =>
+        GarageUpgrades.SortTime(await GarageUpgradeRows.LevelsAsync(db, owner, cancellationToken));
 
     /// <summary>The player's sorting machine, locked until the transaction ends and sorted up to now.</summary>
     private async Task<SorterState> OpenAsync(Guid owner, Guid id, CancellationToken cancellationToken)
@@ -258,7 +284,7 @@ public sealed class SorterService(GameDb db, IInventory inventory, ICharacterPro
 
         var stored = await SorterRows.ReadAsync(db, id, cancellationToken) ?? SorterState.Empty;
         var made = new List<(string, DateTimeOffset)>();
-        var state = SorterRules.Advance(stored, time.GetUtcNow(), SorterRules.Roll, made);
+        var state = SorterRules.Advance(stored, time.GetUtcNow(), await SortTimeAsync(owner, cancellationToken), SorterRules.Roll, made);
         if (made.Count > 0)
         {
             await stats.RecordAsync(owner, SorterRows.Production(made), cancellationToken);
@@ -281,7 +307,8 @@ public sealed class SorterContents(GameDb db, IInventory inventory, ICharacterPr
         }
 
         var made = new List<(string, DateTimeOffset)>();
-        var state = SorterRules.Advance(row, time.GetUtcNow(), SorterRules.Roll, made);
+        var sortTime = GarageUpgrades.SortTime(await GarageUpgradeRows.LevelsAsync(db, owner, cancellationToken));
+        var state = SorterRules.Advance(row, time.GetUtcNow(), sortTime, SorterRules.Roll, made);
         await stats.RecordAsync(owner, SorterRows.Production(made), cancellationToken);
         foreach (var (item, quantity) in state.Stored.Where(s => s.Value > 0))
         {
@@ -331,7 +358,7 @@ public abstract class SorterHandler(IServiceScopeFactory scopes) : IMessageHandl
             maxStored = SorterRules.MaxStored,
             // Unix milliseconds of when the bag being sorted went in; the client compares it with serverTime.
             startedAt = s.StartedAt?.ToUnixTimeMilliseconds(),
-            sortSeconds = RecyclingRules.SortTime.TotalSeconds,
+            sortSeconds = reply.SortTime.TotalSeconds,
             serverTime = reply.ServerTime.ToUnixTimeMilliseconds(),
             drops = RecyclingRules.Drops.Select(d => new { id = d.Item, name = Items.Names[d.Item], percent = d.Percent }),
             taken = reply.Taken.Select(t => new { id = t.Item, name = Items.Names[t.Item], quantity = t.Quantity }),

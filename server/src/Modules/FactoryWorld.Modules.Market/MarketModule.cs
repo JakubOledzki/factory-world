@@ -33,6 +33,7 @@ public static class NpcPrices
         [Items.Nails] = 500,
         [Items.Workbench] = 50_000,
         [Items.Anvil] = 50_000,
+        [Items.ClothesWardrobe] = 40_000,
         [Items.Axe] = 10_000,
         [Items.Shovel] = 10_000,
         [Items.Pickaxe] = 10_000,
@@ -101,6 +102,7 @@ public static class NpcPrices
         [Items.Sunflower] = 300,
         [Items.SortingMachine] = 50_000,
         [Items.Workbench] = 8000,
+        [Items.ClothesWardrobe] = 10_000,
         [Items.Furnace] = 3000,
         [Items.BrickFurnace] = 26_000,
         [Items.BlastFurnace] = 150_000,
@@ -439,12 +441,16 @@ public sealed class MarketPrices : IMarketPrices
 
 public sealed record TradeRequest(string Item, int Quantity);
 
+/// <param name="Balance">The player's money afterwards, in cents.</param>
+/// <param name="ToPallet">What was bought did not fit in the inventory and waits on the pallet in the garage.</param>
+public sealed record Traded(long Balance, bool ToPallet = false);
+
 public sealed class MarketService(
     GameDb db, IInventory inventory, IWallet wallet, TraderMarket trader, ITechnologies technologies, IEnumerable<IForestCertificate> certificates,
-    IOutfit outfit)
+    IOutfit outfit, IEnumerable<IGarageDeliveries> deliveries)
 {
     /// <summary>The player buys from the NPC: money out, items in, both or neither.</summary>
-    public Task<long> BuyAsync(Guid owner, string item, int quantity, CancellationToken cancellationToken)
+    public Task<Traded> BuyAsync(Guid owner, string item, int quantity, CancellationToken cancellationToken)
     {
         var price = Price(trader.Prices().Sells, item, quantity, "The trader doesn't sell this item.");
         return db.InTransactionAsync(async () =>
@@ -456,18 +462,16 @@ public sealed class MarketService(
             if (Items.IsBackpack(item))
             {
                 await inventory.AddAsync(owner, item, quantity, cancellationToken);
-            }
-            else
-            {
-                await inventory.ReceiveAsync(owner, item, quantity, cancellationToken);
+                return new Traded(balance);
             }
 
-            return balance;
+            var toPallet = await Delivery.OverflowAsync(inventory, deliveries, owner, item, quantity, cancellationToken);
+            return new Traded(balance, toPallet);
         }, cancellationToken);
     }
 
     /// <summary>The player sells to the NPC: items out, money in, both or neither.</summary>
-    public Task<long> SellAsync(Guid owner, string item, int quantity, CancellationToken cancellationToken)
+    public Task<Traded> SellAsync(Guid owner, string item, int quantity, CancellationToken cancellationToken)
     {
         var price = Price(trader.Prices().Buys, item, quantity, "The trader doesn't buy this item.");
         return db.InTransactionAsync(async () =>
@@ -482,7 +486,7 @@ public sealed class MarketService(
             // A suit makes the trader pay a few percent more.
             price = price * (100 + await outfit.BonusAsync(owner, Industries.Trade, cancellationToken)) / 100;
 
-            return await wallet.CreditAsync(owner, price * quantity, $"sell {quantity} {item}", cancellationToken);
+            return new Traded(await wallet.CreditAsync(owner, price * quantity, $"sell {quantity} {item}", cancellationToken));
         }, cancellationToken);
     }
 
@@ -569,18 +573,18 @@ public abstract class TradeHandler(IServiceScopeFactory scopes) : IMessageHandle
         var request = Payload.Read<TradeRequest>(payload);
         await using var scope = scopes.CreateAsyncScope();
         var market = scope.ServiceProvider.GetRequiredService<MarketService>();
-        var balance = await TradeAsync(market, client.RequireAccount(), request, cancellationToken);
-        return new Reply("market.traded", new { item = request.Item, quantity = request.Quantity, balanceCents = balance });
+        var traded = await TradeAsync(market, client.RequireAccount(), request, cancellationToken);
+        return new Reply("market.traded", new { item = request.Item, quantity = request.Quantity, balanceCents = traded.Balance, toPallet = traded.ToPallet });
     }
 
-    protected abstract Task<long> TradeAsync(MarketService market, Guid owner, TradeRequest request, CancellationToken cancellationToken);
+    protected abstract Task<Traded> TradeAsync(MarketService market, Guid owner, TradeRequest request, CancellationToken cancellationToken);
 }
 
 public sealed class BuyHandler(IServiceScopeFactory scopes) : TradeHandler(scopes)
 {
     public override string Type => "market.buy";
 
-    protected override Task<long> TradeAsync(MarketService market, Guid owner, TradeRequest request, CancellationToken cancellationToken) =>
+    protected override Task<Traded> TradeAsync(MarketService market, Guid owner, TradeRequest request, CancellationToken cancellationToken) =>
         market.BuyAsync(owner, request.Item, request.Quantity, cancellationToken);
 }
 
@@ -588,7 +592,7 @@ public sealed class SellHandler(IServiceScopeFactory scopes) : TradeHandler(scop
 {
     public override string Type => "market.sell";
 
-    protected override Task<long> TradeAsync(MarketService market, Guid owner, TradeRequest request, CancellationToken cancellationToken) =>
+    protected override Task<Traded> TradeAsync(MarketService market, Guid owner, TradeRequest request, CancellationToken cancellationToken) =>
         market.SellAsync(owner, request.Item, request.Quantity, cancellationToken);
 }
 
@@ -620,4 +624,28 @@ public sealed class MarketModule : IGameModule
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>
         services.MigrateModuleAsync<MarketDbContext>(cancellationToken);
+}
+
+/// <summary>Where bought goods go: into the inventory, or onto the pallet in the garage when it is full.</summary>
+public static class Delivery
+{
+    /// <summary>Gives the player what they bought; true when it went onto the pallet. Fails with
+    /// <c>inventory_full</c> when the inventory is full and the garage has no pallet.</summary>
+    public static async Task<bool> OverflowAsync(
+        IInventory inventory, IEnumerable<IGarageDeliveries> deliveries, Guid player, string item, long quantity, CancellationToken cancellationToken)
+    {
+        if (!await inventory.HasRoomAsync(player, item, cancellationToken))
+        {
+            foreach (var pallet in deliveries)
+            {
+                if (await pallet.DeliverAsync(player, item, quantity, cancellationToken))
+                {
+                    return true;
+                }
+            }
+        }
+
+        await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
+        return false;
+    }
 }

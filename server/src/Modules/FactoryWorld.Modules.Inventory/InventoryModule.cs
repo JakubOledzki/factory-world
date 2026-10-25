@@ -64,18 +64,25 @@ public sealed class InventoryService(GameDb db, IInventorySize size) : IInventor
     public async Task ReceiveAsync(Guid owner, string item, long quantity, CancellationToken cancellationToken)
     {
         Check(item, quantity);
-        if (await CountAsync(owner, item, cancellationToken) == 0)
+        if (!await HasRoomAsync(owner, item, cancellationToken))
         {
-            await using var command = await db.CommandAsync(
-                "SELECT count(*) FROM inventory.stacks WHERE owner_id = @owner AND quantity > 0", cancellationToken);
-            command.Parameters.AddWithValue("owner", owner);
-            if ((long)(await command.ExecuteScalarAsync(cancellationToken))! >= await size.SlotsAsync(owner, cancellationToken))
-            {
-                throw new GameException("inventory_full", "Your inventory is full: make room or put on a bigger backpack.");
-            }
+            throw new GameException("inventory_full", "Your inventory is full: make room or put on a bigger backpack.");
         }
 
         await AddAsync(owner, item, quantity, cancellationToken);
+    }
+
+    public async Task<bool> HasRoomAsync(Guid owner, string item, CancellationToken cancellationToken)
+    {
+        if (await CountAsync(owner, item, cancellationToken) > 0)
+        {
+            return true;
+        }
+
+        await using var command = await db.CommandAsync(
+            "SELECT count(*) FROM inventory.stacks WHERE owner_id = @owner AND quantity > 0", cancellationToken);
+        command.Parameters.AddWithValue("owner", owner);
+        return (long)(await command.ExecuteScalarAsync(cancellationToken))! < await size.SlotsAsync(owner, cancellationToken);
     }
 
     /// <summary>Tiles of the player's inventory grid; items can be moved to any of them.</summary>

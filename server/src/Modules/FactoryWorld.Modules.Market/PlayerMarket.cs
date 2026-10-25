@@ -96,7 +96,8 @@ public sealed record ItemRequest(string Item);
 
 public sealed record ItemSummary(string Item, long? LowestCents, long Listed, long? HighestCents, long Wanted);
 
-public sealed class PlayerMarketService(GameDb db, IInventory inventory, IWallet wallet, ICharacterNames names, TimeProvider time, ITechnologies technologies)
+public sealed class PlayerMarketService(
+    GameDb db, IInventory inventory, IWallet wallet, ICharacterNames names, TimeProvider time, ITechnologies technologies, IEnumerable<IGarageDeliveries> deliveries)
 {
     /// <summary>Puts items up for sale: they leave the inventory now and wait on the listing.</summary>
     public Task<long> ListAsync(Guid seller, OfferRequest request, CancellationToken cancellationToken)
@@ -136,7 +137,7 @@ public sealed class PlayerMarketService(GameDb db, IInventory inventory, IWallet
             var cents = request.Quantity * listing.PriceCents;
             var balance = await wallet.DebitAsync(buyer, cents, $"market buy {request.Quantity} {listing.ItemId}", cancellationToken);
             await wallet.CreditAsync(listing.OwnerId, cents, $"market sold {request.Quantity} {listing.ItemId}", cancellationToken);
-            await inventory.ReceiveAsync(buyer, listing.ItemId, request.Quantity, cancellationToken);
+            await Delivery.OverflowAsync(inventory, deliveries, buyer, listing.ItemId, request.Quantity, cancellationToken);
             return balance;
         }, cancellationToken);
 

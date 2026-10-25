@@ -23,6 +23,9 @@ public static class Items
     public const string Furnace = "furniture_furnace";
     public const string Anvil = "furniture_anvil";
 
+    // A wardrobe in the garage keeps clothes and saved outfits to change into at once.
+    public const string ClothesWardrobe = "furniture_wardrobe";
+
     // Upgraded furnaces: they stand on plots only and smelt faster, holding more.
     public const string BrickFurnace = "furniture_brick_furnace";
     public const string BlastFurnace = "furniture_blast_furnace";
@@ -446,6 +449,7 @@ public static class Items
         [TrashBin] = "Kosz na śmieci",
         [Workbench] = "Stół warsztatowy",
         [Shelf] = "Regał",
+        [ClothesWardrobe] = "Szafa na ubrania",
         [BarrelBlue] = "Niebieska beczka",
         [BarrelRed] = "Czerwona beczka",
         [Tyres] = "Opony",

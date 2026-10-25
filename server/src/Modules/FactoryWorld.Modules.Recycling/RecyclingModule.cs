@@ -76,6 +76,7 @@ public static class GarageLayout
             [Items.SortingMachine] = (3, 2),
             [Items.Furnace] = (2, 2),
             [Items.Anvil] = (2, 1),
+            [Items.ClothesWardrobe] = (3, 1),
         };
 
     /// <summary>How a new garage is furnished.</summary>
@@ -192,6 +193,35 @@ public sealed class RecyclingDbContext(DbContextOptions<RecyclingDbContext> opti
             e.Property(i => i.Item).HasColumnName("item").HasMaxLength(32);
             e.Property(i => i.Quantity).HasColumnName("quantity");
         });
+        model.Entity<GarageUpgrade>(e =>
+        {
+            e.ToTable("garage_upgrades");
+            e.HasKey(u => new { u.OwnerId, u.Track });
+            e.Property(u => u.OwnerId).HasColumnName("owner_id");
+            e.Property(u => u.Track).HasColumnName("track").HasMaxLength(16);
+            e.Property(u => u.Level).HasColumnName("level");
+        });
+        model.Entity<GarageItem>(e =>
+        {
+            e.ToTable("garage_items");
+            e.HasKey(i => new { i.HolderId, i.Item });
+            e.Property(i => i.HolderId).HasColumnName("holder_id");
+            e.Property(i => i.OwnerId).HasColumnName("owner_id");
+            e.Property(i => i.Item).HasColumnName("item").HasMaxLength(32);
+            e.Property(i => i.Quantity).HasColumnName("quantity");
+        });
+        model.Entity<SavedOutfit>(e =>
+        {
+            e.ToTable("outfits");
+            e.HasKey(o => new { o.OwnerId, o.Number });
+            e.Property(o => o.OwnerId).HasColumnName("owner_id");
+            e.Property(o => o.Number).HasColumnName("number");
+            e.Property(o => o.Name).HasColumnName("name").HasMaxLength(WardrobeRules.MaxNameLength);
+            e.Property(o => o.Head).HasColumnName("head").HasMaxLength(32);
+            e.Property(o => o.Body).HasColumnName("body").HasMaxLength(32);
+            e.Property(o => o.Legs).HasColumnName("legs").HasMaxLength(32);
+            e.Property(o => o.Feet).HasColumnName("feet").HasMaxLength(32);
+        });
         model.Entity<SortingJob>(e =>
         {
             e.ToTable("sorting_jobs");
@@ -211,7 +241,8 @@ public sealed record GarageState(
     DateTimeOffset ServerTime,
     IReadOnlyList<string> Results,
     XpGain? Xp,
-    IReadOnlyList<PlacedObject> Objects);
+    IReadOnlyList<PlacedObject> Objects,
+    IReadOnlyDictionary<string, int> Upgrades);
 
 public sealed class RecyclingService(
     GameDb db, IInventory inventory, ICharacterProgress progress, IEnumerable<IMachineContents> machines, IProductionStats stats, TimeProvider time)
@@ -256,12 +287,14 @@ public sealed class RecyclingService(
 
             var now = time.GetUtcNow();
             var start = queue.Count > 0 && queue[^1] > now ? queue[^1] : now;
+            // A warm garage sorts faster.
+            var sortTime = GarageUpgrades.SortTime(await GarageUpgradeRows.LevelsAsync(db, owner, cancellationToken));
             for (var i = 1; i <= count; i++)
             {
                 await using var insert = await db.CommandAsync(
                     "INSERT INTO recycling.sorting_jobs (owner_id, finishes_at) VALUES (@owner, @at)", cancellationToken);
                 insert.Parameters.AddWithValue("owner", owner);
-                insert.Parameters.AddWithValue("at", start + RecyclingRules.SortTime * i);
+                insert.Parameters.AddWithValue("at", start + sortTime * i);
                 await insert.ExecuteNonQueryAsync(cancellationToken);
             }
 
@@ -464,7 +497,8 @@ public sealed class RecyclingService(
             time.GetUtcNow(),
             results,
             xp,
-            await ObjectsAsync(owner, cancellationToken));
+            await ObjectsAsync(owner, cancellationToken),
+            await GarageUpgradeRows.LevelsAsync(db, owner, cancellationToken));
 }
 
 /// <summary>Furniture standing in the player's garage, for other modules (e.g. the workbench to craft at).</summary>
@@ -500,7 +534,7 @@ public abstract class GarageHandler(IServiceScopeFactory scopes) : IMessageHandl
             // Unix milliseconds: the client compares them with serverTime, not its own clock.
             queue = state.Queue.Select(t => t.ToUnixTimeMilliseconds()),
             serverTime = state.ServerTime.ToUnixTimeMilliseconds(),
-            sortSeconds = RecyclingRules.SortTime.TotalSeconds,
+            sortSeconds = GarageUpgrades.SortTime(state.Upgrades).TotalSeconds,
             maxQueue = RecyclingRules.MaxQueueByHand,
             results = state.Results.Select(id => new { id, name = Items.Names[id] }),
             xp = state.Xp is { } xp ? new { xp = xp.Xp, level = xp.Level, leveledUp = xp.LeveledUp } : null,
@@ -508,6 +542,9 @@ public abstract class GarageHandler(IServiceScopeFactory scopes) : IMessageHandl
             objects = state.Objects.Select(o => new { id = o.Id, kind = o.Kind, x = o.X, y = o.Y, rotation = o.Rotation }),
             furniture = GarageLayout.Footprints.ToDictionary(
                 f => f.Key, f => new { name = Items.Names[f.Key], width = f.Value.Width, depth = f.Value.Depth }),
+            // Level of each upgrade track, which the client draws: the floor, the walls and the light.
+            upgrades = GarageUpgrades.Tracks.ToDictionary(t => t.Id, t => state.Upgrades.GetValueOrDefault(t.Id)),
+            rank = GarageUpgrades.Rank(state.Upgrades),
         });
     }
 
@@ -558,7 +595,8 @@ public sealed class PickUpHandler(IServiceScopeFactory scopes) : GarageHandler(s
         recycling.PickUpAsync(owner, Payload.Read<PickUpRequest>(payload).Id, cancellationToken);
 }
 
-/// <summary>The garage with its furniture, trash bin, sorting by hand and the automatic sorting machine. Owns the <c>recycling</c> schema.</summary>
+/// <summary>The garage with its furniture, trash bin, sorting by hand and the automatic sorting machine,
+/// the shelf, the delivery pallet, the wardrobe and the garage's upgrades. Owns the <c>recycling</c> schema.</summary>
 public sealed class RecyclingModule : IGameModule
 {
     public string Name => "Recycling";
@@ -570,6 +608,12 @@ public sealed class RecyclingModule : IGameModule
         services.AddScoped<IPlacedObjects, GarageObjects>();
         services.AddScoped<SorterService>();
         services.AddScoped<IMachineContents, SorterContents>();
+        services.AddScoped<GarageUpgradeService>();
+        services.AddScoped<IPlayerBonuses, GarageBonuses>();
+        services.AddScoped<GarageStorageService>();
+        services.AddScoped<IMachineContents, GarageStorageContents>();
+        services.AddScoped<IGarageDeliveries, PalletDeliveries>();
+        services.AddScoped<WardrobeService>();
         services.AddSingleton<IMessageHandler, GetGarageHandler>();
         services.AddSingleton<IMessageHandler, SortHandler>();
         services.AddSingleton<IMessageHandler, StopHandler>();
@@ -578,6 +622,17 @@ public sealed class RecyclingModule : IGameModule
         services.AddSingleton<IMessageHandler, GetSorterHandler>();
         services.AddSingleton<IMessageHandler, LoadSorterHandler>();
         services.AddSingleton<IMessageHandler, TakeSorterHandler>();
+        services.AddSingleton<IMessageHandler, GetUpgradesHandler>();
+        services.AddSingleton<IMessageHandler, BuyUpgradeHandler>();
+        services.AddSingleton<IMessageHandler, GetGarageStorageHandler>();
+        services.AddSingleton<IMessageHandler, PutGarageStorageHandler>();
+        services.AddSingleton<IMessageHandler, TakeGarageStorageHandler>();
+        services.AddSingleton<IMessageHandler, GetWardrobeHandler>();
+        services.AddSingleton<IMessageHandler, PutWardrobeHandler>();
+        services.AddSingleton<IMessageHandler, TakeWardrobeHandler>();
+        services.AddSingleton<IMessageHandler, SaveOutfitHandler>();
+        services.AddSingleton<IMessageHandler, ForgetOutfitHandler>();
+        services.AddSingleton<IMessageHandler, WearOutfitHandler>();
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>

@@ -18,6 +18,9 @@ public interface IInventory
     Task RemoveAsync(Guid owner, string item, long quantity, CancellationToken cancellationToken);
 
     Task<long> CountAsync(Guid owner, string item, CancellationToken cancellationToken);
+
+    /// <summary>Whether <see cref="ReceiveAsync"/> would take the item now: it is in the inventory already or a tile is free.</summary>
+    Task<bool> HasRoomAsync(Guid owner, string item, CancellationToken cancellationToken);
 }
 
 /// <summary>A player's money, in cents, with every change recorded in a ledger.</summary>
@@ -89,8 +92,37 @@ public interface IEquipment
 /// <summary>The clothes a character wears, and what they help with.</summary>
 public interface IOutfit
 {
-    /// <summary>What the worn clothes give in an industry (<see cref="Industries"/>), in percent; 0 without any.</summary>
+    /// <summary>What the player gets in an industry (<see cref="Industries"/>), in percent: the worn clothes
+    /// and every <see cref="IPlayerBonuses"/> (e.g. the garage's upgrades) together; 0 without any.</summary>
     Task<int> BonusAsync(Guid accountId, string industry, CancellationToken cancellationToken);
+
+    /// <summary>The clothes worn by slot (<see cref="ClothingSlots.All"/>); empty when the account has no character.</summary>
+    Task<IReadOnlyDictionary<string, string>> WornAsync(Guid accountId, CancellationToken cancellationToken);
+
+    /// <summary>Puts <paramref name="item"/> (or nothing) on a slot as it is: the caller takes it from
+    /// somewhere and keeps what was worn there. Fails with <c>no_character</c> without a character.</summary>
+    Task SetWornAsync(Guid accountId, string slot, string? item, CancellationToken cancellationToken);
+}
+
+/// <summary>Bonuses a player earned apart from their clothes, e.g. by upgrading the garage.</summary>
+public interface IPlayerBonuses
+{
+    /// <summary>Percent the player gets for <paramref name="bonus"/>: an industry (<see cref="Industries"/>)
+    /// or <see cref="PlayerBonus.Xp"/>; 0 without any.</summary>
+    Task<int> PercentAsync(Guid player, string bonus, CancellationToken cancellationToken);
+}
+
+public static class PlayerBonus
+{
+    /// <summary>More experience for everything the character does.</summary>
+    public const string Xp = "xp";
+}
+
+/// <summary>The delivery pallet in the player's garage: what they buy waits there when the inventory is full.</summary>
+public interface IGarageDeliveries
+{
+    /// <summary>Puts items on the pallet; false, with nothing done, when no pallet stands in the garage.</summary>
+    Task<bool> DeliverAsync(Guid player, string item, long quantity, CancellationToken cancellationToken);
 }
 
 /// <summary>How many tiles a player's inventory has: <see cref="Items.InventorySlots"/>, more with a backpack on.</summary>

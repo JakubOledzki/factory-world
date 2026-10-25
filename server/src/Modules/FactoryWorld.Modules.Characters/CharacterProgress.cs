@@ -3,10 +3,22 @@ using FactoryWorld.Modules.Abstractions.Contracts;
 
 namespace FactoryWorld.Modules.Characters;
 
-public sealed class CharacterProgress(GameDb db) : ICharacterProgress
+/// <summary>Experience; bonuses (the garage's lighting) give a few percent more of what is earned.</summary>
+public sealed class CharacterProgress(GameDb db, IEnumerable<IPlayerBonuses> bonuses) : ICharacterProgress
 {
     public async Task<XpGain> AddXpAsync(Guid accountId, long xp, CancellationToken cancellationToken)
     {
+        if (xp > 0)
+        {
+            var percent = 0;
+            foreach (var bonus in bonuses)
+            {
+                percent += await bonus.PercentAsync(accountId, PlayerBonus.Xp, cancellationToken);
+            }
+
+            xp = xp * (100 + percent) / 100;
+        }
+
         await using var command = await db.CommandAsync(
             """
             UPDATE characters.characters SET "Xp" = "Xp" + @xp
