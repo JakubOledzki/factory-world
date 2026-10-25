@@ -1,7 +1,9 @@
 class_name MarketWindow
 extends GameWindow
-## The market: the NPC trader (sells trash, saplings, animals and the sorting machine, quick sale at the floor
-## price) and trading between players (listings, buy orders and the player's own offers).
+## The market: the NPC trader (sells trash, saplings, animals and the sorting machine), trading between
+## players (listings and buy orders), selling the player's own items and the player's own offers.
+## The trader and the players' tabs are for buying; everything the player sells goes through the
+## "Sprzedaż" tab: quick sale to the trader at the floor price, filling buy orders, or a listing.
 ## The trader's prices change: a little from day to day, and a lot during events like a drought.
 ## It covers most of the screen: categories on the left and a search field filter every tab.
 ## The garage opens it anywhere; on a plot it opens at a computer standing there.
@@ -13,12 +15,16 @@ signal failed(reply: Dictionary)
 ## The player asked to put the computer the window was opened at back into the inventory.
 signal pick_up_requested(id: String)
 
-const TABS := ["Handlarz", "Gracze", "Moje oferty"]
+const TABS := ["Handlarz", "Gracze", "Sprzedaż", "Moje oferty"]
+const TRADER := 0
+const PLAYERS := 1
+const SELL := 2
+const MINE := 3
 const MAX_QUANTITY := 10000
 var _tab := 0
 var _tab_buttons: Array[Button] = []
 var _page := VBoxContainer.new()
-## The item whose offers the "Gracze" tab shows, or "" for the list of all items.
+## The item whose offers the "Gracze" or "Sprzedaż" tab shows, or "" for the list of all items.
 var _item := ""
 ## The chosen category (index in ItemInfo.CATEGORIES), or -1 for all; kept when switching tabs.
 var _category := -1
@@ -56,7 +62,7 @@ func _init() -> void:
 	top.add_theme_constant_override("separation", 4)
 	for i in TABS.size():
 		var b := UI.button(TABS[i], _open_tab.bind(i))
-		b.custom_minimum_size.x = 150
+		b.custom_minimum_size.x = 110 if UI.touch() else 140
 		top.add_child(b)
 		_tab_buttons.append(b)
 	var hint := UI.label("" if UI.touch() else "Ctrl + mysz na przedmiocie: opis", UI.MUTED, HORIZONTAL_ALIGNMENT_RIGHT)
@@ -109,7 +115,7 @@ func open_at(id: String) -> void:
 func set_player(items: Array, balance: int) -> void:
 	_items = items
 	_balance = balance
-	if visible and _tab == 0:
+	if visible and (_tab == TRADER or _tab == SELL):
 		_render()
 
 
@@ -137,7 +143,7 @@ func refresh() -> void:
 ## One request at a time: clicking through tabs faster than the server answers only asks once
 ## more for whatever is open when the answer comes, instead of piling up requests.
 func _reload() -> void:
-	if _tab == 0 or _has_cached():
+	if _tab == TRADER or _has_cached():
 		_render()
 	if _loading:
 		_again = true
@@ -157,7 +163,7 @@ func _reload() -> void:
 ## Asks the server for what the open tab shows and keeps it.
 func _fetch() -> Dictionary:
 	var reply: Dictionary
-	if _tab == 0:
+	if _tab == TRADER:
 		# Prices change with time, so the trader asks for them every time it opens.
 		reply = await Net.request("market.prices")
 		if reply["type"] == "market.prices":
@@ -166,11 +172,11 @@ func _fetch() -> Dictionary:
 			_event = payload.get("event")
 			_next = payload.get("next")
 			_clock_offset = int(payload["serverTime"]) - int(Time.get_unix_time_from_system() * 1000)
-	elif _tab == 1 and _item != "":
+	elif (_tab == PLAYERS or _tab == SELL) and _item != "":
 		reply = await Net.request("market.item", {"item": _item})
 		if reply["type"] == "market.item":
 			_board = reply["payload"]
-	elif _tab == 1:
+	elif _tab == PLAYERS or _tab == SELL:
 		reply = await Net.request("market.overview")
 		if reply["type"] == "market.overview":
 			# Items that have offers first, the rest in the server's order.
@@ -186,8 +192,8 @@ func _fetch() -> Dictionary:
 ## Whether the open tab has something from an earlier answer to show while it loads.
 func _has_cached() -> bool:
 	match _tab:
-		1: return _board.get("item", "") == _item if _item != "" else not _overview.is_empty()
-		2: return not _mine.is_empty()
+		PLAYERS, SELL: return _board.get("item", "") == _item if _item != "" else not _overview.is_empty()
+		MINE: return not _mine.is_empty()
 	return true
 
 
@@ -195,13 +201,18 @@ func _render() -> void:
 	UI.clear(_page)
 	_render_categories()
 	match _tab:
-		0: _render_trader()
-		1:
+		TRADER: _render_trader()
+		PLAYERS:
 			if _item != "":
 				_render_board()
 			else:
 				_render_overview()
-		2: _render_mine()
+		SELL:
+			if _item != "":
+				_render_sell_board()
+			else:
+				_render_sell()
+		MINE: _render_mine()
 
 
 # --- Categories ------------------------------------------------------------------------------
@@ -242,14 +253,17 @@ func _matches_search(item_name: String) -> bool:
 func _tab_entries() -> Array:
 	var entries := {}
 	match _tab:
-		0:
+		TRADER:
 			for price: Dictionary in _prices:
-				if price.get("buyCents") != null or (price.get("sellCents") != null and _count(price["id"]) > 0):
+				if price.get("buyCents") != null:
 					entries[price["id"]] = price["name"]
-		1:
+		PLAYERS:
 			for entry: Dictionary in _overview:
 				entries[entry["id"]] = entry["name"]
-		2:
+		SELL:
+			for entry: Dictionary in _sellable():
+				entries[entry["id"]] = entry["name"]
+		MINE:
 			for part: String in ["listings", "orders"]:
 				for offer: Dictionary in _mine.get(part, []):
 					entries[offer["item"]] = offer["name"]
@@ -301,13 +315,7 @@ func _render_trader() -> void:
 	var sold := _prices.filter(func(price: Dictionary) -> bool: return price.get("buyCents") != null)
 	if _add_items(sold, "id", _trader_row) == 0:
 		_page.add_child(_nothing("Handlarz nic teraz nie sprzedaje."))
-
-	_page.add_child(_heading("Szybka sprzedaż"))
-	_page.add_child(_note("Handlarz płaci od razu, ale najniższą cenę. Więcej dostaniesz, wystawiając ogłoszenie w zakładce Gracze."))
-	var bought := _prices.filter(func(price: Dictionary) -> bool:
-		return price.get("sellCents") != null and _count(price["id"]) > 0)
-	if _add_items(bought, "id", _quick_sale_row) == 0:
-		_page.add_child(_nothing("Nie masz nic, co skupuje handlarz."))
+	_page.add_child(_note("Swoje przedmioty sprzedasz handlarzowi albo innym graczom w zakładce Sprzedaż."))
 
 
 func _trader_row(price: Dictionary) -> Control:
@@ -318,15 +326,6 @@ func _trader_row(price: Dictionary) -> Control:
 		var b := UI.button("Kup %d" % amount, _send.bind("market.buy", {"item": item, "quantity": amount}, item, "market.traded"))
 		b.disabled = _balance < cents * amount
 		row.add_child(b)
-	return row
-
-
-func _quick_sale_row(price: Dictionary) -> Control:
-	var item: String = price["id"]
-	var owned := _count(item)
-	var row := _item_row(item, "%s  ×%d" % [price["name"], owned], "skup %s%s" % [UI.money(int(price["sellCents"])), _change(price.get("sellChange"))], UI.GOOD)
-	row.add_child(UI.button("Sprzedaj 1", _send.bind("market.sell", {"item": item, "quantity": 1}, item, "market.traded")))
-	row.add_child(UI.button("Wszystko", _send.bind("market.sell", {"item": item, "quantity": mini(owned, 1000)}, item, "market.traded")))
 	return row
 
 
@@ -375,7 +374,7 @@ func _duration(at_ms: int) -> String:
 # --- Players ------------------------------------------------------------------------------
 
 func _render_overview() -> void:
-	_page.add_child(_note("Kliknij przedmiot, aby zobaczyć oferty graczy, kupić, sprzedać albo wystawić własną ofertę."))
+	_page.add_child(_note("Kliknij przedmiot, aby zobaczyć oferty graczy, kupić albo zlecić kupno. Sprzedajesz w zakładce Sprzedaż."))
 	if _add_items(_overview, "id", _overview_row) == 0:
 		_page.add_child(_nothing("Na rynku nie ma jeszcze przedmiotów."))
 
@@ -429,11 +428,14 @@ func _render_board() -> void:
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(title)
 	top.add_child(UI.label("masz %d" % _count(item), UI.MUTED))
+	if _count(item) > 0:
+		var sell := UI.button("Sprzedaj ›", _open_sell.bind(item))
+		sell.tooltip_text = "Sprzedaj ten przedmiot w zakładce Sprzedaż"
+		top.add_child(sell)
 	_page.add_child(top)
 
 	var listings: Array = _board.get("listings", [])
 	var orders: Array = _board.get("orders", [])
-	var floor := _quick_sale(item)
 
 	_page.add_child(_heading("Sprzedają"))
 	if listings.is_empty():
@@ -443,20 +445,9 @@ func _render_board() -> void:
 		_page.add_child(_offer_row(offer, "Kup", "market.purchase",
 				mini(int(offer["quantity"]), _balance / cents), item))
 
-	_page.add_child(_heading("Kupują (zlecenia)"))
-	if orders.is_empty():
-		_page.add_child(_note("Nikt tego teraz nie zamawia."))
-	for offer: Dictionary in orders:
-		_page.add_child(_offer_row(offer, "Sprzedaj", "market.fill",
-				mini(int(offer["quantity"]), _count(item)), item))
-
-	var sell_price := int(listings[0]["priceCents"]) if not listings.is_empty() else maxi(floor * 2, 100)
-	var buy_price := int(orders[0]["priceCents"]) if not orders.is_empty() else maxi(floor, 100)
-	_page.add_child(_heading("Wystaw na sprzedaż"))
-	if _count(item) < 1:
-		_page.add_child(_note("Nie masz tego przedmiotu."))
-	else:
-		_page.add_child(_offer_form("market.list", "Wystaw", item, _count(item), sell_price))
+	var buy_price := int(orders[0]["priceCents"]) if not orders.is_empty() else maxi(_floor_price(item), 100)
+	if not orders.is_empty():
+		_page.add_child(_note("Najwyższe zlecenie kupna: %s/szt." % UI.money(int(orders[0]["priceCents"]))))
 	_page.add_child(_heading("Zleć kupno"))
 	_page.add_child(_note("Pieniądze odkładamy od razu; gracz, który dostarczy towar, dostaje zapłatę, a towar trafia do twojego ekwipunku."))
 	_page.add_child(_offer_form("market.order", "Zleć", item, MAX_QUANTITY, buy_price))
@@ -519,6 +510,136 @@ func _offer_form(type: String, action: String, item: String, max_quantity: int, 
 	return box
 
 
+# --- Selling ------------------------------------------------------------------------------
+
+## The items the player has that the trader or the players buy, with what they pay for them.
+## What the player hasn't researched yet isn't on the players' market, but the trader still buys it.
+func _sellable() -> Array:
+	var entries := _overview.filter(func(entry: Dictionary) -> bool: return _count(entry["id"]) > 0)
+	var listed := {}
+	for entry: Dictionary in entries:
+		listed[entry["id"]] = true
+	for price: Dictionary in _prices:
+		if price.get("sellCents") != null and _count(price["id"]) > 0 and not listed.has(price["id"]):
+			entries.append({"id": price["id"], "name": price["name"], "quickSaleCents": price["sellCents"], "traderOnly": true})
+	return entries
+
+
+## The trader's price change for selling `item`, like "  (+12%)", or "".
+func _sell_change(item: String) -> String:
+	for price: Dictionary in _prices:
+		if price["id"] == item:
+			return _change(price.get("sellChange"))
+	return ""
+
+
+func _render_sell() -> void:
+	_page.add_child(_note("Sprzedaj od razu handlarzowi za najniższą cenę albo kliknij przedmiot, aby sprzedać graczom, którzy go zamawiają, lub wystawić ogłoszenie."))
+	if _add_items(_sellable(), "id", _sell_row) == 0:
+		_page.add_child(_nothing("Nie masz nic, co można sprzedać."))
+
+
+func _sell_row(entry: Dictionary) -> Control:
+	var item: String = entry["id"]
+	var owned := _count(item)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.add_child(UI.item_icon(item, 26))
+	var text := VBoxContainer.new()
+	text.add_theme_constant_override("separation", -4)
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var name_label := UI.label("%s  ×%d" % [entry["name"], owned])
+	name_label.add_theme_font_override("font", UI.bold())
+	text.add_child(name_label)
+	var parts := []
+	if entry.get("quickSaleCents") != null:
+		parts.append("handlarz %s%s" % [UI.money(int(entry["quickSaleCents"])), _sell_change(item)])
+	if entry.get("highestCents") != null:
+		parts.append("zlecenia do %s" % UI.money(int(entry["highestCents"])))
+	text.add_child(UI.label(", ".join(parts) if not parts.is_empty() else "handlarz nie skupuje, brak zleceń",
+			UI.GOOD if not parts.is_empty() else UI.MUTED))
+	row.add_child(text)
+	if entry.get("quickSaleCents") != null:
+		var quick := UI.button("Handlarzowi", _send.bind("market.sell", {"item": item, "quantity": mini(owned, 1000)}, item, "market.traded"))
+		quick.tooltip_text = "Sprzedaj wszystko handlarzowi po %s/szt." % UI.money(int(entry["quickSaleCents"]))
+		row.add_child(quick)
+	# Not researched yet: only the trader buys it, players can't see it.
+	if not entry.get("traderOnly", false):
+		var open := UI.button("›", _open_item.bind(item))
+		open.tooltip_text = "Sprzedaj graczom albo wystaw ogłoszenie"
+		row.add_child(open)
+	return row
+
+
+## From one item's offers in the "Gracze" tab, straight to selling it.
+func _open_sell(item: String) -> void:
+	_tab = SELL
+	for i in _tab_buttons.size():
+		_tab_buttons[i].theme_type_variation = "AccentButton" if i == SELL else ""
+	_list.scroll_vertical = 0
+	_item = item
+	await _reload()
+
+
+func _render_sell_board() -> void:
+	var item: String = _board.get("item", _item)
+	var owned := _count(item)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 6)
+	top.add_child(UI.button("‹ Wszystkie", _back))
+	top.add_child(UI.item_icon(item, 30))
+	var title := UI.label(_board.get("name", item))
+	title.add_theme_font_override("font", UI.bold())
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(title)
+	top.add_child(UI.label("masz %d" % owned, UI.MUTED))
+	_page.add_child(top)
+
+	var listings: Array = _board.get("listings", [])
+	var orders: Array = _board.get("orders", [])
+	var floor := _floor_price(item)
+
+	_page.add_child(_heading("Handlarzowi"))
+	if floor <= 0:
+		_page.add_child(_note("Handlarz tego nie skupuje."))
+	elif owned < 1:
+		_page.add_child(_note("Nie masz tego przedmiotu."))
+	else:
+		_page.add_child(_note("Handlarz płaci od razu %s/szt., ale to najniższa cena." % UI.money(floor)))
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 6)
+		row.add_child(UI.label("Ilość", UI.MUTED))
+		var quantity := _spin(1, mini(owned, 1000), mini(owned, 1000))
+		row.add_child(quantity)
+		var total := UI.label("", UI.MUTED)
+		var update := func(_v: float = 0) -> void:
+			total.text = "Razem: %s" % UI.money(int(quantity.value) * floor)
+		quantity.value_changed.connect(update)
+		update.call()
+		row.add_child(UI.button("Sprzedaj", func() -> void:
+			_send("market.sell", {"item": item, "quantity": int(quantity.value)}, item, "market.traded"), true))
+		row.add_child(total)
+		_page.add_child(row)
+
+	_page.add_child(_heading("Gracze kupują (zlecenia)"))
+	if orders.is_empty():
+		_page.add_child(_note("Nikt tego teraz nie zamawia."))
+	for offer: Dictionary in orders:
+		_page.add_child(_offer_row(offer, "Sprzedaj", "market.fill",
+				mini(int(offer["quantity"]), owned), item))
+
+	_page.add_child(_heading("Wystaw ogłoszenie"))
+	if listings.is_empty():
+		_page.add_child(_note("Nikt inny tego nie sprzedaje."))
+	else:
+		_page.add_child(_note("Najtańsze ogłoszenie: %s/szt. (%d szt.)" % [UI.money(int(listings[0]["priceCents"])), int(listings[0]["quantity"])]))
+	if owned < 1:
+		_page.add_child(_note("Nie masz tego przedmiotu."))
+	else:
+		var sell_price := int(listings[0]["priceCents"]) if not listings.is_empty() else maxi(floor * 2, 100)
+		_page.add_child(_offer_form("market.list", "Wystaw", item, owned, sell_price))
+
+
 # --- Own offers ------------------------------------------------------------------------------
 
 func _render_mine() -> void:
@@ -526,7 +647,8 @@ func _render_mine() -> void:
 			["orders", "Moje zlecenia kupna", "dostarczono", "market.cancelOrder"]]:
 		_page.add_child(_heading(part[1]))
 		if _add_items(_mine.get(part[0], []), "item", _mine_row.bind(part), 1) == 0:
-			_page.add_child(_nothing("Brak. Ofertę wystawisz w zakładce Gracze, przy przedmiocie."))
+			_page.add_child(_nothing("Brak. Ogłoszenie wystawisz w zakładce Sprzedaż." if part[0] == "listings"
+					else "Brak. Kupno zlecisz w zakładce Gracze, przy przedmiocie."))
 
 
 func _mine_row(offer: Dictionary, part: Array) -> Control:
@@ -613,7 +735,11 @@ func _count(item: String) -> int:
 	return 0
 
 
-func _quick_sale(item: String) -> int:
+## What the trader pays for one piece of `item` right now, or 0 when it doesn't buy it.
+func _floor_price(item: String) -> int:
+	for entry: Dictionary in _overview:
+		if entry["id"] == item:
+			return int(entry["quickSaleCents"]) if entry.get("quickSaleCents") != null else 0
 	for price: Dictionary in _prices:
 		if price["id"] == item and price.get("sellCents") != null:
 			return int(price["sellCents"])
