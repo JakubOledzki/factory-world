@@ -66,7 +66,9 @@ public static class Smelting
         new(Items.CrushedTinOre, Items.TinIngot, TimeSpan.FromSeconds(8)),
     ];
 
-    public static SmeltingRecipe? For(string? input) => Recipes.FirstOrDefault(r => r.Input == input);
+    private static readonly Dictionary<string, SmeltingRecipe> ByInput = Recipes.ToDictionary(r => r.Input);
+
+    public static SmeltingRecipe? For(string? input) => input is not null ? ByInput.GetValueOrDefault(input) : null;
 
     /// <summary>What a furnace of <paramref name="level"/> holds after smelting until <paramref name="now"/>.</summary>
     public static FurnaceState Advance(FurnaceState s, FurnaceLevel level, DateTimeOffset now)
@@ -470,6 +472,8 @@ public sealed class FurnacePorts(GameDb db, IProductionStats stats, IPlotObjects
             return state.StartedAt is { } started && Smelting.For(state.Input) is { } recipe ? started + level.Time(recipe) : null;
         }
 
+        public bool Predictable => true;
+
         public async Task SaveAsync(CancellationToken cancellationToken)
         {
             if (_changed)
@@ -481,6 +485,12 @@ public sealed class FurnacePorts(GameDb db, IProductionStats stats, IPlotObjects
 
         private void Advance(DateTimeOffset now)
         {
+            if (state.StartedAt is not { } started || (Smelting.For(state.Input) is { } recipe && now - started < level.Time(recipe)))
+            {
+                // Cold, or the piece in it not done yet: nothing to work out.
+                return;
+            }
+
             var before = state;
             state = Smelting.Advance(state, level, now);
             var made = MachineProduction.Smelted(level, before, state);

@@ -1,6 +1,14 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Szybsze wejście na działkę",
+		"changes": [
+			"Pierwsze wejście na działkę, która długo stała bez gracza, trwa nawet trzy razy krócej: podajniki, które nie mają nic do zrobienia, czekają, aż coś się zmieni w skrzyni, piecu albo na taśmie obok, zamiast sprawdzać to co chwilę. Wynik pracy fabryki jest dokładnie taki sam jak wcześniej.",
+			"Okna skrzyń, pieców, leśniczówki i stacji na takiej działce otwierają się szybciej, bo nie czekają tak długo, aż serwer nadrobi czas taśm i podajników."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Szybszy rynek i zlecenia",
 		"changes": [
 			"Rynek graczy otwiera się szybciej także wtedy, gdy wystawiono na nim setki tysięcy ofert: zestawienie najlepszych cen liczy się raz dla wszystkich i odświeża tylko przedmioty, które ktoś właśnie kupił lub wystawił.",

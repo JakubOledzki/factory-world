@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using FactoryWorld.Modules.Abstractions;
@@ -5,6 +6,7 @@ using FactoryWorld.Modules.Abstractions.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using NpgsqlTypes;
 
 namespace FactoryWorld.Modules.Logistics;
@@ -64,9 +66,13 @@ public sealed record LogisticsState(
     DateTimeOffset SimulatedAt, DateTimeOffset ServerTime, IReadOnlyList<PlotObject> Objects, IReadOnlyDictionary<Guid, Contents> Contents, IPowerGrid Power);
 
 public sealed class LogisticsService(
-    GameDb db, IPlotObjects plots, IEnumerable<IMachinePorts> machines, IPlotPower power, IInventory inventory, ITechnologies technologies, TimeProvider time)
+    GameDb db, IPlotObjects plots, IEnumerable<IMachinePorts> machines, IPlotPower power, IInventory inventory, ITechnologies technologies, TimeProvider time,
+    ILogger<LogisticsService> logger)
     : IPlotAutomation
 {
+    /// <summary>A catch-up taking longer than this is logged with where its time went.</summary>
+    private static readonly TimeSpan Slow = TimeSpan.FromMilliseconds(500);
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault,
@@ -239,12 +245,14 @@ public sealed class LogisticsService(
     /// <summary>Works out the plot's logistics from where they were left up to now, under a lock on the plot.</summary>
     internal async Task<LogisticsState> RunAsync(int x, int y, CancellationToken cancellationToken)
     {
+        var started = Stopwatch.GetTimestamp();
         await using (var lockPlot = await db.CommandAsync("SELECT pg_advisory_xact_lock(@key)", cancellationToken))
         {
             lockPlot.Parameters.AddWithValue("key", ((long)x << 32 | (uint)y) ^ 0x6c6f6769_73746963);
             await lockPlot.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        var locked = Stopwatch.GetTimestamp();
         var now = time.GetUtcNow();
         var objects = await plots.ObjectsAsync(x, y, cancellationToken);
         var from = await SimulatedAtAsync(x, y, cancellationToken) ?? now;
@@ -311,7 +319,9 @@ public sealed class LogisticsService(
         }
 
         var logistics = new PlotLogistics(at.Values.ToList(), contents, ports, grid, await GripsAsync(objects, cancellationToken));
+        var loaded = Stopwatch.GetTimestamp();
         var simulated = logistics.Run(from, now);
+        var ran = Stopwatch.GetTimestamp();
         await WriteAsync(x, y, logistics.Changed.Concat(storageChanged).Distinct().Select(id => (id, contents[id])).ToList(), cancellationToken);
         foreach (var module in opened.GroupBy(o => o.Module, o => o.Port))
         {
@@ -330,6 +340,15 @@ public sealed class LogisticsService(
             save.Parameters.AddWithValue("y", y);
             save.Parameters.AddWithValue("at", simulated);
             await save.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        if (Stopwatch.GetElapsedTime(started) > Slow)
+        {
+            logger.LogWarning(
+                "Slow logistics on plot {X}:{Y}: waited {Lock:0} ms for the plot, loaded {Objects} objects in {Load:0} ms, worked out {Ticks} of {Span:0} min in {Run:0} ms, saved {Saved} in {Save:0} ms",
+                x, y, Stopwatch.GetElapsedTime(started, locked).TotalMilliseconds, objects.Count, Stopwatch.GetElapsedTime(locked, loaded).TotalMilliseconds,
+                logistics.Steps, (now - from).TotalMinutes, Stopwatch.GetElapsedTime(loaded, ran).TotalMilliseconds, logistics.Changed.Count + storageChanged.Count,
+                Stopwatch.GetElapsedTime(ran).TotalMilliseconds);
         }
 
         return new LogisticsState(simulated, now, objects, contents, grid);

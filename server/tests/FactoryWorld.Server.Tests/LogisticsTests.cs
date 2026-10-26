@@ -152,6 +152,77 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
     }
 
     [Fact]
+    public void An_inserter_with_nothing_to_take_from_a_chest_takes_what_another_puts_in_on_the_same_tick()
+    {
+        // chest → inserter → chest → inserter → chest: the second one has nothing to do until the first drops.
+        var from = Obj(Items.WoodenChest, 0, 0);
+        var middle = Obj(Items.WoodenChest, 2, 0);
+        var second = Obj(Items.Inserter, 3, 0);
+        var to = Obj(Items.WoodenChest, 4, 0);
+        var contents = new Dictionary<Guid, Contents> { [from.Id] = new() { Items = [new() { Item = Items.Wood, Quantity = 3 }] } };
+        var (logistics, _) = Build([from, Obj(Items.Inserter, 1, 0), middle, second, to], contents);
+
+        var t = Start;
+        for (var i = 0; i < 200; i++)
+        {
+            t = logistics.Run(t, t + LogisticsRules.Tick);
+            Assert.Equal(0, Stored(contents[middle.Id], Items.Wood));
+        }
+
+        Assert.Equal(3, Stored(contents[to.Id], Items.Wood));
+        Assert.Null(contents[second.Id].Hand);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void An_inserter_takes_what_a_machine_makes_on_the_first_tick_it_is_there(bool predictable)
+    {
+        var machine = Obj(Items.Furnace, 0, 0);
+        var inserter = Obj(Items.Inserter, 1, 0);
+        var chest = Obj(Items.WoodenChest, 2, 0);
+        var contents = new Dictionary<Guid, Contents> { [chest.Id] = new() };
+        var ready = Start + LogisticsRules.Tick * 5 + TimeSpan.FromMilliseconds(1);
+        var port = new OneIngot(ready, predictable);
+        var ports = new Dictionary<Guid, IMachinePort>
+        {
+            [machine.Id] = port,
+            [chest.Id] = new StoragePort(Storages.Find(Items.WoodenChest)!, contents[chest.Id], () => { }),
+        };
+        var logistics = new PlotLogistics([machine, inserter, chest], contents, ports);
+
+        var t = logistics.Run(Start, Start + LogisticsRules.Tick * 5);
+        Assert.False(port.Taken);
+        Assert.Null(contents[inserter.Id].Hand);
+
+        logistics.Run(t, t + LogisticsRules.Tick);
+        Assert.True(port.Taken);
+        Assert.Equal(Items.IronIngot, contents[inserter.Id].Hand);
+    }
+
+    /// <summary>A machine that makes one ingot at <paramref name="ready"/>; one that is not predictable does not say when.</summary>
+    private sealed class OneIngot(DateTimeOffset ready, bool predictable) : IMachinePort
+    {
+        public bool Taken { get; private set; }
+
+        public bool Predictable => predictable;
+
+        public string? Output(DateTimeOffset now, Func<string, bool> wanted) => !Taken && now >= ready && wanted(Items.IronIngot) ? Items.IronIngot : null;
+
+        public void Take(string item, DateTimeOffset now) => Taken = true;
+
+        public bool Accepts(string item, DateTimeOffset now) => false;
+
+        public void Put(string item, DateTimeOffset now)
+        {
+        }
+
+        public DateTimeOffset? NextChange(DateTimeOffset now) => predictable && !Taken ? ready : null;
+
+        public Task SaveAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [Fact]
     public async Task An_inserter_of_a_player_without_bigger_grippers_takes_items_off_a_belt()
     {
         using var client = await PlayerAsync();
