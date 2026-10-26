@@ -2,8 +2,10 @@ extends Node
 ## Benchmark: logs in, walks onto a plot and measures how long the plot takes to load and how long each frame
 ## takes there, standing in the middle of its machinery. Run against a server with a big factory plot:
 ##   godot --headless --path client res://tools/bench_plot.tscn -- email=... password=... x=... y=... [tile_x=20 tile_y=30] [zoom=0.5] [seconds=15]
-## off=power,logistics,plot stops those parts working, to see what each costs; shot=file.png (run with a screen) saves a picture.
-## Prints one line of results; headless, it measures the game's own work per frame (scripts, drawing commands), not the GPU.
+## off=power,logistics,plot stops those parts working, to see what each costs; hide=_objects,_power hides those layers;
+## shot=file.png (run with a screen) saves a picture.
+## walk=40 walks the character to and fro that many tiles along the row while measuring, as a player crossing the plot.
+## Prints its results; headless, it measures the game's own work per frame (scripts, drawing commands), not the GPU.
 
 var _args := {}
 var _phase := "connect"
@@ -75,6 +77,8 @@ func _process(_delta: float) -> void:
 				_plot.call("_place_player", cell + Vector2(0.5, 0.5))
 				if _args.has("zoom"):
 					_plot.call("_set_zoom", float(_args["zoom"]))
+				for layer in String(_args.get("hide", "")).split(",", false):
+					(_plot.get(layer) as CanvasItem).visible = false
 				for off in String(_args.get("off", "")).split(",", false):
 					var node: Node = _plot.get("_" + off) if off != "plot" else _plot
 					node.set_process(false)
@@ -89,6 +93,11 @@ func _process(_delta: float) -> void:
 				_measure_until = now + int(float(_args.get("seconds", "15")) * 1_000_000)
 				_last = now
 		"measure":
+			if _args.has("walk") and (_plot.get("_path") as PackedVector2Array).is_empty():
+				var start := Vector2(float(_args.get("tile_x", "20")), float(_args.get("tile_y", "30"))) + Vector2(0.5, 0.5)
+				var far := start + Vector2(float(_args["walk"]), 0)
+				var floor_pos: Vector2 = _plot.get("_player").get("floor_pos")
+				_plot.set("_path", PackedVector2Array([far if floor_pos.distance_to(start) < floor_pos.distance_to(far) else start]))
 			_frames.append((now - _last) / 1000.0)
 			_scripts.append(Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0)
 			_last = now
@@ -107,7 +116,10 @@ func _report() -> void:
 	var scripts := 0.0
 	for s in _scripts:
 		scripts += s
+	print("BENCH drawing commands %d, objects %d in the last frame" % [Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME), Performance.get_monitor(Performance.RENDER_TOTAL_OBJECTS_IN_FRAME)])
 	print("BENCH scripts per frame %.2f ms" % (scripts / _scripts.size()))
+	if _args.has("walk"):
+		print("BENCH walked to ", _plot.get("_player").get("floor_pos"), ", chunks drawn ", (_plot.get("_chunks") as Dictionary).size())
 	var logistics: Variant = _plot.get("_logistics")
 	print("BENCH frames %d, mean %.2f ms, median %.2f ms, p95 %.2f ms, p99 %.2f ms, worst %.1f ms; load %.0f ms, again %.0f ms; belts %d, inserters %d" % [
 		_frames.size(), total / _frames.size(), sorted[sorted.size() / 2], sorted[int(sorted.size() * 0.95)],

@@ -41,6 +41,9 @@ const ACTIONS := {
 const LAYOUT_FILE := "res://art/plot/layout.json"
 ## Pixels of one tile on screen; a tile is drawn as 2 × 2 m at 32 px per metre, seen at 45°.
 const TILE := Vector2(64, 45)
+## The sprites are packed onto pictures this big (every graphics card in a browser takes them), on a grid this fine.
+const PACK_PAGE := 2048
+const PACK_CELL := 16
 ## The character is rendered for the garage at 96 px per metre.
 const PLAYER_SCALE := 1.0 / 3.0
 const LIGHT := Color(0.78, 0.76, 0.8)
@@ -480,7 +483,12 @@ var _next_forestry_poll := 0.0
 var _polling_forestry := false
 
 var _astar := AStarGrid2D.new()
+## Where each sprite lies in the objects' tile set, by sprite: Vector3i(source id, atlas x, atlas y).
 var _sources := {}
+## The sprite of each of those tiles, to tell what is drawn on a tile.
+var _sprite_names := {}
+## Where each sprite's shadow lies in the shadows' tile set, as in _sources.
+var _shadow_tiles := {}
 var _images := {}
 ## Sprites drawn bigger than in their files (see Footprints.GROWN), and the anchors of those and of other sprites drawn off their tile's middle.
 var _grown_textures := {}
@@ -636,19 +644,19 @@ func _build_world() -> void:
 	_water_layer = TileMapLayer.new()
 	var water_set := TileSet.new()
 	water_set.tile_size = Vector2i(TILE)
-	_water_source = _add_source(water_set, "water", "water", false)
+	_water_source = _add_source(water_set, "water")
 	_water_layer.tile_set = water_set
 	add_child(_water_layer)
 	# Tilled fields lie flat on the ground, under every shadow.
 	_field_layer = TileMapLayer.new()
 	var field_set := TileSet.new()
 	field_set.tile_size = Vector2i(TILE)
-	_field_source = _add_source(field_set, "field", "field", false)
+	_field_source = _add_source(field_set, "field")
 	# So are asphalt roads.
-	_road_source = _add_source(field_set, "road", "road", false)
+	_road_source = _add_source(field_set, "road")
 	# And crevasses in the glacier, with the bridges laid over them.
-	_crevasse_source = _add_source(field_set, "crevasse", "crevasse", false)
-	_bridge_source = _add_source(field_set, "bridge", "bridge", false)
+	_crevasse_source = _add_source(field_set, "crevasse")
+	_bridge_source = _add_source(field_set, "bridge")
 	_field_layer.tile_set = field_set
 	add_child(_field_layer)
 	_shadows = TileMapLayer.new()
@@ -727,17 +735,33 @@ func _build_world() -> void:
 	_camera.add_child(_snow)
 
 
-## Grown machines' sprites enlarged to their squares, by file, and the pictures of sprites for finding what the mouse
-## points at, by texture: made once while the game runs, not again on every walk onto a plot.
+## Grown machines' sprites enlarged to their squares, by file: made once while the game runs, not again on every walk onto a plot.
 static var _grown_cache := {}
-static var _image_cache := {}
+## The objects' and the shadows' tile sets with where each sprite lies on them, by whether they are the shadows.
+static var _tile_set_cache := {}
 
 
-## One atlas source per sprite, so every sprite keeps its own size and anchor; an alternative
-## tile of each object is brightened for the mouse.
+## The sprites are packed onto a few big pictures (pages), each one atlas source, rather than each in a source
+## of its own: the many objects on the screen are then drawn in a few batches, not one drawing command each.
+## Every sprite keeps its own size and anchor; an alternative tile of each object is brightened for the mouse.
+## Packing takes a while, so the tile sets are made once while the game runs.
 func _tile_set(shadows: bool) -> TileSet:
-	var set := TileSet.new()
-	set.tile_size = Vector2i(TILE)
+	if not _tile_set_cache.has(shadows):
+		_tile_set_cache[shadows] = _pack_tile_set(shadows)
+	var packed: Dictionary = _tile_set_cache[shadows]
+	if shadows:
+		_shadow_tiles = packed["tiles"]
+	else:
+		_sources = packed["tiles"]
+		_sprite_names = packed["names"]
+		_grown_textures = packed["grown"]
+		_grown_anchors = packed["anchors"]
+		_images.merge(packed["images"])
+	return packed["set"]
+
+
+func _pack_tile_set(shadows: bool) -> Dictionary:
+	var pictures: Array[Dictionary] = []
 	var sprites: Array[String] = []
 	for kind: int in SPRITES:
 		sprites.append_array(SPRITES[kind])
@@ -747,24 +771,84 @@ func _tile_set(shadows: bool) -> TileSet:
 	sprites.append_array(PLACED_SPRITES.values())
 	sprites.append_array(PlotLogistics.TUNNEL_SPRITES.filter(func(t: String) -> bool: return t != PLACED_SPRITES[UNDERGROUND]))
 	for sprite in sprites:
-		_add_source(set, sprite, sprite + ("_shadow" if shadows else ""), not shadows)
+		pictures.append(_picture(sprite, sprite + ("_shadow" if shadows else ""), not shadows))
 	if not shadows:
-		# Crops have no shadows of their own; their ids come after those of nature in both sets.
+		# Crops have no shadows of their own.
 		sprites = ["sprout"]
 		for crop: String in CROPS:
 			sprites.append_array([crop + "_young", crop + "_ripe"])
 		for sprite in sprites:
-			_add_source(set, sprite, sprite, true)
-	return set
+			pictures.append(_picture(sprite, sprite, true))
+	# Shelves of pictures, the tallest first, on a grid of PACK_CELL pixels; every picture has a clear pixel
+	# around it, so smoothing a zoomed picture does not pick up its neighbour's edge.
+	pictures.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["image"].get_height() > b["image"].get_height())
+	var pages: Array[Image] = []
+	var at := Vector2i.ZERO
+	var shelf := 0
+	var cells := PACK_PAGE / PACK_CELL
+	for picture in pictures:
+		var image: Image = picture["image"]
+		var size := Vector2i(ceili((image.get_width() + 2) / float(PACK_CELL)), ceili((image.get_height() + 2) / float(PACK_CELL)))
+		if at.x + size.x > cells:
+			at = Vector2i(0, at.y + shelf)
+			shelf = 0
+		if pages.is_empty() or at.y + size.y > cells:
+			pages.append(Image.create_empty(PACK_PAGE, PACK_PAGE, false, Image.FORMAT_RGBA8))
+			at = Vector2i.ZERO
+			shelf = 0
+		pages[-1].blit_rect(image, Rect2i(Vector2i.ZERO, image.get_size()), at * PACK_CELL + Vector2i.ONE)
+		picture["page"] = pages.size() - 1
+		picture["at"] = at
+		picture["size"] = size
+		at.x += size.x
+		shelf = maxi(shelf, size.y)
+	# The last page only as tall as what is on it.
+	pages[-1].crop(PACK_PAGE, mini((at.y + shelf) * PACK_CELL, PACK_PAGE))
+	var set := TileSet.new()
+	set.tile_size = Vector2i(TILE)
+	var sources: Array[TileSetAtlasSource] = []
+	var ids: Array[int] = []
+	for page in pages:
+		var source := TileSetAtlasSource.new()
+		source.texture = ImageTexture.create_from_image(page)
+		source.texture_region_size = Vector2i(PACK_CELL, PACK_CELL)
+		source.use_texture_padding = false
+		sources.append(source)
+		ids.append(set.add_source(source))
+	var packed := {"set": set, "tiles": {}, "names": {}, "grown": {}, "anchors": {}, "images": {}}
+	for picture in pictures:
+		var source := sources[picture["page"]]
+		var coords: Vector2i = picture["at"]
+		source.create_tile(coords, picture["size"])
+		# The tile is drawn with its middle on the cell's centre; the picture lies a pixel in from the tile's corner.
+		var origin := Vector2i(picture["anchor"].round()) - Vector2i(picture["size"]) * PACK_CELL / 2 + Vector2i.ONE
+		source.get_tile_data(coords, 0).texture_origin = origin
+		var tile := Vector3i(ids[picture["page"]], coords.x, coords.y)
+		var sprite: String = picture["sprite"]
+		packed["tiles"][sprite] = tile
+		if not picture["looks"]:
+			continue
+		for modulate: Color in [Color(1.45, 1.4, 1.25), Color(1, 1, 1, 0.4)]:
+			var alternative := source.create_alternative_tile(coords)
+			var data := source.get_tile_data(coords, alternative)
+			data.texture_origin = origin
+			data.modulate = modulate
+		packed["names"][tile] = sprite
+		packed["images"][sprite] = picture["image"]
+		if picture.has("grown"):
+			packed["grown"][sprite] = picture["grown"]
+		if picture["anchor"] != Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"]):
+			packed["anchors"][sprite] = picture["anchor"]
+	return packed
 
 
-## Adds one sprite as a tile anchored on the cell's centre; with `looks`, also a brightened
-## (alternative 1) and a see-through (alternative 2) version. Returns the source id.
-## A grown machine's sprite is enlarged to its square and stands in the square's middle.
-func _add_source(set: TileSet, sprite: String, file: String, looks: bool) -> int:
+## A sprite's picture and its anchor, as it is drawn. A grown machine's sprite is enlarged to its square
+## and stands in the square's middle.
+func _picture(sprite: String, file: String, looks: bool) -> Dictionary:
 	var texture: Texture2D = load("res://art/plot/%s.png" % file)
 	var anchor := Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"])
 	var kind := _placed_kind(sprite)
+	var picture := {"sprite": sprite, "looks": looks}
 	if Footprints.GROWN.has(kind):
 		var scale := Footprints.sprite_scale(kind, Vector2(_layout_size(sprite)), TILE)
 		if not _grown_cache.has(file):
@@ -775,32 +859,31 @@ func _add_source(set: TileSet, sprite: String, file: String, looks: bool) -> int
 			_grown_cache[file] = ImageTexture.create_from_image(image)
 		texture = _grown_cache[file]
 		anchor *= scale
-		if looks:
-			_grown_textures[sprite] = texture
+		picture["grown"] = texture
 	if Footprints.shift(kind) != Vector2.ZERO:
 		# An even square's middle lies on the corner of its tiles, half a tile right of and below the object's own tile.
 		anchor -= Footprints.shift(kind) * TILE
-	if looks and anchor != Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"]):
-		_grown_anchors[sprite] = anchor
+	var image := texture.get_image()
+	if image.is_compressed():
+		image.decompress()
+	if image.get_format() != Image.FORMAT_RGBA8:
+		image.convert(Image.FORMAT_RGBA8)
+	picture["image"] = image
+	picture["anchor"] = anchor
+	return picture
+
+
+## Adds a flat sprite (water, a field, a road) as a tile set's source of its own, anchored on the cell's centre.
+## Returns the source id.
+func _add_source(set: TileSet, file: String) -> int:
+	var texture: Texture2D = load("res://art/plot/%s.png" % file)
+	var anchor := Vector2(_layout[file]["anchorX"], _layout[file]["anchorY"])
 	var source := TileSetAtlasSource.new()
 	source.texture = texture
 	source.texture_region_size = Vector2i(texture.get_size())
 	source.create_tile(Vector2i.ZERO)
-	var origin := Vector2i(anchor.round()) - Vector2i(texture.get_size() / 2)
-	source.get_tile_data(Vector2i.ZERO, 0).texture_origin = origin
-	if looks:
-		for modulate: Color in [Color(1.45, 1.4, 1.25), Color(1, 1, 1, 0.4)]:
-			var alternative := source.create_alternative_tile(Vector2i.ZERO)
-			var data := source.get_tile_data(Vector2i.ZERO, alternative)
-			data.texture_origin = origin
-			data.modulate = modulate
-	var id := set.add_source(source)
-	if looks:
-		_sources[sprite] = id
-		if not _image_cache.has(texture):
-			_image_cache[texture] = texture.get_image()
-		_images[sprite] = _image_cache[texture]
-	return id
+	source.get_tile_data(Vector2i.ZERO, 0).texture_origin = Vector2i(anchor.round()) - Vector2i(texture.get_size() / 2)
+	return set.add_source(source)
 
 
 ## The kind of placed object a sprite stands for, or "" for nature and the like.
@@ -1037,15 +1120,16 @@ func _draw_cell(cell: Vector2i) -> void:
 		_shadows.erase_cell(cell)
 		_stages.erase(cell)
 		return
-	var id: int = _sources[sprite]
+	var tile: Vector3i = _sources[sprite]
 	var look := 1 if cell == _hovered else (2 if _faded.has(cell) else 0)
-	_objects.set_cell(cell, id, Vector2i.ZERO, look)
+	_objects.set_cell(cell, tile.x, Vector2i(tile.y, tile.z), look)
 	if _fields.has(cell) or _trees.has(cell):
 		_stages[cell] = sprite
-	if _fields.has(cell):
+	if _fields.has(cell) or not _shadow_tiles.has(sprite):
 		_shadows.erase_cell(cell)
 	else:
-		_shadows.set_cell(cell, id, Vector2i.ZERO)
+		var shadow: Vector3i = _shadow_tiles[sprite]
+		_shadows.set_cell(cell, shadow.x, Vector2i(shadow.y, shadow.z))
 
 
 ## The sprite standing on a tile: nature, the crop growing on a field, a planted tree or an animal; "" for nothing.
@@ -1259,23 +1343,30 @@ func _focus_in_text() -> bool:
 
 # --- Mouse -------------------------------------------------------------------------------
 
+## Tiles to the side of a point that a sprite drawn over it may stand on, nearest first.
+const AROUND: Array[int] = [0, -1, 1, -2, 2, -3, 3]
+
+
 ## The object drawn under a point of the world: the front-most sprite with a solid pixel there.
 func _object_at(point: Vector2) -> Vector2i:
 	var cells := _objects_at(point, true)
 	return cells[0] if not cells.is_empty() else Vector2i(-1, -1)
 
 
-## Every object drawn over a point, front-most first.
+## Every object drawn over a point, front-most first. It looks at what the objects layer has drawn, which is quick
+## enough to ask every frame (the hover and the see-through objects in front of the character do).
 func _objects_at(point: Vector2, first_only := false) -> Array[Vector2i]:
 	var found: Array[Vector2i] = []
 	var base := Vector2i((point / TILE).floor())
 	# Big machines stand far below the top of their sprites.
 	for dy in range(11, -3, -1):
-		for dx in [0, -1, 1, -2, 2, -3, 3]:
+		for dx: int in AROUND:
 			var cell := base + Vector2i(dx, dy)
-			var sprite := _sprite_at(cell)
-			if sprite == "":
+			var id := _objects.get_cell_source_id(cell)
+			if id < 0:
 				continue
+			var coords := _objects.get_cell_atlas_coords(cell)
+			var sprite: String = _sprite_names[Vector3i(id, coords.x, coords.y)]
 			var image: Image = _images[sprite]
 			var pixel := Vector2i(point - _cell_centre(cell) + _sprite_anchor(sprite))
 			if Rect2i(Vector2i.ZERO, image.get_size()).has_point(pixel) and image.get_pixelv(pixel).a > 0.4:
@@ -2767,10 +2858,17 @@ func _place_object(cell: Vector2i) -> void:
 
 ## The placed object next to the player, or (-1, -1).
 func _nearest_placed() -> Vector2i:
-	for cell: Vector2i in _placed:
-		if _near(cell) and not _turnable(cell) and not _placed[cell]["kind"] in MENU_ONLY:
-			return cell
-	return Vector2i(-1, -1)
+	# Only the tiles within reach, not every object on the plot: this runs every frame.
+	var best := Vector2i(-1, -1)
+	var here := Vector2i(_player.floor_pos.floor())
+	var span := ceili(REACH)
+	for dy in range(-span, span + 1):
+		for dx in range(-span, span + 1):
+			var cell := here + Vector2i(dx, dy)
+			if _placed.has(cell) and _near(cell) and not _turnable(cell) and not _placed[cell]["kind"] in MENU_ONLY \
+				and (best.x < 0 or _player.floor_pos.distance_to(Vector2(cell) + Vector2(0.5, 0.5)) < _player.floor_pos.distance_to(Vector2(best) + Vector2(0.5, 0.5))):
+				best = cell
+	return best
 
 
 func _use_placed(cell: Vector2i) -> void:
