@@ -125,7 +125,7 @@ public sealed class FootprintTests(ServerFactory factory) : IClassFixture<Server
         await scope.ServiceProvider.GetRequiredService<IInventory>().AddAsync(client.AccountId, item, quantity, CancellationToken.None);
     }
 
-    private static (int X, int Y) FreePlot()
+    private static (int X, int Y) FreePlot(Biome biome)
     {
         var skip = Interlocked.Increment(ref _plots) + 15000;
         var found = 0;
@@ -133,7 +133,7 @@ public sealed class FootprintTests(ServerFactory factory) : IClassFixture<Server
         {
             for (var x = 0; x < Map.Width; x += 5)
             {
-                if (Map.BiomeAt(x, y) == Biome.Grassland && found++ >= skip)
+                if (Map.BiomeAt(x, y) == biome && found++ >= (biome == Biome.Grassland ? skip : skip - 15000))
                 {
                     return (x, y);
                 }
@@ -143,10 +143,11 @@ public sealed class FootprintTests(ServerFactory factory) : IClassFixture<Server
         throw new InvalidOperationException("No such plot.");
     }
 
-    /// <summary>Buys a grassland plot and finds open ground <paramref name="reach"/> tiles each way around a tile of it.</summary>
-    private static async Task<(int X, int Y, int TileX, int TileY)> PlotAsync(GameClient client, int reach)
+    /// <summary>Buys a plot (on grassland unless told otherwise) and finds open ground <paramref name="reach"/> tiles each way around
+    /// a tile of it, by the station in a city.</summary>
+    private static async Task<(int X, int Y, int TileX, int TileY)> PlotAsync(GameClient client, int reach, Biome biome = Biome.Grassland)
     {
-        var (x, y) = FreePlot();
+        var (x, y) = FreePlot(biome);
         Assert.Equal("world.bought", (await client.SendAsync("world.buy", new { x, y })).Type());
         var plot = await client.SendAsync("plot.enter", new { x, y });
         using var gzip = new GZipStream(new MemoryStream(Convert.FromBase64String(plot.Payload().GetProperty("tiles").GetString()!)), CompressionMode.Decompress);
@@ -155,9 +156,11 @@ public sealed class FootprintTests(ServerFactory factory) : IClassFixture<Server
         var bytes = tiles.ToArray();
         for (var i = PlotLayout.Size * 20; i < bytes.Length; i++)
         {
-            if (PlotTiles.Clear(bytes, i % PlotLayout.Size, i / PlotLayout.Size, reach))
+            var (tx, ty) = (i % PlotLayout.Size, i / PlotLayout.Size);
+            if (PlotTiles.Clear(bytes, tx, ty, reach)
+                && (biome != Biome.City || (CityRules.InBuildArea(tx - reach, ty + reach) && CityRules.InBuildArea(tx + reach, ty + reach))))
             {
-                return (x, y, i % PlotLayout.Size, i / PlotLayout.Size);
+                return (x, y, tx, ty);
             }
         }
 
@@ -220,7 +223,7 @@ public sealed class FootprintTests(ServerFactory factory) : IClassFixture<Server
     public async Task An_assembling_machine_makes_a_workbench_recipe_by_itself()
     {
         using var client = await PlayerAsync();
-        var (x, y, tx, ty) = await PlotAsync(client, 2);
+        var (x, y, tx, ty) = await PlotAsync(client, 2, Biome.City);
         await GiveAsync(client, Items.Assembler, 1);
         await GiveAsync(client, Items.IronIngot, 3);
         var assembler = await PlaceAsync(client, x, y, Items.Assembler, tx, ty);
@@ -228,11 +231,25 @@ public sealed class FootprintTests(ServerFactory factory) : IClassFixture<Server
         var loaded = (await client.SendAsync("machine.load", new { machine = assembler, item = Items.IronIngot, quantity = 3 })).Payload();
         Assert.False(loaded.GetProperty("powered").GetBoolean());
 
-        factory.Time.Advance(TimeSpan.FromSeconds(25));
+        // In a city machines work 25% faster: 20 s here are 25 s of work.
+        factory.Time.Advance(TimeSpan.FromSeconds(20));
         var state = (await client.SendAsync("machine.get", new { machine = assembler })).Payload();
         Assert.Equal(10, state.GetProperty("output").GetProperty("quantity").GetInt32());
-        factory.Time.Advance(TimeSpan.FromSeconds(10));
+        factory.Time.Advance(TimeSpan.FromSeconds(8));
         Assert.Equal(15, (await client.SendAsync("machine.get", new { machine = assembler })).Payload().GetProperty("output").GetProperty("quantity").GetInt32());
+    }
+
+    [Fact]
+    public async Task Assembling_machines_stand_in_a_city_only()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty) = await PlotAsync(client, 2);
+        foreach (var kind in new[] { Items.Assembler, Items.FastAssembler, Items.ExpressAssembler })
+        {
+            await GiveAsync(client, kind, 1);
+            var reply = await client.SendAsync("plot.place", new { x, y, kind, tileX = tx, tileY = ty, rotation = East });
+            Assert.Equal("no_city", reply.ErrorCode());
+        }
     }
 
     [Fact]
@@ -244,10 +261,11 @@ public sealed class FootprintTests(ServerFactory factory) : IClassFixture<Server
         var squeezed = Guid.NewGuid();
         var boxed = Guid.NewGuid();
         var mill = Guid.NewGuid();
+        var assembler = Guid.NewGuid();
         var rows = new List<(Guid Id, string Kind, int TileX, int TileY)>
         {
             (squeezed, Items.Furnace, tx - 2, ty - 3), (Guid.NewGuid(), Items.WoodenChest, tx - 1, ty - 3),
-            (boxed, Items.Furnace, tx + 2, ty), (mill, Items.Mill, tx - 3, ty + 2),
+            (boxed, Items.Furnace, tx + 2, ty), (mill, Items.Mill, tx - 3, ty + 2), (assembler, Items.Assembler, tx + 2, ty + 3),
         };
         for (var dy = -1; dy <= 1; dy++)
         {
@@ -293,18 +311,21 @@ public sealed class FootprintTests(ServerFactory factory) : IClassFixture<Server
                 await reset.ExecuteNonQueryAsync(CancellationToken.None);
             }
 
-            Assert.Equal((1, 1), await scope.ServiceProvider.GetRequiredService<FootprintMigration>().RunAsync(CancellationToken.None));
+            Assert.Equal((1, 2), await scope.ServiceProvider.GetRequiredService<FootprintMigration>().RunAsync(CancellationToken.None));
         }
 
-        // The squeezed furnace moved left, the boxed one came back to its owner with its ore, the mill stayed.
+        // The squeezed furnace moved left, the boxed one came back to its owner with its ore, the mill stayed; the assembling machine,
+        // which has room but stands in a city only, came back too.
         var objects = (await client.SendAsync("plot.enter", new { x, y })).Payload().GetProperty("objects").EnumerateArray()
             .ToDictionary(o => o.GetProperty("id").GetGuid(), o => (o.GetProperty("tileX").GetInt32(), o.GetProperty("tileY").GetInt32()));
         Assert.Equal((tx - 3, ty - 3), objects[squeezed]);
         Assert.False(objects.ContainsKey(boxed));
+        Assert.False(objects.ContainsKey(assembler));
         Assert.Equal((tx - 3, ty + 2), objects[mill]);
         var after = await client.InventoryAsync();
         Assert.Equal(before.GetValueOrDefault(Items.Furnace) + 1, after.GetValueOrDefault(Items.Furnace));
         Assert.Equal(before.GetValueOrDefault(Items.IronOre) + 5, after.GetValueOrDefault(Items.IronOre));
+        Assert.Equal(before.GetValueOrDefault(Items.Assembler) + 1, after.GetValueOrDefault(Items.Assembler));
 
         // Done once: the next start leaves the plots alone.
         await using (var scope = factory.Services.CreateAsyncScope())

@@ -1087,7 +1087,7 @@ public static class Items
 
     /// <summary>What stands in a city only.</summary>
     public static bool IsCityOnly(string id) => id is MultistoreyFactory or Shop or HighBay or FreightTerminal or CompanyHq or DesignOffice or Laboratory or ServiceWorkshop
-        or Tailor or BuyMarket or Bank or BankBranch;
+        or Tailor or BuyMarket or Bank or BankBranch or Assembler or FastAssembler or ExpressAssembler;
 
     /// <summary>A bank's building: its first one or a branch.</summary>
     public static bool IsBank(string id) => id is Bank or BankBranch;
