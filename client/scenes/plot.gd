@@ -36,6 +36,11 @@ const ACTIONS := {
 	"stats": [KEY_L],
 	"achievements": [KEY_O],
 	"character": [KEY_C],
+	"hotbar_1": [KEY_1],
+	"hotbar_2": [KEY_2],
+	"hotbar_3": [KEY_3],
+	"hotbar_4": [KEY_4],
+	"hotbar_5": [KEY_5],
 }
 
 const LAYOUT_FILE := "res://art/plot/layout.json"
@@ -566,6 +571,7 @@ var _level: Label
 var _xp_bar: ProgressBar
 var _money: Label
 var _tool_slot: ToolSlot
+var _hotbar: Hotbar
 var _hint: Label
 var _prompt: Label
 var _field_label: Label
@@ -2096,6 +2102,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		Game.open_world_map()
 	elif event.is_action_pressed("garage"):
 		Game.open_garage()
+	else:
+		for slot in Hotbar.SLOTS:
+			if event.is_action_pressed("hotbar_%d" % (slot + 1)):
+				_hotbar.use(slot)
+				break
 
 
 ## On a public plot of someone else a click only walks there, and nothing is used, built or gathered; true if it took the event.
@@ -2851,6 +2862,35 @@ func _apply_animal(reply: Dictionary, spent: String) -> void:
 
 
 # --- Workbench and furnace -------------------------------------------------------------------------
+
+## What a click on an item in the inventory does: take a tool in hand, plant, let an animal out, place.
+func _use_item(item: String) -> void:
+	if item in ToolSlot.TOOLS or item in ToolSlot.BACKPACKS:
+		_tool_slot.equip(item)
+	elif item in SAPLINGS:
+		_inventory_window.hide_window()
+		_planting_sapling = item
+		_set_saplings(int(_sapling_counts.get(item, 0)))
+		_set_planting(true)
+	elif item == INSECTICIDE:
+		_spray_forest()
+	elif ANIMAL_SPRITES.has(item):
+		_start_releasing(item)
+	elif PLACED_SPRITES.has(item) or item in BELTS:
+		_start_placing(item)
+
+
+## An item picked from the quick bar: the same as a click on it in the inventory; picked again
+## while it is being placed (planted, let out), it is put away.
+func _use_hotbar_item(item: String) -> void:
+	if item == _placing:
+		_stop_placing()
+	elif item == _releasing:
+		_stop_releasing()
+	elif _planting and item == _planting_sapling:
+		_set_planting(false)
+	else:
+		_use_item(item)
 
 ## Starts putting a workbench or furnace from the inventory on the plot: a click on free ground places it.
 func _start_placing(kind: String) -> void:
@@ -4257,6 +4297,18 @@ func _build_hud() -> void:
 	_hint.position = Vector2(0, 640)
 	_hud.add_child(_hint)
 
+	# The quick bar, above the hint line: keys 1 to 5 (or a tap) pick up what the player put there.
+	_hotbar = Hotbar.new()
+	_hotbar.can_hold = func(item: String) -> bool: return _slots.hint.call(item) != ""
+	_hotbar.selected.connect(_use_hotbar_item)
+	_hotbar.empty.connect(func(item: String) -> void:
+		_show_toast("Nie masz już: %s. Zrób więcej albo kup u handlarza." % _item_name(item).to_lower(), UI.ERROR))
+	_hotbar.failed.connect(_show_error)
+	_hud.add_child(_hotbar)
+	_hotbar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 720 - 636)
+	_hotbar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_hotbar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+
 	_prompt = _outlined(UI.label("", UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 	_prompt.visible = false
 	_hud.add_child(_prompt)
@@ -4299,7 +4351,8 @@ func _build_hud() -> void:
 
 	_toast = _outlined(UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 	_toast.size = Vector2(900, 30)
-	_toast.position = Vector2(190, 600)
+	# Above the quick bar.
+	_toast.position = Vector2(190, 636 - Hotbar.TILE * (UI.TOUCH_SCALE if UI.touch() else 1.0) - 36)
 	_toast.modulate.a = 0.0
 	_hud.add_child(_toast)
 
@@ -4337,6 +4390,7 @@ func _on_tool_changed() -> void:
 
 
 func _update_hint() -> void:
+	_hotbar.mark(_placing if _placing != "" else _planting_sapling if _planting else _releasing)
 	var lines := {
 		"tool_axe": "Kliknij drzewo, aby je ściąć siekierą.",
 		"tool_chainsaw": "Kliknij drzewo, aby je ściąć piłą spalinową (o 70% szybciej niż siekierą).",
@@ -4458,26 +4512,14 @@ func _build_windows() -> void:
 		if item in ToolSlot.BACKPACKS:
 			return "Kliknij, aby założyć"
 		return "Kliknij, aby wziąć do ręki" if item in ToolSlot.TOOLS else ""
-	_slots.clicked.connect(func(item: String) -> void:
-		if item in ToolSlot.TOOLS or item in ToolSlot.BACKPACKS:
-			_tool_slot.equip(item)
-		elif item in SAPLINGS:
-			_inventory_window.hide_window()
-			_planting_sapling = item
-			_set_saplings(int(_sapling_counts.get(item, 0)))
-			_set_planting(true)
-		elif item == INSECTICIDE:
-			_spray_forest()
-		elif ANIMAL_SPRITES.has(item):
-			_start_releasing(item)
-		elif PLACED_SPRITES.has(item) or item in BELTS:
-			_start_placing(item))
+	_slots.clicked.connect(_use_item)
 	_slots.changed.connect(func(items: Array) -> void:
 		_items = items
+		_hotbar.set_items(items)
 		_count_saplings(items))
 	_slots.failed.connect(_show_error)
 	_inventory_window.content.add_child(_slots)
-	_inventory_window.content.add_child(UI.label("Przeciągnij przedmiot na inny kafelek, aby zmienić kolejność.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	_inventory_window.content.add_child(UI.label("Przeciągnij przedmiot na inny kafelek, aby zmienić kolejność, albo na pasek 1–5 na dole, aby mieć go pod klawiszem.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	_station_window = StationWindow.new()
 	_station_window.position = Vector2(1280 - 470 - 12, 64)
 	_station_window.inventory_changed.connect(_reload_inventory)
@@ -4657,6 +4699,7 @@ func _reload_inventory() -> void:
 	_items = reply["payload"]["items"]
 	_count_saplings(_items)
 	_slots.show_items(reply["payload"])
+	_hotbar.set_items(_items)
 	_crafting_window.set_items(_items)
 	_research_window.set_items(_items)
 	_furnace_window.set_items(_items)
@@ -4744,6 +4787,8 @@ func _load() -> void:
 	_update_hint()
 	_loading.queue_free()
 	_reload_inventory()
+	_hotbar.visible = not _visitor
+	_hotbar.reload()
 	# Orders made while the player was away land in the inventory now.
 	_crafting_window.refresh()
 	# Research that ended while the player was away is announced now.

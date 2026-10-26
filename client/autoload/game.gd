@@ -30,6 +30,7 @@ const ERRORS := {
 	"not_enough_items": "Nie masz tylu przedmiotów.",
 	"inventory_full": "Ekwipunek pełny. Zrób miejsce albo załóż większy plecak (kupisz go u handlarza).",
 	"bad_slot": "Nie ma takiego miejsca.",
+	"bad_hotbar_slot": "Pasek ma tylko sloty od 1 do 5.",
 	"not_enough_money": "Nie masz tyle pieniędzy.",
 	"queue_full": "Kolejka segregacji jest pełna.",
 	"no_upgrade": "Nie ma takiego ulepszenia.",

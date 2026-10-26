@@ -20,11 +20,23 @@ public sealed class Stack
     public int? Slot { get; set; }
 }
 
+/// <summary>An item the player put on a numbered slot of the quick bar (keys 1 to 5).</summary>
+public sealed class HotbarSlot
+{
+    public Guid OwnerId { get; set; }
+
+    public int Slot { get; set; }
+
+    public required string ItemId { get; set; }
+}
+
 public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> options, GameDb gameDb) : ModuleDbContext(options, gameDb)
 {
     public const string Schema = "inventory";
 
     public DbSet<Stack> Stacks => Set<Stack>();
+
+    public DbSet<HotbarSlot> HotbarSlots => Set<HotbarSlot>();
 
     protected override void OnModelCreating(ModelBuilder model)
     {
@@ -37,6 +49,14 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
             e.Property(s => s.ItemId).HasColumnName("item_id").HasMaxLength(64);
             e.Property(s => s.Quantity).HasColumnName("quantity");
             e.Property(s => s.Slot).HasColumnName("slot");
+        });
+        model.Entity<HotbarSlot>(e =>
+        {
+            e.ToTable("hotbar", t => t.HasCheckConstraint("ck_hotbar_slot", $"slot >= 0 AND slot < {Hotbar.Slots}"));
+            e.HasKey(s => new { s.OwnerId, s.Slot });
+            e.Property(s => s.OwnerId).HasColumnName("owner_id");
+            e.Property(s => s.Slot).HasColumnName("slot");
+            e.Property(s => s.ItemId).HasColumnName("item_id").HasMaxLength(64);
         });
     }
 }
@@ -251,6 +271,117 @@ public sealed class MoveItemHandler(IServiceScopeFactory scopes) : IMessageHandl
     private sealed record MoveItemRequest(string? Item, int Slot);
 }
 
+/// <summary>The quick bar: five numbered slots, each holding the id of an item the player picks up with one key.
+/// It only points at items; how many are left is the inventory's count, so a slot stays when the item runs out.</summary>
+public sealed class Hotbar(GameDb db, InventoryService inventory)
+{
+    public const int Slots = 5;
+
+    /// <summary>The item on each slot, null for an empty one.</summary>
+    public async Task<string?[]> GetAsync(Guid owner, CancellationToken cancellationToken)
+    {
+        var slots = new string?[Slots];
+        await using var command = await db.CommandAsync(
+            "SELECT slot, item_id FROM inventory.hotbar WHERE owner_id = @owner ORDER BY slot", cancellationToken);
+        command.Parameters.AddWithValue("owner", owner);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            var slot = reader.GetInt32(0);
+            var item = reader.GetString(1);
+            // An item removed from the game would have no name or icon: it shows as an empty slot. So does
+            // an item on two slots at once (two requests at the same moment): it stays on the first.
+            if (slot is >= 0 and < Slots && Items.Exists(item) && !slots.Contains(item))
+            {
+                slots[slot] = item;
+            }
+        }
+
+        return slots;
+    }
+
+    /// <summary>Puts an item the player owns on a slot, or empties the slot (null). The item leaves any other slot it was on.</summary>
+    public async Task SetAsync(Guid owner, int slot, string? item, CancellationToken cancellationToken)
+    {
+        if (slot is < 0 or >= Slots)
+        {
+            throw new GameException("bad_hotbar_slot", $"The quick bar has slots 0 to {Slots - 1}.");
+        }
+
+        if (item is not null)
+        {
+            if (!Items.Exists(item))
+            {
+                throw new GameException("unknown_item", $"Unknown item '{item}'.");
+            }
+
+            if (await inventory.CountAsync(owner, item, cancellationToken) <= 0)
+            {
+                throw new GameException("not_enough_items", "You don't have this item.");
+            }
+        }
+
+        await db.InTransactionAsync(async () =>
+        {
+            await using (var clear = await db.CommandAsync(
+                "DELETE FROM inventory.hotbar WHERE owner_id = @owner AND (slot = @slot OR item_id = @item)", cancellationToken))
+            {
+                clear.Parameters.AddWithValue("owner", owner);
+                clear.Parameters.AddWithValue("slot", slot);
+                clear.Parameters.AddWithValue("item", (object?)item ?? DBNull.Value);
+                await clear.ExecuteNonQueryAsync(cancellationToken);
+            }
+
+            if (item is null)
+            {
+                return;
+            }
+
+            // Two requests at once may both have cleared before inserting: the later one wins the slot.
+            await using var put = await db.CommandAsync(
+                """
+                INSERT INTO inventory.hotbar (owner_id, slot, item_id) VALUES (@owner, @slot, @item)
+                ON CONFLICT (owner_id, slot) DO UPDATE SET item_id = excluded.item_id
+                """, cancellationToken);
+            put.Parameters.AddWithValue("owner", owner);
+            put.Parameters.AddWithValue("slot", slot);
+            put.Parameters.AddWithValue("item", item);
+            await put.ExecuteNonQueryAsync(cancellationToken);
+        }, cancellationToken);
+    }
+}
+
+public sealed class GetHotbarHandler(IServiceScopeFactory scopes) : IMessageHandler
+{
+    public string Type => "hotbar.get";
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        var account = client.RequireAccount();
+        await using var scope = scopes.CreateAsyncScope();
+        return HotbarReply(await scope.ServiceProvider.GetRequiredService<Hotbar>().GetAsync(account, cancellationToken));
+    }
+
+    internal static Reply HotbarReply(string?[] slots) => new("hotbar", new { slots });
+}
+
+public sealed class SetHotbarHandler(IServiceScopeFactory scopes) : IMessageHandler
+{
+    public string Type => "hotbar.set";
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        var account = client.RequireAccount();
+        var request = Payload.Read<SetHotbarRequest>(payload);
+        await using var scope = scopes.CreateAsyncScope();
+        var hotbar = scope.ServiceProvider.GetRequiredService<Hotbar>();
+        await hotbar.SetAsync(account, request.Slot, string.IsNullOrEmpty(request.Item) ? null : request.Item, cancellationToken);
+        return GetHotbarHandler.HotbarReply(await hotbar.GetAsync(account, cancellationToken));
+    }
+
+    private sealed record SetHotbarRequest(int Slot, string? Item);
+}
+
 internal static class InventoryReply
 {
     public static async Task<Reply> CreateAsync(InventoryService inventory, Guid account, CancellationToken cancellationToken)
@@ -276,6 +407,9 @@ public sealed class InventoryModule : IGameModule
         services.AddScoped<IInventory>(sp => sp.GetRequiredService<InventoryService>());
         services.AddSingleton<IMessageHandler, GetInventoryHandler>();
         services.AddSingleton<IMessageHandler, MoveItemHandler>();
+        services.AddScoped<Hotbar>();
+        services.AddSingleton<IMessageHandler, GetHotbarHandler>();
+        services.AddSingleton<IMessageHandler, SetHotbarHandler>();
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>

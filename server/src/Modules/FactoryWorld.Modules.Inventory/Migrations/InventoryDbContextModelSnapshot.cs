@@ -23,6 +23,30 @@ namespace FactoryWorld.Modules.Inventory.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("FactoryWorld.Modules.Inventory.HotbarSlot", b =>
+                {
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<int>("Slot")
+                        .HasColumnType("integer")
+                        .HasColumnName("slot");
+
+                    b.Property<string>("ItemId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("item_id");
+
+                    b.HasKey("OwnerId", "Slot");
+
+                    b.ToTable("hotbar", "inventory", t =>
+                        {
+                            t.HasCheckConstraint("ck_hotbar_slot", "slot >= 0 AND slot < 5");
+                        });
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.Inventory.Stack", b =>
                 {
                     b.Property<Guid>("OwnerId")
