@@ -480,6 +480,7 @@ public static class NpcPrices
         [Items.PotatoDistillery] = 85_000,
         [Items.BiogasPlant] = 150_000,
         [Items.Stable] = 31_500,
+        [Items.Feeder] = 3800,
         [Items.Bellows] = 12_000,
         [Items.Farmstead] = 28_500,
         [Items.ManorFarm] = 103_000,

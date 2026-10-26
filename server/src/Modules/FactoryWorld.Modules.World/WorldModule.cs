@@ -186,6 +186,21 @@ public sealed class PlotFarmsteadRow
     public DateTimeOffset BusyUntil { get; set; }
 }
 
+/// <summary>A feeder on a plot: the feed in it, which it gives the hungry animals around it.</summary>
+public sealed class PlotFeederRow
+{
+    public Guid ObjectId { get; set; }
+
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public Guid OwnerId { get; set; }
+
+    /// <summary>The feed in it, as JSON: item → count.</summary>
+    public string Store { get; set; } = "{}";
+}
+
 /// <summary>A well pumping oil or gas: what it holds, how far it is with its unit and the state of its seals.</summary>
 public sealed class PlotWellRow
 {
@@ -638,6 +653,18 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(f => f.BusyUntil).HasColumnName("busy_until");
             e.HasIndex(f => new { f.X, f.Y });
             e.HasIndex(f => f.OwnerId);
+        });
+
+        model.Entity<PlotFeederRow>(e =>
+        {
+            e.ToTable("plot_feeders");
+            e.HasKey(f => f.ObjectId);
+            e.Property(f => f.ObjectId).HasColumnName("object_id");
+            e.Property(f => f.X).HasColumnName("x");
+            e.Property(f => f.Y).HasColumnName("y");
+            e.Property(f => f.OwnerId).HasColumnName("owner_id");
+            e.Property(f => f.Store).HasColumnName("store").HasDefaultValue("{}");
+            e.HasIndex(f => new { f.X, f.Y });
         });
 
         model.Entity<PlotDrillRow>(e =>
@@ -1400,6 +1427,11 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, TakeFromHiveHandler>();
         services.AddSingleton<IMessageHandler, SprayHandler>();
         services.AddScoped<HusbandryService>();
+        services.AddScoped<FeederService>();
+        services.AddScoped<IPlacedHook>(provider => provider.GetRequiredService<FeederService>());
+        services.AddScoped<IPlotAutomation>(provider => provider.GetRequiredService<FeederService>());
+        services.AddScoped<IMachineContents>(provider => provider.GetRequiredService<FeederService>());
+        services.AddScoped<IMachinePorts>(provider => provider.GetRequiredService<FeederService>());
         services.AddScoped<MineService>();
         services.AddScoped<SurveyService>();
         services.AddScoped<PlotObjectService>();
@@ -1497,6 +1529,10 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, FeedAnimalHandler>();
         services.AddSingleton<IMessageHandler, CollectAnimalHandler>();
         services.AddSingleton<IMessageHandler, TakeAnimalHandler>();
+        services.AddSingleton<IMessageHandler, GetAnimalsHandler>();
+        services.AddSingleton<IMessageHandler, GetFeederHandler>();
+        services.AddSingleton<IMessageHandler, FillFeederHandler>();
+        services.AddSingleton<IMessageHandler, TakeFromFeederHandler>();
         services.AddSingleton<IMessageHandler, MineHandler>();
         services.AddSingleton<IMessageHandler, UpgradeMineHandler>();
         services.AddSingleton<IMessageHandler, BlastMineHandler>();

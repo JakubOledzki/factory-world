@@ -1,6 +1,16 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Karmnik dla zwierząt",
+		"changes": [
+			"Nowe badanie Karmniki (w drzewku Hodowla, bez wymagań) odblokowuje karmnik: 12 desek i 6 gwoździ przy stole warsztatowym, u handlarza 380 $.",
+			"Karmnik stoi na jednym polu i sam karmi głodne zwierzęta do 3 pól wokół siebie, 2 sztuki paszy na posiłek, tak jak przy karmieniu ręcznym: od razu po wypuszczeniu zwierzęcia, po każdym zbiorze jajek, wełny czy mleka i gdy dostanie paszę. Nie trzeba już klikać każdego zwierzęcia osobno.",
+			"Paszę (pszenicę, kukurydzę, marchew, kapustę, mączkę rybną, daktyle albo paszę treściwą) wsypujesz w oknie karmnika albo podajnikiem ze skrzyni lub taśmy. Mieści 60 sztuk. Koń dostaje z karmnika tylko paszę treściwą.",
+			"Najechanie na karmnik albo stawianie go pokazuje pole, które obsługuje. Produkty nadal zbierasz sam."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Beton u handlarza",
 		"changes": [
 			"Beton, cement i cegłę suszoną kupisz teraz u handlarza i od innych graczy bez badania „Materiały budowlane”. Beton u handlarza kosztuje 250 $/szt. Wcześniej nie było ich na rynku, choć beton jest potrzebny do fundamentu pod tory, hali montażowej czy podłogi z lastryka. Badanie dalej odblokowuje suszarnię, piec cementowy i betoniarkę, żeby robić je samemu."

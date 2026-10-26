@@ -135,6 +135,7 @@ public static class TechTree
     public const string BioLab = "bio_lab";
     public const string Farmsteads = "farmsteads";
     public const string ManorFarms = "manor_farms";
+    public const string Feeders = "feeders";
 
     // The crafting tree: one technology for each of its items, named after it.
     public const string Lubricant = "lubricant";
@@ -531,6 +532,9 @@ public static class TechTree
         new(ManorFarms, "Folwark", "Folwark obrabia większe pole, sieje szybciej rosnące uprawy i mieści więcej plonów.",
             [Farmsteads, Breeding], [(Items.Wheat, 100), (Items.Bricks, 20), (Items.Provisions, 5)], TimeSpan.FromMinutes(4), 80,
             [Items.ManorFarm]),
+        new(Feeders, "Karmniki", "Karmnik sam karmi głodne zwierzęta do 3 pól wokół siebie paszą wsypaną ręcznie albo podajnikiem.",
+            [], [(Items.Wheat, 30), (Items.Planks, 20)], TimeSpan.FromSeconds(90), 30,
+            [Items.Feeder]),
         // The crafting tree, level by level: each technology unlocks one item and needs the technologies of its ingredients first.
         new(Lubricant, "Smar techniczny", "Smaruje łożyska, przekładnie i siłowniki.",
             [Refining], [(Items.Kerosene, 10), (Items.Wax, 5)], TimeSpan.FromMinutes(2), 20,
@@ -725,7 +729,7 @@ public static class TechTree
         new("food", "Przetwórstwo", Items.Bread,
             [Milling, OilPressing, Pickling, Baking, RollerMilling, GrainStorage, Cooking, Provisions, FlourIndustry, Confectionery]),
         new("husbandry", "Hodowla", Items.Cow,
-            [Breeding, Dairying, Distilling, Farmsteads, Butchery, Biogas, WorksCanteens, WorkMeals, BioLab, Horsemanship, FineCuisine, ManorFarms]),
+            [Breeding, Feeders, Dairying, Distilling, Farmsteads, Butchery, Biogas, WorksCanteens, WorkMeals, BioLab, Horsemanship, FineCuisine, ManorFarms]),
         new("energy", "Energia", Items.WindTurbine, [Hydropower, HydroPlant, WindPower, LargeWind]),
         new("oil", "Ropa i gaz", Items.CrudeOil,
             [OilExtraction, Refining, EnhancedRecovery, OffshoreDrilling, Cracking, Petrochemistry, Combustion, Roads]),

@@ -993,5 +993,9 @@
  "receiving_chest_4": {
   "anchorX": 40,
   "anchorY": 47
+ },
+ "feeder": {
+  "anchorX": 56,
+  "anchorY": 62
  }
 }

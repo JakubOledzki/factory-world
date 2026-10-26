@@ -142,6 +142,7 @@ const ERRORS := {
 	"banquet_needed": "Potrzeba wykwintnych dań w magazynie lub ekwipunku: pieczeni wołowej albo sernika (bankiet na giełdę: 200, festyn: 100).",
 	"canteen_full": "Stołówka ma już jedzenie na 48 godzin.",
 	"farmstead_full": "Zagroda mieści najwyżej 50 obornika.",
+	"feeder_full": "Karmnik jest pełny (najwyżej 60 sztuk paszy).",
 	"no_feed": "Konie potrzebują paszy treściwej na stacji (1 sztuka na każde 10 km).",
 	"no_stable": "Konia wypuścisz tylko na działce ze stajnią.",
 	"not_a_meal": "Tego nie zjesz w biegu. Spróbuj chleba, kanapki z serem albo gulaszu drwala.",
