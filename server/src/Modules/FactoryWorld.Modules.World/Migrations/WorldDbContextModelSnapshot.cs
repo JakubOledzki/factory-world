@@ -933,6 +933,31 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plot_harvests", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotLikeRow", b =>
+                {
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("player_id");
+
+                    b.Property<DateTimeOffset>("LikedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("liked_at");
+
+                    b.HasKey("X", "Y", "PlayerId");
+
+                    b.HasIndex("PlayerId");
+
+                    b.ToTable("plot_likes", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.PlotMine", b =>
                 {
                     b.Property<int>("X")

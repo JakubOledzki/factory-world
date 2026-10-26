@@ -319,19 +319,31 @@ public sealed class DrillService(
         }
 
         var statuses = new List<MachineStatus>();
-        var now = time.GetUtcNow();
         foreach (var (x, y) in plotsOf)
         {
-            foreach (var drill in (await OpenAsync(x, y, cancellationToken)).Where(d => d.Object.Owner == owner))
-            {
-                drill.Patch.Advance(now, drill.Clock.At(now));
-                await SaveAsync(x, y, drill, cancellationToken);
-                var activity = drill.Patch.Full ? MachineActivity.OutputFull
-                    : drill.Clock.Speed(now) <= 0 ? MachineActivity.NoPower
-                    : drill.Patch.Waiting ? MachineActivity.NoInput
-                    : MachineActivity.Working;
-                statuses.Add(new MachineStatus(drill.Object.Id, drill.Object.Kind, null, activity, []));
-            }
+            statuses.AddRange(await OnPlotAsync(x, y, owner, cancellationToken));
+        }
+
+        return statuses;
+    }
+
+    public Task<IReadOnlyList<MachineStatus>> StatusesOnPlotAsync(int x, int y, IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        OnPlotAsync(x, y, null, cancellationToken);
+
+    /// <summary>The plot's drills, only <paramref name="owner"/>'s when given.</summary>
+    private async Task<IReadOnlyList<MachineStatus>> OnPlotAsync(int x, int y, Guid? owner, CancellationToken cancellationToken)
+    {
+        var statuses = new List<MachineStatus>();
+        var now = time.GetUtcNow();
+        foreach (var drill in (await OpenAsync(x, y, cancellationToken)).Where(d => owner is null || d.Object.Owner == owner))
+        {
+            drill.Patch.Advance(now, drill.Clock.At(now));
+            await SaveAsync(x, y, drill, cancellationToken);
+            var activity = drill.Patch.Full ? MachineActivity.OutputFull
+                : drill.Clock.Speed(now) <= 0 ? MachineActivity.NoPower
+                : drill.Patch.Waiting ? MachineActivity.NoInput
+                : MachineActivity.Working;
+            statuses.Add(new MachineStatus(drill.Object.Id, drill.Object.Kind, null, activity, []));
         }
 
         return statuses;

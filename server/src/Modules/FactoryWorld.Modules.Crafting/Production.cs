@@ -80,17 +80,26 @@ internal static class MachineProduction
 /// <summary>What each of the player's furnaces and processing machines is doing now.</summary>
 public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, IPlotObjects plots, IPlotRegistry registry, TimeProvider time) : IMachineStatuses
 {
-    public async Task<IReadOnlyList<MachineStatus>> StatusesAsync(Guid owner, CancellationToken cancellationToken)
+    public Task<IReadOnlyList<MachineStatus>> StatusesAsync(Guid owner, CancellationToken cancellationToken) =>
+        ReadAsync("owner_id = @owner", "owner", owner, cancellationToken);
+
+    public Task<IReadOnlyList<MachineStatus>> StatusesOnPlotAsync(int x, int y, IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        ids.Count == 0
+            ? Task.FromResult<IReadOnlyList<MachineStatus>>([])
+            : ReadAsync("object_id = ANY(@ids)", "ids", ids.ToArray(), cancellationToken);
+
+    /// <summary>The furnaces and machines <paramref name="where"/> picks, with <paramref name="value"/> as its one parameter.</summary>
+    private async Task<IReadOnlyList<MachineStatus>> ReadAsync(string where, string parameter, object value, CancellationToken cancellationToken)
     {
         var now = time.GetUtcNow();
         var statuses = new List<MachineStatus>();
         await using (var furnaces = await db.CommandAsync(
-            """
+            $"""
             SELECT object_id, input_item, input_quantity, fuel, heat, output_item, output_quantity, started_at, kind
-            FROM crafting.furnaces WHERE owner_id = @owner
+            FROM crafting.furnaces WHERE {where}
             """, cancellationToken))
         {
-            furnaces.Parameters.AddWithValue("owner", owner);
+            furnaces.Parameters.AddWithValue(parameter, value);
             await using var reader = await furnaces.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
@@ -106,12 +115,12 @@ public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, IPlotOb
 
         var stored = new List<(Guid Id, ProcessingMachine Machine, MachineState State)>();
         await using (var machines = await db.CommandAsync(
-            """
+            $"""
             SELECT object_id, kind, recipe, inputs, fuel_item, fuel, heat, output, started_at, extras
-            FROM crafting.machines WHERE owner_id = @owner
+            FROM crafting.machines WHERE {where}
             """, cancellationToken))
         {
-            machines.Parameters.AddWithValue("owner", owner);
+            machines.Parameters.AddWithValue(parameter, value);
             await using var reader = await machines.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {

@@ -486,21 +486,30 @@ public sealed class ForesterService(
         }
 
         var statuses = new List<MachineStatus>();
-        var now = time.GetUtcNow();
         foreach (var (x, y) in plotsOf)
         {
-            var forests = await OpenAsync(x, y, now, cancellationToken);
-            foreach (var forester in forests)
-            {
-                forester.Patch.Advance(now);
-            }
-
-            await SaveAsync(x, y, forests, cancellationToken);
-            statuses.AddRange(forests.Where(f => f.Object.Owner == owner).Select(f => new MachineStatus(
-                f.Object.Id, f.Object.Kind, f.Patch.Species.Wood, f.Patch.Full ? MachineActivity.OutputFull : MachineActivity.Working, [])));
+            statuses.AddRange(await OnPlotAsync(x, y, owner, cancellationToken));
         }
 
         return statuses;
+    }
+
+    public Task<IReadOnlyList<MachineStatus>> StatusesOnPlotAsync(int x, int y, IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        OnPlotAsync(x, y, null, cancellationToken);
+
+    /// <summary>The plot's foresters, only <paramref name="owner"/>'s when given.</summary>
+    private async Task<IReadOnlyList<MachineStatus>> OnPlotAsync(int x, int y, Guid? owner, CancellationToken cancellationToken)
+    {
+        var now = time.GetUtcNow();
+        var forests = await OpenAsync(x, y, now, cancellationToken);
+        foreach (var forester in forests)
+        {
+            forester.Patch.Advance(now);
+        }
+
+        await SaveAsync(x, y, forests, cancellationToken);
+        return forests.Where(f => owner is null || f.Object.Owner == owner).Select(f => new MachineStatus(
+            f.Object.Id, f.Object.Kind, f.Patch.Species.Wood, f.Patch.Full ? MachineActivity.OutputFull : MachineActivity.Working, [])).ToList();
     }
 
     /// <summary>The foresters of a plot with their forests, locked until the transaction ends. A forester

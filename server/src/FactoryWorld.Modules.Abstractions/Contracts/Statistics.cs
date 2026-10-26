@@ -55,4 +55,7 @@ public enum MachineActivity
 public interface IMachineStatuses
 {
     Task<IReadOnlyList<MachineStatus>> StatusesAsync(Guid owner, CancellationToken cancellationToken);
+
+    /// <summary>What each machine on one plot is doing, whoever owns it; <paramref name="ids"/> are the objects standing there.</summary>
+    Task<IReadOnlyList<MachineStatus>> StatusesOnPlotAsync(int x, int y, IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken);
 }

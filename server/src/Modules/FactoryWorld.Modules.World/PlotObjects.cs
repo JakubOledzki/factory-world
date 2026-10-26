@@ -18,6 +18,9 @@ namespace FactoryWorld.Modules.World;
 /// </summary>
 public static class PlotObjects
 {
+    /// <summary>The most objects one building plan puts up (or takes down) at once.</summary>
+    public const int MaxPlan = 100;
+
     /// <summary>Items that can be put on a plot.</summary>
     public static readonly IReadOnlySet<string> Placeable = new HashSet<string>
     {
@@ -146,6 +149,9 @@ public static class PlotObjects
 
 public sealed record PlacedOnPlot(Guid Id, string Kind, int TileX, int TileY, int Rotation = 0);
 
+/// <summary>One object of a building plan: what to put where, turned how.</summary>
+public sealed record PlannedObject(string? Kind, int TileX, int TileY, int Rotation = 0);
+
 /// <summary>Told about every object put on a plot, in the same transaction, e.g. so a forester starts its work then.</summary>
 public interface IPlacedHook
 {
@@ -176,86 +182,114 @@ public sealed class PlotObjectService(
 
     /// <summary>Puts an object from the inventory on a free tile of the player's plot, turned by <paramref name="rotation"/> quarter turns.</summary>
     public Task<PlacedOnPlot> PlaceAsync(Guid player, int x, int y, string kind, int tileX, int tileY, int rotation, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(() => PlaceOneAsync(player, x, y, kind, tileX, tileY, rotation, true, cancellationToken), cancellationToken);
+
+    /// <summary>Puts up a whole building plan at once: all of its objects or, when one of them cannot stand
+    /// where planned, none. The plot's machinery is brought up to now once for the lot, not once per object.</summary>
+    public Task<IReadOnlyList<PlacedOnPlot>> PlaceManyAsync(Guid player, int x, int y, IReadOnlyList<PlannedObject> objects, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            if (!PlotObjects.Placeable.Contains(kind))
+            if (objects.Count is 0 || objects.Count > PlotObjects.MaxPlan)
             {
-                throw new GameException("not_placeable", "This item cannot be put on a plot.");
+                throw new GameException("bad_plan", $"A building plan holds 1 to {PlotObjects.MaxPlan} objects.");
             }
 
-            if (rotation is < 0 or > 3)
-            {
-                throw new GameException("bad_rotation", "Rotation is 0, 1, 2 or 3 quarter turns.");
-            }
-
-            var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken);
-            foreach (var (tx, ty) in Footprints.Tiles(kind, tileX, tileY))
-            {
-                if ((tx, ty) == PlotLayout.Spawn || !await plots.FreeAsync(player, x, y, tx, ty, cancellationToken))
-                {
-                    throw new GameException("blocked", Footprints.Size(kind) > 1 ? $"It needs {Footprints.Size(kind)} × {Footprints.Size(kind)} free tiles." : "Something stands here.");
-                }
-            }
-
-            if (Items.IsForester(kind) && Forestry.GrowTime(biome) is null)
-            {
-                throw new GameException("no_forestry", "No trees grow here.");
-            }
-
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
             await CatchUpAsync(x, y, cancellationToken);
-            PlotObjects.RequireSite(kind, x, y, biome, tileX, tileY, await ObjectsAsync(x, y, cancellationToken));
-            if (Items.IsBoat(kind))
+            var placed = new List<PlacedOnPlot>();
+            foreach (var o in objects)
             {
-                await beach.RequireRoomForBoatAsync(x, y, biome, cancellationToken);
+                placed.Add(await PlaceOneAsync(player, x, y, o.Kind ?? "", o.TileX, o.TileY, o.Rotation, false, cancellationToken));
             }
 
-            await oil.RequireSiteAsync(kind, x, y, await ObjectsAsync(x, y, cancellationToken), cancellationToken);
-            await ExportSites.RequireAsync(db, map, towns, kind, x, y, cancellationToken);
-            if (kind == Items.CompanyHq)
-            {
-                // A company's headquarters stands on a plot brought into the company.
-                PlotCompany? company = null;
-                foreach (var c in companies)
-                {
-                    company ??= await c.CompanyAsync(player, x, y, cancellationToken);
-                }
-
-                if (company is not { Member: true })
-                {
-                    throw new GameException("hq_off_company", "Headquarters stand on a plot of your company.");
-                }
-            }
-
-            await inventory.RemoveAsync(player, kind, 1, cancellationToken);
-            var placed = new PlacedOnPlot(Guid.NewGuid(), kind, tileX, tileY, rotation);
-            await using var insert = await db.CommandAsync(
-                """
-                INSERT INTO world.plot_objects (id, x, y, tile_x, tile_y, owner_id, kind, rotation)
-                VALUES (@id, @x, @y, @tx, @ty, @owner, @kind, @rotation)
-                ON CONFLICT DO NOTHING
-                """, cancellationToken);
-            insert.Parameters.AddWithValue("id", placed.Id);
-            insert.Parameters.AddWithValue("x", x);
-            insert.Parameters.AddWithValue("y", y);
-            insert.Parameters.AddWithValue("tx", tileX);
-            insert.Parameters.AddWithValue("ty", tileY);
-            insert.Parameters.AddWithValue("owner", player);
-            insert.Parameters.AddWithValue("kind", kind);
-            insert.Parameters.AddWithValue("rotation", rotation);
-            var inserted = await insert.ExecuteNonQueryAsync(cancellationToken);
-            query.Forget();
-            if (inserted == 0)
-            {
-                throw new GameException("blocked", "Something stands here.");
-            }
-
-            foreach (var hook in placing)
-            {
-                await hook.PlacedAsync(player, x, y, placed, cancellationToken);
-            }
-
-            return placed;
+            return (IReadOnlyList<PlacedOnPlot>)placed;
         }, cancellationToken);
+
+    private async Task<PlacedOnPlot> PlaceOneAsync(Guid player, int x, int y, string kind, int tileX, int tileY, int rotation, bool catchUp, CancellationToken cancellationToken)
+    {
+        if (!PlotObjects.Placeable.Contains(kind))
+        {
+            throw new GameException("not_placeable", "This item cannot be put on a plot.");
+        }
+
+        if (rotation is < 0 or > 3)
+        {
+            throw new GameException("bad_rotation", "Rotation is 0, 1, 2 or 3 quarter turns.");
+        }
+
+        var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+        foreach (var (tx, ty) in Footprints.Tiles(kind, tileX, tileY))
+        {
+            if ((tx, ty) == PlotLayout.Spawn || !await plots.FreeAsync(player, x, y, tx, ty, cancellationToken))
+            {
+                throw new GameException("blocked", Footprints.Size(kind) > 1 ? $"It needs {Footprints.Size(kind)} × {Footprints.Size(kind)} free tiles." : "Something stands here.");
+            }
+        }
+
+        if (Items.IsForester(kind) && Forestry.GrowTime(biome) is null)
+        {
+            throw new GameException("no_forestry", "No trees grow here.");
+        }
+
+        if (catchUp)
+        {
+            await CatchUpAsync(x, y, cancellationToken);
+        }
+
+        var standing = await ObjectsAsync(x, y, cancellationToken);
+        PlotObjects.RequireSite(kind, x, y, biome, tileX, tileY, standing);
+        if (Items.IsBoat(kind))
+        {
+            await beach.RequireRoomForBoatAsync(x, y, biome, cancellationToken);
+        }
+
+        await oil.RequireSiteAsync(kind, x, y, standing, cancellationToken);
+        await ExportSites.RequireAsync(db, map, towns, kind, x, y, cancellationToken);
+        if (kind == Items.CompanyHq)
+        {
+            // A company's headquarters stands on a plot brought into the company.
+            PlotCompany? company = null;
+            foreach (var c in companies)
+            {
+                company ??= await c.CompanyAsync(player, x, y, cancellationToken);
+            }
+
+            if (company is not { Member: true })
+            {
+                throw new GameException("hq_off_company", "Headquarters stand on a plot of your company.");
+            }
+        }
+
+        await inventory.RemoveAsync(player, kind, 1, cancellationToken);
+        var placed = new PlacedOnPlot(Guid.NewGuid(), kind, tileX, tileY, rotation);
+        await using var insert = await db.CommandAsync(
+            """
+            INSERT INTO world.plot_objects (id, x, y, tile_x, tile_y, owner_id, kind, rotation)
+            VALUES (@id, @x, @y, @tx, @ty, @owner, @kind, @rotation)
+            ON CONFLICT DO NOTHING
+            """, cancellationToken);
+        insert.Parameters.AddWithValue("id", placed.Id);
+        insert.Parameters.AddWithValue("x", x);
+        insert.Parameters.AddWithValue("y", y);
+        insert.Parameters.AddWithValue("tx", tileX);
+        insert.Parameters.AddWithValue("ty", tileY);
+        insert.Parameters.AddWithValue("owner", player);
+        insert.Parameters.AddWithValue("kind", kind);
+        insert.Parameters.AddWithValue("rotation", rotation);
+        var inserted = await insert.ExecuteNonQueryAsync(cancellationToken);
+        query.Forget();
+        if (inserted == 0)
+        {
+            throw new GameException("blocked", "Something stands here.");
+        }
+
+        foreach (var hook in placing)
+        {
+            await hook.PlacedAsync(player, x, y, placed, cancellationToken);
+        }
+
+        return placed;
+    }
 
     /// <summary>Turns an object on the player's plot to face another way, e.g. a belt to carry elsewhere.</summary>
     public Task<PlacedOnPlot> RotateAsync(Guid player, int x, int y, Guid id, int rotation, CancellationToken cancellationToken) =>
@@ -290,50 +324,73 @@ public sealed class PlotObjectService(
     /// <summary>Takes an object off the player's plot back into the inventory, with whatever it holds. On a
     /// company's plot a member who may build picks up what they put there; the plot's owner picks up anything.</summary>
     public Task PickUpAsync(Guid player, int x, int y, Guid id, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(() => PickUpOneAsync(player, x, y, id, true, cancellationToken), cancellationToken);
+
+    /// <summary>Takes several objects off the plot at once, e.g. to undo a building plan: all of them or none.</summary>
+    public Task PickUpManyAsync(Guid player, int x, int y, IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var owner = (await plots.RightsAsync(player, x, y, cancellationToken)).Contains(PlotRight.Owner);
+            if (ids.Count is 0 || ids.Count > PlotObjects.MaxPlan || ids.Distinct().Count() != ids.Count)
+            {
+                throw new GameException("bad_plan", $"Pick up 1 to {PlotObjects.MaxPlan} different objects.");
+            }
+
             await plots.RequireOwnerAsync(player, x, y, cancellationToken);
-            (int X, int Y)? tile = null;
-            await using (var find = await db.CommandAsync("SELECT tile_x, tile_y FROM world.plot_objects WHERE id = @id AND x = @x AND y = @y", cancellationToken))
-            {
-                find.Parameters.AddWithValue("id", id);
-                find.Parameters.AddWithValue("x", x);
-                find.Parameters.AddWithValue("y", y);
-                await using var reader = await find.ExecuteReaderAsync(cancellationToken);
-                if (await reader.ReadAsync(cancellationToken))
-                {
-                    tile = (reader.GetInt32(0), reader.GetInt32(1));
-                }
-            }
-
-            if (tile is { } t)
-            {
-                await plots.RequireDugOutAsync(x, y, t.X, t.Y, cancellationToken);
-            }
-
             await CatchUpAsync(x, y, cancellationToken);
-            await using var delete = await db.CommandAsync(
-                """
-                DELETE FROM world.plot_objects WHERE id = @id AND x = @x AND y = @y AND (owner_id = @player OR @owner)
-                RETURNING kind
-                """, cancellationToken);
-            delete.Parameters.AddWithValue("id", id);
-            delete.Parameters.AddWithValue("x", x);
-            delete.Parameters.AddWithValue("y", y);
-            delete.Parameters.AddWithValue("player", player);
-            delete.Parameters.AddWithValue("owner", owner);
-            var deleted = await delete.ExecuteScalarAsync(cancellationToken) as string;
-            query.Forget();
-            var kind = deleted
-                ?? throw new GameException(owner ? "no_object" : "not_yours", "There is no such object of yours on this plot.");
-            foreach (var machine in machines)
+            foreach (var id in ids)
             {
-                await machine.ReleaseAsync(player, id, cancellationToken);
+                await PickUpOneAsync(player, x, y, id, false, cancellationToken);
             }
-
-            await inventory.AddAsync(player, kind, 1, cancellationToken);
         }, cancellationToken);
+
+    private async Task PickUpOneAsync(Guid player, int x, int y, Guid id, bool catchUp, CancellationToken cancellationToken)
+    {
+        var owner = (await plots.RightsAsync(player, x, y, cancellationToken)).Contains(PlotRight.Owner);
+        await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+        (int X, int Y)? tile = null;
+        await using (var find = await db.CommandAsync("SELECT tile_x, tile_y FROM world.plot_objects WHERE id = @id AND x = @x AND y = @y", cancellationToken))
+        {
+            find.Parameters.AddWithValue("id", id);
+            find.Parameters.AddWithValue("x", x);
+            find.Parameters.AddWithValue("y", y);
+            await using var reader = await find.ExecuteReaderAsync(cancellationToken);
+            if (await reader.ReadAsync(cancellationToken))
+            {
+                tile = (reader.GetInt32(0), reader.GetInt32(1));
+            }
+        }
+
+        if (tile is { } t)
+        {
+            await plots.RequireDugOutAsync(x, y, t.X, t.Y, cancellationToken);
+        }
+
+        if (catchUp)
+        {
+            await CatchUpAsync(x, y, cancellationToken);
+        }
+
+        await using var delete = await db.CommandAsync(
+            """
+            DELETE FROM world.plot_objects WHERE id = @id AND x = @x AND y = @y AND (owner_id = @player OR @owner)
+            RETURNING kind
+            """, cancellationToken);
+        delete.Parameters.AddWithValue("id", id);
+        delete.Parameters.AddWithValue("x", x);
+        delete.Parameters.AddWithValue("y", y);
+        delete.Parameters.AddWithValue("player", player);
+        delete.Parameters.AddWithValue("owner", owner);
+        var deleted = await delete.ExecuteScalarAsync(cancellationToken) as string;
+        query.Forget();
+        var kind = deleted
+            ?? throw new GameException(owner ? "no_object" : "not_yours", "There is no such object of yours on this plot.");
+        foreach (var machine in machines)
+        {
+            await machine.ReleaseAsync(player, id, cancellationToken);
+        }
+
+        await inventory.AddAsync(player, kind, 1, cancellationToken);
+    }
 
     /// <summary>Any object on a plot the player may work on: their own, or one of their company's.</summary>
     public async Task<string?> KindAsync(Guid owner, Guid id, CancellationToken cancellationToken)
@@ -468,6 +525,41 @@ public sealed record PlaceOnPlotRequest(int X, int Y, string Kind, int TileX, in
 public sealed record RotateOnPlotRequest(int X, int Y, Guid Id, int Rotation);
 
 public sealed record PickUpFromPlotRequest(int X, int Y, Guid Id);
+
+public sealed record PlaceManyRequest(int X, int Y, PlannedObject[]? Objects);
+
+public sealed record PickUpManyRequest(int X, int Y, Guid[]? Ids);
+
+/// <summary>Puts up a copied building plan in one go.</summary>
+public sealed class PlaceManyOnPlotHandler(IServiceScopeFactory scopes) : IMessageHandler
+{
+    public string Type => "plot.placeMany";
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<PlaceManyRequest>(payload);
+        await using var scope = scopes.CreateAsyncScope();
+        var placed = await scope.ServiceProvider.GetRequiredService<PlotObjectService>().PlaceManyAsync(
+            client.RequireAccount(), request.X, request.Y, request.Objects ?? [], cancellationToken);
+        return new Reply("plot.placedMany", new { objects = placed.Select(PlaceOnPlotHandler.ObjectJson) });
+    }
+}
+
+/// <summary>Takes several objects off the plot in one go, e.g. to undo a building plan.</summary>
+public sealed class PickUpManyFromPlotHandler(IServiceScopeFactory scopes) : IMessageHandler
+{
+    public string Type => "plot.pickupMany";
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<PickUpManyRequest>(payload);
+        var ids = request.Ids ?? [];
+        await using var scope = scopes.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<PlotObjectService>()
+            .PickUpManyAsync(client.RequireAccount(), request.X, request.Y, ids, cancellationToken);
+        return new Reply("plot.pickedUpMany", new { ids });
+    }
+}
 
 public sealed class PlaceOnPlotHandler(IServiceScopeFactory scopes) : IMessageHandler
 {

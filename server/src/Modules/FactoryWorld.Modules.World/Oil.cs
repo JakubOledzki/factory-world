@@ -452,18 +452,30 @@ public sealed class OilService(
         }
 
         var statuses = new List<MachineStatus>();
-        var now = time.GetUtcNow();
         foreach (var (x, y) in plotsOf)
         {
-            foreach (var opened in (await OpenAsync(x, y, cancellationToken)).Where(w => w.Object.Owner == owner))
-            {
-                var well = await AdvanceAsync(x, y, opened, cancellationToken);
-                var activity = well.Patch.Full ? MachineActivity.OutputFull
-                    : well.Clock.Speed(now) <= 0 ? MachineActivity.NoPower
-                    : well.Left <= 0 ? MachineActivity.NoInput
-                    : MachineActivity.Working;
-                statuses.Add(new MachineStatus(well.Object.Id, well.Object.Kind, well.Patch.Product, activity, []));
-            }
+            statuses.AddRange(await OnPlotAsync(x, y, owner, cancellationToken));
+        }
+
+        return statuses;
+    }
+
+    public Task<IReadOnlyList<MachineStatus>> StatusesOnPlotAsync(int x, int y, IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        OnPlotAsync(x, y, null, cancellationToken);
+
+    /// <summary>The plot's wells, only <paramref name="owner"/>'s when given.</summary>
+    private async Task<IReadOnlyList<MachineStatus>> OnPlotAsync(int x, int y, Guid? owner, CancellationToken cancellationToken)
+    {
+        var statuses = new List<MachineStatus>();
+        var now = time.GetUtcNow();
+        foreach (var opened in (await OpenAsync(x, y, cancellationToken)).Where(w => owner is null || w.Object.Owner == owner))
+        {
+            var well = await AdvanceAsync(x, y, opened, cancellationToken);
+            var activity = well.Patch.Full ? MachineActivity.OutputFull
+                : well.Clock.Speed(now) <= 0 ? MachineActivity.NoPower
+                : well.Left <= 0 ? MachineActivity.NoInput
+                : MachineActivity.Working;
+            statuses.Add(new MachineStatus(well.Object.Id, well.Object.Kind, well.Patch.Product, activity, []));
         }
 
         return statuses;
