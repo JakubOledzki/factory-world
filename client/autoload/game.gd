@@ -86,6 +86,8 @@ const ERRORS := {
 	"no_field": "Najpierw zaorz tu ziemię motyką.",
 	"no_forestry": "Na lodowcu i w górach drzewa nie rosną: nie da się tu sadzić ani stawiać budynków leśnika.",
 	"not_ripe": "To jeszcze nie dojrzało.",
+	"reap_first": "Najpierw zbierz to, co dojrzało na tym polu.",
+	"farmstead_field": "To pole należy do zagrody rolnika: zniknie razem z nią, gdy ją schowasz.",
 	"no_mine": "Na tej działce nie ma takiej kopalni.",
 	"mine_empty": "Kopalnia jest wyczerpana, odnowi się za chwilę.",
 	"mine_max_level": "Ta kopalnia jest już rozbudowana do końca.",

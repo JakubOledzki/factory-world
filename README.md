@@ -155,6 +155,7 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `plot.till` | `{ x, y, tileX, tileY }` | `plot.field` `{ field: { tileX, tileY, crop, readyAt }, items, xp, serverTime }`: motyka w ręku zamienia wolne pole żyznej działki w zaorane pole |
 | `plot.plant` | `{ x, y, tileX, tileY, crop, fertilize? }` | `plot.field`: zasiew na pustym zaoranym polu; z nawozem rośnie dwa razy szybciej |
 | `plot.reap` | `{ x, y, tileX, tileY }` | `plot.field` z `items`: zbiór dojrzałej rośliny, pole zostaje zaorane |
+| `plot.untill` | `{ x, y, tileX, tileY }` | `plot.untilled` `{ tileX, tileY, serverTime }`: zamienia pole zaorane ręcznie z powrotem w wolną ziemię; rosnąca roślina przepada, dojrzałą trzeba najpierw zebrać (`reap_first`), pól zagrody nie da się tak usunąć (`farmstead_field`) |
 | `plot.release` | `{ x, y, tileX, tileY, item }` | `plot.animal` `{ tileX, tileY, animal: { tileX, tileY, kind, name, readyAt }, items, xp, serverTime }`: wypuszcza zwierzę `item` z ekwipunku na wolne pole pastwiska (działki poza pustynią i lodowcem) |
 | `plot.feed` | `{ x, y, tileX, tileY, item }` | `plot.animal`: karmi głodne zwierzę 2 sztukami `item` (pszenica, kukurydza, marchew albo kapusta); `readyAt` mówi, kiedy da produkt |
 | `plot.collect` | `{ x, y, tileX, tileY }` | `plot.animal` z `items`: zbiera produkt nakarmionego zwierzęcia (wełnę tylko z nożycami w ręku), zwierzę znów jest głodne |

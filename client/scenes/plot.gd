@@ -371,6 +371,8 @@ const MANURE := "manure"
 const MANURE_SPEED := 4.0 / 3.0
 const FERTILIZED := 100
 const MANURED := 200
+## The entry of the crop menu that turns the field back into bare ground.
+const UNTILL := 300
 ## A planted tree shows as a sapling until this much of its growing time is left, then young;
 ## grown, it looks like one of the conifers of the forest.
 const SAPLING_UNTIL := 0.5
@@ -1644,12 +1646,13 @@ func _update_field_label(cell: Vector2i) -> void:
 			var left := ceili(_tree_left(cell))
 			_field_label.text = "Sadzonka: urośnie za %d:%02d" % [left / 60, left % 60]
 	elif crop == null:
-		_field_label.text = "Zaorane pole: kliknij, aby zasiać"
+		_field_label.text = "Zaorane pole: kliknij, aby zasiać%s" % (", przytrzymaj, aby usunąć" if _own_field(cell) else "")
 	elif _ripe(cell):
 		_field_label.text = "%s: dojrzała, kliknij, aby zebrać" % _crops[crop]["name"]
 	else:
 		var left := ceili(_crop_left(cell))
-		_field_label.text = "%s: dojrzeje za %d:%02d" % [_crops[crop]["name"], left / 60, left % 60]
+		_field_label.text = "%s: dojrzeje za %d:%02d%s" % [_crops[crop]["name"], left / 60, left % 60,
+			" · przytrzymaj, aby usunąć pole" if _own_field(cell) else ""]
 	_field_label.reset_size()
 	_field_label.position = _screen(_cell_centre(cell)) - Vector2(_field_label.size.x / 2, 70 * _zoom + 24)
 
@@ -2361,6 +2364,9 @@ func _open_crop_menu(cell: Vector2i) -> void:
 			var minutes := roundi(float(crop["growSeconds"]) / 60.0 / MANURE_SPEED)
 			_crop_menu.add_icon_item(UI.texture("icons/item_" + MANURE),
 				"%s na oborniku  ·  %d min" % [crop["name"], maxi(1, minutes)], MANURED + i)
+	if _own_field(cell):
+		_crop_menu.add_separator()
+		_crop_menu.add_item("Usuń pole", UNTILL)
 	_crop_menu.reset_size()
 	var at := get_viewport().get_mouse_position() + Vector2(12, 4)
 	_crop_menu.popup(Rect2i(Vector2i(at), Vector2i.ZERO))
@@ -2369,6 +2375,9 @@ func _open_crop_menu(cell: Vector2i) -> void:
 func _on_crop_chosen(index: int) -> void:
 	var cell := _menu_cell
 	_menu_cell = Vector2i(-1, -1)
+	if index == UNTILL:
+		_go_and(cell, _untill)
+		return
 	var manure := index >= MANURED
 	var fertilize := not manure and index >= FERTILIZED
 	var crop: String = CROPS[index - MANURED if manure else index - FERTILIZED if fertilize else index]
@@ -2391,6 +2400,25 @@ func _reap(cell: Vector2i) -> void:
 	if reply["type"] == "plot.field" and sprite != "":
 		_vanish(sprite, cell, false)
 	_apply_field(reply)
+
+
+## Whether this is a field tilled by hand, which can be turned back into bare ground (a farmstead's fields go with it).
+func _own_field(cell: Vector2i) -> bool:
+	return _fields.has(cell) and not _farm_fields.has(cell)
+
+
+func _untill(cell: Vector2i) -> void:
+	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
+	var reply := await Net.request("plot.untill", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y})
+	if reply["type"] != "plot.untilled":
+		_show_error(reply)
+		return
+	_fields.erase(cell)
+	if _hovered == cell:
+		_hovered = Vector2i(-1, -1)
+	_draw_cell(cell)
+	_set_minimap(cell, NONE)
+	_show_toast("Pole usunięte, ziemia znów jest wolna.")
 
 
 ## Shows the server's answer to tilling, sowing or reaping.
@@ -3044,11 +3072,26 @@ func _stop_hold() -> void:
 		_marks.queue_redraw()
 
 
-## The id of the placed object under the mouse, or "" when there is none (or the mouse is over the interface).
+## The id of the placed object under the mouse, "field:x,y" for a field tilled by hand there,
+## or "" when there is none (or the mouse is over the interface).
 func _held_id() -> String:
 	if _placing != "" or _releasing != "":
 		return ""
-	return str(_placed[_hovered]["id"]) if _placed.has(_hovered) else ""
+	if _placed.has(_hovered):
+		return str(_placed[_hovered]["id"])
+	var ground := _ground_cell()
+	if _hovered.x < 0 and _own_field(ground):
+		return "field:%d,%d" % [ground.x, ground.y]
+	return ""
+
+
+## The tile of a held field ("field:x,y"), or (-1, -1) when the hold is on an object or the field is gone.
+func _held_field(id: String) -> Vector2i:
+	if not id.begins_with("field:"):
+		return Vector2i(-1, -1)
+	var at := id.trim_prefix("field:").split(",")
+	var cell := Vector2i(int(at[0]), int(at[1]))
+	return cell if _own_field(cell) else Vector2i(-1, -1)
 
 
 ## Counts the hold up, calls it off when the button is let go or the mouse leaves the object, and puts the
@@ -3069,6 +3112,15 @@ func _update_hold(delta: float) -> void:
 		return
 	var id := _hold_id
 	_stop_hold()
+	if id.begins_with("field:"):
+		var field := _held_field(id)
+		if field.x >= 0:
+			_crop_menu.hide()
+			_menu_cell = Vector2i(-1, -1)
+			_go_and(field, func(at: Vector2i) -> void:
+				if _own_field(at):
+					_untill(at))
+		return
 	var cell := _placed_cell(id)
 	if cell.x < 0:
 		return
@@ -3091,10 +3143,12 @@ func _placed_cell(id: String) -> Vector2i:
 
 ## The ring filling up around the object being held.
 func _draw_hold() -> void:
-	var cell := _placed_cell(_hold_id)
+	var field := _held_field(_hold_id)
+	var cell := field if field.x >= 0 else _placed_cell(_hold_id)
 	if cell.x < 0:
 		return
-	var kind: String = _placed[cell]["kind"]
+	# A field is one tile, like the smallest object.
+	var kind: String = _placed[cell]["kind"] if field.x < 0 else ""
 	var size := _ring_size(kind) * 1.15
 	var at := _object_centre(kind, _anchor(cell)) if _big(kind) else _cell_centre(cell)
 	var part := clampf(_hold_for / HOLD_TO_PICK_UP, 0.0, 1.0)

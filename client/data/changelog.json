@@ -1,6 +1,13 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Usuwanie pól",
+		"changes": [
+			"Pole zaorane motyką można teraz usunąć: przytrzymaj na nim prawy przycisk myszy (na telefonie przytrzymaj palec) albo kliknij puste pole i wybierz „Usuń pole”. Ziemia znów jest wolna, można na niej coś postawić. Roślina, która jeszcze rośnie, przepada; dojrzałą trzeba najpierw zebrać. Pola zagrody rolnika znikają tylko razem z zagrodą."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Beton u handlarza",
 		"changes": [
 			"Beton, cement i cegłę suszoną kupisz teraz u handlarza i od innych graczy bez badania „Materiały budowlane”. Beton u handlarza kosztuje 250 $/szt. Wcześniej nie było ich na rynku, choć beton jest potrzebny do fundamentu pod tory, hali montażowej czy podłogi z lastryka. Badanie dalej odblokowuje suszarnię, piec cementowy i betoniarkę, żeby robić je samemu."
