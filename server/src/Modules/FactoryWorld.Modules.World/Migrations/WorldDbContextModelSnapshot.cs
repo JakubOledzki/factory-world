@@ -886,21 +886,16 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("y");
 
-                    b.Property<int>("TileX")
-                        .HasColumnType("integer")
-                        .HasColumnName("tile_x");
+                    b.Property<short>("Square")
+                        .HasColumnType("smallint")
+                        .HasColumnName("square");
 
-                    b.Property<int>("TileY")
-                        .HasColumnType("integer")
-                        .HasColumnName("tile_y");
+                    b.PrimitiveCollection<DateTimeOffset?[]>("HarvestedAt")
+                        .IsRequired()
+                        .HasColumnType("timestamp with time zone[]")
+                        .HasColumnName("harvested_at");
 
-                    b.Property<DateTimeOffset>("HarvestedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("harvested_at")
-                        .HasDefaultValueSql("now()");
-
-                    b.HasKey("X", "Y", "TileX", "TileY");
+                    b.HasKey("X", "Y", "Square");
 
                     b.ToTable("plot_harvests", "world");
                 });
