@@ -4,7 +4,7 @@ using FactoryWorld.Modules.Abstractions.Contracts;
 namespace FactoryWorld.Modules.Characters;
 
 /// <summary>What the character has on: tools in the tool bar and a backpack.</summary>
-public sealed class Equipment(GameDb db, IInventory inventory) : IEquipment
+public sealed class Equipment(GameDb db, IInventory inventory, InventorySize size) : IEquipment
 {
     /// <summary>The columns of the tool bar's slots, in order.</summary>
     private static readonly string[] Slots = ["Tool", "Tool2", "Tool3"];
@@ -262,24 +262,41 @@ public sealed class Equipment(GameDb db, IInventory inventory) : IEquipment
         update.Parameters.AddWithValue("item", (object?)item ?? DBNull.Value);
         update.Parameters.AddWithValue("account", accountId);
         await update.ExecuteNonQueryAsync(cancellationToken);
+        if (column == "Backpack")
+        {
+            size.Forget(accountId);
+        }
     }
 
     private sealed record Worn(string?[] Tools, string? Backpack);
 }
 
 /// <summary>Tiles of the inventory: more with a backpack on. Apart from <see cref="Equipment"/>,
-/// which needs the inventory itself.</summary>
+/// which needs the inventory itself. Read once per message (one scope): listing and moving items ask several
+/// times, and only <see cref="Equipment"/> changes the backpack, which then <see cref="Forget"/>s it.</summary>
 public sealed class InventorySize(GameDb db) : IInventorySize
 {
+    private readonly Dictionary<Guid, int> _slots = [];
+
     public async Task<int> SlotsAsync(Guid accountId, CancellationToken cancellationToken)
     {
+        if (_slots.TryGetValue(accountId, out var known))
+        {
+            return known;
+        }
+
         await using var command = await db.CommandAsync(
             """SELECT "Backpack" FROM characters.characters WHERE "AccountId" = @account""", cancellationToken);
         command.Parameters.AddWithValue("account", accountId);
-        return await command.ExecuteScalarAsync(cancellationToken) is string backpack && Items.Backpacks.TryGetValue(backpack, out var b)
+        var slots = await command.ExecuteScalarAsync(cancellationToken) is string backpack && Items.Backpacks.TryGetValue(backpack, out var b)
             ? Items.InventorySlots + b.ExtraSlots
             : Items.InventorySlots;
+        _slots[accountId] = slots;
+        return slots;
     }
+
+    /// <summary>The backpack of <paramref name="accountId"/> changed: read it again next time.</summary>
+    public void Forget(Guid accountId) => _slots.Remove(accountId);
 }
 
 /// <summary>What the worn clothes give, the bonuses of each piece added up per industry, with the level's on top
