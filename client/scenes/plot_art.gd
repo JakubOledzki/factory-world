@@ -43,6 +43,12 @@ static func pixels(name: String, scale := 1.0) -> Image:
 	return image
 
 
+## The part of the picture that is not clear, on screen.
+static func drawn(name: String) -> Rect2:
+	var used := _source(name).get_used_rect()
+	return Rect2(Vector2(used.position) / _supersampling(name), Vector2(used.size) / _supersampling(name))
+
+
 static func _source(name: String) -> Image:
 	var image: Image = load("res://art/plot/%s.png" % name).get_image()
 	if image.is_compressed():

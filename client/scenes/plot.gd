@@ -44,6 +44,10 @@ const TILE := Vector2(64, 45)
 ## The sprites are packed onto pictures this big (every graphics card in a browser takes them), on a grid this fine.
 const PACK_PAGE := 2048
 const PACK_CELL := 16
+## The stone slab a grown machine stands on (see _on_slab): its top, the seams between its tiles and its edge.
+const SLAB := Color(0.47, 0.45, 0.41)
+const SLAB_SEAM := Color(0.41, 0.39, 0.36)
+const SLAB_EDGE := Color(0.29, 0.28, 0.26)
 ## The character is rendered for the garage at 96 px per metre.
 const PLAYER_SCALE := 1.0 / 3.0
 const LIGHT := Color(0.78, 0.76, 0.8)
@@ -860,26 +864,57 @@ func _pack_tile_set(shadows: bool) -> Dictionary:
 	return packed
 
 
-## A sprite's picture and its anchor, as it is drawn. A grown machine's sprite is enlarged to its square
-## and stands in the square's middle. The picture for the pages is PlotArt.SUPERSAMPLING times its size on screen;
-## the mask, for the mouse, is its size on screen.
+## A sprite's picture and its anchor, as it is drawn. A grown machine's sprite is enlarged to its square, stands
+## on a slab that covers the square and has the slab in its picture (its shadow has not, see Footprints.fit).
+## The picture for the pages is PlotArt.SUPERSAMPLING times its size on screen; the mask, for the mouse, is its size on screen.
 func _picture(sprite: String, file: String, looks: bool) -> Dictionary:
 	var anchor := Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"])
 	var kind := _placed_kind(sprite)
-	var scale := 1.0
 	var picture := {"sprite": sprite, "looks": looks}
 	if Footprints.GROWN.has(kind):
-		scale = Footprints.sprite_scale(kind, Vector2(_layout_size(sprite)), TILE)
-		anchor *= scale
-		picture["grown"] = PlotArt.texture(file, scale)
+		var fit := Footprints.fit(kind, PlotArt.drawn(sprite), TILE)
+		var scale: float = fit[0]
+		anchor = fit[1]
+		var image := PlotArt.pixels(file, scale * PlotArt.SUPERSAMPLING)
+		if looks:
+			var slab := _on_slab(kind, image, anchor, PlotArt.SUPERSAMPLING)
+			image = slab["image"]
+			picture["mask"] = _on_slab(kind, PlotArt.mask(file, scale), anchor, 1)["image"]
+			anchor = slab["anchor"]
+			var big: Image = image.duplicate()
+			big.generate_mipmaps()
+			var texture := ImageTexture.create_from_image(big)
+			texture.set_size_override(image.get_size() / PlotArt.SUPERSAMPLING)
+			picture["grown"] = texture
+		picture["image"] = image
+		picture["anchor"] = anchor
+		return picture
 	if Footprints.shift(kind) != Vector2.ZERO:
 		# An even square's middle lies on the corner of its tiles, half a tile right of and below the object's own tile.
 		anchor -= Footprints.shift(kind) * TILE
-	picture["image"] = PlotArt.pixels(file, scale * PlotArt.SUPERSAMPLING)
+	picture["image"] = PlotArt.pixels(file, PlotArt.SUPERSAMPLING)
 	if looks:
-		picture["mask"] = PlotArt.mask(file, scale)
+		picture["mask"] = PlotArt.mask(file)
 	picture["anchor"] = anchor
 	return picture
+
+
+## A grown machine's picture (`factor` times its size on screen) standing on a stone slab over its whole square,
+## with the seams between the tiles and a darker front edge. Returns the new picture and its anchor, on screen.
+func _on_slab(kind: String, image: Image, anchor: Vector2, factor: int) -> Dictionary:
+	var n := Footprints.size(kind)
+	var square := Rect2i(Vector2i((anchor + (Footprints.shift(kind) - Vector2.ONE * n * 0.5) * TILE).round()), Vector2i(TILE * n))
+	var bounds := square.merge(Rect2i(Vector2i.ZERO, image.get_size() / factor))
+	var canvas := Image.create_empty(bounds.size.x * factor, bounds.size.y * factor, false, Image.FORMAT_RGBA8)
+	var at := (square.position - bounds.position) * factor
+	var area := square.size * factor
+	canvas.fill_rect(Rect2i(at, area), SLAB_EDGE)
+	canvas.fill_rect(Rect2i(at + Vector2i.ONE * factor, area - Vector2i(2, 5) * factor), SLAB)
+	for i in range(1, n):
+		canvas.fill_rect(Rect2i(at + Vector2i(roundi(i * TILE.x) * factor, factor), Vector2i(factor, area.y - 5 * factor)), SLAB_SEAM)
+		canvas.fill_rect(Rect2i(at + Vector2i(factor, roundi(i * TILE.y) * factor), Vector2i(area.x - 2 * factor, factor)), SLAB_SEAM)
+	canvas.blend_rect(image, Rect2i(Vector2i.ZERO, image.get_size()), -bounds.position * factor)
+	return {"image": canvas, "anchor": anchor - Vector2(bounds.position)}
 
 
 ## Adds a flat sprite (water, a field, a road) as a tile set's source of its own, anchored on the cell's centre.
@@ -901,11 +936,6 @@ func _add_source(set: TileSet, file: String) -> int:
 func _placed_kind(sprite: String) -> String:
 	var kind: Variant = PLACED_SPRITES.find_key(sprite)
 	return kind if kind != null else ""
-
-
-## The size of a sprite's own picture (its shadow may be bigger), which a grown machine's sprite is enlarged by.
-func _layout_size(sprite: String) -> Vector2i:
-	return Vector2i(PlotArt.texture(sprite).get_size())
 
 
 ## Where a sprite's anchor lies in its picture as drawn: on the cell's centre.
@@ -1252,10 +1282,10 @@ func _is_belt(cell: Vector2i) -> bool:
 	return _placed.has(cell) and _placed[cell]["kind"] in BELTS
 
 
-## Belts and roads lie flat, inserters and the low portals of underground belts are low enough to step
+## Belts and roads lie flat, inserters, splitters and the low portals of underground belts are low enough to step
 ## over and a power pole is thin enough to slip past: the player walks across them.
 func _walkable(cell: Vector2i) -> bool:
-	return _is_belt(cell) or (_placed.has(cell) and (_placed[cell]["kind"] in [ROAD, POLE, UNDERGROUND] or _placed[cell]["kind"] in INSERTERS))
+	return _is_belt(cell) or (_placed.has(cell) and (_placed[cell]["kind"] in [ROAD, POLE, UNDERGROUND, SPLITTER] or _placed[cell]["kind"] in INSERTERS))
 
 
 ## How fast the player walks where they stand: faster on a road.
