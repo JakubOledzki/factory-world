@@ -49,6 +49,11 @@ var _cold := {}
 ## the wires as lines of points, the poles' tiles, the marks over machines ([centre, colour], a null colour for
 ## the frost) and whether the plot has anything to do with power.
 var _wires: Array[PackedVector2Array] = []
+## All the wires as one set of triangles (their corners, colours and which corners make each), drawn with one command:
+## a big plot has hundreds of wires, and a drawing command for each slows every frame.
+var _wire_corners := PackedVector2Array()
+var _wire_colors := PackedColorArray()
+var _wire_triangles := PackedInt32Array()
 var _poles: Array[Vector2i] = []
 var _marks: Array = []
 var _powered := false
@@ -188,9 +193,8 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	_refresh()
-	for points in _wires:
-		draw_polyline(points, WIRE, 2.0, true)
-		draw_polyline(points, WIRE_SHINE, 1.0, true)
+	if not _wire_triangles.is_empty():
+		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), _wire_triangles, _wire_corners, _wire_colors)
 
 
 ## Works out the poles, the wires and the marks over machines again when the objects or the networks changed.
@@ -244,6 +248,28 @@ func _refresh() -> void:
 				_marks.append([centre, null])
 			elif s < 0.999:
 				_marks.append([centre, DARK if s <= 0.0 else SHORT])
+	_build_wire_triangles()
+
+
+## Lays every wire out as strips of triangles: a faint wider one softening its edges, the wire, and its shine.
+func _build_wire_triangles() -> void:
+	_wire_corners = PackedVector2Array()
+	_wire_colors = PackedColorArray()
+	_wire_triangles = PackedInt32Array()
+	for look: Array in [[3.0, Color(WIRE, 0.15)], [2.0, WIRE], [1.0, WIRE_SHINE]]:
+		var half: float = look[0] / 2.0
+		for points in _wires:
+			var first := _wire_corners.size()
+			for k in points.size():
+				var along := points[mini(k + 1, points.size() - 1)] - points[maxi(k - 1, 0)]
+				var side := along.orthogonal().normalized() * half
+				_wire_corners.append(points[k] + side)
+				_wire_corners.append(points[k] - side)
+				_wire_colors.append(look[1])
+				_wire_colors.append(look[1])
+			for k in points.size() - 1:
+				var at := first + k * 2
+				_wire_triangles.append_array([at, at + 1, at + 2, at + 1, at + 3, at + 2])
 
 
 ## Whether a tile is where an object stands (its centre for a big one), so it is marked once.

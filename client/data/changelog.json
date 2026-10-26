@@ -1,6 +1,14 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Płynniejsze chodzenie po dużych działkach",
+		"changes": [
+			"Chodzenie po działce z dużą fabryką już się nie zacina. Druty elektryczne całej działki rysują się teraz naraz, a nie każdy osobno, a drzewa, maszyny i ich cienie są zebrane na kilku wspólnych obrazkach. Na działce testowej gra wysyła do karty graficznej w każdej klatce około 170 poleceń rysowania zamiast prawie 1500.",
+			"Gra nie przegląda też w każdej klatce wszystkich obiektów na działce, żeby sprawdzić, przy czym stoi postać i co jest pod myszką. Patrzy tylko na pola obok."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Szybsze okna na działkach z leśniczówkami",
 		"changes": [
 			"Okna skrzyń, podajników, generatorów, leśniczówek i stacji na działkach z leśniczówkami lub zagrodami otwierają się szybciej. Wcześniej każda leśniczówka i zagroda przeliczała od nowa całą działkę, a na dużych działkach trwało to nawet kilkanaście sekund.",
