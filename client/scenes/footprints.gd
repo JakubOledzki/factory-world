@@ -59,9 +59,18 @@ static func shift(kind: String) -> Vector2:
 	return Vector2.ONE * 0.5 * (high(kind) - low(kind))
 
 
-## How a sprite drawn for one tile is enlarged for a grown machine: about its square's width, and never towering much over it.
-static func sprite_scale(kind: String, sprite_size: Vector2, tile: Vector2) -> float:
-	var n: int = GROWN.get(kind, 1)
-	if n == 1:
-		return 1.0
-	return minf(n * tile.x * 1.3 / sprite_size.x, (n + 1) * tile.y * 2.0 / sprite_size.y)
+## How much of its square's width a grown machine fills, and how far above the square's front edge it stands,
+## in tiles: the slab under it shows all round, so the player sees which tiles it takes.
+const FILL := 0.92
+const FOOT := 0.2
+
+
+## How a grown machine's sprite, drawn for one tile, is fitted to its square: enlarged until what is drawn on it
+## (`drawn`, the picture's part that is not clear, on screen) is nearly as wide as the square, and stood in the square's
+## middle with its foot just behind the square's front edge. Returns [scale, anchor]: the anchor is the point of the
+## enlarged picture that lies on the centre of the object's own tile.
+static func fit(kind: String, drawn: Rect2, tile: Vector2) -> Array:
+	var n := size(kind)
+	var scale := FILL * n * tile.x / drawn.size.x
+	var foot := Vector2(drawn.get_center().x, drawn.end.y) * scale
+	return [scale, foot - shift(kind) * tile - Vector2(0, (n * 0.5 - FOOT) * tile.y)]

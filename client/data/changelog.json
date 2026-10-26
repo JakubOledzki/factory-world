@@ -1,6 +1,14 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Maszyny widać na całym zajmowanym polu",
+		"changes": [
+			"Maszyny, które zajmują 2 × 2, 3 × 3 albo 4 × 4 pola (kruszarka, mielerz, piec, młyn i inne), stoją teraz na kamiennej płycie na całym swoim polu i są narysowane na jego szerokość, więc od razu widać, którędy nie przejdziesz.",
+			"Przez rozdzielacze da się przechodzić, tak jak przez taśmy."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Udostępnianie działki naprawione",
 		"changes": [
 			"Przycisk „Udostępnij wszystkim” na mapie świata znowu działa: zamiast błędu działka staje się publiczna (i z powrotem prywatna)."
