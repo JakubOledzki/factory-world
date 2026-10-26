@@ -1,6 +1,14 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Węgiel jako opał w odlewni",
+		"changes": [
+			"Gdy odlewnia robi stal, węgiel z wiersza „Opał” trafia teraz do ognia, a nie do składników. Węgiel drzewny też da się tam dołożyć jako opał.",
+			"Podajnik karmiący odlewnię przy stali dzieli węgiel między przepis i ogień, więc maszyna nie staje już bez opału z pełnym zapasem węgla w środku."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Pasek szybkiego wyboru",
 		"changes": [
 			"Na dole ekranu jest pasek z 5 numerowanymi slotami. Włóż do nich to, co często stawiasz (taśmociągi, podajniki, piece): przeciągnij przedmiot z ekwipunku na slot albo kliknij pusty slot i wybierz z listy.",

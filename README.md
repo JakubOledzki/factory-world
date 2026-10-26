@@ -140,7 +140,7 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `research.start` | `{ technology }` | `research`: zaczyna badanie technologii, której wymagania są zbadane; koszt znika z ekwipunku od razu. Naraz trwa jedno badanie |
 | `research.cancel` | | `research`: przerywa trwające badanie, koszt wraca do ekwipunku |
 | `machine.recipe` | `{ machine, recipe }` | `machine`: ustawia, co maszyna robi; składniki i produkty poprzedniego przepisu wracają do ekwipunku, ogień pali się dalej |
-| `machine.load` | `{ machine, item, quantity }` | `machine`: wkłada składnik bieżącego przepisu (do 50 każdego) albo opał (węgiel na 4 partie, drewno na 1; tylko piec piekarski i kuchnia polowa) |
+| `machine.load` | `{ machine, item, quantity, fuel? }` | `machine`: wkłada składnik bieżącego przepisu (do 50 każdego) albo opał (węgiel na 4 partie, drewno na 1; maszyny z `fired`). To, co jest i opałem, i składnikiem (węgiel do stali w odlewni), idzie do składników, chyba że `fuel: true`; podajnik dokłada je do ognia, gdy ogień starczy na mniej partii niż składnik |
 | `machine.take` | `{ machine, what }` | `machine`: wyjmuje `output` (XP za każdą sztukę), `input` (składniki) albo `fuel` (opał) |
 | `plot.harvest` | `{ x, y, tileX, tileY }` | `plot.harvested` `{ tileX, tileY, items: [{ id, name, quantity }], xp }`; ścina też posadzone drzewo, gdy urosło |
 | `plot.mine` | `{ x, y, mine }` | `plot.mined` `{ mine, items: [{ id, name, quantity }], xp, serverTime }`: jedna jednostka wydobycia kilofem z kopalni `mine` (id z listy `mines` w `plot`) |

@@ -653,6 +653,30 @@ public static class Processing
 
     private static int FuelBatches(string? fuel) => fuel is not null && Fuels.TryGetValue(fuel, out var batches) ? batches : 0;
 
+    /// <summary>Whether <paramref name="item"/> can go by the fire now.</summary>
+    public static bool FireTakes(ProcessingMachine machine, MachineState s, string item) =>
+        machine.Fired && Fuels.ContainsKey(item) && (s.FuelItem is null || s.FuelItem == item || s.Fuel == 0) && s.Fuel < MaxFuel;
+
+    /// <summary>
+    /// Where an inserter puts <paramref name="item"/> that is both fuel and an ingredient of the recipe (coal for steel, in
+    /// <paramref name="slot"/>): by the fire while the fire lasts for fewer batches than the ingredient, so neither runs out first.
+    /// </summary>
+    public static bool ToFire(ProcessingMachine machine, MachineState s, string item, int slot)
+    {
+        if (!FireTakes(machine, s, item))
+        {
+            return false;
+        }
+
+        if (slot < 0 || machine.Recipe(s.Recipe) is not { } recipe || s.Input(slot) >= MaxInput)
+        {
+            return true;
+        }
+
+        var fire = s.Heat + s.Fuel * FuelBatches(s.Fuel > 0 ? s.FuelItem : item);
+        return fire < s.Input(slot) / recipe.Ingredients[slot].Quantity;
+    }
+
     /// <summary>What the machine holds after working until <paramref name="now"/>.</summary>
     public static MachineState Advance(ProcessingMachine machine, MachineState s, DateTimeOffset now)
     {
@@ -926,8 +950,11 @@ public sealed class MachineService(
             return Reply(id, machine, state, clock, taken, xp);
         }, cancellationToken);
 
-    /// <summary>Puts items from the inventory into the machine: fuel by the fire, an ingredient of the recipe in its place.</summary>
-    public Task<MachineReply> LoadAsync(Guid owner, Guid id, string item, int quantity, CancellationToken cancellationToken) =>
+    /// <summary>
+    /// Puts items from the inventory into the machine: fuel by the fire, an ingredient of the recipe in its place. Something
+    /// that is both (coal in a foundry making steel) goes in for the recipe, unless <paramref name="fuel"/> asks for the fire.
+    /// </summary>
+    public Task<MachineReply> LoadAsync(Guid owner, Guid id, string item, int quantity, bool fuel, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
             if (quantity < 1)
@@ -937,7 +964,7 @@ public sealed class MachineService(
 
             var (machine, state, clock) = await OpenAsync(owner, id, cancellationToken);
             var recipe = machine.Recipe(state.Recipe);
-            var slot = recipe is null ? -1 : recipe.Ingredients.ToList().FindIndex(i => Items.Fills(i.Item, item));
+            var slot = recipe is null || fuel ? -1 : recipe.Ingredients.ToList().FindIndex(i => Items.Fills(i.Item, item));
             if (slot >= 0)
             {
                 if (state.Input(slot) + quantity > Processing.MaxInput)
@@ -951,9 +978,9 @@ public sealed class MachineService(
             }
             else if (machine.Fired && Processing.Fuels.ContainsKey(item))
             {
-                if (state.FuelItem is { } fuel && fuel != item && state.Fuel > 0)
+                if (state.FuelItem is { } burning && burning != item && state.Fuel > 0)
                 {
-                    throw new GameException("machine_busy", $"{Items.Names[fuel]} lies by the fire; take it out first.");
+                    throw new GameException("machine_busy", $"{Items.Names[burning]} lies by the fire; take it out first.");
                 }
 
                 if (state.Fuel + quantity > Processing.MaxFuel)
@@ -965,7 +992,9 @@ public sealed class MachineService(
             }
             else
             {
-                throw recipe is null
+                throw fuel
+                    ? new GameException("not_fuel", "This machine does not burn that.")
+                    : recipe is null
                     ? new GameException("choose_recipe", "Choose what the machine makes first.")
                     : new GameException("not_processable", "This does not go into the machine.");
             }
@@ -1210,18 +1239,14 @@ public sealed class ProcessingPorts(GameDb db, IProductionStats stats, IPlotPowe
         public bool Accepts(string item, DateTimeOffset now)
         {
             Advance(now);
-            if (Slot(item) is var slot and >= 0)
-            {
-                return state.Input(slot) < Processing.MaxInput;
-            }
-
-            return machine.Fired && Processing.Fuels.ContainsKey(item)
-                && (state.FuelItem is null || state.FuelItem == item || state.Fuel == 0) && state.Fuel < Processing.MaxFuel;
+            var slot = Slot(item);
+            return (slot >= 0 && state.Input(slot) < Processing.MaxInput) || Processing.FireTakes(machine, state, item);
         }
 
         public void Put(string item, DateTimeOffset now)
         {
-            if (Slot(item) is var slot and >= 0)
+            // Coal for steel goes by the fire too, enough of it to burn all the coal in the recipe's place.
+            if (Slot(item) is var slot and >= 0 && !Processing.ToFire(machine, state, item, slot))
             {
                 var inputs = new int[Recipe!.Ingredients.Count];
                 for (var i = 0; i < inputs.Length; i++)
@@ -1288,7 +1313,8 @@ public sealed record MachineRequest(Guid Machine);
 
 public sealed record MachineRecipeRequest(Guid Machine, string Recipe);
 
-public sealed record LoadMachineRequest(Guid Machine, string Item, int Quantity);
+/// <param name="Fuel">Puts it by the fire even where the recipe wants it too (coal in a foundry making steel).</param>
+public sealed record LoadMachineRequest(Guid Machine, string Item, int Quantity, bool Fuel = false);
 
 public sealed record TakeMachineRequest(Guid Machine, string What);
 
@@ -1387,7 +1413,7 @@ public sealed class LoadMachineHandler(IServiceScopeFactory scopes) : MachineHan
     protected override Task<MachineReply> RunAsync(MachineService machines, Guid owner, JsonElement? payload, CancellationToken cancellationToken)
     {
         var request = Payload.Read<LoadMachineRequest>(payload);
-        return machines.LoadAsync(owner, request.Machine, request.Item ?? "", request.Quantity, cancellationToken);
+        return machines.LoadAsync(owner, request.Machine, request.Item ?? "", request.Quantity, request.Fuel, cancellationToken);
     }
 }
 

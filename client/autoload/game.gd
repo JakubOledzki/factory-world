@@ -196,7 +196,7 @@ const ERRORS := {
 	"machine_full": "Tyle się nie zmieści w maszynie.",
 	"machine_busy": "Przy ogniu leży już inne paliwo. Wyjmij je najpierw.",
 	"not_processable": "Tego nie da się tu włożyć.",
-	"not_fuel": "Ten generator tego nie spali.",
+	"not_fuel": "Tu się tego nie spali.",
 	"generator_busy": "Przy ogniu leży już inny opał. Wyjmij go najpierw.",
 	"generator_full": "Tyle opału nie zmieści się w generatorze.",
 	"no_contract": "Tego zlecenia już nie ma.",
