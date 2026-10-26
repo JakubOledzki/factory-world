@@ -416,7 +416,9 @@ public static class TechTree
             [Items.WaterWell, Items.Desalinator]),
         new(BuildingMaterials, "Materiały budowlane", "Suszarnia robi cegłę z piasku, gliny i wody, piec cementowy cement, a betoniarka beton.",
             [WaterSupply], [(Items.Clay, 20), (Items.Stone, 40), (Items.Sand, 40)], TimeSpan.FromMinutes(3), 60,
-            [Items.DryingYard, Items.CementKiln, Items.ConcreteMixer, Items.AdobeBricks, Items.Cement, Items.Concrete]),
+            // Only the machines: adobe bricks, cement and concrete go into buildings of other branches and city orders, so the
+            // trader and other players sell them to anyone.
+            [Items.DryingYard, Items.CementKiln, Items.ConcreteMixer]),
         new(WindPower, "Energia wiatrowa", "Turbina wiatrowa daje prąd bez paliwa, tyle, ile wieje wiatr: najwięcej na lodowcu, stepie i tundrze.",
             [Automation], [(Items.IronIngot, 30), (Items.CopperIngot, 20), (Items.Planks, 20)], TimeSpan.FromMinutes(2), 50,
             [Items.WindTurbine]),

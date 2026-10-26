@@ -1,6 +1,13 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Beton u handlarza",
+		"changes": [
+			"Beton, cement i cegłę suszoną kupisz teraz u handlarza i od innych graczy bez badania „Materiały budowlane”. Wcześniej nie było ich na rynku, choć beton jest potrzebny do fundamentu pod tory, hali montażowej czy podłogi z lastryka. Badanie dalej odblokowuje suszarnię, piec cementowy i betoniarkę, żeby robić je samemu."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Szybszy serwer przy wielu graczach",
 		"changes": [
 			"Serwer pyta bazę danych rzadziej przy każdej akcji: garaż nie jest już przy każdym ruchu sprawdzany na nowo trzema zapisami, a rozmiar plecaka jest czytany raz na akcję zamiast przy każdym przedmiocie. Przy tłoku w grze odpowiedzi przychodzą szybciej."

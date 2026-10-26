@@ -437,7 +437,7 @@ const ITEMS := {
 	"clay": ["Glina", "Do cegły suszonej i cementu.", "Czasem wypada przy kopaniu wydm (15%)."],
 	"adobe_bricks": ["Cegła suszona", "Tani materiał budowlany na sprzedaż.", "Suszarnia cegieł: 2 × piasek + 1 × glina + 1 × woda → 2 szt. (30 s, bez opału)."],
 	"cement": ["Cement", "Do betonu.", "Piec cementowy: 2 × kamień + 1 × glina → 2 szt. (12 s)."],
-	"concrete": ["Beton", "Materiał budowlany na sprzedaż.", "Betoniarka: 1 × cement + 2 × piasek + 1 × woda → 3 szt. (8 s)."],
+	"concrete": ["Beton", "Materiał budowlany: fundament pod tory, hale montażowe i budynki w mieście. Kupisz go u handlarza i bez badań.", "Betoniarka: 1 × cement + 2 × piasek + 1 × woda → 3 szt. (8 s)."],
 	"dates": ["Daktyle", "Przysmak wielbłądów (i nie tylko): karmisz nimi zwierzęta.", "Ścinanie palm w oazie: 2 szt. z palmy."],
 	"ammonite": ["Amonit", "Skamieniały ślimak sprzed milionów lat; handlarz płaci 2000 $.", "Bardzo rzadko (0,2%) wypada przy kopaniu wydm."],
 	"ancient_coin": ["Starożytna moneta", "Zgubiona przez karawanę; handlarz płaci 4000 $.", "Wyjątkowo rzadko (0,1%) wypada przy kopaniu wydm."],
