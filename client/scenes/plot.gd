@@ -4351,7 +4351,8 @@ func _build_hud() -> void:
 
 	_toast = _outlined(UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
 	_toast.size = Vector2(900, 30)
-	_toast.position = Vector2(190, 600)
+	# Above the quick bar.
+	_toast.position = Vector2(190, 636 - Hotbar.TILE * (UI.TOUCH_SCALE if UI.touch() else 1.0) - 36)
 	_toast.modulate.a = 0.0
 	_hud.add_child(_toast)
 
