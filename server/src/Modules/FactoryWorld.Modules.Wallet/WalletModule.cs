@@ -58,7 +58,7 @@ public sealed class WalletDbContext(DbContextOptions<WalletDbContext> options, G
     }
 }
 
-public sealed class WalletService(GameDb db, TimeProvider time) : IWallet
+public sealed class WalletService(GameDb db, TimeProvider time, GameCounters counters) : IWallet
 {
     public async Task<long> CreditAsync(Guid owner, long cents, string reason, CancellationToken cancellationToken)
     {
@@ -123,6 +123,7 @@ public sealed class WalletService(GameDb db, TimeProvider time) : IWallet
         command.Parameters.AddWithValue("reason", reason);
         command.Parameters.AddWithValue("at", time.GetUtcNow());
         await command.ExecuteNonQueryAsync(cancellationToken);
+        db.AfterCommit(() => counters.Money(owner, amount, reason));
     }
 }
 

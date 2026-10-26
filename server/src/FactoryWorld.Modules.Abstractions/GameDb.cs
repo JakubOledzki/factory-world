@@ -36,11 +36,31 @@ public sealed class GameDb(NpgsqlDataSource dataSource) : IAsyncDisposable
         {
             var result = await work();
             await transaction.CommitAsync(cancellationToken);
+            var committed = _afterCommit;
+            _afterCommit = null;
+            committed?.ForEach(action => action());
             return result;
         }
         finally
         {
             Transaction = null;
+            _afterCommit = null;
+        }
+    }
+
+    private List<Action>? _afterCommit;
+
+    /// <summary>Runs <paramref name="action"/> once the running transaction commits, and never when it rolls back;
+    /// right away outside a transaction, where every command commits on its own.</summary>
+    public void AfterCommit(Action action)
+    {
+        if (Transaction is null)
+        {
+            action();
+        }
+        else
+        {
+            (_afterCommit ??= []).Add(action);
         }
     }
 

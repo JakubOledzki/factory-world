@@ -13,6 +13,7 @@ public sealed class OnlinePlayers
 
     private readonly ConcurrentDictionary<Guid, ClientContext> _connections = new();
     private readonly ConcurrentDictionary<Guid, byte> _bots = new();
+    private readonly ConcurrentDictionary<Guid, byte> _botAccounts = new();
 
     /// <summary>The account now plays on this connection. The one it played on before, if any, is told
     /// (<see cref="KickedType"/>) and closed.</summary>
@@ -62,6 +63,12 @@ public sealed class OnlinePlayers
 
     /// <summary>How many bots are in a play session right now.</summary>
     public int Bots => _bots.Count;
+
+    /// <summary>The account belongs to one of the server's bots, online or not.</summary>
+    public void AddBotAccount(Guid accountId) => _botAccounts[accountId] = 0;
+
+    /// <summary>Whether the account is one of the server's bots (<see cref="AddBotAccount"/>).</summary>
+    public bool IsBot(Guid accountId) => _botAccounts.ContainsKey(accountId);
 
     public bool IsOnline(Guid accountId) => _connections.ContainsKey(accountId) || _bots.ContainsKey(accountId);
 }

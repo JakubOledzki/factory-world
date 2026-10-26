@@ -63,6 +63,7 @@ public sealed class BotEngine(
                     await SaveScheduleAsync(row, cancellationToken);
                 }
 
+                online.AddBotAccount(row.AccountId);
                 if (!_bots.ContainsKey(profile.Name))
                 {
                     var account = row.AccountId;
