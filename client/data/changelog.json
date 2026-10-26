@@ -1,6 +1,13 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Beton u handlarza",
+		"changes": [
+			"Beton, cement i cegłę suszoną kupisz teraz u handlarza i od innych graczy bez badania „Materiały budowlane”. Beton u handlarza kosztuje 250 $/szt. Wcześniej nie było ich na rynku, choć beton jest potrzebny do fundamentu pod tory, hali montażowej czy podłogi z lastryka. Badanie dalej odblokowuje suszarnię, piec cementowy i betoniarkę, żeby robić je samemu."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Prowiant łatwiej znaleźć",
 		"changes": [
 			"Badanie Prowiant jest teraz w drzewku Przetwórstwo, zaraz za Kuchnią polową, a nie na końcu gałęzi Materiały. Dopiero po nim kuchnia polowa, piec piekarski i wędzarnia pakują prowiant.",

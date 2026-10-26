@@ -190,6 +190,25 @@ public sealed class DesertTests(ServerFactory factory) : IClassFixture<ServerFac
         Assert.True(NpcPrices.Sells.ContainsKey(Items.Camel));
     }
 
+    [Fact]
+    public async Task A_player_buys_concrete_from_the_trader_before_researching_building_materials()
+    {
+        using var client = await PlayerAsync();
+        // Concrete goes into track foundations, assembly halls and city orders long before a player builds a mixer.
+        foreach (var item in new[] { Items.AdobeBricks, Items.Cement, Items.Concrete })
+        {
+            Assert.False(TechTree.ByItem.ContainsKey(item), item);
+            Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item, quantity = 10 })).Type());
+        }
+
+        var prices = (await client.SendAsync("market.prices")).Payload().GetProperty("items").EnumerateArray()
+            .ToDictionary(p => p.GetProperty("id").GetString()!);
+        Assert.Equal(250_00, NpcPrices.Sells[Items.Concrete]);
+        Assert.Equal(NpcPrices.Sells[Items.Concrete], prices[Items.Concrete].GetProperty("buyCents").GetInt64());
+        // The machines still need the research.
+        Assert.Equal("locked", (await client.SendAsync("market.buy", new { item = Items.ConcreteMixer, quantity = 1 })).ErrorCode());
+    }
+
     // --- On a plot -------------------------------------------------------------------------------
 
     private async Task<GameClient> PlayerAsync()
