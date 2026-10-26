@@ -20,6 +20,9 @@ var poll_every := 0.0:
 		poll_every = value
 		set_process(visible and value > 0.0)
 
+## Set by dock_right(): until the player drags it, the window opens this far from the right edge of
+## the screen, however wide the screen is (-1: wherever its position puts it).
+var _right_gap := -1.0
 var _dragging := false
 var _poll_at := 0.0
 var _poll_busy := false
@@ -78,9 +81,19 @@ func toggle() -> void:
 		show_window()
 
 
+## Opens the window at the right edge of the screen, `gap` from it and `top` from the top, until the
+## player drags it somewhere else.
+func dock_right(gap := 12.0, top := 64.0) -> void:
+	_right_gap = gap
+	position.y = top
+	if is_inside_tree():
+		_dock()
+
+
 func show_window() -> void:
 	visible = true
 	move_to_front()
+	_dock()
 	_fit.call_deferred()
 	if fill_margin != Vector2.ZERO:
 		position = fill_margin
@@ -103,7 +116,13 @@ func _fit() -> void:
 	var room := screen.y - 16 - frame - _bar.get_combined_minimum_size().y - 40
 	_scroll.custom_minimum_size.y = minf(content.get_combined_minimum_size().y, room)
 	reset_size()
+	_dock()
 	position = position.clamp(Vector2.ZERO, (get_viewport_rect().size - size).max(Vector2.ZERO))
+
+
+func _dock() -> void:
+	if _right_gap >= 0.0 and fill_margin == Vector2.ZERO and is_inside_tree():
+		position.x = get_viewport_rect().size.x - size.x - _right_gap
 
 
 func hide_window() -> void:
@@ -118,6 +137,7 @@ func _on_bar_input(event: InputEvent) -> void:
 		if event.pressed:
 			move_to_front()
 	elif event is InputEventMouseMotion and _dragging:
+		_right_gap = -1.0
 		var area := get_viewport_rect().size
 		position = (position + event.relative).clamp(Vector2.ZERO, area - size)
 
