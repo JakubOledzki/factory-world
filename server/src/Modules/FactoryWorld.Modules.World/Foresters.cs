@@ -455,8 +455,20 @@ public sealed class ForesterService(
         }
 
         // Inserters run from where the plot's logistics were left, so the forester starts from its last state.
-        var forests = await OpenAsync(x, y, null, cancellationToken);
+        var forests = _prepared is { } prepared && prepared.X == x && prepared.Y == y ? prepared.Opened : await OpenAsync(x, y, null, cancellationToken);
         return forests.FirstOrDefault(f => f.Object.Id == id) is { } forester ? new Port(this, x, y, forests, forester.Patch) : null;
+    }
+
+    /// <summary>The plot's foresters opened once for all the ports of one run of its logistics, as opening them works out the whole plot.</summary>
+    private (int X, int Y, List<ForesterOnPlot> Opened)? _prepared;
+
+    public async Task PrepareAsync(IReadOnlyList<PlotObject> reached, CancellationToken cancellationToken)
+    {
+        _prepared = null;
+        if (reached.FirstOrDefault(o => Items.IsForester(o.Kind)) is { } first && await objects.PlotOfAsync(first.Id, cancellationToken) is var (x, y))
+        {
+            _prepared = (x, y, await OpenAsync(x, y, null, cancellationToken));
+        }
     }
 
     public async Task<IReadOnlyList<MachineStatus>> StatusesAsync(Guid owner, CancellationToken cancellationToken)

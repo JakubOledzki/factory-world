@@ -338,13 +338,55 @@ public sealed class ForestryIndustryTests(ServerFactory factory) : IClassFixture
         Assert.Equal("generator", (await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Coal, quantity = 20 })).Type());
 
         factory.Time.Advance(TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(60));
-        var storages = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("storages")
-            .EnumerateArray().ToDictionary(s => s.GetProperty("id").GetString()!);
+        var logistics = (await client.SendAsync("logistics.get", new { x, y })).Payload();
+        var storages = logistics.GetProperty("storages").EnumerateArray().ToDictionary(s => s.GetProperty("id").GetString()!);
         var stored = storages[chest].GetProperty("items").EnumerateArray()
             .Where(i => i.GetProperty("id").GetString() == Items.Wood).Sum(i => i.GetProperty("quantity").GetInt32());
+        // A piece may be on its way, in the inserter's hand.
+        var held = logistics.GetProperty("inserters").EnumerateArray()
+            .Where(i => i.GetProperty("hand").ValueKind == JsonValueKind.String && i.GetProperty("hand").GetString() == Items.Wood)
+            .Sum(i => i.GetProperty("count").GetInt32());
         var left = Forester((await client.SendAsync("forestry.get", new { x, y })).Payload(), hut).GetProperty("wood").GetInt32();
         Assert.True(stored >= 9, $"{stored} in the chest");
-        Assert.Equal(10, stored + left);
+        Assert.Equal(10, stored + held + left);
+    }
+
+    [Fact]
+    public async Task Inserters_next_to_two_foresters_of_a_plot_each_take_its_wood()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty, _) = await PlotAsync(client, reach: 6);
+        await GiveAsync(client, Items.ForesterHut, 2);
+        await GiveAsync(client, Items.Inserter, 2);
+        await GiveAsync(client, Items.WoodenChest, 2);
+        await GiveAsync(client, Items.Pole, 2);
+        await GiveAsync(client, Items.Generator, 2);
+        await GiveAsync(client, Items.Coal, 40);
+
+        // Both are opened once for the plot's logistics, and each inserter still takes from its own.
+        var huts = new List<string>();
+        var chests = new List<string>();
+        foreach (var hx in new[] { tx - 4, tx + 4 })
+        {
+            huts.Add(await PlaceAsync(client, x, y, Items.ForesterHut, hx, ty));
+            await PlaceAsync(client, x, y, Items.Inserter, hx, ty + 2, 0);
+            chests.Add(await PlaceAsync(client, x, y, Items.WoodenChest, hx, ty + 3));
+            await PlaceAsync(client, x, y, Items.Pole, hx + 1, ty + 3);
+            var generator = await PlaceAsync(client, x, y, Items.Generator, hx - 1, ty + 3);
+            Assert.Equal("generator", (await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Coal, quantity = 20 })).Type());
+        }
+
+        factory.Time.Advance(TimeSpan.FromMinutes(10) + TimeSpan.FromSeconds(60));
+        var storages = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("storages")
+            .EnumerateArray().ToDictionary(s => s.GetProperty("id").GetString()!);
+        var forestry = (await client.SendAsync("forestry.get", new { x, y })).Payload();
+        for (var i = 0; i < 2; i++)
+        {
+            var stored = storages[chests[i]].GetProperty("items").EnumerateArray()
+                .Where(it => it.GetProperty("id").GetString() == Items.Wood).Sum(it => it.GetProperty("quantity").GetInt32());
+            Assert.True(stored >= 5, $"{stored} in chest {i}");
+            Assert.InRange(Forester(forestry, huts[i]).GetProperty("wood").GetInt32(), 0, 1);
+        }
     }
 
     [Fact]

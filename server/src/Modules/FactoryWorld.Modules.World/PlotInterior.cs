@@ -336,51 +336,83 @@ public sealed class PlotService(
         var blizzard = biome == Biome.Ice ? Blizzard.LastEnded(time.GetUtcNow()) : null;
         var storm = Oasis.Sandy((int)biome) ? SandWeather.LastEnded(time.GetUtcNow()) : blizzard?.End;
         var dug = new HashSet<int>();
+        var now = time.GetUtcNow();
+        var picked = now - Forestry.MushroomRegrow;
+        var harvests = new List<(int TileX, int TileY, DateTimeOffset At)>();
+        // What stands on a tile keeps what was gathered there from coming back; a reed fence shelters the tiles around it.
+        // Each table is read once and matched here, as a plot may have hundreds of objects and of tiles gathered.
+        var standing = new HashSet<(int, int)>();
+        var fences = new List<(int X, int Y)>();
         await using (var command = await db.CommandAsync(
-            $$"""
-            SELECT h.tile_x, h.tile_y, COALESCE(h.harvested_at >= @storm, false), (COALESCE(h.harvested_at < @storm, false) OR h.harvested_at < @picked)
-                AND NOT EXISTS (SELECT 1 FROM world.plot_objects o WHERE o.x = h.x AND o.y = h.y
-                    AND ({{Footprints.CoversSql("o", "h.tile_x", "h.tile_y")}}
-                        OR (o.kind = @fence AND abs(o.tile_x - h.tile_x) <= @shelter AND abs(o.tile_y - h.tile_y) <= @shelter)))
-                AND NOT EXISTS (SELECT 1 FROM world.plot_fields f WHERE f.x = h.x AND f.y = h.y AND f.tile_x = h.tile_x AND f.tile_y = h.tile_y)
-                AND NOT EXISTS (SELECT 1 FROM world.plot_trees t WHERE t.x = h.x AND t.y = h.y AND t.tile_x = h.tile_x AND t.tile_y = h.tile_y)
-                AND NOT EXISTS (SELECT 1 FROM world.plot_animals a WHERE a.x = h.x AND a.y = h.y AND a.tile_x = h.tile_x AND a.tile_y = h.tile_y),
-                COALESCE(h.harvested_at < @storm, false)
-            FROM world.plot_harvests h WHERE h.x = @x AND h.y = @y
+            """
+            SELECT 0, tile_x, tile_y, harvested_at, NULL FROM world.plot_harvests WHERE x = @x AND y = @y
+            UNION ALL SELECT 1, tile_x, tile_y, NULL, kind FROM world.plot_objects WHERE x = @x AND y = @y
+            UNION ALL SELECT 2, tile_x, tile_y, NULL, NULL FROM world.plot_fields WHERE x = @x AND y = @y
+            UNION ALL SELECT 2, tile_x, tile_y, NULL, NULL FROM world.plot_trees WHERE x = @x AND y = @y
+            UNION ALL SELECT 2, tile_x, tile_y, NULL, NULL FROM world.plot_animals WHERE x = @x AND y = @y
             """, cancellationToken))
         {
             command.Parameters.AddWithValue("x", x);
             command.Parameters.AddWithValue("y", y);
-            command.Parameters.Add(new NpgsqlParameter("storm", NpgsqlDbType.TimestampTz) { Value = (object?)storm ?? DBNull.Value });
-            command.Parameters.AddWithValue("sizedKinds", Footprints.SizedKinds);
-            command.Parameters.AddWithValue("sizedSizes", Footprints.SizedSizes);
-            command.Parameters.AddWithValue("fence", Items.ReedFence);
-            command.Parameters.AddWithValue("shelter", PlotLayout.FenceShelter);
-            command.Parameters.AddWithValue("picked", time.GetUtcNow() - Forestry.MushroomRegrow);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                // A rock broken before the mines came may have stood where a mine is now, and the
-                // lake or sea came over what had been gathered on the shore.
-                var at = reader.GetInt32(1) * PlotLayout.Size + reader.GetInt32(0);
-                // Sand and ice come back with the storm; mushrooms come up again by themselves.
-                // Gathered before the storm or long enough ago, with nothing standing there since.
-                var due = reader.GetBoolean(3);
-                var regrown = due && ((reader.GetBoolean(4) && tiles[at] is (byte)TileObject.Dune or (byte)TileObject.IceBlock)
-                    || tiles[at] == (byte)TileObject.Mushrooms);
-                if (reader.GetBoolean(2))
+                var (tx, ty) = (reader.GetInt32(1), reader.GetInt32(2));
+                switch (reader.GetInt32(0))
                 {
-                    dug.Add(at);
-                }
+                    case 0:
+                        harvests.Add((tx, ty, reader.GetFieldValue<DateTimeOffset>(3)));
+                        break;
+                    case 1:
+                        var kind = reader.GetString(4);
+                        standing.UnionWith(Footprints.Tiles(kind, tx, ty));
+                        if (kind == Items.ReedFence)
+                        {
+                            fences.Add((tx, ty));
+                        }
 
-                if (tiles[at] == (byte)TileObject.Crevasse)
-                {
-                    tiles[at] = (byte)TileObject.Bridge;
+                        break;
+                    default:
+                        standing.Add((tx, ty));
+                        break;
                 }
-                else if (tiles[at] is not ((byte)TileObject.Mine or (byte)TileObject.Water) && !regrown)
+            }
+        }
+
+        foreach (var (tx, ty) in fences)
+        {
+            for (var dy = -PlotLayout.FenceShelter; dy <= PlotLayout.FenceShelter; dy++)
+            {
+                for (var dx = -PlotLayout.FenceShelter; dx <= PlotLayout.FenceShelter; dx++)
                 {
-                    tiles[at] = (byte)TileObject.None;
+                    standing.Add((tx + dx, ty + dy));
                 }
+            }
+        }
+
+        foreach (var (tileX, tileY, harvestedAt) in harvests)
+        {
+            // A rock broken before the mines came may have stood where a mine is now, and the
+            // lake or sea came over what had been gathered on the shore.
+            var at = tileY * PlotLayout.Size + tileX;
+            // Sand and ice come back with the storm; mushrooms come up again by themselves.
+            // Gathered before the storm or long enough ago, with nothing standing there since.
+            var beforeStorm = harvestedAt < storm;
+            var due = (beforeStorm || harvestedAt < picked) && !standing.Contains((tileX, tileY));
+            var regrown = due && ((beforeStorm && tiles[at] is (byte)TileObject.Dune or (byte)TileObject.IceBlock)
+                || tiles[at] == (byte)TileObject.Mushrooms);
+            if (harvestedAt >= storm)
+            {
+                dug.Add(at);
+            }
+
+            if (tiles[at] == (byte)TileObject.Crevasse)
+            {
+                tiles[at] = (byte)TileObject.Bridge;
+            }
+            else if (tiles[at] is not ((byte)TileObject.Mine or (byte)TileObject.Water) && !regrown)
+            {
+                tiles[at] = (byte)TileObject.None;
             }
         }
 
