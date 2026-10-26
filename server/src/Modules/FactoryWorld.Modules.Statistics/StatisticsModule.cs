@@ -64,7 +64,7 @@ public static class ProductionRules
 }
 
 /// <summary>Adds what the factory did to the minute it happened in.</summary>
-public sealed class ProductionStats(GameDb db, TimeProvider time) : IProductionStats
+public sealed class ProductionStats(GameDb db, TimeProvider time, GameCounters counters) : IProductionStats
 {
     /// <summary>How often a player's minutes older than <see cref="ProductionRules.Kept"/> are dropped while recording, so
     /// the table holds a day of each factory also for those who never look at it (the bots, say).</summary>
@@ -112,6 +112,13 @@ public sealed class ProductionStats(GameDb db, TimeProvider time) : IProductionS
         command.Parameters.AddWithValue("produced", rows.Select(r => r.Produced).ToArray());
         command.Parameters.AddWithValue("consumed", rows.Select(r => r.Consumed).ToArray());
         await command.ExecuteNonQueryAsync(cancellationToken);
+        db.AfterCommit(() =>
+        {
+            foreach (var row in rows)
+            {
+                counters.Production(owner, row.Item, row.Produced, row.Consumed);
+            }
+        });
     }
 }
 

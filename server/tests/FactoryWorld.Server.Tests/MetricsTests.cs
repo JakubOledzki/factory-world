@@ -1,4 +1,6 @@
 using FactoryWorld.Modules.Abstractions;
+using FactoryWorld.Modules.Abstractions.Contracts;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FactoryWorld.Server.Tests;
 
@@ -33,4 +35,54 @@ public sealed class MetricsTests(ServerFactory factory) : IClassFixture<ServerFa
             Assert.Equal(ServerLoad.Buckets[i] >= 3 ? 1 : 0, total.InBucket[i]);
         }
     }
+
+    [Fact]
+    public async Task Metrics_count_items_made_and_money_paid_once_committed()
+    {
+        using var client = await factory.ConnectAsync();
+        await client.RegisterWithCharacterAsync();
+        var counters = factory.Services.GetRequiredService<GameCounters>();
+        long Made() => counters.Items().Where(t => t.Item == Items.Planks && !t.Bot).Sum(t => t.Produced);
+        long Sold() => counters.MoneyTotals().Where(t => t.Reason == "sell" && !t.Bot).Sum(t => t.InCents);
+        var (made, sold) = (Made(), Sold());
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var services = scope.ServiceProvider;
+            await services.GetRequiredService<GameDb>().InTransactionAsync(async () =>
+            {
+                await services.GetRequiredService<IProductionStats>().RecordAsync(client.AccountId,
+                    [ProductionEntry.Made(Items.Planks, 3, DateTimeOffset.UtcNow)], CancellationToken.None);
+                await services.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 250, "sell 3 planks", CancellationToken.None);
+                Assert.Equal(made, Made());
+            }, CancellationToken.None);
+        }
+
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var services = scope.ServiceProvider;
+            await Assert.ThrowsAsync<InvalidOperationException>(() => services.GetRequiredService<GameDb>().InTransactionAsync(async () =>
+            {
+                await services.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 1000, "sell 1 planks", CancellationToken.None);
+                throw new InvalidOperationException("rolled back");
+            }, CancellationToken.None));
+        }
+
+        Assert.Equal(made + 3, Made());
+        Assert.Equal(sold + 250, Sold());
+        var text = await factory.CreateClient().GetStringAsync("/metrics");
+        Assert.Matches($$"""factoryworld_items_produced_total\{item="{{Items.Planks}}",who="player"\} [1-9]""", text);
+        Assert.Matches("""factoryworld_money_in_cents_total\{reason="sell",who="player"\} [1-9]""", text);
+    }
+
+    [Theory]
+    [InlineData("sell 5 iron_ore", "sell")]
+    [InlineData("tax of Wola: market sold 1 plank", "tax")]
+    [InlineData("company Acme research steel", "company")]
+    [InlineData("company research steel", "company_research")]
+    [InlineData("bank deposit Lokata", "bank_deposit")]
+    [InlineData("survey 3:4", "survey")]
+    [InlineData("", "other")]
+    public void Ledger_reasons_are_grouped_by_their_first_word(string reason, string kind) =>
+        Assert.Equal(kind, GameCounters.ReasonKind(reason));
 }

@@ -34,7 +34,7 @@ Hasło bazy trafia do adresu połączenia eksportera PostgreSQL, więc nie może
 | Źródło | Gdzie szukać |
 | --- | --- |
 | Logi kontenerów | Loki, etykiety `service` (`server`, `db`, `web`, `alloy`), `container`; logi serwera mają też `level` (`info`, `warn`, `fail`, `crit`) |
-| Serwer gry (`/metrics`, co 30 s) | `factoryworld_message_duration_seconds` (histogram czasu odpowiedzi według `type`, boty jako `bot ...`), `factoryworld_players_online`, `factoryworld_bots_online`, `process_cpu_seconds_total`, `process_resident_memory_bytes`, `dotnet_gc_heap_bytes`, `dotnet_threadpool_queue_length` |
+| Serwer gry (`/metrics`, co 30 s) | `factoryworld_message_duration_seconds` (histogram czasu odpowiedzi według `type`, boty jako `bot ...`), `factoryworld_players_online`, `factoryworld_bots_online`, `process_cpu_seconds_total`, `process_resident_memory_bytes`, `dotnet_gc_heap_bytes`, `dotnet_threadpool_queue_length`; z gry: `factoryworld_items_produced_total` i `factoryworld_items_consumed_total` (sztuki według `item`), `factoryworld_money_in_cents_total` i `factoryworld_money_out_cents_total` (centy według `reason`, czyli pierwszego słowa wpisu w księdze); każda z etykietą `who` = `player` albo `bot` |
 | Maszyna | `node_*`: CPU, pamięć, dysk, sieć, obciążenie |
 | Kontenery | `container_*` według etykiety `container`: CPU, pamięć, sieć, dysk |
 | PostgreSQL | `pg_*`: połączenia, transakcje, rozmiar bazy, blokady |
@@ -54,6 +54,13 @@ Przykładowe zapytania:
 histogram_quantile(0.95, sum by (le, type) (rate(factoryworld_message_duration_seconds_bucket[5m])))
 # średni czas odpowiedzi
 sum(rate(factoryworld_message_duration_seconds_sum[5m])) / sum(rate(factoryworld_message_duration_seconds_count[5m]))
+
+# Najczęściej wytwarzane przedmioty w ostatniej godzinie (sztuki)
+topk(10, sum by (item) (increase(factoryworld_items_produced_total{who="player"}[1h])))
+
+# Skąd gracze mają pieniądze (zł na godzinę)
+sum by (reason) (rate(factoryworld_money_in_cents_total{who="player"}[1h])) * 3600 / 100
+
 # CPU kontenerów w rdzeniach
 sum by (container) (rate(container_cpu_usage_seconds_total[5m]))
 ```
