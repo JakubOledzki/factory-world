@@ -4,6 +4,9 @@ extends GameWindow
 ## inventory, loaded from it), sending one train by hand, the routes whose trains leave by
 ## themselves every few minutes, and the trains on their way. A train goes to another plot of the
 ## player's or to another player's station, found by their name.
+## The first tab, "Trasy", lists the freight routes between the player's own plots (from any of their
+## stations): a route's train waits until the loading chests of one plot hold its whole load and takes it
+## to the receiving chests of another. New routes are set up there, and this plot can be named.
 
 ## Items went between the inventory and the station.
 signal inventory_changed
@@ -12,7 +15,14 @@ signal balance_changed
 signal failed(reply: Dictionary)
 signal toast(text: String)
 
-const TABS := ["Magazyn", "Wyślij", "Rozkład jazdy", "W drodze"]
+const TABS := ["Magazyn", "Wyślij", "Rozkład", "W drodze", "Trasy"]
+## The tab of freight routes between the player's plots: drawn first, and open when the window opens first.
+const FREIGHT_TAB := 4
+const FREIGHT_PROBLEMS := {
+	"waiting": "Czeka na towar w skrzyniach ładujących.",
+	"no_money": "Czeka: brakuje pieniędzy na opłatę.",
+	"no_room": "Czeka na miejsce w skrzyniach odbierających.",
+}
 const PROBLEMS := {
 	"empty": "Czeka na towar: na stacji nie było nic do zabrania.",
 	"no_money": "Stoi: brakuje pieniędzy na opłatę.",
@@ -36,7 +46,7 @@ var _by_sled := false
 
 var _state := {}
 var _clock_offset := 0.0
-var _tab := 0
+var _tab := FREIGHT_TAB
 var _tab_buttons: Array[Button] = []
 var _body := VBoxContainer.new()
 var _trip_labels: Array = []
@@ -61,6 +71,21 @@ var _send_button: Button
 var _route_items: Array[String] = []
 var _route_minutes := 5
 
+## Freight routes between the player's plots ("freight.get"), and the one being set up: from and to which plot,
+## and [item, quantity] pairs for one train.
+var _freight := {}
+var _freight_refreshing := false
+var _next_freight_poll := 0.0
+var _freight_from := Vector2i(-1, -1)
+var _freight_to := Vector2i(-1, -1)
+var _freight_cargo: Array = []
+var _freight_search := LineEdit.new()
+var _freight_choices := VBoxContainer.new()
+var _freight_info: Label
+var _freight_button: Button
+var _freight_labels: Array = []
+var _plot_name := LineEdit.new()
+
 
 func _init() -> void:
 	super("Stacja kolejowa", 470)
@@ -71,6 +96,7 @@ func _init() -> void:
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		top.add_child(b)
 		_tab_buttons.append(b)
+	top.move_child(_tab_buttons[FREIGHT_TAB], 0)
 	content.add_child(top)
 	content.add_child(HSeparator.new())
 	_body.add_theme_constant_override("separation", 6)
@@ -79,12 +105,22 @@ func _init() -> void:
 	_search.placeholder_text = "Nazwa gracza"
 	_search.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_search.text_submitted.connect(func(_t: String) -> void: _find())
+	_freight_search.placeholder_text = "Szukaj towaru…"
+	_freight_search.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_freight_search.text_changed.connect(func(_t: String) -> void: _render_freight_choices())
+	_freight_choices.add_theme_constant_override("separation", 2)
+	_plot_name.placeholder_text = "Nazwa działki"
+	_plot_name.max_length = 32
+	_plot_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_plot_name.text_submitted.connect(func(_t: String) -> void: _rename_plot())
 
 
 func open_at(at: Vector2i) -> void:
 	if at != plot:
 		_state = {}
 		_destination = Vector2i(-1, -1)
+		_freight_from = Vector2i(-1, -1)
+		_freight_to = Vector2i(-1, -1)
 	plot = at
 	show_window()
 	refresh()
@@ -114,6 +150,8 @@ func refresh() -> void:
 	var reply := await Net.request("station.get", {"x": plot.x, "y": plot.y})
 	_refreshing = false
 	apply(reply)
+	if visible and _tab == FREIGHT_TAB:
+		refresh_freight()
 
 
 func apply(reply: Dictionary) -> void:
@@ -126,6 +164,8 @@ func apply(reply: Dictionary) -> void:
 	var trips: int = _state["incoming"].size() + _state["outgoing"].size()
 	if trips > 0:
 		tab_names[3] = "W drodze (%d)" % trips
+	if not _freight.is_empty() and not _freight["routes"].is_empty():
+		tab_names[FREIGHT_TAB] = "Trasy (%d)" % _freight["routes"].size()
 	if not _state["routes"].is_empty():
 		tab_names[2] = "Rozkład (%d)" % _state["routes"].size()
 	for i in TABS.size():
@@ -156,6 +196,8 @@ func _process(_delta: float) -> void:
 		due = due or float(route["nextAt"]) <= now
 	if due and Time.get_ticks_msec() >= _next_poll - 3500.0:
 		refresh()
+	if _tab == FREIGHT_TAB and Time.get_ticks_msec() >= _next_freight_poll:
+		refresh_freight()
 
 
 func _open_tab(tab: int) -> void:
@@ -172,12 +214,14 @@ func show_window() -> void:
 
 func _render() -> void:
 	# The player search field lives on between redraws, so what was typed stays.
-	if _search.get_parent() != null:
-		_search.get_parent().remove_child(_search)
+	for field: Control in [_search, _freight_search, _freight_choices, _plot_name]:
+		if field.get_parent() != null:
+			field.get_parent().remove_child(field)
 	for child in _body.get_children():
 		child.free()
 	_trip_labels.clear()
 	_route_labels.clear()
+	_freight_labels.clear()
 	for i in _tab_buttons.size():
 		_tab_buttons[i].theme_type_variation = "AccentButton" if i == _tab else ""
 	if _state.is_empty():
@@ -188,6 +232,7 @@ func _render() -> void:
 		1: _render_send()
 		2: _render_routes()
 		3: _render_trips()
+		FREIGHT_TAB: _render_freight()
 
 
 # --- Stock ---------------------------------------------------------------------------------------
@@ -623,7 +668,7 @@ func _route_row(route: Dictionary) -> void:
 	var title := UI.label("→ %s" % ("%s · %d × %d" % [receiver, to.x, to.y] if receiver != null else "moja działka %d × %d" % [to.x, to.y]))
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title.clip_text = true
-	top.add_child(title)
+	top.add_child(Online.with_dot(title, receiver))
 	var minutes := int(route["everyMinutes"])
 	top.add_child(UI.label("co %d min" % minutes if minutes < 60 else "co godzinę", UI.GOLD))
 	top.add_child(UI.button("Usuń", _remove_route.bind(int(route["id"]))))
@@ -687,6 +732,312 @@ func _remove_route(id: int) -> void:
 	_render()
 
 
+# --- Freight routes between the player's plots ---------------------------------------------------------------
+
+func refresh_freight() -> void:
+	if _freight_refreshing:
+		return
+	_freight_refreshing = true
+	_next_freight_poll = Time.get_ticks_msec() + 5000.0
+	var reply := await Net.request("freight.get", {})
+	_freight_refreshing = false
+	_apply_freight(reply)
+
+
+func _apply_freight(reply: Dictionary) -> void:
+	if reply["type"] != "freight":
+		failed.emit(reply)
+		return
+	var first := _freight.is_empty()
+	_freight = reply["payload"]
+	_clock_offset = float(_freight["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
+	if not _state.is_empty():
+		_tab_buttons[FREIGHT_TAB].text = "Trasy (%d)" % _freight["routes"].size() if not _freight["routes"].is_empty() else TABS[FREIGHT_TAB]
+	if visible and _tab == FREIGHT_TAB and (first or not _editing()):
+		_render()
+
+
+## A plot as the player knows it: its name, or where it lies.
+func _plot_label(at: Vector2i) -> String:
+	for p: Dictionary in _freight.get("plots", []):
+		if Vector2i(p["x"], p["y"]) == at and p["name"] != null and p["name"] != "":
+			return "%s (%d × %d)" % [p["name"], at.x, at.y]
+	return "działka %d × %d" % [at.x, at.y]
+
+
+func _freight_plot(at: Vector2i) -> Dictionary:
+	for p: Dictionary in _freight.get("plots", []):
+		if Vector2i(p["x"], p["y"]) == at:
+			return p
+	return {}
+
+
+func _render_freight() -> void:
+	if _freight.is_empty():
+		_body.add_child(UI.label("Wczytywanie…", UI.MUTED))
+		refresh_freight()
+		return
+	var rates: Dictionary = _freight["rates"]
+	var routes: Array = _freight["routes"]
+	_section("Trasy między twoimi działkami")
+	_body.add_child(UI.label("Pociąg trasy czeka na działce, aż skrzynie ładujące będą miały cały ładunek, zawozi go do skrzyń odbierających drugiej działki i wraca po następny.",
+		UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	if routes.is_empty():
+		_body.add_child(UI.label("Nie masz jeszcze żadnej trasy.", UI.MUTED))
+	for route: Dictionary in routes:
+		_freight_row(route)
+
+	_body.add_child(HSeparator.new())
+	_section("Ta działka")
+	var name_row := HBoxContainer.new()
+	name_row.add_theme_constant_override("separation", 4)
+	var here := _freight_plot(plot)
+	if not _editing():
+		_plot_name.text = str(here.get("name", "")) if here.get("name") != null else ""
+	name_row.add_child(_plot_name)
+	name_row.add_child(UI.button("Zmień nazwę", _rename_plot))
+	_body.add_child(name_row)
+	if not here.is_empty():
+		_body.add_child(UI.label("Skrzynie ładujące: %d  ·  odbierające: %d" % [int(here["loading"]), int(here["receiving"])], UI.MUTED))
+
+	_body.add_child(HSeparator.new())
+	_section("Nowa trasa")
+	if routes.size() >= int(rates["maxRoutes"]):
+		_body.add_child(UI.label("Możesz mieć najwyżej %d tras." % int(rates["maxRoutes"]), UI.MUTED))
+		return
+	var plots: Array = _freight["plots"]
+	if plots.size() < 2:
+		_body.add_child(UI.label("Trasa łączy dwie twoje działki: kup drugą na mapie świata.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		return
+	if _freight_from.x < 0 or _freight_plot(_freight_from).is_empty():
+		_freight_from = plot if not _freight_plot(plot).is_empty() else Vector2i(plots[0]["x"], plots[0]["y"])
+	if _freight_to.x < 0 or _freight_to == _freight_from or _freight_plot(_freight_to).is_empty():
+		for p: Dictionary in plots:
+			if Vector2i(p["x"], p["y"]) != _freight_from:
+				_freight_to = Vector2i(p["x"], p["y"])
+				break
+
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 8)
+	grid.add_theme_constant_override("v_separation", 4)
+	_body.add_child(grid)
+	grid.add_child(UI.label("Skąd", UI.MUTED))
+	grid.add_child(_plot_picker(_freight_from, "loading", "ładujących", Vector2i(-1, -1), func(at: Vector2i) -> void:
+		_freight_from = at
+		if _freight_to == at:
+			_freight_to = Vector2i(-1, -1)
+		_render.call_deferred()))
+	grid.add_child(UI.label("Dokąd", UI.MUTED))
+	grid.add_child(_plot_picker(_freight_to, "receiving", "odbierających", _freight_from, func(at: Vector2i) -> void:
+		_freight_to = at
+		_update_freight_info()))
+
+	_body.add_child(UI.label("Co wozić (ilość na jeden kurs, najwyżej %d rodzaje)" % int(rates["maxItems"]), UI.MUTED))
+	for i in _freight_cargo.size():
+		var entry: Array = _freight_cargo[i]
+		var row := _item_row(entry[0], ItemInfo.name_of(entry[0]), "")
+		row.remove_child(row.get_child(2))
+		var quantity := SpinBox.new()
+		quantity.min_value = 1
+		quantity.max_value = int(rates["maxQuantity"])
+		quantity.value = int(entry[1])
+		quantity.custom_minimum_size.x = 110
+		quantity.value_changed.connect(func(v: float) -> void:
+			entry[1] = int(v)
+			_update_freight_info())
+		row.add_child(quantity)
+		row.add_child(UI.button("×", func() -> void:
+			_freight_cargo.remove_at(i)
+			_render.call_deferred()))
+		_body.add_child(row)
+	if _freight_cargo.size() < int(rates["maxItems"]):
+		_body.add_child(_freight_search)
+		_body.add_child(_freight_choices)
+		_render_freight_choices()
+
+	_freight_info = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
+	_body.add_child(_freight_info)
+	_freight_button = UI.button("Utwórz trasę", _add_freight, true)
+	_body.add_child(_freight_button)
+	_update_freight_info()
+
+
+## A choice of the player's plots, with how many chests of `chest` ("loading" or "receiving") stand on each.
+## `without` is left out of the choice (the plot the train leaves from, when choosing where it goes).
+func _plot_picker(selected: Vector2i, chest: String, chest_name: String, without: Vector2i, chose: Callable) -> OptionButton:
+	var picker := OptionButton.new()
+	picker.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	picker.clip_text = true
+	for p: Dictionary in _freight["plots"]:
+		var at := Vector2i(p["x"], p["y"])
+		if at == without:
+			continue
+		picker.add_item("%s · skrzyń %s: %d" % [_plot_label(at), chest_name, int(p[chest])])
+		picker.set_item_metadata(picker.item_count - 1, at)
+		if at == selected:
+			picker.select(picker.item_count - 1)
+	picker.item_selected.connect(func(i: int) -> void: chose.call(picker.get_item_metadata(i)))
+	return picker
+
+
+## Goods to add to the load: what the player has first, then the rest by name, narrowed by the search.
+func _render_freight_choices() -> void:
+	for child in _freight_choices.get_children():
+		child.free()
+	var query := _freight_search.text.strip_edges().to_lower()
+	if query.length() < 2 and _freight_cargo.size() > 0:
+		return
+	var chosen: Array = _freight_cargo.map(func(e: Array) -> String: return e[0])
+	var owned: Array = items.map(func(stack: Dictionary) -> String: return stack["id"])
+	var rest: Array = ItemInfo.ITEMS.keys().filter(func(i: String) -> bool: return not i in owned)
+	var shown := 0
+	for item: String in owned + rest:
+		if item in chosen or (query != "" and not ItemInfo.name_of(item).to_lower().contains(query)):
+			continue
+		if query == "" and not item in owned:
+			break
+		var row := _item_row(item, ItemInfo.name_of(item), "")
+		row.add_child(UI.button("Dodaj", func() -> void:
+			_freight_cargo.append([item, 100])
+			_freight_search.text = ""
+			_render.call_deferred()))
+		_freight_choices.add_child(row)
+		shown += 1
+		if shown >= 5:
+			break
+	if shown == 0:
+		_freight_choices.add_child(UI.label("Wpisz nazwę towaru, który ma wozić pociąg." if query == "" else "Nic takiego nie ma.", UI.MUTED))
+
+
+## What one train of the route being set up costs and how long it goes, as the server counts it (RailRules).
+func _update_freight_info() -> void:
+	if _freight_info == null or not is_instance_valid(_freight_info):
+		return
+	var rates: Dictionary = _freight["rates"]
+	var quantity := 0
+	for entry: Array in _freight_cargo:
+		quantity += int(entry[1])
+	var dx := absi(_freight_to.x - _freight_from.x)
+	dx = mini(dx, world_width - dx)
+	var km := sqrt(float(dx * dx + (_freight_to.y - _freight_from.y) * (_freight_to.y - _freight_from.y))) * 5.0
+	var seconds := maxf(rates["minTripSeconds"], km / 100.0 * rates["secondsPer100Km"])
+	var fee := ceili((int(rates["baseFeeCents"]) + ceili(km / 100.0 * quantity * float(rates["centsPerItemPer100Km"])))
+		* float(_freight_plot(_freight_from).get("feeFactor", 1.0)))
+	_freight_info.text = "%s → %s\n%s km  ·  w jedną stronę %s  ·  każdy kurs z %s szt. kosztuje %s" % [
+		_plot_label(_freight_from), _plot_label(_freight_to), _grouped(roundi(km)), _clock(seconds), _grouped(quantity), UI.money(fee)]
+	var problem := ""
+	if _freight_cargo.is_empty():
+		problem = "Dodaj co najmniej jeden towar."
+	elif quantity > int(rates["maxQuantity"]):
+		problem = "Pociąg wiezie najwyżej %s sztuk." % _grouped(int(rates["maxQuantity"]))
+	elif int(_freight_plot(_freight_from).get("loading", 0)) == 0:
+		problem = "Postaw na działce, z której jedzie pociąg, skrzynię ładującą."
+	elif int(_freight_plot(_freight_to).get("receiving", 0)) == 0:
+		problem = "Postaw na działce docelowej skrzynię odbierającą."
+	if problem != "":
+		_freight_info.text += "\n" + problem
+	_freight_button.disabled = _freight_cargo.is_empty() or quantity > int(rates["maxQuantity"]) or _freight_to.x < 0
+
+
+func _add_freight() -> void:
+	_freight_button.disabled = true
+	var cargo: Array = _freight_cargo.map(func(e: Array) -> Dictionary: return {"item": e[0], "quantity": int(e[1])})
+	var reply := await Net.request("freight.add", {
+		"fromX": _freight_from.x, "fromY": _freight_from.y, "toX": _freight_to.x, "toY": _freight_to.y, "cargo": cargo,
+	})
+	if reply["type"] != "freight":
+		failed.emit(reply)
+		_freight_button.disabled = false
+		return
+	toast.emit("Trasa utworzona: %s → %s. Pociąg czeka na towar w skrzyniach ładujących." % [_plot_label(_freight_from), _plot_label(_freight_to)])
+	_freight_cargo.clear()
+	_apply_freight(reply)
+	_render()
+	balance_changed.emit()
+
+
+func _remove_freight(id: int) -> void:
+	var reply := await Net.request("freight.remove", {"id": id})
+	if reply["type"] != "freight":
+		failed.emit(reply)
+		return
+	_apply_freight(reply)
+	_render()
+
+
+func _rename_plot() -> void:
+	var reply := await Net.request("world.rename", {"x": plot.x, "y": plot.y, "name": _plot_name.text.strip_edges()})
+	if reply["type"] != "world.plot":
+		failed.emit(reply)
+		return
+	var named: Variant = reply["payload"].get("name")
+	toast.emit("Działka nazywa się teraz „%s”." % named if named != null else "Działka nie ma już nazwy.")
+	get_viewport().gui_release_focus()
+	refresh_freight()
+
+
+func _freight_row(route: Dictionary) -> void:
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 2)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 6)
+	var from := Vector2i(route["from"]["x"], route["from"]["y"])
+	var to := Vector2i(route["to"]["x"], route["to"]["y"])
+	var title := UI.label("%s → %s" % [_plot_label(from), _plot_label(to)], UI.GOLD if plot in [from, to] else UI.TEXT)
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.clip_text = true
+	title.tooltip_text = title.text
+	top.add_child(title)
+	if route["stopping"]:
+		top.add_child(UI.label("ostatni kurs", UI.MUTED))
+	else:
+		top.add_child(UI.button("Usuń", _remove_freight.bind(int(route["id"]))))
+	box.add_child(top)
+
+	var cargo := HFlowContainer.new()
+	cargo.add_theme_constant_override("h_separation", 8)
+	var state: String = route["state"]
+	for item: Dictionary in route["cargo"]:
+		var piece := HBoxContainer.new()
+		piece.add_theme_constant_override("separation", 3)
+		var icon := UI.item_icon(item["id"], 20)
+		icon.tooltip_text = item["name"]
+		piece.add_child(icon)
+		var text := "%s" % _grouped(int(item["quantity"]))
+		if state == "loading":
+			# What the loading chests hold of it now, out of what one train takes.
+			text = "%s / %s" % [_grouped(mini(int(item["stock"]), int(item["quantity"]))), _grouped(int(item["quantity"]))]
+		piece.add_child(UI.label(text, UI.GOOD if state == "loading" and int(item["stock"]) >= int(item["quantity"]) else UI.MUTED))
+		cargo.add_child(piece)
+	box.add_child(cargo)
+
+	var problem: Variant = route["problem"]
+	var status := UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
+	match state:
+		"travelling":
+			status.add_theme_color_override("font_color", UI.GOOD)
+			_freight_labels.append([status, float(route["nextAt"]), "Jedzie z towarem: dojedzie za %s", "Rozładowuje…"])
+		"returning":
+			_freight_labels.append([status, float(route["nextAt"]), "Wraca po następny ładunek: będzie za %s", "Wrócił…"])
+		"unloading":
+			var left := 0
+			for item: Dictionary in route["carried"]:
+				left += int(item["quantity"])
+			status.text = "%s Zostało w pociągu %s szt." % [FREIGHT_PROBLEMS["no_room"], _grouped(left)]
+			status.add_theme_color_override("font_color", UI.ERROR)
+		_:
+			status.text = FREIGHT_PROBLEMS.get(problem, "Ładuje…") if problem != null else "Ładuje…"
+			if problem == "no_money":
+				status.add_theme_color_override("font_color", UI.ERROR)
+	box.add_child(status)
+	box.add_child(UI.label("%s km · w jedną stronę %s · kurs %s · kursów: %d (dowiezione %s szt.)" % [
+		_grouped(int(route["km"])), _clock(int(route["tripSeconds"])), UI.money(int(route["feeCents"])), int(route["trips"]),
+		_grouped(int(route["delivered"]))], UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	_body.add_child(box)
+	_body.add_child(HSeparator.new())
+
+
 # --- Trains on their way -----------------------------------------------------------------------------
 
 func _render_trips() -> void:
@@ -728,6 +1079,11 @@ func _update_times() -> void:
 		if is_instance_valid(label):
 			var seconds := ceili(maxf(entry[1] - now, 0.0) / 1000.0)
 			label.text = "następny za %s" % _clock(seconds) if seconds > 0 else "odjeżdża…"
+	for entry: Array in _freight_labels:
+		var label: Label = entry[0]
+		if is_instance_valid(label):
+			var seconds := ceili(maxf(entry[1] - now, 0.0) / 1000.0)
+			label.text = entry[2] % _clock(seconds) if seconds > 0 else entry[3]
 
 
 # --- Helpers ---------------------------------------------------------------------------------------------

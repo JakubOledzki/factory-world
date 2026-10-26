@@ -7,6 +7,7 @@ namespace FactoryWorld.Server;
 public sealed class MessageDispatcher(
     IEnumerable<IMessageHandler> handlers,
     IEnumerable<IMessageObserver> observers,
+    ServerLoad load,
     ILogger<MessageDispatcher> logger)
 {
     public static JsonSerializerOptions Json => Payload.Json;
@@ -43,6 +44,7 @@ public sealed class MessageDispatcher(
             return Error(request.Id, "not_logged_in", "Log in first.");
         }
 
+        var started = ServerLoad.Start();
         try
         {
             var reply = await handler.HandleAsync(request.Payload, client, cancellationToken);
@@ -58,6 +60,13 @@ public sealed class MessageDispatcher(
         {
             logger.LogError(ex, "Handler for {Type} failed", request.Type);
             return Error(request.Id, "internal", "Server error.");
+        }
+        finally
+        {
+            if (load.Record(request.Type, started) is var took && took > ServerLoad.Slow)
+            {
+                logger.LogWarning("Slow {Type}: {Milliseconds:0} ms", request.Type, took.TotalMilliseconds);
+            }
         }
     }
 

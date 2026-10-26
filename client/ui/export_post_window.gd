@@ -18,6 +18,8 @@ var post := ""
 var _state := {}
 var _about: Label
 var _owner: Label
+## Whether the owner is in the game.
+var _owner_dot: Control
 var _earned: Label
 var _setting := HBoxContainer.new()
 var _value: SpinBox
@@ -31,7 +33,15 @@ func _init() -> void:
 	content.add_child(_about)
 	content.add_child(HSeparator.new())
 	_owner = UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
-	content.add_child(_owner)
+	_owner_dot = Online.dot("")
+	_owner_dot.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+	_owner_dot.visible = false
+	var owner_row := HBoxContainer.new()
+	owner_row.add_theme_constant_override("separation", 6)
+	owner_row.add_child(_owner_dot)
+	_owner.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	owner_row.add_child(_owner)
+	content.add_child(owner_row)
 	_earned = UI.label("", UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT, true)
 	content.add_child(_earned)
 	_setting.add_theme_constant_override("separation", 6)
@@ -85,6 +95,7 @@ func _render(set_value: bool) -> void:
 		_about.text = ("Pociągi nie jeżdżą po wodzie: tu wjeżdżają na prom i płyną do innego portu pociągowego, trzy razy wolniej niż lądem. " +
 			"Pociąg wybiera najszybszą drogę do rynku skupu, przez dowolne porty.")
 		_owner.text = "Właściciel: %s.\nOpłata za przeprawę cudzego pociągu: %s." % [_state["owner"], UI.money(value).replace(" ", "\u00a0")]
+	Online.show_player(_owner_dot, "" if mine else str(_state["owner"]))
 	_earned.visible = mine
 	_setting.visible = mine
 	_pick_up.visible = mine

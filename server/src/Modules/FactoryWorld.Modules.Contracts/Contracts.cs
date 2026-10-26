@@ -89,7 +89,12 @@ public sealed class ContractsDbContext(DbContextOptions<ContractsDbContext> opti
             e.Property(c => c.Outcome).HasColumnName("outcome").HasMaxLength(16);
             e.HasIndex(c => c.Deadline).HasFilter("closed_at IS NULL");
             e.HasIndex(c => c.ContractorId).HasFilter("closed_at IS NULL");
-            e.HasIndex(c => new { c.IssuerId, c.Id });
+            // Finished orders stay, and every player gets new NPC orders all the time: what a query looks for has an
+            // index of its own, so no look walks through the old ones.
+            e.HasIndex(c => new { c.IssuerId, c.Id }).HasFilter("closed_at IS NULL").HasDatabaseName("IX_contracts_open_issuer_id_id");
+            e.HasIndex(c => new { c.IssuerId, c.ClosedAt }).HasFilter("closed_at IS NOT NULL").HasDatabaseName("IX_contracts_closed_issuer_id_closed_at");
+            e.HasIndex(c => new { c.ContractorId, c.ClosedAt }).HasFilter("closed_at IS NOT NULL").HasDatabaseName("IX_contracts_closed_contractor_id_closed_at");
+            e.HasIndex(c => c.Id).HasFilter("closed_at IS NULL AND contractor_id IS NULL AND issuer_id IS NOT NULL").HasDatabaseName("IX_contracts_board");
         });
     }
 }
@@ -158,9 +163,9 @@ public sealed class ContractService(
             var taken = await QueryAsync(
                 "issuer_id IS NOT NULL AND contractor_id = @player AND closed_at IS NULL ORDER BY deadline, id",
                 player, since, cancellationToken);
-            var issued = await QueryAsync(
-                "issuer_id = @player AND (closed_at IS NULL OR closed_at > @since) ORDER BY id DESC",
-                player, since, cancellationToken);
+            var issued = (await QueryAsync("issuer_id = @player AND closed_at IS NULL", player, since, cancellationToken))
+                .Concat(await QueryAsync("issuer_id = @player AND closed_at > @since", player, since, cancellationToken))
+                .OrderByDescending(c => c.Id).ToList();
             var finished = await QueryAsync(
                 $"contractor_id = @player AND outcome = '{ContractOutcome.Done}' AND closed_at > @since ORDER BY closed_at DESC LIMIT 20",
                 player, since, cancellationToken);

@@ -5,9 +5,13 @@ using Microsoft.Extensions.Logging;
 
 namespace FactoryWorld.Modules.Bots;
 
-/// <summary>What one step of a bot happens in: the time, the XP it may not go over, and the dice.</summary>
-/// <param name="XpCap">The most XP the bot may have: one less than the best real player, so it never shows a higher level.</param>
-public sealed record BotWorld(DateTimeOffset Now, long XpCap, Random Random);
+/// <summary>What one step of a bot happens in: the time and the dice.</summary>
+/// <remarks>
+/// A bot does not hold back for the XP cap: it keeps working and trading, and the engine cuts whatever it earns
+/// over the cap away after the step. Bots that stopped short of the cap (as they used to) did nothing at all
+/// once they caught up with the best player, so nothing reached the market.
+/// </remarks>
+public sealed record BotWorld(DateTimeOffset Now, Random Random);
 
 /// <summary>A plot the bot owns, with what it has seen on it this session.</summary>
 internal sealed class BotPlot(int x, int y, int biome)
@@ -46,7 +50,8 @@ internal sealed class BotPlot(int x, int y, int biome)
 /// It remembers between steps what it saw (its inventory, its plots, the prices) and refreshes all of it
 /// when a session starts. Every action that gives XP is skipped while it would carry the bot over its cap.
 /// </summary>
-public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogger logger)
+/// <param name="grant">Credits the bot's wallet with this many cents (the server's allowance, see <see cref="BotRules.Allowance"/>).</param>
+public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogger logger, Func<long, CancellationToken, Task>? grant = null)
 {
     private readonly Dictionary<string, long> _inventory = new(StringComparer.Ordinal);
     private readonly List<BotPlot> _plots = [];
@@ -60,7 +65,6 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
     private bool _fresh;
     private bool _broken;
     private long _xp;
-    private long _reserved;
     private long _money;
     private List<string> _tools = [];
     private int _mapWidth;
@@ -76,6 +80,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
     private int _openListings;
     private int _openOrders;
     private DateTimeOffset _lastListingAt;
+    private readonly List<(long Id, string Item, bool Sold)> _listings = [];
     private int _searchRadius;
     private int _purchases;
     private int _steps;
@@ -118,9 +123,11 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         }
 
         // Money also comes without a reply that shows it (tutorial rewards, sales to other players), so look now and then.
+        // Listings sell while the bot is busy elsewhere, so it looks at its offers then too.
         if (++_steps % 10 == 0)
         {
             _money = (await SendAsync("wallet.get", null, cancellationToken)).Payload.Long("balanceCents");
+            await MyOffersAsync(cancellationToken);
         }
 
         var candidates = Candidates(world);
@@ -144,8 +151,6 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         return null;
     }
 
-    private bool CanGain(BotWorld world, long xp) => _xp + _reserved + xp + BotRules.XpMargin <= world.XpCap;
-
     private long Have(string item) => _inventory.GetValueOrDefault(item);
 
     private long Floor(string item) => _floor.GetValueOrDefault(item);
@@ -164,12 +169,12 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             Add(12, "garage", GarageAsync);
         }
 
-        if (_sortQueue == 0 && _bin && Have(Items.Trash) > 0 && CanGain(world, 5))
+        if (_sortQueue == 0 && _bin && Have(Items.Trash) > 0)
         {
             Add(_plots.Count == 0 ? 10 : 4, "sort", SortAsync);
         }
 
-        if (Have(Items.Trash) < 5 && _sortQueue == 0 && _money >= 40_00 && CanGain(world, 5) && _traderSells.ContainsKey(Items.Trash))
+        if (Have(Items.Trash) < 5 && _sortQueue == 0 && _money >= 40_00 && _traderSells.ContainsKey(Items.Trash))
         {
             Add(3, "buy trash", ct => TradeAsync("market.buy", Items.Trash, 20, ct));
         }
@@ -180,7 +185,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             Add(8, "sell waste", ct => TradeAsync("market.sell", waste, Have(waste), ct));
         }
 
-        if (_plots.Count < BotRules.MaxPlots(trade) && _mapWidth > 0 && CanGain(world, 500))
+        if (_plots.Count < BotRules.MaxPlots(trade) && _mapWidth > 0)
         {
             var biomes = BotRules.PlotBiomes(trade, _plots.Count);
             var cheapest = biomes.Min(b => PlotPrice(b));
@@ -207,12 +212,9 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                 Biomes.Farmland => trade is BotTrade.Farmer,
                 _ => false,
             };
-            if (CanGain(world, plot.Biome == Biomes.Farmland ? 9 : 2))
-            {
-                Add(own ? 16 : 6, "work plot", ct => WorkPlotAsync(plot, world, ct));
-            }
+            Add(own ? 16 : 6, "work plot", ct => WorkPlotAsync(plot, world, ct));
 
-            if (plot.Biome is Biomes.Forest or Biomes.Farmland && Have(Items.Sapling) > 0 && plot.Planted < BotRules.MaxPlanted && CanGain(world, 1))
+            if (plot.Biome is Biomes.Forest or Biomes.Farmland && Have(Items.Sapling) > 0 && plot.Planted < BotRules.MaxPlanted)
             {
                 Add(trade == BotTrade.Forester ? 5 : 2, "plant tree", ct => PlantTreeAsync(plot, world, ct));
             }
@@ -225,7 +227,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                     break;
                 }
 
-                if (_workbench is not null && _craftQueue < 5 && !IsLocked(kind) && Has(Recipe(kind)) && CanGain(world, RecipeXp(kind)))
+                if (_workbench is not null && _craftQueue < 5 && !IsLocked(kind) && Has(Recipe(kind)))
                 {
                     Add(4, "craft to build", ct => CraftAsync(kind, ct));
                     break;
@@ -240,7 +242,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                 }
             }
 
-            if (plot.Biome == Biomes.Mountains && CanGain(world, 80) && plot.Mines.Any(m => m.Upgradable && Have(Items.IronIngot) >= m.UpgradeIron && Have(Items.Wood) >= m.UpgradeWood))
+            if (plot.Biome == Biomes.Mountains && plot.Mines.Any(m => m.Upgradable && Have(Items.IronIngot) >= m.UpgradeIron && Have(Items.Wood) >= m.UpgradeWood))
             {
                 Add(4, "upgrade mine", ct => UpgradeMineAsync(plot, ct));
             }
@@ -254,7 +256,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         {
             Add(10, "place furnace", ct => PlaceInGarageAsync(Items.Furnace, ct));
         }
-        else if (ore is not null && _workbench is not null && _craftQueue < 5 && Has(Recipe(Items.Furnace)) && !IsLocked(Items.Furnace) && CanGain(world, RecipeXp(Items.Furnace)))
+        else if (ore is not null && _workbench is not null && _craftQueue < 5 && Has(Recipe(Items.Furnace)) && !IsLocked(Items.Furnace))
         {
             Add(8, "craft furnace", ct => CraftAsync(Items.Furnace, ct));
         }
@@ -263,7 +265,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         {
             foreach (var product in BotRules.Products(trade))
             {
-                if (!IsLocked(product) && Has(Recipe(product)) && CanGain(world, RecipeXp(product)) && Have(product) < 20)
+                if (!IsLocked(product) && Has(Recipe(product)) && Have(product) < 20)
                 {
                     Add(5, "craft", ct => CraftAsync(product, ct));
                     break;
@@ -278,9 +280,9 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
 
         foreach (var tech in BotRules.Research(trade))
         {
-            if (_techs.TryGetValue(tech, out var t) && t.Status == "available" && Has(t.Cost) && CanGain(world, t.Xp))
+            if (_techs.TryGetValue(tech, out var t) && t.Status == "available" && Has(t.Cost))
             {
-                Add(4, "research", ct => ResearchAsync(tech, t.Xp, ct));
+                Add(4, "research", ct => ResearchAsync(tech, ct));
                 break;
             }
         }
@@ -292,7 +294,12 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
 
         if (_openListings < BotRules.MaxListings && _lastListingAt + BotRules.ListEvery <= world.Now && Surplus().Any())
         {
-            Add(trade == BotTrade.Trader ? 8 : 5, "list", ct => ListAsync(world, ct));
+            Add(trade == BotTrade.Trader ? 10 : 7, "list", ct => ListAsync(world, ct));
+        }
+
+        if (_openListings >= BotRules.MaxListings && _lastListingAt + BotRules.RelistAfter <= world.Now && _listings.Any(l => !l.Sold))
+        {
+            Add(3, "relist", ct => UnlistOldestAsync(world, ct));
         }
 
         var glut = Surplus().FirstOrDefault(s => s.Quantity >= 150 && Floor(s.Item) > 0).Item;
@@ -301,9 +308,9 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             Add(3, "quick sale", ct => TradeAsync("market.sell", glut, 50, ct));
         }
 
-        if (_money > BotRules.Reserve + 5_00 && _purchases < 4)
+        if (_money > BotRules.Reserve + 5_00 && _purchases < BotRules.MaxPurchases)
         {
-            Add(trade switch { BotTrade.Trader => 7, BotTrade.Industrialist => 6, _ => 3 }, "shop", ct => ShopAsync(world, ct));
+            Add(trade switch { BotTrade.Trader => 10, BotTrade.Industrialist => 8, _ => 6 }, "shop", ct => ShopAsync(world, ct));
         }
 
         Add(4, "fill order", ct => FillOrderAsync(world, ct));
@@ -358,6 +365,8 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                 if (!known.ContainsKey(key))
                 {
                     _plots.Add(new BotPlot(key.Item1, key.Item2, (int)plot.Long("biome")));
+                    // Anyone may come and look at how a bot plays.
+                    await SendAsync("plot.setPublic", new { x = key.Item1, y = key.Item2, @public = true }, cancellationToken);
                 }
             }
         }
@@ -385,13 +394,12 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         await InventoryAsync(cancellationToken);
         var wallet = await SendAsync("wallet.get", null, cancellationToken);
         _money = wallet.Payload.Long("balanceCents");
+        await AllowanceAsync(cancellationToken);
         await MyOffersAsync(cancellationToken);
 
-        // Everything that is already finished has been handed out above; what is still to come is spoken for.
+        // Everything that is already finished has been handed out above.
         var again = await SendAsync("character.get", null, cancellationToken);
         _xp = again.Payload.Long("xp");
-        _reserved = _sortQueue * 5L
-            + _techs.Values.Where(t => t.Status == "active").Sum(t => t.Xp);
         _fresh = true;
     }
 
@@ -540,8 +548,37 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             return;
         }
 
-        _openListings = reply.Payload.Each("listings").Count(l => l.True("open"));
+        _listings.Clear();
+        _listings.AddRange(reply.Payload.Each("listings").Where(l => l.True("open"))
+            .Select(l => (l.Long("id"), l.Text("item")!, l.Long("done") > 0)));
+        _openListings = _listings.Count;
         _openOrders = reply.Payload.Each("orders").Count(o => o.True("open"));
+    }
+
+    /// <summary>
+    /// Tops the wallet up as a session starts: to the first plot (and some tools) while the bot has none, so it
+    /// gets to its trade in its first session rather than after days of sorting trash, and to the
+    /// <see cref="BotRules.Allowance"/> it buys from players with.
+    /// </summary>
+    private async Task AllowanceAsync(CancellationToken cancellationToken)
+    {
+        if (grant is null)
+        {
+            return;
+        }
+
+        var target = BotRules.Allowance;
+        if (_plots.Count == 0 && _mapWidth > 0)
+        {
+            var first = BotRules.PlotBiomes(Profile.Trade, 0).Min(b => PlotPrice(b));
+            target = Math.Max(target, first + BotRules.Reserve + BotRules.StartingExtra);
+        }
+
+        if (_money < target)
+        {
+            await grant(target - _money, cancellationToken);
+            _money = (await SendAsync("wallet.get", null, cancellationToken)).Payload.Long("balanceCents");
+        }
     }
 
     // ----- The garage -----
@@ -555,7 +592,6 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         }
 
         ParseGarage(reply.Payload);
-        _reserved += 5;
         return true;
     }
 
@@ -639,12 +675,11 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         }
 
         ParseCrafting(reply.Payload);
-        _reserved += RecipeXp(recipe);
         await InventoryAsync(cancellationToken);
         return true;
     }
 
-    private async Task<bool> ResearchAsync(string technology, long xp, CancellationToken cancellationToken)
+    private async Task<bool> ResearchAsync(string technology, CancellationToken cancellationToken)
     {
         var reply = await SendAsync("research.start", new { technology }, cancellationToken);
         if (!reply.Is("research"))
@@ -653,7 +688,6 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             return false;
         }
 
-        _reserved += xp;
         await ParseResearchAsync(cancellationToken);
         await InventoryAsync(cancellationToken);
         return true;
@@ -673,7 +707,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         }
 
         var output = state.Payload.Get("output")?.Long("quantity") ?? 0;
-        if (output > 0 && CanGain(world, output))
+        if (output > 0)
         {
             var taken = await SendAsync("furnace.take", new { furnace, what = "output" }, cancellationToken);
             if (taken.Ok)
@@ -761,6 +795,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                     }
 
                     _plots.Add(new BotPlot(x, y, biome));
+                    await SendAsync("plot.setPublic", new { x, y, @public = true }, cancellationToken);
                     if (bought.Payload.Get("tool")?.Text("id") is { } given && _tools.Count == 0)
                     {
                         _tools = [given];
@@ -972,6 +1007,14 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                     _inventory[item.Text("id")!] = Have(item.Text("id")!) + item.Long("quantity");
                 }
 
+                // A saw may have felled the trees next to it too.
+                foreach (var tile in reply.Payload.Each("felled"))
+                {
+                    var (tx, ty) = ((int)tile.Long("tileX"), (int)tile.Long("tileY"));
+                    plot.Targets.Remove((tx, ty));
+                    plot.Tiles[ty * plot.Size + tx] = Tiles.None;
+                }
+
                 return true;
             }
         }
@@ -1120,7 +1163,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
     /// <summary>Gets the tool into the bot's hand: from the inventory, or bought from the trader.</summary>
     private async Task<bool> HoldAsync(string tool, CancellationToken cancellationToken)
     {
-        if (_tools.Contains(tool) || tool == Items.Axe && _tools.Contains(Items.Chainsaw))
+        if (_tools.Contains(tool) || tool == Items.Axe && Items.BestSaw(_tools) is not null)
         {
             return true;
         }
@@ -1170,7 +1213,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
     /// <summary>What the bot has more of than it keeps, worth the most first.</summary>
     private IEnumerable<(string Item, long Quantity)> Surplus() =>
         _inventory
-            .Where(i => BotRules.Goods.Contains(i.Key) && i.Value > Keep(i.Key))
+            .Where(i => (BotRules.Goods.Contains(i.Key) || Profile.Trade == BotTrade.Trader && Floor(i.Key) > 0) && i.Value > Keep(i.Key))
             .Select(i => (Item: i.Key, Quantity: i.Value - Keep(i.Key)))
             .OrderByDescending(s => s.Quantity * Math.Max(Floor(s.Item), 1));
 
@@ -1210,6 +1253,23 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         return true;
     }
 
+    /// <summary>Takes back the oldest listing nobody bought from, so it can go up again at the price players pay now.</summary>
+    private async Task<bool> UnlistOldestAsync(BotWorld world, CancellationToken cancellationToken)
+    {
+        var oldest = _listings.Where(l => !l.Sold).MinBy(l => l.Id);
+        var reply = await SendAsync("market.unlist", new { id = oldest.Id }, cancellationToken);
+        _listings.Remove(oldest);
+        if (!reply.Ok)
+        {
+            return false;
+        }
+
+        _openListings = _listings.Count;
+        _lastListingAt = world.Now - BotRules.ListEvery;
+        await InventoryAsync(cancellationToken);
+        return true;
+    }
+
     /// <summary>Buys from other players: what the bot needs for its work, or, as a trader, anything cheap enough to sell on.</summary>
     private async Task<bool> ShopAsync(BotWorld world, CancellationToken cancellationToken)
     {
@@ -1229,11 +1289,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                 continue;
             }
 
-            var floor = entry.LongOrNull("quickSaleCents") ?? Floor(id);
-            var limit = Profile.Trade == BotTrade.Trader
-                ? floor * 1.2
-                : wanted.Contains(id) && Have(id) < 60 ? Math.Max(floor * 1.6, _traderSells.GetValueOrDefault(id) * 0.9) : 0;
-            if (lowest <= limit && BotRules.Goods.Contains(id))
+            if (Limit(id, entry.LongOrNull("quickSaleCents") ?? Floor(id)) is { } limit && lowest <= limit)
             {
                 deals.Add((id, lowest));
             }
@@ -1251,11 +1307,12 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             return false;
         }
 
-        foreach (var listing in board.Payload.Each("listings").Where(l => !l.True("mine")))
+        var most = Limit(item, Floor(item)) ?? 0;
+        foreach (var listing in board.Payload.Each("listings").Where(l => !l.True("mine") && l.Long("priceCents") <= most))
         {
             var price = listing.Long("priceCents");
             var budget = (_money - BotRules.Reserve) / Math.Max(price, 1);
-            var quantity = Math.Min(Math.Min(listing.Long("quantity"), 20), budget);
+            var quantity = Math.Min(Math.Min(listing.Long("quantity"), BotRules.PurchaseSize), budget);
             if (quantity <= 0)
             {
                 return false;
@@ -1271,6 +1328,30 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// The most the bot pays a player for one piece, or null when it does not buy the item. What its trade needs it
+    /// pays well for; anything else it takes when it is a bargain, and a trader buys to sell it on. Never more than
+    /// the NPC trader charges, so buying from the trader to sell to a bot pays nobody.
+    /// </summary>
+    private double? Limit(string item, long floor)
+    {
+        if (floor <= 0)
+        {
+            return null;
+        }
+
+        var limit = BotRules.Buys(Profile.Trade).Contains(item) && Have(item) < 200 ? floor * 2.0
+            : Profile.Trade == BotTrade.Trader ? floor * 1.5
+            : BotRules.Goods.Contains(item) ? floor * 1.3
+            : 0;
+        if (_traderSells.TryGetValue(item, out var shop))
+        {
+            limit = Math.Min(limit, shop);
+        }
+
+        return limit > 0 ? limit : null;
     }
 
     /// <summary>Sells to a player's buy order that pays at least what the trader would.</summary>
@@ -1367,11 +1448,6 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             }
 
             var quantity = Math.Min(have, left);
-            if (quantity == left && !CanGain(world, c.Long("xp")))
-            {
-                quantity = left - 1;
-            }
-
             if (quantity < Math.Max(1, left / 4))
             {
                 continue;
@@ -1386,7 +1462,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         }
 
         var taken = view.Payload.Each("taken").Count();
-        if (taken < 2 && CanGain(world, 5))
+        if (taken < 2)
         {
             foreach (var c in view.Payload.Each("board"))
             {
@@ -1443,8 +1519,6 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
 
         if (reply.Payload.Xp() is { } xp)
         {
-            // XP spoken for earlier arrives here; what the reply shows is the truth now.
-            _reserved = Math.Max(0, _reserved - Math.Max(0, xp - _xp));
             _xp = xp;
         }
 

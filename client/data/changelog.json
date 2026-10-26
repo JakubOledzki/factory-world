@@ -1,6 +1,6 @@
 [
 	{
-		"date": "2026-10-25",
+		"date": "2026-10-26",
 		"title": "Ostrzejsze obiekty na działkach",
 		"changes": [
 			"Drzewa, skały, maszyny, taśmy i inne obiekty na działkach mają grafikę w dwa razy większej rozdzielczości, więc nie są już rozmyte na dużym ekranie, na telefonie i po przybliżeniu.",
@@ -9,12 +9,127 @@
 		]
 	},
 	{
+		"date": "2026-10-26",
+		"title": "Karmnik dla zwierząt",
+		"changes": [
+			"Nowe badanie Karmniki (w drzewku Hodowla, bez wymagań) odblokowuje karmnik: 12 desek i 6 gwoździ przy stole warsztatowym, u handlarza 380 $.",
+			"Karmnik stoi na jednym polu i sam karmi głodne zwierzęta do 3 pól wokół siebie, 2 sztuki paszy na posiłek, tak jak przy karmieniu ręcznym: od razu po wypuszczeniu zwierzęcia, po każdym zbiorze jajek, wełny czy mleka i gdy dostanie paszę. Nie trzeba już klikać każdego zwierzęcia osobno.",
+			"Paszę (pszenicę, kukurydzę, marchew, kapustę, mączkę rybną, daktyle albo paszę treściwą) wsypujesz w oknie karmnika albo podajnikiem ze skrzyni lub taśmy. Mieści 60 sztuk. Koń dostaje z karmnika tylko paszę treściwą.",
+			"Najechanie na karmnik albo stawianie go pokazuje pole, które obsługuje. Produkty nadal zbierasz sam."
+		]
+	},
+	{
+		"date": "2026-10-26",
+		"title": "Usuwanie pól",
+		"changes": [
+			"Pole zaorane motyką można teraz usunąć: przytrzymaj na nim prawy przycisk myszy (na telefonie przytrzymaj palec) albo kliknij puste pole i wybierz „Usuń pole”. Ziemia znów jest wolna, można na niej coś postawić. Roślina, która jeszcze rośnie, przepada; dojrzałą trzeba najpierw zebrać. Pola zagrody rolnika znikają tylko razem z zagrodą."
+		]
+	},
+	{
+		"date": "2026-10-26",
+		"title": "Beton u handlarza",
+		"changes": [
+			"Beton, cement i cegłę suszoną kupisz teraz u handlarza i od innych graczy bez badania „Materiały budowlane”. Beton u handlarza kosztuje 250 $/szt. Wcześniej nie było ich na rynku, choć beton jest potrzebny do fundamentu pod tory, hali montażowej czy podłogi z lastryka. Badanie dalej odblokowuje suszarnię, piec cementowy i betoniarkę, żeby robić je samemu."
+		]
+	},
+	{
+		"date": "2026-10-26",
+		"title": "Prowiant łatwiej znaleźć",
+		"changes": [
+			"Badanie Prowiant jest teraz w drzewku Przetwórstwo, zaraz za Kuchnią polową, a nie na końcu gałęzi Materiały. Dopiero po nim kuchnia polowa, piec piekarski i wędzarnia pakują prowiant.",
+			"Okno maszyny pokazuje pod przepisami te, które czekają jeszcze na badanie, na przykład: „Po badaniu przy stole badawczym: Prowiant (badanie: Prowiant)”. Wcześniej takich przepisów w ogóle nie było widać, więc wyglądało, jakby kuchnia polowa nie umiała zrobić prowiantu."
+		]
+	},
+	{
+		"date": "2026-10-26",
+		"title": "Szybszy serwer przy wielu graczach",
+		"changes": [
+			"Serwer pyta bazę danych rzadziej przy każdej akcji: garaż nie jest już przy każdym ruchu sprawdzany na nowo trzema zapisami, a rozmiar plecaka jest czytany raz na akcję zamiast przy każdym przedmiocie. Przy tłoku w grze odpowiedzi przychodzą szybciej."
+		]
+	},
+	{
+		"date": "2026-10-26",
+		"title": "2000 botów w grze",
+		"changes": [
+			"W grze gra teraz 2000 botów zamiast 30. Nowe boty mają ksywki jak prawdziwi gracze, na przykład ZakręconyTytan, KsiążęTraktor, xXKombajnXx albo tajny_drwal, i kupują działki w lasach, górach i na polach w całej Europie i na innych kontynentach, nie tylko w Polsce.",
+			"Na rynku jest więcej kupujących i więcej ofert. Na zakupy od graczy bot dostaje na początku sesji do 100 $ zamiast 500 $, żeby tylu botów nie zasypało rynku pieniędzmi. Boty dalej nie przeskoczą poziomem najlepszego prawdziwego gracza."
+		]
+	},
+	{
+		"date": "2026-10-26",
+		"title": "Płynniejsze chodzenie po dużych działkach",
+		"changes": [
+			"Chodzenie po działce z dużą fabryką już się nie zacina. Druty elektryczne całej działki rysują się teraz naraz, a nie każdy osobno, a drzewa, maszyny i ich cienie są zebrane na kilku wspólnych obrazkach. Na działce testowej gra wysyła do karty graficznej w każdej klatce około 170 poleceń rysowania zamiast prawie 1500.",
+			"Gra nie przegląda też w każdej klatce wszystkich obiektów na działce, żeby sprawdzić, przy czym stoi postać i co jest pod myszką. Patrzy tylko na pola obok."
+		]
+	},
+	{
+		"date": "2026-10-26",
+		"title": "Szybsze okna na działkach z leśniczówkami",
+		"changes": [
+			"Okna skrzyń, podajników, generatorów, leśniczówek i stacji na działkach z leśniczówkami lub zagrodami otwierają się szybciej. Wcześniej każda leśniczówka i zagroda przeliczała od nowa całą działkę, a na dużych działkach trwało to nawet kilkanaście sekund.",
+			"Wejście na działkę, na której wiele pól już zebrano, też jest szybsze."
+		]
+	},
+	{
+		"date": "2026-10-26",
+		"title": "Szybsze wejście na działkę",
+		"changes": [
+			"Pierwsze wejście na działkę, która długo stała bez gracza, trwa nawet trzy razy krócej: podajniki, które nie mają nic do zrobienia, czekają, aż coś się zmieni w skrzyni, piecu albo na taśmie obok, zamiast sprawdzać to co chwilę. Wynik pracy fabryki jest dokładnie taki sam jak wcześniej.",
+			"Okna skrzyń, pieców, leśniczówki i stacji na takiej działce otwierają się szybciej, bo nie czekają tak długo, aż serwer nadrobi czas taśm i podajników."
+		]
+	},
+	{
+		"date": "2026-10-26",
+		"title": "Szybszy rynek i zlecenia",
+		"changes": [
+			"Rynek graczy otwiera się szybciej także wtedy, gdy wystawiono na nim setki tysięcy ofert: zestawienie najlepszych cen liczy się raz dla wszystkich i odświeża tylko przedmioty, które ktoś właśnie kupił lub wystawił.",
+			"Zakładka Moje oferty i limit 20 ofert nie przeglądają już wszystkich dawno zamkniętych ofert gracza, a okno zleceń nie przegląda wszystkich wykonanych zleceń w grze.",
+			"Okno rynku nie rysuje się drugi raz, gdy odpowiedź serwera niczego nie zmieniła, więc zakładki przełączają się szybciej."
+		]
+	},
+	{
+		"date": "2026-10-25",
+		"title": "Pociągi między twoimi działkami",
+		"changes": [
+			"Nowe skrzynie: ładująca (pomarańczowa, strzałka w górę) i odbierająca (niebieska, strzałka w dół), każda w 4 rozmiarach: 800, 1600, 6400 i 16 000 sztuk. Odblokujesz je w gałęzi Logistyka: Transport kolejowy, Większe skrzynie kolejowe, Terminal przeładunkowy i Kontenerowy terminal kolejowy.",
+			"Kliknij stację kolejową na dowolnej działce: pierwsza zakładka, Trasy, pokazuje wszystkie twoje trasy między działkami. Tam też dodasz nową: skąd, dokąd, jakie towary i ile na jeden kurs; od razu widać odległość, czas jazdy i cenę kursu.",
+			"Pociąg trasy czeka, aż skrzynie ładujące na działce będą miały cały ładunek, płaci zwykłą opłatę kolejową i zawozi towar do skrzyń odbierających. Gdy nie ma w nich miejsca, czeka z resztą, a potem wraca po następny ładunek.",
+			"Na działce może stać kilka skrzyń ładujących i odbierających. Filtr skrzyni (przycisk na pasku okna) sprawia, że przyjmuje tylko wybrany przedmiot; pociąg najpierw rozładowuje się do skrzyń z filtrem na dany towar. Podajniki napełniają je i opróżniają jak zwykłe skrzynie.",
+			"Działki można nazywać: na mapie świata (przy swojej działce) albo w zakładce Trasy na stacji. Nazwę widać na mapie i w trasach."
+		]
+	},
+	{
+		"date": "2026-10-25",
+		"title": "Większa hałda",
+		"changes": [
+			"Hałda mieści teraz 5000 sztuk zamiast 1000: dwa razy więcej niż żelazna skrzynia, ale tylko jednego surowca (kamienia, piasku, węgla albo rudy, także kruszonej)."
+		]
+	},
+	{
+		"date": "2026-10-25",
+		"title": "Kompendium wiedzy",
+		"changes": [
+			"W oknie postaci (portret w rogu) jest nowa zakładka Kompendium: każdy przedmiot, maszyna i budynek w grze, podzielone na kategorie, z wyszukiwarką.",
+			"Przy każdym przedmiocie widać, do czego służy, skąd się bierze, w których maszynach i z czego się go wytwarza, do czego jeszcze się przydaje, czy jest opałem albo daniem dla stołówki, jakiego badania wymaga i ile płaci za niego handlarz.",
+			"Kliknięcie składnika albo maszyny w przepisie przenosi do jej opisu. Przepisy kompendium pochodzą prosto z gry, więc nowe przedmioty i przepisy pojawią się w nim same."
+		]
+	},
+	{
+		"date": "2026-10-25",
+		"title": "Kto jest w grze i jedno logowanie",
+		"changes": [
+			"Przy nazwie gracza świeci kropka: zielona, gdy jest teraz w grze, czerwona, gdy go nie ma. Widać ją w rankingach, w spółce, na rynku, w zleceniach, przy właścicielu działki na mapie, nad graczami na działce, w mieście, na stacji, w banku i na rynku skupu.",
+			"Na jedno konto gra się w jednym miejscu naraz. Logowanie na innym urządzeniu albo w innej karcie przeglądarki wylogowuje poprzednie, a tam pojawia się komunikat, dlaczego."
+		]
+	},
+	{
 		"date": "2026-10-25",
 		"title": "Szybkie chowanie obiektów",
 		"changes": [
-			"Przytrzymaj prawy przycisk myszy na postawionym obiekcie przez 2 sekundy, a schowa się do ekwipunku razem z tym, co ma w środku. Wokół obiektu wypełnia się wtedy złote kółko.",
+			"Przytrzymaj prawy przycisk myszy na postawionym obiekcie przez sekundę, a schowa się do ekwipunku razem z tym, co ma w środku. Wokół obiektu wypełnia się wtedy złote kółko.",
 			"Puszczenie przycisku albo zjechanie kursorem z obiektu przerywa chowanie. W garażu krótkie kliknięcie prawym przyciskiem dalej otwiera menu mebla.",
-			"Na telefonie to samo robi przytrzymanie palca na obiekcie przez 2 sekundy; zwykłe dotknięcie działa jak wcześniej."
+			"Na telefonie to samo robi przytrzymanie palca na obiekcie przez sekundę; zwykłe dotknięcie działa jak wcześniej."
 		]
 	},
 	{
@@ -23,6 +138,7 @@
 		"changes": [
 			"Węgiel drzewny z mielerza zastępuje teraz węgiel kopalny w przepisach maszyn: odlewnia i konwertor tlenowy robią z niego stal, a piec łukowy krzem.",
 			"W oknie maszyny pod węglem pojawia się wiersz „Węgiel drzewny zamiast: węgiel”, gdy masz go w ekwipunku; podajniki też go wkładają.",
+			"Okno pieca pokazuje węgiel drzewny z ekwipunku i pozwala dołożyć go do ognia jak zwykły węgiel, w piecu kamiennym, ceglanym i hutniczym.",
 			"Przypomnienie: mielerz (badanie „Węglarstwo i smolarstwo” w gałęzi leśnictwa) wypala 2 węgla drzewnego z 4 drewna w 60 s, bez opału i prądu."
 		]
 	},

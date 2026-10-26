@@ -172,7 +172,7 @@ func _show_ranking(state: Dictionary) -> void:
 		player.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		if entry["mine"]:
 			player.add_theme_font_override("font", UI.bold())
-		grid.add_child(player)
+		grid.add_child(Online.with_dot(player, entry["name"]))
 		grid.add_child(UI.label(entry["text"], color, HORIZONTAL_ALIGNMENT_RIGHT))
 	_page.add_child(grid)
 

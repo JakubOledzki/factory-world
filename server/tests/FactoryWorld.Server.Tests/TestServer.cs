@@ -33,6 +33,7 @@ public class ServerFactory : WebApplicationFactory<Program>
         builder.UseSetting("Market:PriceChanges", PriceChanges.ToString());
         // Bots would play next to the test players; their own tests drive them by hand.
         builder.UseSetting("Bots:Enabled", "false");
+        builder.UseSetting("Bots:Count", BotTests.TestBots.ToString(System.Globalization.CultureInfo.InvariantCulture));
         builder.UseSetting("ConnectionStrings:Game",
             new NpgsqlConnectionStringBuilder(_admin) { Database = _database }.ConnectionString);
         builder.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(Time));
@@ -84,6 +85,20 @@ public sealed class GameClient(WebSocket socket) : IDisposable
         }
 
         return reply;
+    }
+
+    /// <summary>The next message the server sends, e.g. a notice that answers no request.</summary>
+    public Task<JsonElement> NextAsync() => ReceiveAsync();
+
+    /// <summary>Waits for the server to close the connection; returns how it said it closed.</summary>
+    public async Task<string?> ClosedAsync()
+    {
+        var buffer = new byte[64 * 1024];
+        while ((await socket.ReceiveAsync(buffer, CancellationToken.None)).MessageType != WebSocketMessageType.Close)
+        {
+        }
+
+        return socket.CloseStatusDescription;
     }
 
     private async Task<JsonElement> ReceiveAsync()

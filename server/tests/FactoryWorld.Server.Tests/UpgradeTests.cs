@@ -230,6 +230,10 @@ public sealed class UpgradeTests(ServerFactory factory) : IClassFixture<ServerFa
         Assert.Equal(2, loaded.GetProperty("level").GetInt32());
         Assert.Equal(100, loaded.GetProperty("maxInput").GetInt32());
         await client.SendAsync("furnace.load", new { furnace, item = Items.Coal, quantity = 30 });
+        // Charcoal goes on the same fire.
+        await GiveAsync(client, Items.Charcoal, 10);
+        var fired = (await client.SendAsync("furnace.load", new { furnace, item = Items.Charcoal, quantity = 10 })).Payload();
+        Assert.Equal(40, fired.GetProperty("fuel").GetInt32());
 
         factory.Time.Advance(TimeSpan.FromSeconds(20));
         var state = (await client.SendAsync("furnace.get", new { furnace })).Payload();

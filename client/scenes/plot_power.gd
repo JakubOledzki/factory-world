@@ -45,10 +45,39 @@ var _blink := 0.0
 ## Machines on the glacier no heater warms, which work at half pace: by id.
 var _cold := {}
 
+## What is drawn, worked out again only when the objects or the networks change (see _refresh), not every frame:
+## the wires as lines of points, the poles' tiles, the marks over machines ([centre, colour], a null colour for
+## the frost) and whether the plot has anything to do with power.
+var _wires: Array[PackedVector2Array] = []
+## All the wires as one set of triangles (their corners, colours and which corners make each), drawn with one command:
+## a big plot has hundreds of wires, and a drawing command for each slows every frame.
+var _wire_corners := PackedVector2Array()
+var _wire_colors := PackedColorArray()
+var _wire_triangles := PackedInt32Array()
+var _poles: Array[Vector2i] = []
+var _marks: Array = []
+var _powered := false
+var _stale := true
+## The pulsing marks, redrawn every frame while there are any; the wires stay as they were drawn.
+var _pulse: PowerMarks
+
+
+func _ready() -> void:
+	_pulse = PowerMarks.new(self)
+	add_child(_pulse)
+
 
 func set_objects(placed: Dictionary) -> void:
 	_placed = placed
+	_changed()
+
+
+## The objects or the networks changed: what is drawn is worked out again, once, before the next frame.
+func _changed() -> void:
+	_stale = true
 	queue_redraw()
+	if _pulse != null:
+		_pulse.queue_redraw()
 
 
 ## Applies the "power" part of an answer to "logistics.get".
@@ -69,16 +98,13 @@ func apply(summary: Dictionary) -> void:
 	_cold = {}
 	for id: String in summary.get("cold", []):
 		_cold[id] = true
-	queue_redraw()
+	_changed()
 
 
 ## Whether the plot has anything to do with power, so its state is worth asking for.
 func has_power() -> bool:
-	for cell: Vector2i in _placed:
-		var kind: String = _placed[cell]["kind"]
-		if kind == POLE or _source(kind) or demand.has(kind) or kind == HEATER:
-			return true
-	return false
+	_refresh()
+	return _powered
 
 
 ## Whether an object of `kind` gives power to a network: a generator, water or solar power or a battery.
@@ -118,11 +144,8 @@ func speed(id: String) -> float:
 
 
 func poles() -> Array[Vector2i]:
-	var cells: Array[Vector2i] = []
-	for cell: Vector2i in _placed:
-		if _placed[cell]["kind"] == POLE:
-			cells.append(cell)
-	return cells
+	_refresh()
+	return _poles.duplicate()
 
 
 func covers(pole: Vector2i, cell: Vector2i) -> bool:
@@ -135,7 +158,8 @@ func wired(a: Vector2i, b: Vector2i) -> bool:
 
 ## Whether any pole reaches a tile.
 func covered(cell: Vector2i) -> bool:
-	for pole in poles():
+	_refresh()
+	for pole in _poles:
 		if covers(pole, cell):
 			return true
 	return false
@@ -163,16 +187,47 @@ func _wire_point(cell: Vector2i) -> Vector2:
 
 func _process(delta: float) -> void:
 	_blink += delta
-	if not _placed.is_empty():
-		queue_redraw()
+	if not _marks.is_empty():
+		_pulse.queue_redraw()
 
 
 func _draw() -> void:
-	var all_poles := poles()
-	for i in all_poles.size():
-		for j in range(i + 1, all_poles.size()):
-			if wired(all_poles[i], all_poles[j]):
-				_wire(_wire_point(all_poles[i]), _wire_point(all_poles[j]))
+	_refresh()
+	if not _wire_triangles.is_empty():
+		RenderingServer.canvas_item_add_triangle_array(get_canvas_item(), _wire_triangles, _wire_corners, _wire_colors)
+
+
+## Works out the poles, the wires and the marks over machines again when the objects or the networks changed.
+## Poles are looked up by squares of the wires' reach, so wiring a big plot does not compare every pole with every other.
+func _refresh() -> void:
+	if not _stale:
+		return
+	_stale = false
+	_poles = []
+	_wires = []
+	_marks = []
+	_powered = false
+	for cell: Vector2i in _placed:
+		var kind: String = _placed[cell]["kind"]
+		if kind == POLE:
+			_poles.append(cell)
+		if not _powered and (kind == POLE or _source(kind) or demand.has(kind) or kind == HEATER):
+			_powered = true
+	var square := maxi(1, ceili(wire_reach))
+	var near := {}
+	for pole in _poles:
+		var key := Vector2i(floori(pole.x / float(square)), floori(pole.y / float(square)))
+		if not near.has(key):
+			near[key] = []
+		near[key].append(pole)
+	for pole in _poles:
+		var key := Vector2i(floori(pole.x / float(square)), floori(pole.y / float(square)))
+		for dy in range(-1, 2):
+			for dx in range(-1, 2):
+				for other: Vector2i in near.get(key + Vector2i(dx, dy), []):
+					# Each pair once.
+					if (other.y > pole.y or (other.y == pole.y and other.x > pole.x)) and wired(pole, other):
+						_wires.append(_wire_points(_wire_point(pole), _wire_point(other)))
 	for cell: Vector2i in _placed:
 		var object: Dictionary = _placed[cell]
 		# A big object is in _placed once for every tile it covers: wire and mark it once, from where it stands.
@@ -181,16 +236,40 @@ func _draw() -> void:
 		var kind: String = object["kind"]
 		var centre := (Vector2(cell) + Vector2(0.5, 0.5) + Footprints.shift(kind)) * tile
 		if _source(kind):
-			for pole in all_poles:
-				if Footprints.tiles(kind, cell).any(func(t: Vector2i) -> bool: return covers(pole, t)):
-					_wire(_wire_point(cell), _wire_point(pole))
+			var reach := supply_radius + Footprints.size(kind)
+			for pole in _poles:
+				if absi(pole.x - cell.x) <= reach and absi(pole.y - cell.y) <= reach \
+						and Footprints.tiles(kind, cell).any(func(t: Vector2i) -> bool: return covers(pole, t)):
+					_wires.append(_wire_points(_wire_point(cell), _wire_point(pole)))
 					break
 		elif demand.has(kind):
 			var s := speed(object["id"]) if not _networks.is_empty() else (1.0 if Footprints.tiles(kind, cell).any(covered) else 0.0)
-			if s < 0.999 and not _cold.has(object["id"]):
-				_bolt(centre, DARK if s <= 0.0 else SHORT)
-			elif _cold.has(object["id"]):
-				_flake(centre)
+			if _cold.has(object["id"]):
+				_marks.append([centre, null])
+			elif s < 0.999:
+				_marks.append([centre, DARK if s <= 0.0 else SHORT])
+	_build_wire_triangles()
+
+
+## Lays every wire out as strips of triangles: a faint wider one softening its edges, the wire, and its shine.
+func _build_wire_triangles() -> void:
+	_wire_corners = PackedVector2Array()
+	_wire_colors = PackedColorArray()
+	_wire_triangles = PackedInt32Array()
+	for look: Array in [[3.0, Color(WIRE, 0.15)], [2.0, WIRE], [1.0, WIRE_SHINE]]:
+		var half: float = look[0] / 2.0
+		for points in _wires:
+			var first := _wire_corners.size()
+			for k in points.size():
+				var along := points[mini(k + 1, points.size() - 1)] - points[maxi(k - 1, 0)]
+				var side := along.orthogonal().normalized() * half
+				_wire_corners.append(points[k] + side)
+				_wire_corners.append(points[k] - side)
+				_wire_colors.append(look[1])
+				_wire_colors.append(look[1])
+			for k in points.size() - 1:
+				var at := first + k * 2
+				_wire_triangles.append_array([at, at + 1, at + 2, at + 1, at + 3, at + 2])
 
 
 ## Whether a tile is where an object stands (its centre for a big one), so it is marked once.
@@ -198,33 +277,50 @@ func _placed_anchor(cell: Vector2i, object: Dictionary) -> bool:
 	return cell == Vector2i(int(object["tileX"]), int(object["tileY"]))
 
 
-## A snowflake over a machine slowed by the frost, pulsing.
-func _flake(centre: Vector2) -> void:
-	var at := centre - Vector2(0, 64)
-	var pulse := 0.65 + 0.35 * sin(_blink * 3.0)
-	draw_circle(at, 13, Color(0.05, 0.08, 0.12, 0.75 * pulse))
-	for k in 3:
-		var d := Vector2.from_angle(k * PI / 3.0) * 9.0
-		draw_line(at - d, at + d, Color(0.7, 0.9, 1.0, pulse), 2.0, true)
-
-
 ## A wire sagging between two points.
-func _wire(a: Vector2, b: Vector2) -> void:
+static func _wire_points(a: Vector2, b: Vector2) -> PackedVector2Array:
 	var points := PackedVector2Array()
 	var sag := 4.0 + a.distance_to(b) * 0.06
 	for k in 13:
 		var t := k / 12.0
 		points.append(a.lerp(b, t) + Vector2(0, sag * 4.0 * t * (1.0 - t)))
-	draw_polyline(points, WIRE, 2.0, true)
-	draw_polyline(points, WIRE_SHINE, 1.0, true)
+	return points
 
 
-## A lightning bolt over a machine short of power, pulsing.
-func _bolt(centre: Vector2, color: Color) -> void:
-	var at := centre - Vector2(0, 64)
-	var pulse := 0.65 + 0.35 * sin(_blink * 5.0)
-	var shape := PackedVector2Array([Vector2(2, -10), Vector2(-6, 1), Vector2(-1, 1), Vector2(-3, 10), Vector2(6, -2), Vector2(1, -2), Vector2(4, -10)])
-	for i in shape.size():
-		shape[i] = at + shape[i] * 1.3
-	draw_circle(at, 13, Color(0.05, 0.04, 0.03, 0.75 * pulse))
-	draw_colored_polygon(shape, Color(color, pulse))
+## The marks over machines short of power (a bolt) or in the cold (a snowflake), pulsing: a node of its own,
+## redrawn every frame, so the wires under them are not. Only those on the screen are drawn.
+class PowerMarks extends Node2D:
+	var power: PlotPower
+
+	func _init(owner_node: PlotPower) -> void:
+		power = owner_node
+
+	func _draw() -> void:
+		power._refresh()
+		var view := PlotLogistics.view_rect(self)
+		for mark: Array in power._marks:
+			if not view.has_point(mark[0]):
+				continue
+			if mark[1] == null:
+				_flake(mark[0])
+			else:
+				_bolt(mark[0], mark[1])
+
+	## A snowflake over a machine slowed by the frost, pulsing.
+	func _flake(centre: Vector2) -> void:
+		var at := centre - Vector2(0, 64)
+		var pulse := 0.65 + 0.35 * sin(power._blink * 3.0)
+		draw_circle(at, 13, Color(0.05, 0.08, 0.12, 0.75 * pulse))
+		for k in 3:
+			var d := Vector2.from_angle(k * PI / 3.0) * 9.0
+			draw_line(at - d, at + d, Color(0.7, 0.9, 1.0, pulse), 2.0, true)
+
+	## A lightning bolt over a machine short of power, pulsing.
+	func _bolt(centre: Vector2, color: Color) -> void:
+		var at := centre - Vector2(0, 64)
+		var pulse := 0.65 + 0.35 * sin(power._blink * 5.0)
+		var shape := PackedVector2Array([Vector2(2, -10), Vector2(-6, 1), Vector2(-1, 1), Vector2(-3, 10), Vector2(6, -2), Vector2(1, -2), Vector2(4, -10)])
+		for i in shape.size():
+			shape[i] = at + shape[i] * 1.3
+		draw_circle(at, 13, Color(0.05, 0.04, 0.03, 0.75 * pulse))
+		draw_colored_polygon(shape, Color(color, pulse))

@@ -134,8 +134,8 @@ func _render_growth() -> void:
 	if (_state["contributors"] as Array).is_empty():
 		_body.add_child(UI.label("Jeszcze nikt.", UI.MUTED))
 	for c: Dictionary in _state["contributors"]:
-		_body.add_child(UI.label("%s%s: %s" % [c["name"], " (ty)" if c["mine"] else "", UI.money(int(c["cents"]))],
-			UI.GOLD if c["mine"] else UI.TEXT))
+		_body.add_child(Online.with_dot(UI.label("%s%s: %s" % [c["name"], " (ty)" if c["mine"] else "", UI.money(int(c["cents"]))],
+			UI.GOLD if c["mine"] else UI.TEXT), c["name"]))
 	_body.add_child(UI.label("Twój wkład: %s" % UI.money(int(_state["myCents"])), UI.MUTED))
 
 
@@ -170,7 +170,7 @@ func _render_services() -> void:
 		var text := UI.label("%s (%s)\n%d× %s za %s · dziś jeszcze %d" % [s["name"], s["owner"], int(s["quantity"]), s["itemName"],
 			UI.money(int(s["priceCents"])), int(s["left"])])
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(text)
+		row.add_child(Online.with_dot(text, s["owner"]))
 		var buy := UI.button("Twoje" if s["own"] else "Kup", func() -> void: _buy_service(s["id"]), true)
 		buy.disabled = s["own"] or int(s["left"]) <= 0
 		row.add_child(buy)
@@ -180,7 +180,8 @@ func _render_services() -> void:
 func _render_hall() -> void:
 	var hall: Dictionary = _state["hall"]
 	var mayor: Variant = hall["mayor"]
-	_body.add_child(UI.label("Burmistrz tego tygodnia: %s" % (mayor if mayor != null else "brak (nikt nie głosował)"), UI.GOLD))
+	_body.add_child(Online.with_dot(UI.label("Burmistrz tego tygodnia: %s" % (mayor if mayor != null else "brak (nikt nie głosował)"), UI.GOLD),
+		mayor))
 	var bonus_name := "żaden"
 	for b: Dictionary in hall["bonuses"]:
 		if b["id"] == hall["bonus"]:
@@ -230,7 +231,7 @@ func _render_hall() -> void:
 		var text := UI.label("%s%s: %d głosów%s" % [c["name"], " (ty)" if c["me"] else "", int(c["votes"]), " · twój głos" if mine else ""],
 			UI.GOLD if mine else UI.TEXT)
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(text)
+		row.add_child(Online.with_dot(text, c["name"]))
 		var vote := UI.button("Głosuj", func() -> void: _vote(c["name"]))
 		vote.disabled = not hall["canVote"] or mine
 		row.add_child(vote)

@@ -185,14 +185,14 @@ public sealed class CompanyEconomyTests(ServerFactory factory) : IClassFixture<S
         async Task<string[]> RightsAsync(Player player) =>
             (await player.SendAsync("plot.enter", new { x, y })).Payload().GetProperty("rights").EnumerateArray().Select(r => r.GetString()!).ToArray();
 
-        Assert.Equal(["work", "take"], await RightsAsync(treasurer));
-        Assert.Equal(["work"], await RightsAsync(manager));
-        Assert.Equal(["work", "take", "routes"], await RightsAsync(logistician));
+        Assert.Equal(["work", "take", "visit"], await RightsAsync(treasurer));
+        Assert.Equal(["work", "visit"], await RightsAsync(manager));
+        Assert.Equal(["work", "take", "routes", "visit"], await RightsAsync(logistician));
 
         Assert.Equal("not_member", (await owner.SendAsync("company.assign", new { x, y, name = "nobody_here" })).ErrorCode());
         var assigned = await owner.CompanyAsync("company.assign", new { x, y, name = manager.Name });
         Assert.Equal(manager.Name, assigned.GetProperty("plots")[0].GetProperty("manager").GetString());
-        Assert.Equal(["work", "take", "build"], await RightsAsync(manager));
+        Assert.Equal(["work", "take", "build", "visit"], await RightsAsync(manager));
         Assert.Equal("not_allowed", (await manager.SendAsync("company.assign", new { x, y, name = "" })).ErrorCode());
 
         // The treasurer manages money; partners' and managers' hands are off the cash.

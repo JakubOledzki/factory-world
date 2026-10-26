@@ -182,6 +182,173 @@ public sealed class PerfTests(ServerFactory factory, ITestOutputHelper output) :
         }
     }
 
+    /// <summary>Lines on the big factory plot, each <see cref="BigLineObjects"/> objects: about a thousand in all, as a player far into the game has.</summary>
+    private const int BigLines = 50;
+
+    private const int BigLineBelts = 10;
+
+    private const int BigLineObjects = 10 + BigLineBelts;
+
+    /// <summary>
+    /// A plot with about a thousand objects (furnace lines feeding belts into chests, with poles and generators) and the requests
+    /// sent while players are on it: the owner and visitors of the public plot asking for its logistics every second all at once.
+    /// <c>FW_PERF=1 dotnet test -c Release --filter Big_factory_plot --logger "console;verbosity=detailed"</c>.
+    /// </summary>
+    [PerfFact]
+    public async Task Big_factory_plot()
+    {
+        using var commands = new Commands();
+        using var client = await factory.ConnectAsync();
+        await client.RegisterWithCharacterAsync();
+        var build = Stopwatch.StartNew();
+        var (x, y, places, chest, furnace, generator) = await BigFactoryPlotAsync(client);
+        build.Stop();
+
+        async Task<string> Send(GameClient c, string type, object? payload = null) => (await c.SendAsync(type, payload)).GetRawText();
+
+        var results = new List<Result>
+        {
+            await MeasureAsync("logistics.get (1 s later)", commands, _ => Send(client, "logistics.get", new { x, y }), () => factory.Time.Advance(TimeSpan.FromSeconds(1))),
+            await MeasureAsync("logistics.get, short form as the game asks (1 s later)", commands,
+                _ => Send(client, "logistics.get", new { x, y, compact = true }), () => factory.Time.Advance(TimeSpan.FromSeconds(1))),
+            await MeasureAsync("logistics.get (same moment)", commands, _ => Send(client, "logistics.get", new { x, y })),
+            await MeasureAsync("logistics.get (1 min later)", commands, _ => Send(client, "logistics.get", new { x, y }), () => factory.Time.Advance(TimeSpan.FromMinutes(1))),
+            await MeasureAsync("plot.enter", commands, _ => Send(client, "plot.enter", new { x, y })),
+            await MeasureAsync("plot.presence", commands, _ => Send(client, "plot.presence", new { x, y, posX = 12.5, posY = 30.25, facing = "left", walking = true })),
+            await MeasureAsync("forestry.get", commands, _ => Send(client, "forestry.get", new { x, y })),
+            await MeasureAsync("station.get", commands, _ => Send(client, "station.get", new { x, y })),
+            // Windows of the objects on the plot.
+            await MeasureAsync("storage.get", commands, _ => Send(client, "storage.get", new { x, y, id = chest }), () => factory.Time.Advance(TimeSpan.FromSeconds(1))),
+            await MeasureAsync("furnace.get", commands, _ => Send(client, "furnace.get", new { furnace }), () => factory.Time.Advance(TimeSpan.FromSeconds(1))),
+            await MeasureAsync("generator.get", commands, _ => Send(client, "generator.get", new { x, y, id = generator }), () => factory.Time.Advance(TimeSpan.FromSeconds(1))),
+        };
+
+        // Visitors of the public plot, everyone asking for its logistics at the same moment, as their clients do every second.
+        Assert.Equal("world.plot", (await client.SendAsync("plot.setPublic", new { x, y, @public = true })).Type());
+        var visitors = new List<GameClient>();
+        for (var i = 0; i < 9; i++)
+        {
+            var visitor = await factory.ConnectAsync();
+            await visitor.RegisterWithCharacterAsync();
+            visitors.Add(visitor);
+        }
+
+        var everyone = visitors.Prepend(client).ToList();
+        var together = Stopwatch.StartNew();
+        const int Seconds = 10;
+        for (var second = 0; second < Seconds; second++)
+        {
+            factory.Time.Advance(TimeSpan.FromSeconds(1));
+            await Task.WhenAll(everyone.Select(c => Send(c, "logistics.get", new { x, y, compact = true })));
+        }
+
+        together.Stop();
+
+        var table = new StringBuilder();
+        table.AppendLine($"Objects: {BigLines * BigLineObjects}; built in {build.Elapsed.TotalSeconds:0.0} s; " +
+                         $"plot.place of the last 100: {places.TakeLast(100).Average():0.0} ms");
+        table.AppendLine($"{everyone.Count} players asking for the logistics at once: {together.Elapsed.TotalMilliseconds / Seconds:0} ms a second of the game");
+        table.AppendLine();
+        table.AppendLine($"| Request | ms | DB commands | KB allocated | KB reply |");
+        table.AppendLine("| --- | ---: | ---: | ---: | ---: |");
+        foreach (var r in results)
+        {
+            table.AppendLine($"| {r.Name} | {r.Ms:0.00} | {r.Queries:0.0} | {r.KbAllocated:0} | {r.KbReply:0.0} |");
+        }
+
+        table.Append(_commandLists);
+        output.WriteLine(table.ToString());
+        if (Environment.GetEnvironmentVariable("FW_PERF_OUT") is { Length: > 0 } file)
+        {
+            await File.WriteAllTextAsync(file, table.ToString());
+        }
+
+        foreach (var visitor in visitors)
+        {
+            visitor.Dispose();
+        }
+    }
+
+    /// <summary>A grassland plot of the player's with <see cref="BigLines"/> lines: chest → inserter → furnace → inserter → belts → inserter → chest,
+    /// powered by a generator and three poles. Returns the milliseconds each "plot.place" took, in order.</summary>
+    private async Task<(int X, int Y, List<double> Places, string Chest, string Furnace, string Generator)> BigFactoryPlotAsync(GameClient client)
+    {
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 100_000_000, "test", CancellationToken.None);
+            var inventory = scope.ServiceProvider.GetRequiredService<IInventory>();
+            foreach (var (item, quantity) in new[]
+                     {
+                         (Items.WoodenChest, 2 * BigLines), (Items.Inserter, 3 * BigLines), (Items.Furnace, BigLines), (Items.Pole, 3 * BigLines),
+                         (Items.Generator, BigLines), (Items.Belt, BigLineBelts * BigLines), (Items.Coal, 60 * BigLines), (Items.IronOre, 200 * BigLines),
+                     })
+            {
+                await inventory.AddAsync(client.AccountId, item, quantity, CancellationToken.None);
+            }
+        }
+
+        var (x, y) = FreePlot(Biome.Grassland, 7);
+        Assert.Equal("world.bought", (await client.SendAsync("world.buy", new { x, y })).Type());
+        var plot = await client.SendAsync("plot.enter", new { x, y });
+        using var gzip = new GZipStream(new MemoryStream(Convert.FromBase64String(plot.Payload().GetProperty("tiles").GetString()!)), CompressionMode.Decompress);
+        using var tiles = new MemoryStream();
+        gzip.CopyTo(tiles);
+        var bytes = tiles.ToArray();
+        string chest = "", furnace = "", generator = "";
+        const int Width = 7 + BigLineBelts;
+        bool Free(int tx, int ty) => Enumerable.Range(tx, Width).All(i => bytes[ty * PlotLayout.Size + i] == (byte)TileObject.None);
+
+        var places = new List<double>();
+        async Task<string> Place(string kind, int tileX, int tileY)
+        {
+            var clock = Stopwatch.StartNew();
+            var id = await PlaceAsync(client, x, y, kind, tileX, tileY);
+            places.Add(clock.Elapsed.TotalMilliseconds);
+            return id;
+        }
+
+        var placed = 0;
+        for (var ty = 10; ty + 3 < PlotLayout.Size && placed < BigLines; ty++)
+        {
+            var before = placed;
+            for (var tx = 2; tx + Width + 1 <= PlotLayout.Size && placed < BigLines; tx += Width + 1)
+            {
+                if (!Enumerable.Range(ty, 3).All(row => Free(tx, row)))
+                {
+                    continue;
+                }
+
+                var source = chest = await Place(Items.WoodenChest, tx, ty);
+                await Place(Items.Inserter, tx + 1, ty);
+                furnace = await Place(Items.Furnace, tx + 2, ty);
+                await Place(Items.Inserter, tx + 4, ty);
+                for (var b = 0; b < BigLineBelts; b++)
+                {
+                    await Place(Items.Belt, tx + 5 + b, ty);
+                }
+
+                await Place(Items.Inserter, tx + 5 + BigLineBelts, ty);
+                await Place(Items.WoodenChest, tx + 6 + BigLineBelts, ty);
+                await client.SendAsync("storage.put", new { x, y, id = source, item = Items.IronOre, quantity = 200 });
+                await client.SendAsync("storage.put", new { x, y, id = source, item = Items.Coal, quantity = 40 });
+                await Place(Items.Pole, tx + 2, ty + 2);
+                generator = await Place(Items.Generator, tx + 3, ty + 2);
+                await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Coal, quantity = 20 });
+                await Place(Items.Pole, tx + 9, ty + 2);
+                await Place(Items.Pole, tx + 5 + BigLineBelts, ty + 1);
+                placed++;
+            }
+
+            if (placed > before)
+            {
+                ty += 3;
+            }
+        }
+
+        Assert.Equal(BigLines, placed);
+        return (x, y, places, chest, furnace, generator);
+    }
+
     /// <summary>A grassland plot of the player's with <see cref="Lines"/> powered furnace lines working on it.</summary>
     private async Task<(int X, int Y)> FactoryPlotAsync(GameClient client)
     {
@@ -206,30 +373,31 @@ public sealed class PerfTests(ServerFactory factory, ITestOutputHelper output) :
         using var tiles = new MemoryStream();
         gzip.CopyTo(tiles);
         var bytes = tiles.ToArray();
-        bool Free(int tx, int ty) => Enumerable.Range(tx, 5).All(i => bytes[ty * PlotLayout.Size + i] == (byte)TileObject.None);
+        bool Free(int tx, int ty) => Enumerable.Range(tx, 6).All(i => bytes[ty * PlotLayout.Size + i] == (byte)TileObject.None);
 
         var placed = 0;
-        for (var ty = 20; ty + 1 < PlotLayout.Size && placed < Lines; ty++)
+        for (var ty = 20; ty + 3 < PlotLayout.Size && placed < Lines; ty++)
         {
-            for (var tx = 2; tx + 6 <= PlotLayout.Size && placed < Lines; tx += 6)
+            for (var tx = 2; tx + 7 <= PlotLayout.Size && placed < Lines; tx += 7)
             {
-                if (!Free(tx, ty) || !Free(tx, ty + 1) || !Free(tx, ty - 1) || !Free(tx, ty + 2))
+                if (!Free(tx, ty) || !Free(tx, ty + 1) || !Free(tx, ty - 1) || !Free(tx, ty + 2) || !Free(tx, ty + 3))
                 {
                     continue;
                 }
 
+                // A furnace covers 2 × 2 tiles, from its own to the right and below.
                 var source = await PlaceAsync(client, x, y, Items.WoodenChest, tx, ty);
                 await PlaceAsync(client, x, y, Items.Inserter, tx + 1, ty);
                 await PlaceAsync(client, x, y, Items.Furnace, tx + 2, ty);
-                await PlaceAsync(client, x, y, Items.Inserter, tx + 3, ty);
-                await PlaceAsync(client, x, y, Items.WoodenChest, tx + 4, ty);
+                await PlaceAsync(client, x, y, Items.Inserter, tx + 4, ty);
+                await PlaceAsync(client, x, y, Items.WoodenChest, tx + 5, ty);
                 await client.SendAsync("storage.put", new { x, y, id = source, item = Items.IronOre, quantity = 200 });
                 await client.SendAsync("storage.put", new { x, y, id = source, item = Items.Coal, quantity = 40 });
-                await PlaceAsync(client, x, y, Items.Pole, tx + 2, ty + 1);
-                var generator = await PlaceAsync(client, x, y, Items.Generator, tx + 3, ty + 1);
+                await PlaceAsync(client, x, y, Items.Pole, tx + 2, ty + 2);
+                var generator = await PlaceAsync(client, x, y, Items.Generator, tx + 3, ty + 2);
                 await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Coal, quantity = 20 });
                 placed++;
-                ty += 3;
+                ty += 4;
                 break;
             }
         }
@@ -238,14 +406,15 @@ public sealed class PerfTests(ServerFactory factory, ITestOutputHelper output) :
         return (x, y);
     }
 
-    private static (int X, int Y) FreePlot(Biome biome)
+    /// <param name="skip">Plots of the biome to pass over first, for a second test on the same server.</param>
+    private static (int X, int Y) FreePlot(Biome biome, int skip = 0)
     {
         var found = 0;
         for (var y = 0; y < Map.Height; y += 5)
         {
             for (var x = 0; x < Map.Width; x += 5)
             {
-                if (Map.BiomeAt(x, y) == biome && found++ >= 4000)
+                if (Map.BiomeAt(x, y) == biome && found++ >= 4000 + skip)
                 {
                     return (x, y);
                 }

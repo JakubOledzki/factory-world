@@ -12,6 +12,9 @@ public sealed class BotsOptions
     /// <summary>Whether the bots play at all. Off, the roster is not even registered.</summary>
     public bool Enabled { get; set; } = true;
 
+    /// <summary>How many bots there are: the founders first, then made-up ones (<see cref="BotRoster.First"/>).</summary>
+    public int Count { get; set; } = 2000;
+
     /// <summary>Seconds between steps; every bot in a session takes one step per tick.</summary>
     public int TickSeconds { get; set; } = 10;
 }

@@ -282,17 +282,7 @@ public sealed class FireService(GameDb db, PlotService plots, WorldMap map, Time
         var wild = burnt.Where(t => !planted.Contains(t)).ToList();
         if (wild.Count > 0)
         {
-            await using var harvests = await db.CommandAsync(
-                """
-                INSERT INTO world.plot_harvests (x, y, tile_x, tile_y, harvested_at)
-                SELECT @x, @y, t.tx, t.ty, @at FROM unnest(@txs, @tys) AS t(tx, ty) ON CONFLICT DO NOTHING
-                """, cancellationToken);
-            harvests.Parameters.AddWithValue("x", x);
-            harvests.Parameters.AddWithValue("y", y);
-            harvests.Parameters.AddWithValue("at", at);
-            harvests.Parameters.AddWithValue("txs", wild.Select(t => t.X).ToArray());
-            harvests.Parameters.AddWithValue("tys", wild.Select(t => t.Y).ToArray());
-            await harvests.ExecuteNonQueryAsync(cancellationToken);
+            await PlotHarvests.MarkManyAsync(db, x, y, wild, at, cancellationToken);
         }
 
         var lost = burnt.Where(planted.Contains).ToList();

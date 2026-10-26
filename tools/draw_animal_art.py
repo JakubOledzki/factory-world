@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Draws the art of husbandry with Pillow alone (no Blender): the hen, the sheep, the cow, the camel and the work horse that
-stand on a plot (client/art/plot/, with their shadows and anchors in layout.json) and the icons of
-the animals, their products and the shears (client/art/icons/).
+stand on a plot and the feeder they eat from (client/art/plot/, with their shadows and anchors in layout.json) and the icons of
+the animals, their products, the shears and the feeder (client/art/icons/).
 
 Same framing as tools/render_plot_art.py: a plot sprite is 112 × 96 px with the tile's centre at
 (56, 62), the view is 45° from above at 32 px per metre, and the light comes warm from the front
@@ -212,6 +212,49 @@ def render_animals(layout):
         layout[name] = {"anchorX": ANCHOR[0], "anchorY": ANCHOR[1]}
 
 
+# --- The feeder ----------------------------------------------------------------------------------
+
+PLANK = (150, 104, 58)
+HAY = (214, 182, 88)
+
+
+def draw_feeder(draw, cx, cy, k=1.0):
+    """A wooden feeder seen from the front left: a trough on four legs, full of grain and hay, under a little roof on two posts."""
+    s = S * k
+    # Legs.
+    for dx in (-24, -14, 14, 24):
+        draw.rectangle((cx + (dx - 2) * s, cy - 12 * s, cx + (dx + 2) * s, cy + (2 if abs(dx) > 20 else -2) * s), fill=shade(PLANK, 0.6), outline=OUTLINE, width=S)
+    # The trough: a front board, the far rim and the feed between them.
+    front = [(cx - 28 * s, cy - 22 * s), (cx + 28 * s, cy - 22 * s), (cx + 24 * s, cy - 8 * s), (cx - 24 * s, cy - 8 * s)]
+    back = [(cx - 24 * s, cy - 30 * s), (cx + 24 * s, cy - 30 * s), (cx + 28 * s, cy - 22 * s), (cx - 28 * s, cy - 22 * s)]
+    draw.polygon(back, fill=shade(PLANK, 0.8), outline=OUTLINE)
+    draw.polygon([(cx - 24 * s, cy - 28 * s), (cx + 24 * s, cy - 28 * s), (cx + 26 * s, cy - 23 * s), (cx - 26 * s, cy - 23 * s)], fill=HAY)
+    for i in range(9):
+        x = cx + (-20 + i * 5) * s
+        draw.line((x, cy - 27 * s, x + 3 * s, cy - 24 * s), fill=shade(HAY, 1.2), width=S)
+        draw.ellipse((x - 1.5 * s, cy - 27 * s, x + 1.5 * s, cy - 25 * s), fill=shade(HAY, 0.8))
+    draw.polygon(front, fill=PLANK, outline=OUTLINE)
+    draw.line((cx - 26 * s, cy - 15 * s, cx + 26 * s, cy - 15 * s), fill=shade(PLANK, 0.75), width=S)
+    draw.line((cx - 27 * s, cy - 21 * s, cx + 27 * s, cy - 21 * s), fill=shade(PLANK, 1.25), width=S)
+    # Two posts and a roof against the rain.
+    for dx in (-22, 22):
+        draw.rectangle((cx + (dx - 2) * s, cy - 52 * s, cx + (dx + 2) * s, cy - 22 * s), fill=shade(PLANK, 0.85), outline=OUTLINE, width=S)
+    roof = (122, 70, 44)
+    draw.polygon([(cx - 32 * s, cy - 50 * s), (cx + 32 * s, cy - 50 * s), (cx + 26 * s, cy - 62 * s), (cx - 26 * s, cy - 62 * s)], fill=shade(roof, 0.85), outline=OUTLINE)
+    draw.polygon([(cx - 32 * s, cy - 50 * s), (cx + 32 * s, cy - 50 * s), (cx + 32 * s, cy - 47 * s), (cx - 32 * s, cy - 47 * s)], fill=roof, outline=OUTLINE)
+    for i in range(6):
+        x = cx + (-24 + i * 10) * s
+        draw.line((x, cy - 61 * s, x - 3 * s, cy - 51 * s), fill=shade(roof, 1.15), width=S)
+
+
+def render_feeder(layout):
+    img, draw = canvas(SPRITE)
+    draw_feeder(draw, ANCHOR[0] * S, ANCHOR[1] * S, 0.9)
+    finish(img, (SPRITE[0] * PLOT_SS, SPRITE[1] * PLOT_SS)).save(PLOT / "feeder.png", optimize=True)
+    ground_shadow(SPRITE, ANCHOR, 27, 8).save(PLOT / "feeder_shadow.png", optimize=True)
+    layout["feeder"] = {"anchorX": ANCHOR[0], "anchorY": ANCHOR[1]}
+
+
 # --- Icons -----------------------------------------------------------------------------------------
 
 def icon():
@@ -279,10 +322,16 @@ def render_icons():
         draw.ellipse((x * S, y * S, (x + 3) * S, (y + 3) * S), fill=(60, 110, 50))
     save_icon(img, "scrambled_eggs")
 
+    # The feeder, as it stands on the plot.
+    img, draw = icon()
+    draw_feeder(draw, 32 * S, 60 * S, 0.85)
+    finish(img, (ICON, ICON)).save(ICONS / "furniture_feeder.png", optimize=True)
+
 
 if __name__ == "__main__":
     layout = json.loads((PLOT / "layout.json").read_text())
     render_animals(layout)
+    render_feeder(layout)
     render_icons()
     (PLOT / "layout.json").write_text(json.dumps(layout, indent=1) + "\n")
-    print("drew", ", ".join(ANIMALS), "and the icons")
+    print("drew", ", ".join(ANIMALS), "the feeder and the icons")

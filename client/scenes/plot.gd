@@ -41,6 +41,9 @@ const ACTIONS := {
 const LAYOUT_FILE := "res://art/plot/layout.json"
 ## Pixels of one tile on screen; a tile is drawn as 2 × 2 m at 32 px per metre, seen at 45°.
 const TILE := Vector2(64, 45)
+## The sprites are packed onto pictures this big (every graphics card in a browser takes them), on a grid this fine.
+const PACK_PAGE := 2048
+const PACK_CELL := 16
 ## The character is rendered for the garage at 96 px per metre.
 const PLAYER_SCALE := 1.0 / 3.0
 const LIGHT := Color(0.78, 0.76, 0.8)
@@ -52,7 +55,7 @@ const RADIUS := 0.25
 const REACH := 1.75
 ## Holding the right mouse button (or a finger, on a touch screen) this long on a placed object puts it back into the
 ## inventory; a finger may wander this many pixels before the hold is called off.
-const HOLD_TO_PICK_UP := 2.0
+const HOLD_TO_PICK_UP := 1.0
 const HOLD_SLIP := 24.0
 const STATION_REACH := 2.5
 ## Tiles are drawn in square chunks around the player.
@@ -127,9 +130,9 @@ const WORK := {
 	SNOWDRIFT: {"name": "Zaspa", "tool": "tool_shovel", "verb": "Odkop", "need": "łopaty"},
 	CREVASSE: {"name": "Szczelina", "tool": "", "verb": "Przerzuć most", "need": ""},
 }
-## Tools that do another's work: a chainsaw cuts trees like an axe, only faster.
+## Tools that do another's work: a saw cuts trees like an axe, only faster.
 ## Bronze and steel pickaxes break rock and work mines like the iron one, only faster.
-const STANDS_IN := {"tool_chainsaw": "tool_axe", "tool_bronze_pickaxe": "tool_pickaxe", "tool_steel_pickaxe": "tool_pickaxe",
+const STANDS_IN := {"tool_chainsaw": "tool_axe", "tool_steel_saw": "tool_axe", "tool_harvester_saw": "tool_axe", "tool_meteorite_saw": "tool_axe", "tool_bronze_pickaxe": "tool_pickaxe", "tool_steel_pickaxe": "tool_pickaxe",
 	"tool_meteorite_pickaxe": "tool_pickaxe"}
 const OBJECT_NAMES := {BUSH: "Krzak", STATION: "Stacja kolejowa", MINE: "Kopalnia", WATER: "Woda", FLOTSAM: "Znalezisko",
 	BRIDGE: "Most nad szczeliną"}
@@ -187,10 +190,14 @@ const PLACED_SPRITES := {
 	"furniture_oxygen_converter": "oxygen_converter", "furniture_rolling_mill": "rolling_mill",
 	"furniture_control_center": "control_center", "furniture_continuous_caster": "continuous_caster",
 	"storage_automated_warehouse": "automated_warehouse", "furniture_steel_combine": "steel_combine",
+	"storage_loading_chest": "loading_chest", "storage_loading_chest_2": "loading_chest_2",
+	"storage_loading_chest_3": "loading_chest_3", "storage_loading_chest_4": "loading_chest_4",
+	"storage_receiving_chest": "receiving_chest", "storage_receiving_chest_2": "receiving_chest_2",
+	"storage_receiving_chest_3": "receiving_chest_3", "storage_receiving_chest_4": "receiving_chest_4",
 	"furniture_megafactory": "megafactory", "power_fusion_plant": "fusion_plant",
 	"furniture_canteen": "canteen", "furniture_slaughterhouse": "slaughterhouse", "furniture_dairy": "dairy",
 	"furniture_potato_distillery": "potato_distillery", "furniture_biogas_plant": "biogas_plant", "furniture_stable": "stable",
-	"furniture_bellows": "bellows", "furniture_farmstead": "farmstead", "furniture_manor_farm": "manor_farm",
+	"furniture_bellows": "bellows", "furniture_feeder": "feeder", "furniture_farmstead": "farmstead", "furniture_manor_farm": "manor_farm",
 	"furniture_export_chest": "export_chest", "furniture_buy_market": "buy_market", "furniture_rail_port": "rail_port",
 	"furniture_bank": "bank", "furniture_bank_branch": "bank_branch",
 }
@@ -221,6 +228,11 @@ const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_
 const CANTEEN := "furniture_canteen"
 const STABLE := "furniture_stable"
 const BELLOWS := "furniture_bellows"
+## A feeder opens its own window and feeds the hungry animals within FEEDER_REACH tiles of it by itself; while one stands on
+## the plot, the animals are asked for every ANIMALS_POLL ms to show the ones it fed.
+const FEEDER := "furniture_feeder"
+const FEEDER_REACH := 3
+const ANIMALS_POLL := 5000.0
 ## A beehive opens its own window; a fire watchtower and a fire station only stand guard over the forest.
 const BEEHIVE := "furniture_beehive"
 const WATCHTOWER := "furniture_fire_watchtower"
@@ -338,7 +350,9 @@ const MENU_ONLY := ["power_pole", "furniture_port", "furniture_lighthouse", "fur
 	"furniture_freight_terminal", "furniture_company_hq", WATCHTOWER, FIRE_STATION, CONTROL_CENTER]
 const POLE := "power_pole"
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo", "storage_tank",
-	"storage_high_bay", "storage_automated_warehouse", "storage_logistics_depot", DRONE_PORT]
+	"storage_high_bay", "storage_automated_warehouse", "storage_logistics_depot", DRONE_PORT,
+	"storage_loading_chest", "storage_loading_chest_2", "storage_loading_chest_3", "storage_loading_chest_4",
+	"storage_receiving_chest", "storage_receiving_chest_2", "storage_receiving_chest_3", "storage_receiving_chest_4"]
 ## Where a rotation faces, as players read it: 0 south, 1 east, 2 north, 3 west.
 const DIRECTIONS := ["na południe", "na wschód", "na północ", "na zachód"]
 const DIRECTION_ARROWS := ["↓", "→", "↑", "←"]
@@ -362,6 +376,8 @@ const MANURE := "manure"
 const MANURE_SPEED := 4.0 / 3.0
 const FERTILIZED := 100
 const MANURED := 200
+## The entry of the crop menu that turns the field back into bare ground.
+const UNTILL := 300
 ## A planted tree shows as a sapling until this much of its growing time is left, then young;
 ## grown, it looks like one of the conifers of the forest.
 const SAPLING_UNTIL := 0.5
@@ -397,6 +413,8 @@ var _my_plots: Array[Vector2i] = []
 var _balance := 0
 var _items: Array = []
 var _ready_to_play := false
+## On someone else's public plot: the player may only walk about and look, the server allows nothing more.
+var _visitor := false
 ## Tilled tiles: Vector2i → { crop, readyAt } (crop and readyAt null on an empty field).
 var _fields := {}
 var _crops := {}
@@ -446,10 +464,15 @@ var _hover_mine := -1
 var _work_mine := -1
 ## Objects put on the plot: tile → { id, kind, name }.
 var _placed := {}
+## The kinds of object standing on the plot, kept with _placed (see _placed_changed).
+var _kinds := {}
 ## The kind being put on the plot from the inventory, or "".
 var _placing := ""
 ## The placed object whose window is open, or (-1, -1).
 var _using := Vector2i(-1, -1)
+## The placed object whose window or menu was opened last, marked on the ground while that window stays open; (-1, -1) for none.
+## Unlike _using it also covers the market, which stays open while the player walks away, and belts' and inserters' menus.
+var _in_use := Vector2i(-1, -1)
 ## Which way the next belt or inserter will face (see DIRECTIONS).
 var _place_rotation := 1
 var _logistics: PlotLogistics
@@ -462,12 +485,19 @@ var _foresters := {}
 var _farmsteads := {}
 var _farm_fields := {}
 var _next_farm_poll := 0.0
+var _next_animals_poll := 0.0
+var _polling_animals := false
 var _polling_farms := false
 var _next_forestry_poll := 0.0
 var _polling_forestry := false
 
 var _astar := AStarGrid2D.new()
+## Where each sprite lies in the objects' tile set, by sprite: Vector3i(source id, atlas x, atlas y).
 var _sources := {}
+## The sprite of each of those tiles, to tell what is drawn on a tile.
+var _sprite_names := {}
+## Where each sprite's shadow lies in the shadows' tile set, as in _sources.
+var _shadow_tiles := {}
 var _images := {}
 ## Sprites drawn bigger than in their files (see Footprints.GROWN), and the anchors of those and of other sprites drawn off their tile's middle.
 var _grown_textures := {}
@@ -585,6 +615,7 @@ var _export_window: ExportWindow
 var _export_post_window: ExportPostWindow
 var _bank_window: BankWindow
 var _hive_window: HiveWindow
+var _feeder_window: FeederWindow
 var _city_window: CityWindow
 var _city_button: Button
 var _achievements_window: AchievementsWindow
@@ -627,19 +658,19 @@ func _build_world() -> void:
 	_water_layer = TileMapLayer.new()
 	var water_set := TileSet.new()
 	water_set.tile_size = Vector2i(TILE)
-	_water_source = _add_source(water_set, "water", "water", false)
+	_water_source = _add_source(water_set, "water")
 	_water_layer.tile_set = water_set
 	add_child(_water_layer)
 	# Tilled fields lie flat on the ground, under every shadow.
 	_field_layer = TileMapLayer.new()
 	var field_set := TileSet.new()
 	field_set.tile_size = Vector2i(TILE)
-	_field_source = _add_source(field_set, "field", "field", false)
+	_field_source = _add_source(field_set, "field")
 	# So are asphalt roads.
-	_road_source = _add_source(field_set, "road", "road", false)
+	_road_source = _add_source(field_set, "road")
 	# And crevasses in the glacier, with the bridges laid over them.
-	_crevasse_source = _add_source(field_set, "crevasse", "crevasse", false)
-	_bridge_source = _add_source(field_set, "bridge", "bridge", false)
+	_crevasse_source = _add_source(field_set, "crevasse")
+	_bridge_source = _add_source(field_set, "bridge")
 	_field_layer.tile_set = field_set
 	add_child(_field_layer)
 	_shadows = TileMapLayer.new()
@@ -718,11 +749,31 @@ func _build_world() -> void:
 	_camera.add_child(_snow)
 
 
-## One atlas source per sprite, so every sprite keeps its own size and anchor; an alternative
-## tile of each object is brightened for the mouse.
+## The objects' and the shadows' tile sets with where each sprite lies on them, by whether they are the shadows.
+static var _tile_set_cache := {}
+
+
+## The sprites are packed onto a few big pictures (pages), each one atlas source, rather than each in a source
+## of its own: the many objects on the screen are then drawn in a few batches, not one drawing command each.
+## Every sprite keeps its own size and anchor; alternative tiles of each object are brightened for the mouse or see-through.
+## Packing takes a while, so the tile sets are made once while the game runs.
 func _tile_set(shadows: bool) -> TileSet:
-	var set := TileSet.new()
-	set.tile_size = Vector2i(TILE)
+	if not _tile_set_cache.has(shadows):
+		_tile_set_cache[shadows] = _pack_tile_set(shadows)
+	var packed: Dictionary = _tile_set_cache[shadows]
+	if shadows:
+		_shadow_tiles = packed["tiles"]
+	else:
+		_sources = packed["tiles"]
+		_sprite_names = packed["names"]
+		_grown_textures = packed["grown"]
+		_grown_anchors = packed["anchors"]
+		_images.merge(packed["images"])
+	return packed["set"]
+
+
+func _pack_tile_set(shadows: bool) -> Dictionary:
+	var pictures: Array[Dictionary] = []
 	var sprites: Array[String] = []
 	for kind: int in SPRITES:
 		sprites.append_array(SPRITES[kind])
@@ -732,54 +783,118 @@ func _tile_set(shadows: bool) -> TileSet:
 	sprites.append_array(PLACED_SPRITES.values())
 	sprites.append_array(PlotLogistics.TUNNEL_SPRITES.filter(func(t: String) -> bool: return t != PLACED_SPRITES[UNDERGROUND]))
 	for sprite in sprites:
-		_add_source(set, sprite, sprite + ("_shadow" if shadows else ""), not shadows)
+		pictures.append(_picture(sprite, sprite + ("_shadow" if shadows else ""), not shadows))
 	if not shadows:
-		# Crops have no shadows of their own; their ids come after those of nature in both sets.
+		# Crops have no shadows of their own.
 		sprites = ["sprout"]
 		for crop: String in CROPS:
 			sprites.append_array([crop + "_young", crop + "_ripe"])
 		for sprite in sprites:
-			_add_source(set, sprite, sprite, true)
-	return set
+			pictures.append(_picture(sprite, sprite, true))
+	# Shelves of pictures, the tallest first, on a grid of PACK_CELL pixels on screen; every picture has a clear pixel
+	# around it, so smoothing a zoomed picture does not pick up its neighbour's edge. A page is stored
+	# PlotArt.SUPERSAMPLING times bigger than it is drawn, like the pictures on it, so PACK_PAGE is its stored size.
+	pictures.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["image"].get_height() > b["image"].get_height())
+	var pages: Array[Image] = []
+	var at := Vector2i.ZERO
+	var shelf := 0
+	var ss := PlotArt.SUPERSAMPLING
+	var cells := PACK_PAGE / ss / PACK_CELL
+	for picture in pictures:
+		var image: Image = picture["image"]
+		var size := Vector2i(ceili((image.get_width() / float(ss) + 2) / PACK_CELL), ceili((image.get_height() / float(ss) + 2) / PACK_CELL))
+		if at.x + size.x > cells:
+			at = Vector2i(0, at.y + shelf)
+			shelf = 0
+		if pages.is_empty() or at.y + size.y > cells:
+			pages.append(Image.create_empty(PACK_PAGE, PACK_PAGE, false, Image.FORMAT_RGBA8))
+			at = Vector2i.ZERO
+			shelf = 0
+		pages[-1].blit_rect(image, Rect2i(Vector2i.ZERO, image.get_size()), (at * PACK_CELL + Vector2i.ONE) * ss)
+		picture["page"] = pages.size() - 1
+		picture["at"] = at
+		picture["size"] = size
+		at.x += size.x
+		shelf = maxi(shelf, size.y)
+	# The last page only as tall as what is on it.
+	pages[-1].crop(PACK_PAGE, mini((at.y + shelf) * PACK_CELL * ss, PACK_PAGE))
+	var set := TileSet.new()
+	set.tile_size = Vector2i(TILE)
+	var sources: Array[TileSetAtlasSource] = []
+	var ids: Array[int] = []
+	for page in pages:
+		var source := TileSetAtlasSource.new()
+		# Drawn at its size on screen; the mipmaps keep it smooth when the camera is zoomed out.
+		page.generate_mipmaps()
+		var texture := ImageTexture.create_from_image(page)
+		texture.set_size_override(page.get_size() / ss)
+		source.texture = texture
+		source.texture_region_size = Vector2i(PACK_CELL, PACK_CELL)
+		source.use_texture_padding = false
+		sources.append(source)
+		ids.append(set.add_source(source))
+	var packed := {"set": set, "tiles": {}, "names": {}, "grown": {}, "anchors": {}, "images": {}}
+	for picture in pictures:
+		var source := sources[picture["page"]]
+		var coords: Vector2i = picture["at"]
+		source.create_tile(coords, picture["size"])
+		# The tile is drawn with its middle on the cell's centre; the picture lies a pixel in from the tile's corner.
+		var origin := Vector2i(picture["anchor"].round()) - Vector2i(picture["size"]) * PACK_CELL / 2 + Vector2i.ONE
+		source.get_tile_data(coords, 0).texture_origin = origin
+		var tile := Vector3i(ids[picture["page"]], coords.x, coords.y)
+		var sprite: String = picture["sprite"]
+		packed["tiles"][sprite] = tile
+		if not picture["looks"]:
+			continue
+		for modulate: Color in [Color(1.45, 1.4, 1.25), Color(1, 1, 1, 0.4), Color(1, 1, 1, 0.6)]:
+			var alternative := source.create_alternative_tile(coords)
+			var data := source.get_tile_data(coords, alternative)
+			data.texture_origin = origin
+			data.modulate = modulate
+		packed["names"][tile] = sprite
+		packed["images"][sprite] = picture["mask"]
+		if picture.has("grown"):
+			packed["grown"][sprite] = picture["grown"]
+		if picture["anchor"] != Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"]):
+			packed["anchors"][sprite] = picture["anchor"]
+	return packed
 
 
-## Adds one sprite as a tile anchored on the cell's centre; with `looks`, also a brightened
-## (alternative 1) and a see-through (alternative 2) version. Returns the source id.
-## A grown machine's sprite is enlarged to its square and stands in the square's middle.
-func _add_source(set: TileSet, sprite: String, file: String, looks: bool) -> int:
+## A sprite's picture and its anchor, as it is drawn. A grown machine's sprite is enlarged to its square
+## and stands in the square's middle. The picture for the pages is PlotArt.SUPERSAMPLING times its size on screen;
+## the mask, for the mouse, is its size on screen.
+func _picture(sprite: String, file: String, looks: bool) -> Dictionary:
 	var anchor := Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"])
 	var kind := _placed_kind(sprite)
 	var scale := 1.0
+	var picture := {"sprite": sprite, "looks": looks}
 	if Footprints.GROWN.has(kind):
 		scale = Footprints.sprite_scale(kind, Vector2(_layout_size(sprite)), TILE)
 		anchor *= scale
-	var texture := PlotArt.texture(file, scale)
-	if looks and scale != 1.0:
-		_grown_textures[sprite] = texture
+		picture["grown"] = PlotArt.texture(file, scale)
 	if Footprints.shift(kind) != Vector2.ZERO:
 		# An even square's middle lies on the corner of its tiles, half a tile right of and below the object's own tile.
 		anchor -= Footprints.shift(kind) * TILE
-	if looks and anchor != Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"]):
-		_grown_anchors[sprite] = anchor
+	picture["image"] = PlotArt.pixels(file, scale * PlotArt.SUPERSAMPLING)
+	if looks:
+		picture["mask"] = PlotArt.mask(file, scale)
+	picture["anchor"] = anchor
+	return picture
+
+
+## Adds a flat sprite (water, a field, a road) as a tile set's source of its own, anchored on the cell's centre.
+## Returns the source id.
+func _add_source(set: TileSet, file: String) -> int:
+	var texture := PlotArt.texture(file)
+	var anchor := Vector2(_layout[file]["anchorX"], _layout[file]["anchorY"])
 	var source := TileSetAtlasSource.new()
 	source.texture = texture
 	# Padding redraws the texture from its image, at the size it is stored and not drawn; one tile needs none.
 	source.use_texture_padding = false
 	source.texture_region_size = Vector2i(texture.get_size())
 	source.create_tile(Vector2i.ZERO)
-	var origin := Vector2i(anchor.round()) - Vector2i(texture.get_size() / 2)
-	source.get_tile_data(Vector2i.ZERO, 0).texture_origin = origin
-	if looks:
-		for modulate: Color in [Color(1.45, 1.4, 1.25), Color(1, 1, 1, 0.4), Color(1, 1, 1, 0.6)]:
-			var alternative := source.create_alternative_tile(Vector2i.ZERO)
-			var data := source.get_tile_data(Vector2i.ZERO, alternative)
-			data.texture_origin = origin
-			data.modulate = modulate
-	var id := set.add_source(source)
-	if looks:
-		_sources[sprite] = id
-		_images[sprite] = PlotArt.mask(file, scale)
-	return id
+	source.get_tile_data(Vector2i.ZERO, 0).texture_origin = Vector2i(anchor.round()) - Vector2i(texture.get_size() / 2)
+	return set.add_source(source)
 
 
 ## The kind of placed object a sprite stands for, or "" for nature and the like.
@@ -800,6 +915,7 @@ func _sprite_anchor(sprite: String) -> Vector2:
 
 func _apply_plot(plot: Dictionary) -> void:
 	_plot = plot
+	_visitor = not "work" in plot.get("rights", ["work"])
 	_size = plot["size"]
 	_harvest_seconds = plot["harvestSeconds"]
 	_chop_seconds = plot.get("chopSeconds", _harvest_seconds)
@@ -832,10 +948,7 @@ func _apply_plot(plot: Dictionary) -> void:
 	_apply_pests(plot.get("pests", {}))
 	for object: Dictionary in plot.get("objects", []):
 		_put_placed(object)
-	_logistics.set_objects(_placed)
-	_draw_tunnels()
-	_update_screening()
-	_power.set_objects(_placed)
+	_placed_changed()
 
 	# The ground: the biome's texture repeated over the plot, squashed to the 45° view.
 	var floor_name: String = FLOORS.get(int(plot["biome"]), "grass")
@@ -1017,15 +1130,16 @@ func _draw_cell(cell: Vector2i) -> void:
 		_shadows.erase_cell(cell)
 		_stages.erase(cell)
 		return
-	var id: int = _sources[sprite]
-	var look := 1 if cell == _hovered else (2 if _faded.has(cell) else (3 if _screening.has(cell) else 0))
-	_objects.set_cell(cell, id, Vector2i.ZERO, look)
+	var tile: Vector3i = _sources[sprite]
+	var look := 1 if cell == _hovered else (2 if _faded.has(cell) else 0)
+	_objects.set_cell(cell, tile.x, Vector2i(tile.y, tile.z), look)
 	if _fields.has(cell) or _trees.has(cell):
 		_stages[cell] = sprite
-	if _fields.has(cell):
+	if _fields.has(cell) or not _shadow_tiles.has(sprite):
 		_shadows.erase_cell(cell)
 	else:
-		_shadows.set_cell(cell, id, Vector2i.ZERO)
+		var shadow: Vector3i = _shadow_tiles[sprite]
+		_shadows.set_cell(cell, shadow.x, Vector2i(shadow.y, shadow.z))
 
 
 ## The sprite standing on a tile: nature, the crop growing on a field, a planted tree or an animal; "" for nothing.
@@ -1239,29 +1353,55 @@ func _focus_in_text() -> bool:
 
 # --- Mouse -------------------------------------------------------------------------------
 
+## Tiles to the side of a point that a sprite drawn over it may stand on, nearest first.
+const AROUND: Array[int] = [0, -1, 1, -2, 2, -3, 3]
+
+
 ## The object drawn under a point of the world: the front-most sprite with a solid pixel there.
 func _object_at(point: Vector2) -> Vector2i:
 	var cells := _objects_at(point, true)
 	return cells[0] if not cells.is_empty() else Vector2i(-1, -1)
 
 
-## Every object drawn over a point, front-most first.
+## Every object drawn over a point, front-most first. It looks at what the objects layer has drawn, which is quick
+## enough to ask every frame (the hover and the see-through objects in front of the character do).
 func _objects_at(point: Vector2, first_only := false) -> Array[Vector2i]:
 	var found: Array[Vector2i] = []
 	var base := Vector2i((point / TILE).floor())
 	# Big machines stand far below the top of their sprites.
 	for dy in range(11, -3, -1):
-		for dx in [0, -1, 1, -2, 2, -3, 3]:
+		for dx: int in AROUND:
 			var cell := base + Vector2i(dx, dy)
-			var sprite := _sprite_at(cell)
-			if sprite == "":
+			var id := _objects.get_cell_source_id(cell)
+			if id < 0:
 				continue
+			var coords := _objects.get_cell_atlas_coords(cell)
+			var sprite: String = _sprite_names[Vector3i(id, coords.x, coords.y)]
 			var image: Image = _images[sprite]
 			var pixel := Vector2i(point - _cell_centre(cell) + _sprite_anchor(sprite))
 			if Rect2i(Vector2i.ZERO, image.get_size()).has_point(pixel) and image.get_pixelv(pixel).a > 0.4:
 				found.append(cell)
 				if first_only:
 					return found
+	return found
+
+
+## The placed objects whose sprites have a solid pixel over a point, drawn on the objects layer yet or not.
+func _placed_over(point: Vector2) -> Array[Vector2i]:
+	var found: Array[Vector2i] = []
+	var base := Vector2i((point / TILE).floor())
+	for dy in range(11, -3, -1):
+		for dx: int in AROUND:
+			var cell := base + Vector2i(dx, dy)
+			if not _placed.has(cell):
+				continue
+			var sprite := _sprite_at(cell)
+			if not _images.has(sprite):
+				continue
+			var image: Image = _images[sprite]
+			var pixel := Vector2i(point - _cell_centre(cell) + _sprite_anchor(sprite))
+			if Rect2i(Vector2i.ZERO, image.get_size()).has_point(pixel) and image.get_pixelv(pixel).a > 0.4:
+				found.append(cell)
 	return found
 
 
@@ -1273,7 +1413,7 @@ func _update_screening() -> void:
 			continue
 		var centre := _cell_centre(cell)
 		for lift in [0.0, 16.0]:
-			for found in _objects_at(centre - Vector2(0, lift)):
+			for found in _placed_over(centre - Vector2(0, lift)):
 				if _cell_centre(found).y > centre.y:
 					screening[found] = true
 	if screening == _screening:
@@ -1554,12 +1694,13 @@ func _update_field_label(cell: Vector2i) -> void:
 			var left := ceili(_tree_left(cell))
 			_field_label.text = "Sadzonka: urośnie za %d:%02d" % [left / 60, left % 60]
 	elif crop == null:
-		_field_label.text = "Zaorane pole: kliknij, aby zasiać"
+		_field_label.text = "Zaorane pole: kliknij, aby zasiać%s" % (", przytrzymaj, aby usunąć" if _own_field(cell) else "")
 	elif _ripe(cell):
 		_field_label.text = "%s: dojrzała, kliknij, aby zebrać" % _crops[crop]["name"]
 	else:
 		var left := ceili(_crop_left(cell))
-		_field_label.text = "%s: dojrzeje za %d:%02d" % [_crops[crop]["name"], left / 60, left % 60]
+		_field_label.text = "%s: dojrzeje za %d:%02d%s" % [_crops[crop]["name"], left / 60, left % 60,
+			" · przytrzymaj, aby usunąć pole" if _own_field(cell) else ""]
 	_field_label.reset_size()
 	_field_label.position = _screen(_cell_centre(cell)) - Vector2(_field_label.size.x / 2, 70 * _zoom + 24)
 
@@ -1669,6 +1810,7 @@ func _power_note(id: String) -> String:
 
 func _draw_marks() -> void:
 	_draw_power_reach()
+	_draw_in_use()
 	if _hold_id != "":
 		_draw_hold()
 	if _hovered.x >= 0 and WORK.has(_work_kind(_hovered)) and not _fields.has(_hovered):
@@ -1684,9 +1826,13 @@ func _draw_marks() -> void:
 			_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8))
 		if big and (FORESTERS.has(_placed[_hovered]["kind"]) or FARMSTEADS.has(_placed[_hovered]["kind"])):
 			_draw_forest(_placed[_hovered]["kind"], _hovered, int(_placed[_hovered].get("rotation", 0)))
+		elif _placed.has(_hovered) and _placed[_hovered]["kind"] == FEEDER:
+			_draw_reach(_hovered, FEEDER_REACH)
 	if _placing != "" and ground.x >= 0:
 		if FORESTERS.has(_placing) or FARMSTEADS.has(_placing):
 			_draw_forest(_placing, ground, _place_rotation)
+		elif _placing == FEEDER:
+			_draw_reach(ground, FEEDER_REACH)
 		var tint := Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8)
 		_draw_footprint(_placing, ground, tint)
 		_draw_ring(_object_centre(_placing, ground), tint, _ring_size(_placing))
@@ -1697,6 +1843,24 @@ func _draw_marks() -> void:
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8))
 	if _work.x >= 0:
 		_draw_ring(_cell_centre(_work), Color(1, 1, 1, 0.7))
+
+
+## A gently pulsing golden ring (and the footprint of a big one) under the object whose window is open,
+## so it is clear which furnace or chest the window belongs to.
+func _draw_in_use() -> void:
+	if _in_use.x < 0 or not _placed.has(_in_use):
+		return
+	var kind: String = _placed[_in_use]["kind"]
+	var open := _using_window_open() or (_bank_window.visible and kind in [BANK, BANK_BRANCH])
+	if not open:
+		_in_use = Vector2i(-1, -1)
+		return
+	var pulse := 0.65 + 0.3 * sin(Time.get_ticks_msec() / 250.0)
+	var gold := Color(0.96, 0.69, 0.25, pulse)
+	var anchor := _anchor(_in_use)
+	_draw_footprint(kind, anchor, gold)
+	_draw_ring(_object_centre(kind, anchor), gold, _ring_size(kind))
+	_draw_ring(_object_centre(kind, anchor), Color(gold, pulse * 0.4), _ring_size(kind) * 1.15)
 
 
 ## The tiles poles power, on the ground: of every pole while a pole, a generator or a machine that
@@ -1780,8 +1944,18 @@ func _draw_forest(kind: String, cell: Vector2i, rotation: int) -> void:
 		_marks.draw_rect(free, Color(0.95, 0.85, 0.5, 0.45), false, 1.5)
 
 
+## The square a feeder feeds animals in.
+func _draw_reach(cell: Vector2i, r: int) -> void:
+	var area := Rect2(Vector2(cell - Vector2i(r, r)) * TILE, Vector2(2 * r + 1, 2 * r + 1) * TILE)
+	var tint := Color(0.9, 0.75, 0.3)
+	_marks.draw_rect(area, Color(tint, 0.10))
+	_marks.draw_rect(area, Color(tint, 0.7), false, 2.0)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not _ready_to_play or _pinch_zoom(event):
+		return
+	if _visitor and _visitor_input(event):
 		return
 	if event is InputEventMouseButton and event.pressed:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
@@ -1893,6 +2067,22 @@ func _unhandled_input(event: InputEvent) -> void:
 		Game.open_garage()
 
 
+## On a public plot of someone else a click only walks there, and nothing is used, built or gathered; true if it took the event.
+func _visitor_input(event: InputEvent) -> bool:
+	if event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]:
+		if event.button_index == MOUSE_BUTTON_LEFT:
+			var cell := Vector2i((get_global_mouse_position() / TILE).floor())
+			if _tile(cell) >= 0:
+				_walk_to(cell)
+		get_viewport().set_input_as_handled()
+		return true
+	for action: String in ["interact", "rotate", "plant", "upgrade_mine", "station", "market"]:
+		if event.is_action_pressed(action):
+			_show_toast("To nie twoja działka: możesz tu tylko chodzić i oglądać.", UI.MUTED)
+			return true
+	return false
+
+
 ## Zooms with two fingers on a touch screen or a pinch on a touchpad; true if it did.
 func _pinch_zoom(event: InputEvent) -> bool:
 	if event is InputEventMagnifyGesture:
@@ -1984,10 +2174,10 @@ func _work_on(cell: Vector2i) -> void:
 func _start_work(cell: Vector2i, mode := "harvest") -> void:
 	_work = cell
 	_work_mode = mode
-	# Cutting a tree down takes longer than a swing at a rock or a dune, unless with a chainsaw.
+	# Cutting a tree down takes longer than a swing at a rock or a dune, unless with a saw.
 	_work_seconds = _harvest_seconds
 	if mode == "harvest" and _work_kind(cell) in TREES:
-		_work_seconds = _saw_seconds if Game.holds("tool_chainsaw") else _chop_seconds
+		_work_seconds = _tree_seconds()
 	if mode == "harvest" and _work_kind(cell) in [ROCK, ICE_BLOCK]:
 		_work_seconds = float(_plot.get("rockSeconds", _harvest_seconds)) / _pickaxe_speed()
 	if mode == "harvest" and _work_kind(cell) == METEORITE:
@@ -2023,6 +2213,16 @@ func _industry(cell: Vector2i, mode: String) -> String:
 func _outfit_speed(industry: String) -> float:
 	var bonuses: Variant = Game.character.get("bonuses")
 	return 1.0 + (float(bonuses.get(industry, 0)) / 100.0 if bonuses is Dictionary else 0.0)
+
+
+## How long the best saw in the tool bar (or the axe) takes to cut a tree.
+func _tree_seconds() -> float:
+	var best := _chop_seconds
+	var saws: Dictionary = _plot.get("saws", {"tool_chainsaw": {"seconds": _saw_seconds}})
+	for held: Dictionary in Game.tools():
+		if saws.has(held["id"]):
+			best = minf(best, float(saws[held["id"]]["seconds"]))
+	return best
 
 
 ## How many times faster than an iron pickaxe the best pickaxe in the tool bar breaks rock.
@@ -2071,6 +2271,10 @@ func _harvest(cell: Vector2i) -> void:
 		return
 	var result: Dictionary = reply["payload"]
 	_clear_tile(cell, kind)
+	# A saw may fell the trees next to it at the same cut.
+	for felled: Dictionary in result.get("felled", []):
+		var other := Vector2i(int(felled["tileX"]), int(felled["tileY"]))
+		_clear_tile(other, _tile(other))
 	var items: Array = result["items"]
 	for i in items.size():
 		var item: Dictionary = items[i]
@@ -2220,6 +2424,9 @@ func _open_crop_menu(cell: Vector2i) -> void:
 			var minutes := roundi(float(crop["growSeconds"]) / 60.0 / MANURE_SPEED)
 			_crop_menu.add_icon_item(UI.texture("icons/item_" + MANURE),
 				"%s na oborniku  ·  %d min" % [crop["name"], maxi(1, minutes)], MANURED + i)
+	if _own_field(cell):
+		_crop_menu.add_separator()
+		_crop_menu.add_item("Usuń pole", UNTILL)
 	_crop_menu.reset_size()
 	var at := get_viewport().get_mouse_position() + Vector2(12, 4)
 	_crop_menu.popup(Rect2i(Vector2i(at), Vector2i.ZERO))
@@ -2228,6 +2435,9 @@ func _open_crop_menu(cell: Vector2i) -> void:
 func _on_crop_chosen(index: int) -> void:
 	var cell := _menu_cell
 	_menu_cell = Vector2i(-1, -1)
+	if index == UNTILL:
+		_go_and(cell, _untill)
+		return
 	var manure := index >= MANURED
 	var fertilize := not manure and index >= FERTILIZED
 	var crop: String = CROPS[index - MANURED if manure else index - FERTILIZED if fertilize else index]
@@ -2250,6 +2460,25 @@ func _reap(cell: Vector2i) -> void:
 	if reply["type"] == "plot.field" and sprite != "":
 		_vanish(sprite, cell, false)
 	_apply_field(reply)
+
+
+## Whether this is a field tilled by hand, which can be turned back into bare ground (a farmstead's fields go with it).
+func _own_field(cell: Vector2i) -> bool:
+	return _fields.has(cell) and not _farm_fields.has(cell)
+
+
+func _untill(cell: Vector2i) -> void:
+	_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
+	var reply := await Net.request("plot.untill", {"x": _at.x, "y": _at.y, "tileX": cell.x, "tileY": cell.y})
+	if reply["type"] != "plot.untilled":
+		_show_error(reply)
+		return
+	_fields.erase(cell)
+	if _hovered == cell:
+		_hovered = Vector2i(-1, -1)
+	_draw_cell(cell)
+	_set_minimap(cell, NONE)
+	_show_toast("Pole usunięte, ziemia znów jest wolna.")
 
 
 ## Shows the server's answer to tilling, sowing or reaping.
@@ -2324,7 +2553,9 @@ func _spray_forest() -> void:
 
 ## Turns planting on or off: while on, a click on free ground plants a sapling from the inventory.
 func _set_planting(on: bool) -> void:
-	if on and _tree_grow_seconds <= 0.0:
+	if on and _visitor:
+		on = false
+	elif on and _tree_grow_seconds <= 0.0:
 		_show_toast("Na lodowcu i w górach drzewa nie rosną.", UI.ERROR)
 		on = false
 	elif on and _saplings <= 0:
@@ -2415,6 +2646,9 @@ func _start_releasing(kind: String) -> void:
 		return
 	if not _animal_kinds.get(kind, {}).get("lives", true):
 		_show_toast("Wielbłąd żyje tylko na pustyni i w oazie." if kind == "animal_camel" else "Na pustyni żyją tylko wielbłądy.", UI.ERROR)
+		return
+	if _visitor:
+		_show_toast("Na cudzej działce nie wypuścisz zwierząt.", UI.ERROR)
 		return
 	_set_planting(false)
 	_stop_placing()
@@ -2589,6 +2823,9 @@ func _apply_animal(reply: Dictionary, spent: String) -> void:
 
 ## Starts putting a workbench or furnace from the inventory on the plot: a click on free ground places it.
 func _start_placing(kind: String) -> void:
+	if _visitor:
+		_show_toast("Na cudzej działce niczego nie postawisz.", UI.ERROR)
+		return
 	_set_planting(false)
 	_stop_releasing()
 	_stop_work()
@@ -2643,11 +2880,8 @@ func _place_object(cell: Vector2i) -> void:
 	for covered in _footprint(object["kind"], at):
 		_astar.set_point_solid(covered, not _walkable(covered))
 		_draw_cell(covered)
-	_logistics.set_objects(_placed)
-	_draw_tunnels()
-	_update_screening()
+	_placed_changed()
 	_update_market_button()
-	_power.set_objects(_placed)
 	if kind in MACHINERY:
 		_show_toast("%s stoi %s. %s" % [object["name"], DIRECTIONS[int(object["rotation"])], "Kliknij kolejne pole albo Esc." if more else ""])
 	elif kind == COMPUTER:
@@ -2697,6 +2931,8 @@ func _place_object(cell: Vector2i) -> void:
 			int(_plot.get("fires", {}).get("watchtowerRadius", 4))])
 	elif kind == FIRE_STATION:
 		_show_toast("%s stoi na działce: drzewa do %d pól wokół niej nigdy nie spłoną." % [object["name"], int(_plot.get("fires", {}).get("stationReach", 12))])
+	elif kind == FEEDER:
+		_show_toast("%s stoi na działce: wsyp paszę (albo postaw podajnik), a sam nakarmi głodne zwierzęta do %d pól wokół. Kliknij go, aby go napełnić." % [object["name"], FEEDER_REACH])
 	elif kind == BEEHIVE:
 		_show_toast("%s stoi na działce: pszczoły same robią miód i wosk, szybciej przy kwitnących lipach. Kliknij go, aby wybrać miód." % object["name"])
 	elif kind == REED_FENCE:
@@ -2712,10 +2948,17 @@ func _place_object(cell: Vector2i) -> void:
 
 ## The placed object next to the player, or (-1, -1).
 func _nearest_placed() -> Vector2i:
-	for cell: Vector2i in _placed:
-		if _near(cell) and not _turnable(cell) and not _placed[cell]["kind"] in MENU_ONLY:
-			return cell
-	return Vector2i(-1, -1)
+	# Only the tiles within reach, not every object on the plot: this runs every frame.
+	var best := Vector2i(-1, -1)
+	var here := Vector2i(_player.floor_pos.floor())
+	var span := ceili(REACH)
+	for dy in range(-span, span + 1):
+		for dx in range(-span, span + 1):
+			var cell := here + Vector2i(dx, dy)
+			if _placed.has(cell) and _near(cell) and not _turnable(cell) and not _placed[cell]["kind"] in MENU_ONLY \
+				and (best.x < 0 or _player.floor_pos.distance_to(Vector2(cell) + Vector2(0.5, 0.5)) < _player.floor_pos.distance_to(Vector2(best) + Vector2(0.5, 0.5))):
+				best = cell
+	return best
 
 
 func _use_placed(cell: Vector2i) -> void:
@@ -2723,6 +2966,7 @@ func _use_placed(cell: Vector2i) -> void:
 		return
 	var object: Dictionary = _placed[cell]
 	_using = cell
+	_in_use = cell
 	_station_window.hide_window()
 	_hide_placed_windows()
 	if object["kind"] == COMPUTER:
@@ -2756,6 +3000,10 @@ func _use_placed(cell: Vector2i) -> void:
 		_shop_window.open_at(object["id"])
 	elif object["kind"] == BEEHIVE:
 		_hive_window.open_at(object["id"])
+	elif object["kind"] == FEEDER:
+		_feeder_window.feeds = _feed
+		_feeder_window.set_items(_items)
+		_feeder_window.open_at(_at, object["id"])
 	elif object["kind"] in DRILLS:
 		_drill_window.open_at(_at, object["id"])
 	elif FORESTERS.has(object["kind"]):
@@ -2785,7 +3033,7 @@ func _using_window_open() -> bool:
 	return _crafting_window.visible or _research_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
 		or _splitter_window.visible or _filter_window.visible or _generator_window.visible or _market_window.visible or _forester_window.visible \
 		or _farmstead_window.visible or _canteen_window.visible \
-		or _drill_window.visible or _well_window.visible or _shop_window.visible or _hive_window.visible \
+		or _drill_window.visible or _well_window.visible or _shop_window.visible or _hive_window.visible or _feeder_window.visible \
 		or _export_window.visible or _export_post_window.visible
 
 
@@ -2802,6 +3050,7 @@ func _hide_placed_windows() -> void:
 	_well_window.hide_window()
 	_shop_window.hide_window()
 	_hive_window.hide_window()
+	_feeder_window.hide_window()
 	_export_window.hide_window()
 	_export_post_window.hide_window()
 	_storage_window.hide_window()
@@ -2831,7 +3080,7 @@ func _toggle_market() -> void:
 
 
 func _update_market_button() -> void:
-	_market_button.visible = _computer().x >= 0
+	_market_button.visible = _computer().x >= 0 and not _visitor
 
 
 ## After any trade in the market window: new balance and inventory.
@@ -2861,10 +3110,7 @@ func _pick_up_placed(id: String) -> void:
 			if _hovered == cell:
 				_hovered = Vector2i(-1, -1)
 			_draw_cell(cell)
-	_logistics.set_objects(_placed)
-	_draw_tunnels()
-	_update_screening()
-	_power.set_objects(_placed)
+	_placed_changed()
 	_hide_placed_windows()
 	_update_market_button()
 	_using = Vector2i(-1, -1)
@@ -2893,11 +3139,26 @@ func _stop_hold() -> void:
 		_marks.queue_redraw()
 
 
-## The id of the placed object under the mouse, or "" when there is none (or the mouse is over the interface).
+## The id of the placed object under the mouse, "field:x,y" for a field tilled by hand there,
+## or "" when there is none (or the mouse is over the interface).
 func _held_id() -> String:
 	if _placing != "" or _releasing != "":
 		return ""
-	return str(_placed[_hovered]["id"]) if _placed.has(_hovered) else ""
+	if _placed.has(_hovered):
+		return str(_placed[_hovered]["id"])
+	var ground := _ground_cell()
+	if _hovered.x < 0 and _own_field(ground):
+		return "field:%d,%d" % [ground.x, ground.y]
+	return ""
+
+
+## The tile of a held field ("field:x,y"), or (-1, -1) when the hold is on an object or the field is gone.
+func _held_field(id: String) -> Vector2i:
+	if not id.begins_with("field:"):
+		return Vector2i(-1, -1)
+	var at := id.trim_prefix("field:").split(",")
+	var cell := Vector2i(int(at[0]), int(at[1]))
+	return cell if _own_field(cell) else Vector2i(-1, -1)
 
 
 ## Counts the hold up, calls it off when the button is let go or the mouse leaves the object, and puts the
@@ -2918,6 +3179,15 @@ func _update_hold(delta: float) -> void:
 		return
 	var id := _hold_id
 	_stop_hold()
+	if id.begins_with("field:"):
+		var field := _held_field(id)
+		if field.x >= 0:
+			_crop_menu.hide()
+			_menu_cell = Vector2i(-1, -1)
+			_go_and(field, func(at: Vector2i) -> void:
+				if _own_field(at):
+					_untill(at))
+		return
 	var cell := _placed_cell(id)
 	if cell.x < 0:
 		return
@@ -2940,10 +3210,12 @@ func _placed_cell(id: String) -> Vector2i:
 
 ## The ring filling up around the object being held.
 func _draw_hold() -> void:
-	var cell := _placed_cell(_hold_id)
+	var field := _held_field(_hold_id)
+	var cell := field if field.x >= 0 else _placed_cell(_hold_id)
 	if cell.x < 0:
 		return
-	var kind: String = _placed[cell]["kind"]
+	# A field is one tile, like the smallest object.
+	var kind: String = _placed[cell]["kind"] if field.x < 0 else ""
 	var size := _ring_size(kind) * 1.15
 	var at := _object_centre(kind, _anchor(cell)) if _big(kind) else _cell_centre(cell)
 	var part := clampf(_hold_for / HOLD_TO_PICK_UP, 0.0, 1.0)
@@ -2994,6 +3266,7 @@ func _on_object_chosen(choice: int) -> void:
 func _open_splitter(cell: Vector2i) -> void:
 	var object: Dictionary = _placed[cell]
 	_hide_placed_windows()
+	_in_use = cell
 	_splitter_window.names = _logistics.names
 	_splitter_window.set_items(_items)
 	_splitter_window.open_at(_at, object["id"], int(object.get("rotation", 0)), _logistics.splitter(object["id"]))
@@ -3003,6 +3276,7 @@ func _open_splitter(cell: Vector2i) -> void:
 func _open_filter(object: Dictionary, role: String) -> void:
 	if role == "inserter":
 		_hide_placed_windows()
+		_in_use = Vector2i(object["tileX"], object["tileY"])
 	elif not UI.touch():
 		# Beside the window of the storage or machine; on a phone, over it, as it would not fit beside.
 		_filter_window.position = Vector2(maxf(12.0, get_viewport_rect().size.x - 2 * 412.0), 64)
@@ -3061,10 +3335,7 @@ func _rotate_placed(cell: Vector2i) -> void:
 		_show_error(reply)
 		return
 	_placed[cell] = reply["payload"]["object"]
-	_logistics.set_objects(_placed)
-	_draw_tunnels()
-	_update_screening()
-	_power.set_objects(_placed)
+	_placed_changed()
 	_draw_cell(cell)
 	_poll_logistics()
 
@@ -3076,18 +3347,55 @@ func _poll_logistics() -> void:
 	_polling_logistics = true
 	_next_logistics_poll = Time.get_ticks_msec() + LOGISTICS_POLL
 	# Item names once, for choosing filters.
-	var reply := await Net.request("logistics.get", {"x": _at.x, "y": _at.y, "names": _logistics.names.is_empty()})
+	var reply := await Net.request("logistics.get", {"x": _at.x, "y": _at.y, "names": _logistics.names.is_empty(), "compact": true})
 	_polling_logistics = false
 	if reply["type"] == "logistics":
 		_logistics.apply(reply["payload"])
 		_power.apply(reply["payload"].get("power", {}))
 
 
-func _has_foresters() -> bool:
+## Asks for the plot's animals once its feeders fed the hungry ones.
+func _poll_animals() -> void:
+	if _polling_animals:
+		return
+	_polling_animals = true
+	_next_animals_poll = Time.get_ticks_msec() + ANIMALS_POLL
+	var reply := await Net.request("plot.animals", {"x": _at.x, "y": _at.y})
+	_polling_animals = false
+	if reply["type"] == "plot.animals":
+		_clock_offset = float(reply["payload"]["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
+		_apply_animals(reply["payload"]["animals"])
+
+
+## Redraws the animals whose state changed (fed by a feeder, mostly) from the server's list of the plot's animals.
+func _apply_animals(animals: Array) -> void:
+	var seen := {}
+	for animal: Dictionary in animals:
+		var cell := Vector2i(animal["tileX"], animal["tileY"])
+		seen[cell] = true
+		if not _animals.has(cell) or _animals[cell].get("readyAt") != animal.get("readyAt") or _animals[cell]["kind"] != animal["kind"]:
+			_animals[cell] = animal
+			_draw_cell(cell)
+	for cell: Vector2i in _animals.keys():
+		if not seen.has(cell):
+			_animals.erase(cell)
+			_draw_cell(cell)
+
+
+## The objects on the plot changed (placed, picked up, turned, or the plot came in): the belts, inserters and
+## power lines follow, and so do the kinds standing here, which the frames look at instead of every object.
+func _placed_changed() -> void:
+	_logistics.set_objects(_placed)
+	_draw_tunnels()
+	_power.set_objects(_placed)
+	_update_screening()
+	_kinds = {}
 	for cell: Vector2i in _placed:
-		if FORESTERS.has(_placed[cell]["kind"]):
-			return true
-	return false
+		_kinds[_placed[cell]["kind"]] = true
+
+
+func _has_foresters() -> bool:
+	return FORESTERS.keys().any(func(kind: String) -> bool: return _kinds.has(kind))
 
 
 ## Asks for the foresters and the trees of the plot as the server has them now.
@@ -3143,10 +3451,7 @@ func _apply_forestry(forestry: Dictionary) -> void:
 
 
 func _has_farmsteads() -> bool:
-	for cell: Vector2i in _placed:
-		if FARMSTEADS.has(_placed[cell]["kind"]):
-			return true
-	return false
+	return FARMSTEADS.keys().any(func(kind: String) -> bool: return _kinds.has(kind))
 
 
 ## Asks for the farmsteads and the fields they sow as the server has them now.
@@ -3539,7 +3844,7 @@ func _process(delta: float) -> void:
 	if _station_window.visible and not _near_station():
 		_station_window.hide_window()
 	var at_mine := _nearest_mine()
-	_mine_button.visible = at_mine >= 0
+	_mine_button.visible = at_mine >= 0 and not _visitor
 	if _mine_window.visible and at_mine != _mine_open:
 		_mine_window.hide_window()
 	if _using.x >= 0 and (not _placed.has(_using) or not _near(_using, REACH + 1.5)):
@@ -3547,11 +3852,15 @@ func _process(delta: float) -> void:
 		_using = Vector2i(-1, -1)
 	if (_logistics.has_machinery() or _power.has_power()) and Time.get_ticks_msec() >= _next_logistics_poll:
 		_poll_logistics()
-	if _has_foresters() and Time.get_ticks_msec() >= _next_forestry_poll:
+	# A visitor sees the belts move, but not the foresters', farmsteads' or station's stock.
+	if not _visitor and _has_foresters() and Time.get_ticks_msec() >= _next_forestry_poll:
 		_poll_forestry()
-	if (_has_farmsteads() or not _farm_fields.is_empty()) and Time.get_ticks_msec() >= _next_farm_poll:
+	if not _visitor and (_has_farmsteads() or not _farm_fields.is_empty()) and Time.get_ticks_msec() >= _next_farm_poll:
 		_poll_farmsteads()
-	_poll_station()
+	if not _visitor and _kinds.has(FEEDER) and not _animals.is_empty() and Time.get_ticks_msec() >= _next_animals_poll:
+		_poll_animals()
+	if not _visitor:
+		_poll_station()
 	if Time.get_ticks_msec() >= _next_presence_poll:
 		_poll_presence()
 
@@ -3734,7 +4043,9 @@ func _screen(world: Vector2) -> Vector2:
 func _update_prompt() -> void:
 	var text := ""
 	var placed := _nearest_placed()
-	if _work.x < 0 and placed.x >= 0:
+	if _visitor:
+		pass
+	elif _work.x < 0 and placed.x >= 0:
 		if not (_using == placed and _using_window_open()):
 			text = "[E] %s" % _placed[placed]["name"]
 	elif _work.x < 0 and _near_station() and not _station_window.visible:
@@ -3998,6 +4309,9 @@ func _update_hint() -> void:
 	var lines := {
 		"tool_axe": "Kliknij drzewo, aby je ściąć siekierą.",
 		"tool_chainsaw": "Kliknij drzewo, aby je ściąć piłą spalinową (o 70% szybciej niż siekierą).",
+		"tool_steel_saw": "Kliknij drzewo: piła stalowa ścina je w 1 s i daje o 1 drewno więcej.",
+		"tool_harvester_saw": "Kliknij drzewo: piła harwesterowa ścina je razem z 2 sąsiednimi.",
+		"tool_meteorite_saw": "Kliknij drzewo: piła meteorytowa ścina je w 0,5 s razem z 4 sąsiednimi.",
 		"tool_pickaxe": "Kliknij bryłę lodu, skałę albo meteoryt, aby je rozbić kilofem. Szczelinę przekryjesz mostem z 3 belek." if _biome() == GLACIER \
 			else ("Kliknij kopalnię, aby wydobywać rudy, albo skałę, aby ją rozbić kilofem." if not _mines.is_empty() else "Kliknij skałę, aby ją rozbić kilofem."),
 		"tool_bronze_pickaxe": "Kliknij kopalnię albo skałę: kilof z brązu kopie o 25% szybciej niż żelazny.",
@@ -4007,6 +4321,9 @@ func _update_hint() -> void:
 		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile else "Motyką orze się tylko żyzne gleby.",
 		"tool_shears": "Kliknij owcę, aby ją ostrzyc nożycami, albo inne zwierzę, aby je nakarmić." if _pasture else "Na tej działce nie da się trzymać zwierząt.",
 	}
+	if _visitor:
+		_hint.text = "Zwiedzasz cudzą działkę: możesz po niej chodzić i oglądać, ale nie zajrzysz do skrzyń, niczego nie zbierzesz, nie wydobędziesz ani nie postawisz."
+		return
 	if _placing in MACHINERY:
 		_hint.text = "Stawianie: kliknij wolne pole, aby postawić %s %s %s. [R] obraca, Esc kończy." % [
 			_item_name(_placing).to_lower(), DIRECTION_ARROWS[_place_rotation], DIRECTIONS[_place_rotation]]
@@ -4021,9 +4338,12 @@ func _update_hint() -> void:
 		_hint.text = "Wypuszczanie: kliknij wolne pole, aby wypuścić: %s (masz %d). Esc kończy." % [_item_name(_releasing).to_lower(), _count(_releasing)]
 		return
 	var held := Game.tools().map(func(t: Dictionary) -> String: return t["id"])
-	# A chainsaw does an axe's work, faster, so the axe's line goes when both are held.
-	if "tool_chainsaw" in held:
-		held.erase("tool_axe")
+	# A saw does an axe's work, faster, so only the best saw's line stays.
+	var saws := ["tool_meteorite_saw", "tool_harvester_saw", "tool_steel_saw", "tool_chainsaw", "tool_axe"]
+	var best := saws.filter(func(id: String) -> bool: return id in held)
+	for id: String in saws:
+		if not best.is_empty() and id != best[0]:
+			held.erase(id)
 	if held.is_empty() and _fertile:
 		lines[""] = "Kliknij pole, aby zasiać lub zebrać plony. Do orania weź motykę [Q]."
 	if held.is_empty() and _pasture and not _animals.is_empty():
@@ -4234,6 +4554,12 @@ func _build_windows() -> void:
 	_hive_window.inventory_changed.connect(_reload_inventory)
 	_hive_window.failed.connect(_show_error)
 	_hive_window.pick_up_requested.connect(_pick_up_placed)
+	_feeder_window = FeederWindow.new()
+	_feeder_window.position = Vector2(1280 - 400 - 12, 64)
+	_feeder_window.inventory_changed.connect(func(_taken: Array) -> void: _reload_inventory())
+	_feeder_window.animals_changed.connect(_apply_animals)
+	_feeder_window.failed.connect(_show_error)
+	_feeder_window.pick_up_requested.connect(_pick_up_placed)
 	_city_window = CityWindow.new()
 	_city_window.position = Vector2(1280 - 520 - 12, 64)
 	_city_window.inventory_changed.connect(_reload_inventory)
@@ -4274,6 +4600,7 @@ func _build_windows() -> void:
 	layer.add_child(_well_window)
 	layer.add_child(_shop_window)
 	layer.add_child(_hive_window)
+	layer.add_child(_feeder_window)
 	layer.add_child(_export_window)
 	layer.add_child(_export_post_window)
 	_bank_window = BankWindow.new()
@@ -4308,6 +4635,7 @@ func _reload_inventory() -> void:
 	_machine_window.set_items(_items)
 	_market_window.set_player(_items, _balance)
 	_generator_window.set_items(_items)
+	_feeder_window.set_items(_items)
 	_station_window.set_player(_items, _balance)
 	if _mine_window.visible:
 		_render_mine_window()
@@ -4347,10 +4675,11 @@ func _server_now() -> float:
 
 func _load() -> void:
 	_at = Game.plot
-	var info := await Net.request("world.info")
-	var wallet := await Net.request("wallet.get")
-	var plot := await Net.request("plot.enter", {"x": _at.x, "y": _at.y})
-	var prices := await Net.request("market.prices")
+	var replies := await Net.request_all([["world.info"], ["wallet.get"], ["plot.enter", {"x": _at.x, "y": _at.y}], ["market.prices"]])
+	var info := replies[0]
+	var wallet := replies[1]
+	var plot := replies[2]
+	var prices := replies[3]
 	for reply: Dictionary in [info, wallet, plot, prices]:
 		if reply["type"] == "error":
 			_loading.text = Game.error_text(reply)
@@ -4377,6 +4706,10 @@ func _load() -> void:
 	_city_button.visible = city != null
 	if city != null:
 		_subtitle.text = "%s %s  ·  5 × 5 km" % [city["levelName"], city["name"]]
+	if _visitor:
+		_subtitle.text += "  ·  zwiedzanie"
+		_plant_button.visible = false
+		_show_toast("Działka publiczna: możesz po niej chodzić i oglądać.", UI.MUTED)
 	_update_hint()
 	_loading.queue_free()
 	_reload_inventory()

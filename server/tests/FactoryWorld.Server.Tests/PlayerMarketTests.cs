@@ -182,6 +182,48 @@ public sealed class PlayerMarketTests(ServerFactory factory) : IClassFixture<Ser
     }
 
     [Fact]
+    public async Task The_overview_shows_a_trade_at_once_though_it_was_just_looked_at()
+    {
+        using var seller = await PlayerAsync(item: Items.Egg, quantity: 10);
+        using var buyer = await PlayerAsync(cents: 10_000);
+        async Task<JsonElement> EggAsync() => (await buyer.SendAsync("market.overview")).Payload().GetProperty("items")
+            .EnumerateArray().Single(i => i.GetProperty("id").GetString() == Items.Egg);
+        await EggAsync();
+
+        await seller.SendAsync("market.list", new { item = Items.Egg, quantity = 6, priceCents = 500 });
+        var listed = await EggAsync();
+        Assert.Equal(6, listed.GetProperty("listed").GetInt64());
+        Assert.Equal(500, listed.GetProperty("lowestCents").GetInt64());
+
+        var id = (await BoardAsync(buyer, Items.Egg)).GetProperty("listings")[0].GetProperty("id").GetInt64();
+        await buyer.SendAsync("market.purchase", new { id, quantity = 6 });
+        var sold = await EggAsync();
+        Assert.Equal(0, sold.GetProperty("listed").GetInt64());
+        Assert.Equal(JsonValueKind.Null, sold.GetProperty("lowestCents").ValueKind);
+    }
+
+    [Fact]
+    public async Task My_offers_show_an_old_open_listing_behind_many_closed_ones()
+    {
+        using var player = await PlayerAsync(item: Items.Sunflower, quantity: 40);
+        await player.SendAsync("market.list", new { item = Items.Sunflower, quantity = 10, priceCents = 700 });
+        for (var i = 0; i < 25; i++)
+        {
+            await player.SendAsync("market.list", new { item = Items.Sunflower, quantity = 1, priceCents = 100 });
+            var newest = (await player.SendAsync("market.mine")).Payload().GetProperty("listings")[0].GetProperty("id").GetInt64();
+            Assert.Equal("market.done", (await player.SendAsync("market.unlist", new { id = newest })).Type());
+        }
+
+        var listings = (await player.SendAsync("market.mine")).Payload().GetProperty("listings").EnumerateArray().ToList();
+
+        Assert.Equal(26, listings.Count);
+        // Newest first: the open one, listed before all the others, comes last.
+        Assert.True(listings[^1].GetProperty("open").GetBoolean());
+        Assert.Equal(10, listings[^1].GetProperty("quantity").GetInt64());
+        Assert.All(listings[..^1], l => Assert.False(l.GetProperty("open").GetBoolean()));
+    }
+
+    [Fact]
     public async Task Quick_sale_pays_the_floor_price_at_once()
     {
         using var player = await PlayerAsync(item: Items.Carrot, quantity: 10);

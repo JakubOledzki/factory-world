@@ -24,10 +24,10 @@ internal static class Tiles
 public static class BotRules
 {
     /// <summary>Open sell listings one bot keeps at most (players may have 20).</summary>
-    public const int MaxListings = 3;
+    public const int MaxListings = 6;
 
     /// <summary>Open buy orders one bot keeps at most.</summary>
-    public const int MaxOrders = 2;
+    public const int MaxOrders = 3;
 
     /// <summary>Open orders one bot gives on the contracts board at most.</summary>
     public const int MaxIssued = 1;
@@ -36,16 +36,29 @@ public static class BotRules
     public const long ListingSize = 40;
 
     /// <summary>A bot lists something at most this often.</summary>
-    public static readonly TimeSpan ListEvery = TimeSpan.FromMinutes(10);
+    public static readonly TimeSpan ListEvery = TimeSpan.FromMinutes(3);
+
+    /// <summary>With every listing slot taken and nothing new listed for this long, the bot takes its oldest unsold listing back to put it up cheaper.</summary>
+    public static readonly TimeSpan RelistAfter = TimeSpan.FromMinutes(30);
+
+    /// <summary>Purchases from players one bot makes in a session at most.</summary>
+    public const int MaxPurchases = 12;
+
+    /// <summary>Most pieces a bot buys from one listing at once.</summary>
+    public const long PurchaseSize = 40;
+
+    /// <summary>
+    /// Money a bot has at least when a session starts: what it buys from players with. Sorting trash pays too
+    /// little for a bot to ever buy much, so the server tops it up; a bot never pays a player more than the
+    /// trader would charge, so this buys players' goods without printing an easy profit.
+    /// </summary>
+    public const long Allowance = 100_00;
+
+    /// <summary>What a bot with no plot gets on top of its first plot's price, for tools and trash.</summary>
+    public const long StartingExtra = 300_00;
 
     /// <summary>A bot's listing asks at least this much more than the trader pays.</summary>
     public const double MinMarkup = 1.15;
-
-    /// <summary>
-    /// A bot stays this many XP under its cap, so that experience it cannot see coming (a tutorial reward,
-    /// a badge) does not carry it over. Whatever still gets over is taken away again right after.
-    /// </summary>
-    public const long XpMargin = 25;
 
     /// <summary>Cents a bot does not spend on goods; a plot is the exception, saved up for on purpose.</summary>
     public const long Reserve = 10_00;

@@ -184,6 +184,9 @@ public enum PlotRight
     Owner,
     /// <summary>Set up and stop the station's train routes: the owner, and a company's partners and logistician.</summary>
     Routes,
+
+    /// <summary>Come onto the plot and walk about: everyone who may do anything there, and on a public plot anyone at all.</summary>
+    Visit,
 }
 
 /// <summary>A bought plot, for modules outside the world.</summary>
@@ -241,6 +244,11 @@ public interface IMachinePort
 
     /// <summary>When the machine will next have something new to take out on its own (e.g. its next ingot), or null.</summary>
     DateTimeOffset? NextChange(DateTimeOffset now);
+
+    /// <summary>True when what <see cref="Output"/> and <see cref="Accepts"/> answer changes only after a <see cref="Put"/>
+    /// or a <see cref="Take"/>, or at <see cref="NextChange"/>; an inserter with nothing to do there can then wait for one
+    /// of those instead of asking again every tick.</summary>
+    bool Predictable => false;
 
     /// <summary>Writes the machine back, if anything changed.</summary>
     Task SaveAsync(CancellationToken cancellationToken);
@@ -341,6 +349,21 @@ public interface IExportMarket
     /// <summary>Puts the goods up for sale at the price, as many listings as the market's largest one takes; the seller's
     /// limit on open listings does not count them.</summary>
     Task ListAsync(Guid seller, string item, long quantity, long priceCents, CancellationToken cancellationToken);
+}
+
+/// <summary>The loading and receiving chests (<see cref="Items.IsLoadingChest"/>, <see cref="Items.IsReceivingChest"/>) on plots, for the
+/// freight trains between a player's plots. Each call brings the plot's machinery up to now and locks it until the transaction ends.</summary>
+public interface IFreightChests
+{
+    /// <summary>What the plot's loading chests hold together, by item.</summary>
+    Task<IReadOnlyDictionary<string, long>> LoadingAsync(int x, int y, CancellationToken cancellationToken);
+
+    /// <summary>Takes the goods out of the plot's loading chests, all or nothing; false, with nothing taken, when they hold fewer.</summary>
+    Task<bool> TakeAsync(int x, int y, IReadOnlyDictionary<string, long> goods, CancellationToken cancellationToken);
+
+    /// <summary>Puts what fits of the goods into the plot's receiving chests, those whose filter is set to the item first; returns what
+    /// did not fit (empty when everything did).</summary>
+    Task<IReadOnlyDictionary<string, long>> UnloadAsync(int x, int y, IReadOnlyDictionary<string, long> goods, CancellationToken cancellationToken);
 }
 
 /// <summary>The forest certificate: a player who planted at least as many trees as they cut over the last week, and

@@ -21,6 +21,7 @@ var _refreshing := false
 var _next_poll := 0.0
 
 var _recipes := HFlowContainer.new()
+var _locked: Label
 var _formula: Label
 var _slots := VBoxContainer.new()
 var _status: Label
@@ -34,6 +35,8 @@ func _init() -> void:
 	_recipes.add_theme_constant_override("h_separation", 4)
 	_recipes.add_theme_constant_override("v_separation", 4)
 	content.add_child(_recipes)
+	_locked = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
+	content.add_child(_locked)
 	_formula = UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
 	content.add_child(_formula)
 	content.add_child(HSeparator.new())
@@ -111,7 +114,7 @@ func _render() -> void:
 		return
 	for child in _recipes.get_children():
 		child.free()
-	# Recipes still to be researched aren't shown at all.
+	# Recipes still to be researched can't be picked...
 	for recipe: Dictionary in _state["recipes"].filter(func(r: Dictionary) -> bool: return r.get("locked") == null):
 		var chosen: bool = recipe["id"] == _state.get("recipe")
 		var b := UI.button(recipe["name"], _choose.bind(recipe["id"]), chosen)
@@ -120,6 +123,13 @@ func _render() -> void:
 		b.add_theme_constant_override("icon_max_width", 24)
 		b.tooltip_text = _formula_text(recipe)
 		_recipes.add_child(b)
+	# ...but named below, with the research each needs, so the machine doesn't look like it can't make them at all.
+	var locked: Array[String] = []
+	for recipe: Dictionary in _state["recipes"]:
+		if recipe.get("locked") != null:
+			locked.append("%s (badanie: %s)" % [recipe["name"], recipe["locked"]])
+	_locked.visible = not locked.is_empty()
+	_locked.text = "Po badaniu przy stole badawczym: %s." % ", ".join(locked)
 
 	var recipe := _recipe()
 	_formula.text = _formula_text(recipe) if not recipe.is_empty() else "Wybierz przepis, a potem włóż składniki."

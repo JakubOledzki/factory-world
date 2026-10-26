@@ -152,6 +152,77 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
     }
 
     [Fact]
+    public void An_inserter_with_nothing_to_take_from_a_chest_takes_what_another_puts_in_on_the_same_tick()
+    {
+        // chest → inserter → chest → inserter → chest: the second one has nothing to do until the first drops.
+        var from = Obj(Items.WoodenChest, 0, 0);
+        var middle = Obj(Items.WoodenChest, 2, 0);
+        var second = Obj(Items.Inserter, 3, 0);
+        var to = Obj(Items.WoodenChest, 4, 0);
+        var contents = new Dictionary<Guid, Contents> { [from.Id] = new() { Items = [new() { Item = Items.Wood, Quantity = 3 }] } };
+        var (logistics, _) = Build([from, Obj(Items.Inserter, 1, 0), middle, second, to], contents);
+
+        var t = Start;
+        for (var i = 0; i < 200; i++)
+        {
+            t = logistics.Run(t, t + LogisticsRules.Tick);
+            Assert.Equal(0, Stored(contents[middle.Id], Items.Wood));
+        }
+
+        Assert.Equal(3, Stored(contents[to.Id], Items.Wood));
+        Assert.Null(contents[second.Id].Hand);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void An_inserter_takes_what_a_machine_makes_on_the_first_tick_it_is_there(bool predictable)
+    {
+        var machine = Obj(Items.Furnace, 0, 0);
+        var inserter = Obj(Items.Inserter, 1, 0);
+        var chest = Obj(Items.WoodenChest, 2, 0);
+        var contents = new Dictionary<Guid, Contents> { [chest.Id] = new() };
+        var ready = Start + LogisticsRules.Tick * 5 + TimeSpan.FromMilliseconds(1);
+        var port = new OneIngot(ready, predictable);
+        var ports = new Dictionary<Guid, IMachinePort>
+        {
+            [machine.Id] = port,
+            [chest.Id] = new StoragePort(Storages.Find(Items.WoodenChest)!, contents[chest.Id], () => { }),
+        };
+        var logistics = new PlotLogistics([machine, inserter, chest], contents, ports);
+
+        var t = logistics.Run(Start, Start + LogisticsRules.Tick * 5);
+        Assert.False(port.Taken);
+        Assert.Null(contents[inserter.Id].Hand);
+
+        logistics.Run(t, t + LogisticsRules.Tick);
+        Assert.True(port.Taken);
+        Assert.Equal(Items.IronIngot, contents[inserter.Id].Hand);
+    }
+
+    /// <summary>A machine that makes one ingot at <paramref name="ready"/>; one that is not predictable does not say when.</summary>
+    private sealed class OneIngot(DateTimeOffset ready, bool predictable) : IMachinePort
+    {
+        public bool Taken { get; private set; }
+
+        public bool Predictable => predictable;
+
+        public string? Output(DateTimeOffset now, Func<string, bool> wanted) => !Taken && now >= ready && wanted(Items.IronIngot) ? Items.IronIngot : null;
+
+        public void Take(string item, DateTimeOffset now) => Taken = true;
+
+        public bool Accepts(string item, DateTimeOffset now) => false;
+
+        public void Put(string item, DateTimeOffset now)
+        {
+        }
+
+        public DateTimeOffset? NextChange(DateTimeOffset now) => predictable && !Taken ? ready : null;
+
+        public Task SaveAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+    }
+
+    [Fact]
     public async Task An_inserter_of_a_player_without_bigger_grippers_takes_items_off_a_belt()
     {
         using var client = await PlayerAsync();
@@ -174,6 +245,43 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         var logistics = await client.SendAsync("logistics.get", new { x, y });
         var storages = logistics.Payload().GetProperty("storages").EnumerateArray().ToDictionary(s => s.GetProperty("id").GetString()!);
         Assert.Equal(5, StoredIn(storages[target], Items.Wood));
+    }
+
+    [Fact]
+    public async Task The_short_form_of_the_logistics_lists_only_belts_that_carry_something_and_what_changes()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty) = await PlotWithFreeRowAsync(client, 4);
+        await GiveAsync(client, Items.WoodenChest, 1);
+        await GiveAsync(client, Items.Inserter, 1);
+        await GiveAsync(client, Items.Belt, 2);
+        await GiveAsync(client, Items.Stone, 1);
+        var chest = await PlaceAsync(client, x, y, Items.WoodenChest, tx, ty);
+        var inserter = await PlaceAsync(client, x, y, Items.Inserter, tx + 1, ty);
+        var loaded = await PlaceAsync(client, x, y, Items.Belt, tx + 2, ty);
+        // Turned back towards the first one, so the stone stays on that one.
+        await PlaceAsync(client, x, y, Items.Belt, tx + 3, ty, West);
+        await client.SendAsync("storage.put", new { x, y, id = chest, item = Items.Stone, quantity = 1 });
+        await PowerAsync(client, x, y, tx, ty);
+
+        factory.Time.Advance(TimeSpan.FromMinutes(1));
+        var compact = (await client.SendAsync("logistics.get", new { x, y, compact = true })).Payload();
+        Assert.True(compact.GetProperty("compact").GetBoolean());
+        var belt = Assert.Single(compact.GetProperty("belts").EnumerateArray());
+        Assert.Equal(loaded, belt.GetProperty("id").GetString());
+        Assert.Equal(1, belt.GetProperty("items").EnumerateArray().Count(i => i.ValueKind == JsonValueKind.String));
+        Assert.False(belt.TryGetProperty("speed", out _));
+        var arm = Assert.Single(compact.GetProperty("inserters").EnumerateArray());
+        Assert.Equal(inserter, arm.GetProperty("id").GetString());
+        Assert.False(arm.TryGetProperty("hand", out _));
+        Assert.Equal(JsonValueKind.Null, compact.GetProperty("names").ValueKind);
+        Assert.False(compact.GetProperty("power").TryGetProperty("wires", out _));
+        Assert.Equal(1, compact.GetProperty("storages").GetArrayLength());
+
+        // The full form, as before: every belt.
+        var full = (await client.SendAsync("logistics.get", new { x, y })).Payload();
+        Assert.Equal(2, full.GetProperty("belts").GetArrayLength());
+        Assert.NotEqual(JsonValueKind.Null, (await client.SendAsync("logistics.get", new { x, y, compact = true, names = true })).Payload().GetProperty("names").ValueKind);
     }
 
     [Fact]
@@ -310,7 +418,7 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
     public void Storages_take_their_goods_up_to_their_size()
     {
         var heap = Storages.Find(Items.Heap)!;
-        Assert.Equal(1000, Storages.Room(heap, [], Items.IronOre));
+        Assert.Equal(5000, Storages.Room(heap, [], Items.IronOre));
         Assert.Equal(0, Storages.Room(heap, [], Items.Wood));
         Assert.Equal(0, Storages.Room(heap, [new() { Item = Items.Coal, Quantity = 1 }], Items.Stone));
 

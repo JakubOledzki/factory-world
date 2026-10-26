@@ -28,11 +28,19 @@ static func texture(name: String, scale := 1.0) -> Texture2D:
 static func mask(name: String, scale := 1.0) -> Image:
 	var key := "%s@%s" % [name, scale]
 	if not _masks.has(key):
-		var image := _source(name)
-		var size := (Vector2(image.get_size()) * scale / _supersampling(name)).round()
-		image.resize(int(size.x), int(size.y), Image.INTERPOLATE_BILINEAR)
-		_masks[key] = image
+		_masks[key] = pixels(name, scale)
 	return _masks[key]
+
+
+## The picture's pixels in RGBA8, `scale` times its size on screen (SUPERSAMPLING for the plot's packed pages).
+static func pixels(name: String, scale := 1.0) -> Image:
+	var image := _source(name)
+	if image.get_format() != Image.FORMAT_RGBA8:
+		image.convert(Image.FORMAT_RGBA8)
+	var size := Vector2i((Vector2(image.get_size()) * scale / _supersampling(name)).round())
+	if size != image.get_size():
+		image.resize(size.x, size.y, Image.INTERPOLATE_BILINEAR if scale < _supersampling(name) else Image.INTERPOLATE_CUBIC)
+	return image
 
 
 static func _source(name: String) -> Image:

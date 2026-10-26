@@ -21,6 +21,10 @@ func _ready() -> void:
 	_error = UI.label("", UI.ERROR, HORIZONTAL_ALIGNMENT_LEFT, true)
 	_error.visible = false
 	box.add_child(_error)
+	if Game.logout_reason != "":
+		_error.text = Game.logout_reason
+		_error.visible = true
+		Game.logout_reason = ""
 
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
