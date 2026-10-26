@@ -33,6 +33,7 @@ public class ServerFactory : WebApplicationFactory<Program>
         builder.UseSetting("Market:PriceChanges", PriceChanges.ToString());
         // Bots would play next to the test players; their own tests drive them by hand.
         builder.UseSetting("Bots:Enabled", "false");
+        builder.UseSetting("Bots:Count", BotTests.TestBots.ToString(System.Globalization.CultureInfo.InvariantCulture));
         builder.UseSetting("ConnectionStrings:Game",
             new NpgsqlConnectionStringBuilder(_admin) { Database = _database }.ConnectionString);
         builder.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(Time));

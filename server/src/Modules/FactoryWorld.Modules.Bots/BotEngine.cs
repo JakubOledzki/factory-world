@@ -20,6 +20,7 @@ public sealed class BotEngine(
     TimeProvider time,
     OnlinePlayers online,
     ServerLoad load,
+    BotsOptions options,
     ILogger<BotEngine> logger)
 {
     private readonly IReadOnlyDictionary<string, IMessageHandler> _handlers = handlers.ToDictionary(h => h.Type, StringComparer.Ordinal);
@@ -32,6 +33,9 @@ public sealed class BotEngine(
     /// <summary>A new bot's first session starts within this time, so the roster shows up soon after the server starts.</summary>
     public static readonly TimeSpan FirstSessionWithin = TimeSpan.FromMinutes(15);
 
+    /// <summary>Every bot the server plays as: the first <see cref="BotsOptions.Count"/> of the roster.</summary>
+    public IReadOnlyList<BotProfile> Roster { get; } = BotRoster.First(Math.Max(0, options.Count));
+
     /// <summary>The bots as they are in memory, by roster name; empty before <see cref="EnsureBotsAsync"/>.</summary>
     public IReadOnlyCollection<Bot> Bots => _bots.Values;
 
@@ -42,7 +46,7 @@ public sealed class BotEngine(
         try
         {
             var rows = await RowsAsync(cancellationToken);
-            foreach (var profile in BotRoster.All)
+            foreach (var profile in Roster)
             {
                 if (!rows.TryGetValue(profile.Name, out var row))
                 {
@@ -193,9 +197,11 @@ public sealed class BotEngine(
     {
         var client = new BotClient(Guid.Empty, _handlers, _observers, load, logger);
         client.Context.AccountId = null;
-        var email = $"{profile.Name.ToLowerInvariant()}@boty.factoryworld.local";
+        var email = $"{BotNames.Plain(profile.Name)}@boty.factoryworld.local";
         var password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
         var registered = await client.SendAsync("auth.register", new { email, password }, cancellationToken);
+        // Registering logs the account in on this client like a player's connection; the bot shows online only in its sessions.
+        online.Leave(client.Context);
         if (!registered.Is("auth.ok"))
         {
             logger.LogError("Could not register bot {Bot}: {Error}", profile.Name, registered.Error);

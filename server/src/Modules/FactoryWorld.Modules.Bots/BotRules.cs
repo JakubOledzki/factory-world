@@ -52,7 +52,7 @@ public static class BotRules
     /// little for a bot to ever buy much, so the server tops it up; a bot never pays a player more than the
     /// trader would charge, so this buys players' goods without printing an easy profit.
     /// </summary>
-    public const long Allowance = 500_00;
+    public const long Allowance = 100_00;
 
     /// <summary>What a bot with no plot gets on top of its first plot's price, for tools and trash.</summary>
     public const long StartingExtra = 300_00;
