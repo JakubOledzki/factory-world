@@ -1,6 +1,14 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Szybsze okna na działkach z leśniczówkami",
+		"changes": [
+			"Okna skrzyń, podajników, generatorów, leśniczówek i stacji na działkach z leśniczówkami lub zagrodami otwierają się szybciej. Wcześniej każda leśniczówka i zagroda przeliczała od nowa całą działkę, a na dużych działkach trwało to nawet kilkanaście sekund.",
+			"Wejście na działkę, na której wiele pól już zebrano, też jest szybsze."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Szybsze wejście na działkę",
 		"changes": [
 			"Pierwsze wejście na działkę, która długo stała bez gracza, trwa nawet trzy razy krócej: podajniki, które nie mają nic do zrobienia, czekają, aż coś się zmieni w skrzyni, piecu albo na taśmie obok, zamiast sprawdzać to co chwilę. Wynik pracy fabryki jest dokładnie taki sam jak wcześniej.",
