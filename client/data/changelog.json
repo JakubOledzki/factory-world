@@ -1,6 +1,13 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Nowy wygląd tartaku elektrycznego",
+		"changes": [
+			"Tartak elektryczny (drugi poziom tartaku) nie jest już powiększonym stołem z piłą: to niska linia tartaczna z podajnikiem rolkowym, piłą tarczową pod żółtą osłoną, stosem desek i szafką sterowniczą. Mieści się na swoich 3 × 3 polach i nie zasłania tego, co stoi za nim."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Podajniki za piecami widać",
 		"changes": [
 			"Piec, odlewnia albo inna maszyna stojąca przed podajnikiem, taśmą lub rozdzielaczem znowu robi się lekko przezroczysta, więc to, co stoi za nią, jest widoczne."

@@ -887,31 +887,76 @@ def build_sawmill():
 
 
 def build_electric_sawmill():
-    """The electric sawmill: a steel table with a big circular blade showing through its top, a blue
-    motor underneath, a log being fed in and boards coming out."""
+    """The electric sawmill: a small sawing line on a steel deck, kept low so that what stands behind
+    it shows. A log rolls in on a roller table from the west, through a blue saw housing with a big
+    circular blade under a yellow guard, and boards roll out east. Logs wait at the back, sawn
+    boards lie stacked on bearers at the front, by the switch cabinet and a heap of sawdust."""
     steel = ra.rusty_metal("esaw_steel", (0.2, 0.2, 0.22), rust=0.25)
+    deck = ra.rusty_metal("esaw_deck", (0.12, 0.12, 0.13), rust=0.35, scale=6.0)
     dark = ra.rusty_metal("esaw_dark", (0.06, 0.06, 0.07), rust=0.3)
     blue = ra.rusty_metal("esaw_motor", (0.05, 0.12, 0.35), rust=0.15)
+    yellow = ra.rusty_metal("esaw_yellow", (0.72, 0.46, 0.03), rust=0.2)
     blade = ra.plain("esaw_blade", (0.7, 0.7, 0.72), 0.2, 1.0, grime=0.15)
     fresh = ra.wood("esaw_fresh", (0.5, 0.34, 0.17))
     logs = bark()
     cut = ra.wood("esaw_cut", (0.36, 0.23, 0.11))
-    for x in (-0.6, 0.6):
-        for y in (-0.3, 0.3):
-            ra.box("esaw_leg", (0.07, 0.07, 0.7), Vector((x, y, 0.35)), dark)
-    ra.box("esaw_table", (1.5, 0.8, 0.08), Vector((0, 0, 0.74)), steel, bevel=0.01)
-    ra.cylinder("esaw_blade", 0.34, 0.02, Vector((0, 0, 0.78)), blade, rotation=(math.radians(90), 0, 0), verts=32)
-    ra.box("esaw_guard", (0.75, 0.1, 0.12), Vector((0, 0, 1.14)), ra.plain("esaw_guard", (0.75, 0.5, 0.04), 0.5))
-    ra.box("esaw_guard_arm", (0.06, 0.06, 0.4), Vector((0.35, 0.0, 0.96)), dark)
-    ra.cylinder("esaw_motor", 0.18, 0.4, Vector((0, 0.1, 0.35)), blue, rotation=(0, math.radians(90), 0), verts=20)
-    ra.box("esaw_box", (0.25, 0.08, 0.3), Vector((0.55, -0.43, 0.5)), blue, bevel=0.01)
-    ra.box("esaw_lamp", (0.06, 0.03, 0.06), Vector((0.55, -0.48, 0.58)), ra.emission("esaw_lamp", (0.2, 1.0, 0.3), 3.0))
-    ra.cylinder("esaw_log", 0.14, 0.7, Vector((-0.5, 0, 0.92)), logs, rotation=(0, math.radians(90), 0), verts=14)
-    ra.cylinder("esaw_log_end", 0.128, 0.01, Vector((-0.851, 0, 0.92)), cut, rotation=(0, math.radians(90), 0), verts=14)
+    dust = ra.plain("esaw_sawdust", (0.55, 0.4, 0.2), 0.95, variation=0.2, bump=0.6)
+    ra.box("esaw_deck", (1.9, 1.0, 0.06), Vector((0, 0.05, 0.03)), deck, bevel=0.01)
+    # The roller tables, in and out, on low legs along the line.
+    line_y, roll_z = 0.05, 0.3
+    for x0, x1 in ((-0.92, -0.3), (0.3, 0.92)):
+        for y in (-0.17, 0.17):
+            ra.box("esaw_side", (x1 - x0, 0.04, 0.08), Vector(((x0 + x1) / 2, line_y + y, roll_z)), steel)
+        for k in range(5):
+            x = x0 + 0.06 + k * (x1 - x0 - 0.12) / 4
+            ra.cylinder("esaw_roller", 0.035, 0.32, Vector((x, line_y, roll_z + 0.01)), blade, rotation=(math.radians(90), 0, 0), verts=12)
+        for x in (x0 + 0.05, x1 - 0.05):
+            for y in (-0.17, 0.17):
+                ra.box("esaw_leg", (0.05, 0.05, roll_z), Vector((x, line_y + y, roll_z / 2)), dark)
+    ra.cylinder("esaw_log", 0.13, 0.62, Vector((-0.6, line_y, roll_z + 0.17)), logs, rotation=(0, math.radians(90), 0), verts=16)
+    ra.cylinder("esaw_log_end", 0.118, 0.01, Vector((-0.912, line_y, roll_z + 0.17)), cut, rotation=(0, math.radians(90), 0), verts=16)
     for k in range(3):
-        ra.box("esaw_board", (0.5, 0.26, 0.04), Vector((0.5, 0.0, 0.8 + k * 0.045)), fresh)
-    for k in range(5):
-        ra.box("esaw_stack", (1.0, 0.24, 0.05), Vector((0.05, -0.75 + (k % 2) * 0.03, 0.03 + k * 0.055)), fresh)
+        ra.box("esaw_board", (0.5, 0.26, 0.04), Vector((0.6, line_y, roll_z + 0.06 + k * 0.045)), fresh)
+    # The saw: a blue housing, the blade standing out of it and a yellow guard over the blade.
+    ra.box("esaw_housing", (0.6, 0.5, 0.36), Vector((0, line_y, 0.18 + 0.06)), blue, bevel=0.02)
+    ra.box("esaw_top", (0.64, 0.54, 0.03), Vector((0, line_y, 0.435)), steel, bevel=0.005)
+    ra.cylinder("esaw_blade", 0.24, 0.015, Vector((0, line_y, 0.42)), blade, rotation=(math.radians(90), 0, 0), verts=40)
+    ra.cylinder("esaw_hub", 0.05, 0.03, Vector((0, line_y, 0.42)), dark, rotation=(math.radians(90), 0, 0), verts=12)
+    # The guard: a yellow hood over the upper half of the blade.
+    arc = [(0.27 * math.cos(math.pi * i / 16), 0.27 * math.sin(math.pi * i / 16) + 0.44) for i in range(17)]
+    v = [(x, line_y + e * 0.05, z) for e in (-1, 1) for x, z in arc]
+    faces = [tuple(range(17)), tuple(range(33, 16, -1))] + [(i, i + 1, i + 18, i + 17) for i in range(16)] + [(16, 0, 17, 33)]
+    ra.mesh_from("esaw_guard", v, faces, yellow)
+    # The motor behind the housing.
+    ra.cylinder("esaw_motor", 0.13, 0.34, Vector((-0.1, line_y + 0.38, 0.19)), blue, rotation=(0, math.radians(90), 0), verts=20)
+    for x in (-0.27, 0.07):
+        ra.cylinder("esaw_motor_end", 0.135, 0.04, Vector((x, line_y + 0.38, 0.19)), dark, rotation=(0, math.radians(90), 0), verts=20)
+    ra.box("esaw_motor_feet", (0.3, 0.2, 0.06), Vector((-0.1, line_y + 0.38, 0.06)), dark)
+    # Logs waiting at the back, low.
+    for row, count in enumerate((3, 2)):
+        for i in range(count):
+            y = 0.62 + (i - (count - 1) / 2) * 0.17
+            z = 0.085 + row * 0.15
+            ra.cylinder("esaw_wait", 0.085, 0.75, Vector((0.5, y, z)), logs, rotation=(0, math.radians(90), 0), verts=14)
+            for e in (-1, 1):
+                ra.cylinder("esaw_wait_end", 0.075, 0.01, Vector((0.5 + e * 0.376, y, z)), cut, rotation=(0, math.radians(90), 0), verts=14)
+    # Sawn boards stacked on bearers at the front, with sticks between the layers.
+    for x in (-0.05, 0.6):
+        ra.box("esaw_bearer", (0.1, 0.42, 0.08), Vector((x, -0.62, 0.04)), ra.wood("esaw_bearer", (0.14, 0.08, 0.04)))
+    for k in range(4):
+        z = 0.1 + k * 0.07
+        for j in range(3):
+            ra.box("esaw_stack", (0.95, 0.12, 0.04), Vector((0.27, -0.75 + j * 0.13, z)), fresh)
+        if k < 3:
+            for x in (-0.05, 0.6):
+                ra.box("esaw_stick", (0.04, 0.4, 0.025), Vector((x, -0.62, z + 0.032)), cut)
+    # The switch cabinet with its lamp, and the sawdust that fell under the saw.
+    ra.box("esaw_cabinet", (0.3, 0.16, 0.42), Vector((-0.72, -0.62, 0.27)), blue, bevel=0.015)
+    ra.box("esaw_cabinet_foot", (0.34, 0.2, 0.06), Vector((-0.72, -0.62, 0.03)), dark)
+    ra.box("esaw_lamp", (0.07, 0.03, 0.07), Vector((-0.66, -0.71, 0.38)), ra.emission("esaw_lamp", (0.2, 1.0, 0.3), 3.0))
+    ra.box("esaw_switch", (0.06, 0.03, 0.1), Vector((-0.78, -0.71, 0.24)), ra.plain("esaw_switch", (0.6, 0.05, 0.03), 0.5))
+    d = ra.sphere("esaw_dust", 0.2, Vector((-0.28, -0.28, 0.02)), dust, scale=(1.3, 0.9, 0.35), segments=16)
+    ra.displace(d, 0.02, 0.2, 1)
 
 
 def build_industrial_sawmill():
@@ -948,12 +993,12 @@ def build_industrial_sawmill():
 
 FORESTRY_INDUSTRY = {
     # name: (canvas width, height, camera target height, builder). The forester's buildings cover
-    # 3 × 3 tiles; the sawmills one, like the mill.
+    # 3 × 3 tiles; the sawmills one, like the mill, and the game grows them to their level's square.
     "forester_hut": (240, 256, 1.6, build_forester_hut),
     "forester_lodge": (240, 272, 1.9, build_forester_lodge),
     "forestry_station": (240, 336, 2.9, build_forestry_station),
     "sawmill": (112, 120, 0.6, build_sawmill),
-    "electric_sawmill": (112, 120, 0.6, build_electric_sawmill),
+    "electric_sawmill": (112, 112, 0.35, build_electric_sawmill),
     "industrial_sawmill": (112, 144, 0.85, build_industrial_sawmill),
 }
 
