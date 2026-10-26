@@ -683,6 +683,47 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
     }
 
     [Fact]
+    public async Task Inserters_feed_a_foundry_making_steel_coal_for_the_recipe_and_for_the_fire()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty) = await PlotWithFreeRowAsync(client, 7);
+        await GiveAsync(client, Items.WoodenChest, 2);
+        await GiveAsync(client, Items.Inserter, 2);
+        await GiveAsync(client, Items.Foundry, 1);
+        await GiveAsync(client, Items.IronIngot, 8);
+        await GiveAsync(client, Items.Coal, 10);
+
+        // chest → inserter → foundry (3 × 3, placed by its middle) → inserter → chest
+        var source = await PlaceAsync(client, x, y, Items.WoodenChest, tx, ty);
+        await PlaceAsync(client, x, y, Items.Inserter, tx + 1, ty);
+        var foundry = await PlaceAsync(client, x, y, Items.Foundry, tx + 3, ty + 1);
+        await PlaceAsync(client, x, y, Items.Inserter, tx + 5, ty);
+        var target = await PlaceAsync(client, x, y, Items.WoodenChest, tx + 6, ty);
+        Assert.Equal("machine", (await client.SendAsync("machine.recipe", new { machine = foundry, recipe = Items.SteelIngot })).Type());
+        await client.SendAsync("storage.put", new { x, y, id = source, item = Items.IronIngot, quantity = 8 });
+        await client.SendAsync("storage.put", new { x, y, id = source, item = Items.Coal, quantity = 10 });
+
+        // Poles under both inserters, the generator beside the first.
+        await GiveAsync(client, Items.Pole, 2);
+        await GiveAsync(client, Items.Generator, 1);
+        await GiveAsync(client, Items.Coal, 20);
+        await PlaceAsync(client, x, y, Items.Pole, tx + 1, ty + 1);
+        await PlaceAsync(client, x, y, Items.Pole, tx + 5, ty + 1);
+        var generator = await PlaceAsync(client, x, y, Items.Generator, tx, ty + 1);
+        Assert.Equal("generator", (await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Coal, quantity = 20 })).Type());
+
+        factory.Time.Advance(TimeSpan.FromHours(1));
+        var storages = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("storages")
+            .EnumerateArray().ToDictionary(s => s.GetProperty("id").GetString()!);
+        Assert.Equal(4, StoredIn(storages[target], Items.SteelIngot));
+        Assert.Equal(0, StoredIn(storages[source], Items.IronIngot));
+        Assert.Equal(0, StoredIn(storages[source], Items.Coal));
+        var left = (await client.SendAsync("machine.get", new { machine = foundry })).Payload();
+        Assert.Equal(4, left.GetProperty("inputs")[1].GetProperty("quantity").GetInt32());
+        Assert.Equal(Items.Coal, left.GetProperty("fuel").GetProperty("id").GetString());
+    }
+
+    [Fact]
     public async Task Inserters_work_a_mill_too_feeding_it_wheat_and_taking_its_flour()
     {
         using var client = await PlayerAsync();

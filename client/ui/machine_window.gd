@@ -159,7 +159,7 @@ func _render() -> void:
 			if _count(f["id"]) > 0:
 				var blocked: bool = fuel != null and fuel["id"] != f["id"]
 				var room := 0 if blocked else int(_state["maxFuel"]) - (int(fuel["quantity"]) if fuel != null else 0)
-				_slots.add_child(_stack_row(f["id"], "%s (1 = %d %s)" % [f["name"], int(f["batches"]), _batches_word(int(f["batches"]))], [1, 10, 0], room))
+				_slots.add_child(_stack_row(f["id"], "%s (1 = %d %s)" % [f["name"], int(f["batches"]), _batches_word(int(f["batches"]))], [1, 10, 0], room, true))
 		var take_fuel := UI.button("Wyjmij opał", _take.bind("fuel"))
 		take_fuel.disabled = fuel == null
 		_slots.add_child(take_fuel)
@@ -208,8 +208,9 @@ func _batches_word(n: int) -> String:
 	return "partię" if n == 1 else "partie"
 
 
-## A row with an item, its text and buttons that put `amounts` of it from the inventory (0 = all that fits).
-func _stack_row(item: String, text: String, amounts: Array, room: int) -> HBoxContainer:
+## A row with an item, its text and buttons that put `amounts` of it from the inventory (0 = all that fits);
+## `fuel` puts it by the fire even where the recipe wants it too (coal for steel).
+func _stack_row(item: String, text: String, amounts: Array, room: int, fuel := false) -> HBoxContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
 	row.add_child(UI.item_icon(item, 26))
@@ -223,7 +224,7 @@ func _stack_row(item: String, text: String, amounts: Array, room: int) -> HBoxCo
 			continue
 		shown[amount] = true
 		var count := mini(owned, room) if amount == 0 else amount
-		var b := UI.button("Wszystko" if amount == 0 else "+%d" % amount, _put.bind(item, count))
+		var b := UI.button("Wszystko" if amount == 0 else "+%d" % amount, _put.bind(item, count, fuel))
 		b.disabled = count < 1 or count > owned or count > room
 		row.add_child(b)
 	return row
@@ -291,8 +292,8 @@ func _choose(recipe: String) -> void:
 	_changed(await Net.request("machine.recipe", {"machine": machine, "recipe": recipe}))
 
 
-func _put(item: String, quantity: int) -> void:
-	_changed(await Net.request("machine.load", {"machine": machine, "item": item, "quantity": quantity}))
+func _put(item: String, quantity: int, fuel: bool) -> void:
+	_changed(await Net.request("machine.load", {"machine": machine, "item": item, "quantity": quantity, "fuel": fuel}))
 
 
 func _take(what: String) -> void:

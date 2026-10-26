@@ -184,6 +184,43 @@ public sealed class ProcessingTests(ServerFactory factory) : IClassFixture<Serve
     }
 
     [Fact]
+    public async Task Coal_and_charcoal_go_by_the_foundry_fire_even_while_it_makes_steel()
+    {
+        using var client = await PlayerAsync();
+        var (_, _, foundry) = await MachineOnPlotAsync(client, Items.Foundry);
+        await GiveAsync(client, Items.IronIngot, 4);
+        await GiveAsync(client, Items.Coal, 3);
+        await GiveAsync(client, Items.Charcoal, 1);
+        await client.SendAsync("machine.recipe", new { machine = foundry, recipe = Items.SteelIngot });
+        await client.SendAsync("machine.load", new { machine = foundry, item = Items.IronIngot, quantity = 4 });
+
+        // Coal goes where the recipe wants it unless the player puts it by the fire.
+        var ingredient = (await client.SendAsync("machine.load", new { machine = foundry, item = Items.Coal, quantity = 2 })).Payload();
+        Assert.Equal(2, ingredient.GetProperty("inputs")[1].GetProperty("quantity").GetInt32());
+        Assert.Equal(JsonValueKind.Null, ingredient.GetProperty("fuel").ValueKind);
+        var fired = (await client.SendAsync("machine.load", new { machine = foundry, item = Items.Coal, quantity = 1, fuel = true })).Payload();
+        Assert.Equal(2, fired.GetProperty("inputs")[1].GetProperty("quantity").GetInt32());
+        Assert.Equal(Items.Coal, fired.GetProperty("fuel").GetProperty("id").GetString());
+        Assert.Equal(1, fired.GetProperty("fuel").GetProperty("quantity").GetInt32());
+        Assert.Equal(2, fired.GetProperty("batches").GetInt32());
+        Assert.NotEqual(JsonValueKind.Null, fired.GetProperty("startedAt").ValueKind);
+        Assert.Equal("machine_busy", (await client.SendAsync("machine.load", new { machine = foundry, item = Items.Charcoal, quantity = 1, fuel = true })).ErrorCode());
+
+        factory.Time.Advance(TimeSpan.FromSeconds(60));
+        var taken = (await client.SendAsync("machine.take", new { machine = foundry, what = "output" })).Payload();
+        Assert.Equal(2, taken.GetProperty("taken")[0].GetProperty("quantity").GetInt32());
+        // The coal by the fire is burning, good for two more batches.
+        Assert.Equal(JsonValueKind.Null, taken.GetProperty("fuel").ValueKind);
+        Assert.Equal(2, taken.GetProperty("heat").GetInt32());
+
+        // Charcoal burns there just the same.
+        var charcoal = (await client.SendAsync("machine.load", new { machine = foundry, item = Items.Charcoal, quantity = 1, fuel = true })).Payload();
+        Assert.Equal(Items.Charcoal, charcoal.GetProperty("fuel").GetProperty("id").GetString());
+        Assert.Equal(0, charcoal.GetProperty("inputs")[1].GetProperty("quantity").GetInt32());
+        Assert.Equal("not_fuel", (await client.SendAsync("machine.load", new { machine = foundry, item = Items.IronIngot, quantity = 1, fuel = true })).ErrorCode());
+    }
+
+    [Fact]
     public async Task Changing_the_recipe_returns_ingredients_and_products()
     {
         using var client = await PlayerAsync();
