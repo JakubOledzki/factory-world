@@ -623,7 +623,7 @@ func _show_plot() -> void:
 			if mine:
 				_plot_box.add_child(UI.button("Wejdź na działkę", Game.enter_plot.bind(plot), true))
 				_show_rename(plot)
-				_show_access()
+				_show_access(plot)
 				_show_survey()
 			elif _plot.get("canEnter", false) and company != null and company["member"]:
 				_plot_box.add_child(UI.button("Wejdź na działkę spółki", Game.enter_plot.bind(plot), true))
@@ -681,7 +681,7 @@ func _show_rename(plot: Vector2i) -> void:
 
 
 ## Who may come onto the player's own plot: anyone (only to look around) or just them and their company.
-func _show_access() -> void:
+func _show_access(plot: Vector2i) -> void:
 	var open: bool = _plot.get("public", false)
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 6)
@@ -690,18 +690,19 @@ func _show_access() -> void:
 	_plot_box.add_child(row)
 	_plot_box.add_child(_note("Każdy może wejść i pochodzić, ale nie zajrzy do skrzyń, niczego nie zbierze, nie wydobędzie ani nie postawi."
 		if open else "Wchodzisz tylko ty i członkowie spółki, jeśli działka do niej należy."))
-	_plot_box.add_child(UI.button("Zmień na prywatną" if open else "Udostępnij wszystkim", _on_access.bind(not open)))
+	_plot_box.add_child(UI.button("Zmień na prywatną" if open else "Udostępnij wszystkim", _on_access.bind(plot, not open)))
 
 
-func _on_access(open: bool) -> void:
-	var reply := await Net.request("plot.setPublic", {"x": _plot["x"], "y": _plot["y"], "public": open})
+## Sends the coordinates from the Vector2i: numbers read back from JSON are floats, which the server refuses as x and y.
+func _on_access(plot: Vector2i, open: bool) -> void:
+	var reply := await Net.request("plot.setPublic", {"x": plot.x, "y": plot.y, "public": open})
 	if reply["type"] != "world.plot":
 		_show_error(reply)
 		return
-	var plot: Dictionary = reply["payload"]
-	if _selected == Vector2i(plot["x"], plot["y"]):
-		_plot["public"] = plot.get("public", false)
-		_plot["canEnter"] = plot.get("canEnter", false)
+	var updated: Dictionary = reply["payload"]
+	if _selected == plot:
+		_plot["public"] = updated.get("public", false)
+		_plot["canEnter"] = updated.get("canEnter", false)
 		_show_plot()
 	_show_toast("Działka jest teraz publiczna." if open else "Działka jest teraz prywatna.", UI.GOOD)
 

@@ -1,6 +1,13 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Udostępnianie działki naprawione",
+		"changes": [
+			"Przycisk „Udostępnij wszystkim” na mapie świata znowu działa: zamiast błędu działka staje się publiczna (i z powrotem prywatna)."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Ostrzejsze obiekty na działkach",
 		"changes": [
 			"Drzewa, skały, maszyny, taśmy i inne obiekty na działkach mają grafikę w dwa razy większej rozdzielczości, więc nie są już rozmyte na dużym ekranie, na telefonie i po przybliżeniu.",
