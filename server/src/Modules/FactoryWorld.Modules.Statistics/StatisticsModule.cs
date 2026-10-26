@@ -66,10 +66,22 @@ public static class ProductionRules
 /// <summary>Adds what the factory did to the minute it happened in.</summary>
 public sealed class ProductionStats(GameDb db, TimeProvider time) : IProductionStats
 {
+    /// <summary>How often a player's minutes older than <see cref="ProductionRules.Kept"/> are dropped while recording, so
+    /// the table holds a day of each factory also for those who never look at it (the bots, say).</summary>
+    public static readonly TimeSpan PrunedEvery = TimeSpan.FromHours(1);
+
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, DateTimeOffset> Pruned = new();
+
     public async Task RecordAsync(Guid owner, IReadOnlyCollection<ProductionEntry> entries, CancellationToken cancellationToken)
     {
         var now = time.GetUtcNow();
         var oldest = now - ProductionRules.Kept;
+        if (!Pruned.TryGetValue(owner, out var pruned) || now - pruned >= PrunedEvery || pruned > now)
+        {
+            await ProductionReports.PruneAsync(db, owner, now, cancellationToken);
+            Pruned[owner] = now;
+        }
+
         // Sorted, so that two transactions adding to the same rows lock them in the same order.
         var rows = entries
             .Where(e => e.At > oldest && (e.Produced != 0 || e.Consumed != 0))
@@ -127,6 +139,16 @@ public sealed record ProductionReport(
 
 public sealed class ProductionReports(GameDb db, IEnumerable<IMachineStatuses> machines, TimeProvider time)
 {
+    /// <summary>Drops the player's minutes older than the statistics reach.</summary>
+    public static async Task PruneAsync(GameDb db, Guid owner, DateTimeOffset now, CancellationToken cancellationToken)
+    {
+        await using var prune = await db.CommandAsync(
+            "DELETE FROM stats.production WHERE owner_id = @owner AND minute < @oldest", cancellationToken);
+        prune.Parameters.AddWithValue("owner", owner);
+        prune.Parameters.AddWithValue("oldest", now - ProductionRules.Kept - TimeSpan.FromMinutes(1));
+        await prune.ExecuteNonQueryAsync(cancellationToken);
+    }
+
     public Task<ProductionReport> ReportAsync(Guid owner, int minutes, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
@@ -136,13 +158,7 @@ public sealed class ProductionReports(GameDb db, IEnumerable<IMachineStatuses> m
             }
 
             var now = time.GetUtcNow();
-            await using (var prune = await db.CommandAsync(
-                "DELETE FROM stats.production WHERE owner_id = @owner AND minute < @oldest", cancellationToken))
-            {
-                prune.Parameters.AddWithValue("owner", owner);
-                prune.Parameters.AddWithValue("oldest", now - ProductionRules.Kept - TimeSpan.FromMinutes(1));
-                await prune.ExecuteNonQueryAsync(cancellationToken);
-            }
+            await PruneAsync(db, owner, now, cancellationToken);
 
             // Whole bars, the last one ending with the current minute.
             var end = ProductionRules.MinuteOf(now) + TimeSpan.FromMinutes(1);

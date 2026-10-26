@@ -1,5 +1,14 @@
 [
 	{
+		"date": "2026-10-26",
+		"title": "Szybszy rynek i zlecenia",
+		"changes": [
+			"Rynek graczy otwiera się szybciej także wtedy, gdy wystawiono na nim setki tysięcy ofert: zestawienie najlepszych cen liczy się raz dla wszystkich i odświeża tylko przedmioty, które ktoś właśnie kupił lub wystawił.",
+			"Zakładka Moje oferty i limit 20 ofert nie przeglądają już wszystkich dawno zamkniętych ofert gracza, a okno zleceń nie przegląda wszystkich wykonanych zleceń w grze.",
+			"Okno rynku nie rysuje się drugi raz, gdy odpowiedź serwera niczego nie zmieniła, więc zakładki przełączają się szybciej."
+		]
+	},
+	{
 		"date": "2026-10-25",
 		"title": "Pociągi między twoimi działkami",
 		"changes": [

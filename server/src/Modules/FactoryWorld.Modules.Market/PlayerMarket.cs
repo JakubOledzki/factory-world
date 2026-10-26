@@ -59,7 +59,10 @@ public sealed class MarketDbContext(DbContextOptions<MarketDbContext> options, G
         e.Property(o => o.CreatedAt).HasColumnName("created_at");
         e.Property(o => o.ClosedAt).HasColumnName("closed_at");
         e.HasIndex(o => new { o.ItemId, o.PriceCents }).HasFilter("closed_at IS NULL");
-        e.HasIndex(o => new { o.OwnerId, o.Id });
+        // Closed offers stay, so a busy trader has thousands of them: the owner's open ones and the recently
+        // closed ones each have an index of their own, and finding them never walks through the old ones.
+        e.HasIndex(o => new { o.OwnerId, o.Id }).HasFilter("closed_at IS NULL").HasDatabaseName($"IX_{table}_open_owner_id_id");
+        e.HasIndex(o => new { o.OwnerId, o.ClosedAt }).HasFilter("closed_at IS NOT NULL").HasDatabaseName($"IX_{table}_closed_owner_id_closed_at");
     }
 }
 
@@ -96,15 +99,72 @@ public sealed record ItemRequest(string Item);
 
 public sealed record ItemSummary(string Item, long? LowestCents, long Listed, long? HighestCents, long Wanted);
 
+/// <summary>
+/// The best prices and amounts of every item (<see cref="PlayerMarketService.SummaryAsync"/>) as last worked out, shared
+/// by everyone who opens the market. Adding up every open offer takes long once there are many of them, so a change to
+/// an offer only marks its item, and the next look adds up that item alone. Everything is added up anew every
+/// <see cref="KeptFor"/>, for offers changed while a look was adding them up.
+/// </summary>
+public sealed class MarketSummary
+{
+    public static readonly TimeSpan KeptFor = TimeSpan.FromSeconds(10);
+
+    private readonly object _lock = new();
+    private IReadOnlyDictionary<string, ItemSummary>? _items;
+    private DateTimeOffset _at;
+    private readonly HashSet<string> _changed = new(StringComparer.Ordinal);
+    private long _version;
+
+    /// <summary>An offer of <paramref name="item"/> was made, taken or closed.</summary>
+    public void Changed(string item)
+    {
+        lock (_lock)
+        {
+            _version++;
+            _changed.Add(item);
+        }
+    }
+
+    /// <summary>What is kept (null when everything must be added up), the items changed since, and the count of changes
+    /// to hand back to <see cref="Keep"/>.</summary>
+    public (IReadOnlyDictionary<string, ItemSummary>? Items, IReadOnlyList<string> Changed, long Version) Read(DateTimeOffset now)
+    {
+        lock (_lock)
+        {
+            return _items is null || now - _at >= KeptFor ? (null, [], _version) : (_items, _changed.ToList(), _version);
+        }
+    }
+
+    /// <summary>Keeps what a look added up, unless an offer changed while it did.</summary>
+    public void Keep(long version, DateTimeOffset now, IReadOnlyDictionary<string, ItemSummary> items, bool everything)
+    {
+        lock (_lock)
+        {
+            if (version != _version)
+            {
+                return;
+            }
+
+            _items = items;
+            _changed.Clear();
+            if (everything)
+            {
+                _at = now;
+            }
+        }
+    }
+}
+
 public sealed class PlayerMarketService(
-    GameDb db, IInventory inventory, IWallet wallet, ICharacterNames names, TimeProvider time, ITechnologies technologies, IEnumerable<IGarageDeliveries> deliveries)
+    GameDb db, IInventory inventory, IWallet wallet, ICharacterNames names, TimeProvider time, ITechnologies technologies,
+    IEnumerable<IGarageDeliveries> deliveries, MarketSummary summary)
     : IExportMarket
 {
     /// <summary>Puts items up for sale: they leave the inventory now and wait on the listing.</summary>
     public Task<long> ListAsync(Guid seller, OfferRequest request, CancellationToken cancellationToken)
     {
         Check(request);
-        return db.InTransactionAsync(async () =>
+        return ChangeAsync(async () =>
         {
             await CheckOpenCountAsync(OfferKind.Listing, seller, cancellationToken);
             await inventory.RemoveAsync(seller, request.Item, request.Quantity, cancellationToken);
@@ -128,7 +188,7 @@ public sealed class PlayerMarketService(
     public Task<long> OrderAsync(Guid buyer, OfferRequest request, CancellationToken cancellationToken)
     {
         Check(request);
-        return db.InTransactionAsync(async () =>
+        return ChangeAsync(async () =>
         {
             // Nobody gets what they haven't researched yet, not even from other players.
             await technologies.RequireUnlockedAsync(buyer, request.Item, cancellationToken);
@@ -142,7 +202,7 @@ public sealed class PlayerMarketService(
 
     /// <summary>Buys from another player's listing: money to the seller, items to the buyer.</summary>
     public Task<long> PurchaseAsync(Guid buyer, TakeRequest request, CancellationToken cancellationToken) =>
-        db.InTransactionAsync(async () =>
+        ChangeAsync(async () =>
         {
             var listing = await TakeAsync(OfferKind.Listing, buyer, request, cancellationToken);
             await technologies.RequireUnlockedAsync(buyer, listing.ItemId, cancellationToken);
@@ -155,7 +215,7 @@ public sealed class PlayerMarketService(
 
     /// <summary>Fills another player's buy order: items to the buyer, the waiting money to the seller.</summary>
     public Task<long> FillAsync(Guid seller, TakeRequest request, CancellationToken cancellationToken) =>
-        db.InTransactionAsync(async () =>
+        ChangeAsync(async () =>
         {
             var order = await TakeAsync(OfferKind.Order, seller, request, cancellationToken);
             await inventory.RemoveAsync(seller, order.ItemId, request.Quantity, cancellationToken);
@@ -166,7 +226,7 @@ public sealed class PlayerMarketService(
 
     /// <summary>Closes the player's own offer; unsold items or unspent money go back.</summary>
     public Task<long> CancelAsync(OfferKind kind, Guid owner, long id, CancellationToken cancellationToken) =>
-        db.InTransactionAsync(async () =>
+        ChangeAsync(async () =>
         {
             var offer = await LockAsync(kind, id, cancellationToken);
             if (offer is null || offer.OwnerId != owner || offer.ClosedAt is not null)
@@ -174,6 +234,7 @@ public sealed class PlayerMarketService(
                 throw new GameException("no_offer", "This offer is no longer there.");
             }
 
+            Touch(offer.ItemId);
             await using (var close = await db.CommandAsync($"UPDATE market.{Table(kind)} SET closed_at = @at WHERE id = @id", cancellationToken))
             {
                 close.Parameters.AddWithValue("id", id);
@@ -199,29 +260,43 @@ public sealed class PlayerMarketService(
     /// <summary>Best open prices and amounts of every item that has offers.</summary>
     public async Task<IReadOnlyDictionary<string, ItemSummary>> SummaryAsync(CancellationToken cancellationToken)
     {
+        var (kept, changed, version) = summary.Read(time.GetUtcNow());
+        if (kept is not null && changed.Count == 0)
+        {
+            return kept;
+        }
+
+        var items = kept is null ? new Dictionary<string, ItemSummary>() : new Dictionary<string, ItemSummary>(kept);
+        foreach (var item in changed)
+        {
+            items.Remove(item);
+        }
+
         await using var command = await db.CommandAsync(
             """
             SELECT item_id, MIN(price_cents), SUM(quantity_left), NULL::bigint, 0::numeric
-            FROM market.listings WHERE closed_at IS NULL GROUP BY item_id
+            FROM market.listings WHERE closed_at IS NULL AND (@all OR item_id = ANY(@items)) GROUP BY item_id
             UNION ALL
             SELECT item_id, NULL::bigint, 0::numeric, MAX(price_cents), SUM(quantity_left)
-            FROM market.orders WHERE closed_at IS NULL GROUP BY item_id
+            FROM market.orders WHERE closed_at IS NULL AND (@all OR item_id = ANY(@items)) GROUP BY item_id
             """, cancellationToken);
+        command.Parameters.AddWithValue("all", kept is null);
+        command.Parameters.AddWithValue("items", changed.ToArray());
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        var summary = new Dictionary<string, ItemSummary>();
         while (await reader.ReadAsync(cancellationToken))
         {
             var item = reader.GetString(0);
             var row = new ItemSummary(item,
                 reader.IsDBNull(1) ? null : reader.GetInt64(1), (long)reader.GetDecimal(2),
                 reader.IsDBNull(3) ? null : reader.GetInt64(3), (long)reader.GetDecimal(4));
-            summary[item] = summary.TryGetValue(item, out var other)
+            items[item] = items.TryGetValue(item, out var other)
                 ? new ItemSummary(item, row.LowestCents ?? other.LowestCents, row.Listed + other.Listed,
                     row.HighestCents ?? other.HighestCents, row.Wanted + other.Wanted)
                 : row;
         }
 
-        return summary;
+        summary.Keep(version, time.GetUtcNow(), items, everything: kept is null);
+        return items;
     }
 
     /// <summary>Open offers of one item: cheapest listings and best-paying orders first.</summary>
@@ -251,11 +326,18 @@ public sealed class PlayerMarketService(
     /// <summary>The player's open offers and those closed recently, newest first.</summary>
     public async Task<object> MineAsync(Guid owner, CancellationToken cancellationToken)
     {
-        var since = time.GetUtcNow() - MarketRules.ClosedShownFor;
-        const string where = "owner_id = @owner AND (closed_at IS NULL OR closed_at > @since) ORDER BY id DESC";
-        var listings = await QueryAsync(OfferKind.Listing, where, owner, since, cancellationToken);
-        var orders = await QueryAsync(OfferKind.Order, where, owner, since, cancellationToken);
+        var listings = await MineAsync(OfferKind.Listing, owner, cancellationToken);
+        var orders = await MineAsync(OfferKind.Order, owner, cancellationToken);
         return new { listings = listings.Select(Own), orders = orders.Select(Own) };
+    }
+
+    private async Task<IEnumerable<Offer>> MineAsync(OfferKind kind, Guid owner, CancellationToken cancellationToken)
+    {
+        var since = time.GetUtcNow() - MarketRules.ClosedShownFor;
+        var open = await QueryAsync(kind, "owner_id = @owner AND closed_at IS NULL ORDER BY id DESC", owner, null, cancellationToken);
+        // In the order of the index: sorted by id, a plan made once for every player (see Npgsql's auto-prepare) walks the whole table.
+        var closed = await QueryAsync(kind, "owner_id = @owner AND closed_at > @since ORDER BY closed_at DESC", owner, since, cancellationToken);
+        return open.Concat(closed).OrderByDescending(o => o.Id).Take(MarketRules.BoardSize);
     }
 
     private static object Public(Offer o, Guid viewer, IReadOnlyDictionary<Guid, string> owners) => new
@@ -314,8 +396,38 @@ public sealed class PlayerMarketService(
         }
     }
 
+    /// <summary>The items whose offers this request changed.</summary>
+    private readonly HashSet<string> _touched = new(StringComparer.Ordinal);
+
+    /// <summary>Marks the item changed in the summary at once, and once more when the change is committed (see <see cref="ChangeAsync"/>),
+    /// so a look in between, which still saw the offers as they were, keeps nothing.</summary>
+    private void Touch(string item)
+    {
+        _touched.Add(item);
+        summary.Changed(item);
+    }
+
+    /// <summary>Runs a change to offers in one transaction.</summary>
+    private async Task<T> ChangeAsync<T>(Func<Task<T>> work, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await db.InTransactionAsync(work, cancellationToken);
+        }
+        finally
+        {
+            foreach (var item in _touched)
+            {
+                summary.Changed(item);
+            }
+
+            _touched.Clear();
+        }
+    }
+
     private async Task InsertAsync(OfferKind kind, Guid owner, OfferRequest request, CancellationToken cancellationToken)
     {
+        Touch(request.Item);
         await using var command = await db.CommandAsync(
             $"""
             INSERT INTO market.{Table(kind)} (owner_id, item_id, quantity, quantity_left, price_cents, created_at)
@@ -349,6 +461,7 @@ public sealed class PlayerMarketService(
             throw new GameException("not_enough_offered", "The offer has fewer items left.");
         }
 
+        Touch(offer.ItemId);
         await using var command = await db.CommandAsync(
             $"""
             UPDATE market.{Table(kind)}
