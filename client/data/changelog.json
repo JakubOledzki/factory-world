@@ -8,6 +8,14 @@
 	},
 	{
 		"date": "2026-10-26",
+		"title": "Prowiant łatwiej znaleźć",
+		"changes": [
+			"Badanie Prowiant jest teraz w drzewku Przetwórstwo, zaraz za Kuchnią polową, a nie na końcu gałęzi Materiały. Dopiero po nim kuchnia polowa, piec piekarski i wędzarnia pakują prowiant.",
+			"Okno maszyny pokazuje pod przepisami te, które czekają jeszcze na badanie, na przykład: „Po badaniu przy stole badawczym: Prowiant (badanie: Prowiant)”. Wcześniej takich przepisów w ogóle nie było widać, więc wyglądało, jakby kuchnia polowa nie umiała zrobić prowiantu."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Szybszy serwer przy wielu graczach",
 		"changes": [
 			"Serwer pyta bazę danych rzadziej przy każdej akcji: garaż nie jest już przy każdym ruchu sprawdzany na nowo trzema zapisami, a rozmiar plecaka jest czytany raz na akcję zamiast przy każdym przedmiocie. Przy tłoku w grze odpowiedzi przychodzą szybciej."
