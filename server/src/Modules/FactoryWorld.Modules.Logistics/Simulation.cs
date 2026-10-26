@@ -249,6 +249,8 @@ public sealed class StoragePort(StorageKind kind, Contents contents, Action chan
 
     public DateTimeOffset? NextChange(DateTimeOffset now) => null;
 
+    public bool Predictable => true;
+
     public Task SaveAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 }
 
@@ -264,6 +266,8 @@ public sealed class FilteredPort(IMachinePort port, string only) : IMachinePort
     public void Put(string item, DateTimeOffset now) => port.Put(item, now);
 
     public DateTimeOffset? NextChange(DateTimeOffset now) => port.NextChange(now);
+
+    public bool Predictable => port.Predictable;
 
     public Task SaveAsync(CancellationToken cancellationToken) => port.SaveAsync(cancellationToken);
 }
@@ -298,12 +302,46 @@ public sealed class PlotLogistics
         public string?[] Slots => Contents.Belt!;
         public bool IsSplitter { get; } = splitter;
 
+        /// <summary>Counts the changes to its places, so an inserter can tell nothing changed on it.</summary>
+        public int Version { get; set; }
+
+        /// <summary>Already among the changed objects.</summary>
+        public bool Marked { get; set; }
+
         /// <summary>Places items move along it in a tick.</summary>
         public int Speed { get; set; } = speed;
 
         /// <summary>Where items go at the end of the lanes: a belt has one way on, a splitter two
         /// (its left and its right), either of which may lead nowhere.</summary>
         public Link?[] Out { get; } = splitter ? new Link?[2] : new Link?[1];
+    }
+
+    /// <summary>A machine or a storage that counts what goes in and comes out, so an inserter can tell nothing has.</summary>
+    private sealed class Tracked(IMachinePort port) : IMachinePort
+    {
+        public int Version { get; private set; }
+
+        public string? Output(DateTimeOffset now, Func<string, bool> wanted) => port.Output(now, wanted);
+
+        public void Take(string item, DateTimeOffset now)
+        {
+            port.Take(item, now);
+            Version++;
+        }
+
+        public bool Accepts(string item, DateTimeOffset now) => port.Accepts(item, now);
+
+        public void Put(string item, DateTimeOffset now)
+        {
+            port.Put(item, now);
+            Version++;
+        }
+
+        public DateTimeOffset? NextChange(DateTimeOffset now) => port.NextChange(now);
+
+        public bool Predictable => port.Predictable;
+
+        public Task SaveAsync(CancellationToken cancellationToken) => port.SaveAsync(cancellationToken);
     }
 
     /// <summary>The belt items go on to, the lane each lane leads to and the place on it they come on at.</summary>
@@ -328,8 +366,19 @@ public sealed class PlotLogistics
         public Belt? ToBelt { get; set; }
         public IMachinePort? ToPort { get; set; }
 
+        /// <summary>The machines it takes from and drops into, as counted.</summary>
+        public Tracked? FromTracked { get; set; }
+        public Tracked? ToTracked { get; set; }
+
         /// <summary>The lanes of the belt in front to drop on, the far one first.</summary>
         public int[] Lanes { get; set; } = [1, 0];
+
+        /// <summary>It found nothing to do, and will not until one of what it reaches changes: it waits for that.</summary>
+        public bool Waiting { get; set; }
+        public int WaitFrom { get; set; }
+        public int WaitTo { get; set; }
+        public int WaitFlights { get; set; }
+        public DateTimeOffset? WaitUntil { get; set; }
     }
 
     // An inserter drops on a lane in the middle first, where the item has room to move on.
@@ -343,10 +392,16 @@ public sealed class PlotLogistics
     private sealed record DronePort(Guid Id, Contents Contents, IPowerClock? Clock);
 
     private readonly List<DronePort> _drones = [];
+
+    /// <summary>Ticks drones flew in: they change storages without going through their ports.</summary>
+    private int _flights;
     private static readonly StorageKind DroneStorage = Storages.Find(Items.DronePort)!;
 
     /// <summary>Turns belts take in a tick: as many as the fastest one moves places.</summary>
     private readonly int _phases;
+
+    /// <summary>Ticks worked out one by one; the others were skipped as nothing moved.</summary>
+    public int Steps { get; private set; }
 
     /// <summary>Objects whose contents changed and must be written back.</summary>
     public HashSet<Guid> Changed { get; } = [];
@@ -449,6 +504,7 @@ public sealed class PlotLogistics
             Downstream(start, seen);
         }
 
+        var tracked = ports.Values.Distinct().ToDictionary(p => p, p => new Tracked(p));
         foreach (var o in objects.Where(o => Items.IsInserter(o.Kind)).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
         {
             var (dx, dy) = LogisticsRules.Facing(o.Rotation);
@@ -470,19 +526,20 @@ public sealed class PlotLogistics
             }
             if (at.TryGetValue(from, out var source) && !belts.ContainsKey(from))
             {
-                inserter.FromPort = ports.GetValueOrDefault(source.Id);
+                inserter.FromPort = inserter.FromTracked = ports.TryGetValue(source.Id, out var port) ? tracked[port] : null;
             }
 
-            if (at.TryGetValue(to, out var target) && !belts.ContainsKey(to) && ports.GetValueOrDefault(target.Id) is { } port)
+            if (at.TryGetValue(to, out var target) && !belts.ContainsKey(to) && ports.TryGetValue(target.Id, out var into))
             {
                 // A storage or a machine with a filter lets in only its item.
-                inserter.ToPort = contents.GetValueOrDefault(target.Id)?.Only is { } only ? new FilteredPort(port, only) : port;
+                inserter.ToTracked = tracked[into];
+                inserter.ToPort = contents.GetValueOrDefault(target.Id)?.Only is { } only ? new FilteredPort(inserter.ToTracked, only) : inserter.ToTracked;
             }
 
             _inserters.Add(inserter);
         }
 
-        _ports.AddRange(ports.Values.Distinct());
+        _ports.AddRange(tracked.Values);
         foreach (var o in objects.Where(o => o.Kind == Items.DronePort).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
         {
             _drones.Add(new DronePort(o.Id, Contents(contents, o.Id), power?.Clock(o.Id)));
@@ -617,6 +674,7 @@ public sealed class PlotLogistics
     /// <summary>One tick; true when anything moved.</summary>
     private bool Step(DateTimeOffset now)
     {
+        Steps++;
         var moved = false;
         for (var phase = 0; phase < _phases; phase++)
         {
@@ -650,6 +708,13 @@ public sealed class PlotLogistics
                 }
             }
 
+            if (inserter.Waiting && Unchanged(inserter, now))
+            {
+                continue;
+            }
+
+            inserter.Waiting = false;
+
             if (c.Hand is { } hand)
             {
                 if (c.Swing < inserter.SwingTicks)
@@ -664,6 +729,7 @@ public sealed class PlotLogistics
                 }
                 else
                 {
+                    Wait(inserter, now);
                     continue;
                 }
             }
@@ -678,6 +744,7 @@ public sealed class PlotLogistics
             }
             else
             {
+                Wait(inserter, now);
                 continue;
             }
 
@@ -690,7 +757,62 @@ public sealed class PlotLogistics
             moved = true;
         }
 
-        return Fly(now) | moved;
+        if (Fly(now))
+        {
+            _flights++;
+            return true;
+        }
+
+        return moved;
+    }
+
+    /// <summary>An inserter found nothing to do: when all it reaches changes only as it is used or at a time it can
+    /// tell, it waits for that rather than looking again every tick. A belt or a machine that may change by itself
+    /// (on power, say) keeps it looking.</summary>
+    private void Wait(Inserter inserter, DateTimeOffset now)
+    {
+        if (inserter.FromTracked is { Predictable: false } || inserter.ToTracked is { Predictable: false })
+        {
+            return;
+        }
+
+        DateTimeOffset? until = null;
+        foreach (var port in (ReadOnlySpan<Tracked?>)[inserter.FromTracked, inserter.ToTracked])
+        {
+            if (port?.NextChange(now) is { } next)
+            {
+                if (next <= now)
+                {
+                    return;
+                }
+
+                until = until is { } u && u < next ? u : next;
+            }
+        }
+
+        inserter.Waiting = true;
+        inserter.WaitFrom = Version(inserter.FromBelt, inserter.FromTracked);
+        inserter.WaitTo = Version(inserter.ToBelt, inserter.ToTracked);
+        inserter.WaitFlights = _flights;
+        inserter.WaitUntil = until;
+    }
+
+    /// <summary>Nothing an inserter waiting since <see cref="Wait"/> reaches has changed yet.</summary>
+    private bool Unchanged(Inserter inserter, DateTimeOffset now) =>
+        inserter.WaitFlights == _flights && (inserter.WaitUntil is not { } until || now < until)
+        && inserter.WaitFrom == Version(inserter.FromBelt, inserter.FromTracked) && inserter.WaitTo == Version(inserter.ToBelt, inserter.ToTracked);
+
+    private static int Version(Belt? belt, Tracked? port) => belt?.Version ?? port?.Version ?? 0;
+
+    /// <summary>A place on <paramref name="belt"/> changed.</summary>
+    private void Touch(Belt belt)
+    {
+        belt.Version++;
+        if (!belt.Marked)
+        {
+            belt.Marked = true;
+            Changed.Add(belt.Id);
+        }
     }
 
     /// <summary>Drones fly from each port without a filter to the ports set to take what it holds, a few pieces a
@@ -760,7 +882,7 @@ public sealed class PlotLogistics
                 if (slots[end] is { } leaving && Pass(belt, lane, leaving))
                 {
                     slots[end] = null;
-                    Changed.Add(belt.Id);
+                    Touch(belt);
                     moved = true;
                 }
 
@@ -770,7 +892,7 @@ public sealed class PlotLogistics
                     {
                         slots[i + 1] = slots[i];
                         slots[i] = null;
-                        Changed.Add(belt.Id);
+                        Touch(belt);
                         moved = true;
                     }
                 }
@@ -799,7 +921,7 @@ public sealed class PlotLogistics
             if (link.To.Slots[at] is null)
             {
                 link.To.Slots[at] = item;
-                Changed.Add(link.To.Id);
+                Touch(link.To);
                 if (belt.IsSplitter)
                 {
                     c.Turn = 1 - way;
@@ -844,7 +966,7 @@ public sealed class PlotLogistics
                     if (belt.Slots[at] is { } item && (picked is null ? wanted(item) : item == picked))
                     {
                         belt.Slots[at] = null;
-                        Changed.Add(belt.Id);
+                        Touch(belt);
                         picked = item;
                         count++;
                     }
@@ -883,7 +1005,7 @@ public sealed class PlotLogistics
                     if (count > 0 && belt.Slots[at] is null)
                     {
                         belt.Slots[at] = item;
-                        Changed.Add(belt.Id);
+                        Touch(belt);
                         count--;
                     }
                 }

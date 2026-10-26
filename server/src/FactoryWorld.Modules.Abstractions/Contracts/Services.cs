@@ -245,6 +245,11 @@ public interface IMachinePort
     /// <summary>When the machine will next have something new to take out on its own (e.g. its next ingot), or null.</summary>
     DateTimeOffset? NextChange(DateTimeOffset now);
 
+    /// <summary>True when what <see cref="Output"/> and <see cref="Accepts"/> answer changes only after a <see cref="Put"/>
+    /// or a <see cref="Take"/>, or at <see cref="NextChange"/>; an inserter with nothing to do there can then wait for one
+    /// of those instead of asking again every tick.</summary>
+    bool Predictable => false;
+
     /// <summary>Writes the machine back, if anything changed.</summary>
     Task SaveAsync(CancellationToken cancellationToken);
 }
