@@ -749,6 +749,39 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plot_farmsteads", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotFeederRow", b =>
+                {
+                    b.Property<Guid>("ObjectId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("Store")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("{}")
+                        .HasColumnName("store");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("ObjectId");
+
+                    b.HasIndex("X", "Y");
+
+                    b.ToTable("plot_feeders", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.PlotField", b =>
                 {
                     b.Property<int>("X")

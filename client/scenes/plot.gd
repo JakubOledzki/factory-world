@@ -197,7 +197,7 @@ const PLACED_SPRITES := {
 	"furniture_megafactory": "megafactory", "power_fusion_plant": "fusion_plant",
 	"furniture_canteen": "canteen", "furniture_slaughterhouse": "slaughterhouse", "furniture_dairy": "dairy",
 	"furniture_potato_distillery": "potato_distillery", "furniture_biogas_plant": "biogas_plant", "furniture_stable": "stable",
-	"furniture_bellows": "bellows", "furniture_farmstead": "farmstead", "furniture_manor_farm": "manor_farm",
+	"furniture_bellows": "bellows", "furniture_feeder": "feeder", "furniture_farmstead": "farmstead", "furniture_manor_farm": "manor_farm",
 	"furniture_export_chest": "export_chest", "furniture_buy_market": "buy_market", "furniture_rail_port": "rail_port",
 	"furniture_bank": "bank", "furniture_bank_branch": "bank_branch",
 }
@@ -228,6 +228,11 @@ const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_
 const CANTEEN := "furniture_canteen"
 const STABLE := "furniture_stable"
 const BELLOWS := "furniture_bellows"
+## A feeder opens its own window and feeds the hungry animals within FEEDER_REACH tiles of it by itself; while one stands on
+## the plot, the animals are asked for every ANIMALS_POLL ms to show the ones it fed.
+const FEEDER := "furniture_feeder"
+const FEEDER_REACH := 3
+const ANIMALS_POLL := 5000.0
 ## A beehive opens its own window; a fire watchtower and a fire station only stand guard over the forest.
 const BEEHIVE := "furniture_beehive"
 const WATCHTOWER := "furniture_fire_watchtower"
@@ -480,6 +485,8 @@ var _foresters := {}
 var _farmsteads := {}
 var _farm_fields := {}
 var _next_farm_poll := 0.0
+var _next_animals_poll := 0.0
+var _polling_animals := false
 var _polling_farms := false
 var _next_forestry_poll := 0.0
 var _polling_forestry := false
@@ -606,6 +613,7 @@ var _export_window: ExportWindow
 var _export_post_window: ExportPostWindow
 var _bank_window: BankWindow
 var _hive_window: HiveWindow
+var _feeder_window: FeederWindow
 var _city_window: CityWindow
 var _city_button: Button
 var _achievements_window: AchievementsWindow
@@ -1778,9 +1786,13 @@ func _draw_marks() -> void:
 			_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8))
 		if big and (FORESTERS.has(_placed[_hovered]["kind"]) or FARMSTEADS.has(_placed[_hovered]["kind"])):
 			_draw_forest(_placed[_hovered]["kind"], _hovered, int(_placed[_hovered].get("rotation", 0)))
+		elif _placed.has(_hovered) and _placed[_hovered]["kind"] == FEEDER:
+			_draw_reach(_hovered, FEEDER_REACH)
 	if _placing != "" and ground.x >= 0:
 		if FORESTERS.has(_placing) or FARMSTEADS.has(_placing):
 			_draw_forest(_placing, ground, _place_rotation)
+		elif _placing == FEEDER:
+			_draw_reach(ground, FEEDER_REACH)
 		var tint := Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8)
 		_draw_footprint(_placing, ground, tint)
 		_draw_ring(_object_centre(_placing, ground), tint, _ring_size(_placing))
@@ -1890,6 +1902,14 @@ func _draw_forest(kind: String, cell: Vector2i, rotation: int) -> void:
 	for free: Rect2 in [clearing, path]:
 		_marks.draw_rect(free, Color(0.95, 0.85, 0.5, 0.12))
 		_marks.draw_rect(free, Color(0.95, 0.85, 0.5, 0.45), false, 1.5)
+
+
+## The square a feeder feeds animals in.
+func _draw_reach(cell: Vector2i, r: int) -> void:
+	var area := Rect2(Vector2(cell - Vector2i(r, r)) * TILE, Vector2(2 * r + 1, 2 * r + 1) * TILE)
+	var tint := Color(0.9, 0.75, 0.3)
+	_marks.draw_rect(area, Color(tint, 0.10))
+	_marks.draw_rect(area, Color(tint, 0.7), false, 2.0)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -2871,6 +2891,8 @@ func _place_object(cell: Vector2i) -> void:
 			int(_plot.get("fires", {}).get("watchtowerRadius", 4))])
 	elif kind == FIRE_STATION:
 		_show_toast("%s stoi na działce: drzewa do %d pól wokół niej nigdy nie spłoną." % [object["name"], int(_plot.get("fires", {}).get("stationReach", 12))])
+	elif kind == FEEDER:
+		_show_toast("%s stoi na działce: wsyp paszę (albo postaw podajnik), a sam nakarmi głodne zwierzęta do %d pól wokół. Kliknij go, aby go napełnić." % [object["name"], FEEDER_REACH])
 	elif kind == BEEHIVE:
 		_show_toast("%s stoi na działce: pszczoły same robią miód i wosk, szybciej przy kwitnących lipach. Kliknij go, aby wybrać miód." % object["name"])
 	elif kind == REED_FENCE:
@@ -2938,6 +2960,10 @@ func _use_placed(cell: Vector2i) -> void:
 		_shop_window.open_at(object["id"])
 	elif object["kind"] == BEEHIVE:
 		_hive_window.open_at(object["id"])
+	elif object["kind"] == FEEDER:
+		_feeder_window.feeds = _feed
+		_feeder_window.set_items(_items)
+		_feeder_window.open_at(_at, object["id"])
 	elif object["kind"] in DRILLS:
 		_drill_window.open_at(_at, object["id"])
 	elif FORESTERS.has(object["kind"]):
@@ -2967,7 +2993,7 @@ func _using_window_open() -> bool:
 	return _crafting_window.visible or _research_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
 		or _splitter_window.visible or _filter_window.visible or _generator_window.visible or _market_window.visible or _forester_window.visible \
 		or _farmstead_window.visible or _canteen_window.visible \
-		or _drill_window.visible or _well_window.visible or _shop_window.visible or _hive_window.visible \
+		or _drill_window.visible or _well_window.visible or _shop_window.visible or _hive_window.visible or _feeder_window.visible \
 		or _export_window.visible or _export_post_window.visible
 
 
@@ -2984,6 +3010,7 @@ func _hide_placed_windows() -> void:
 	_well_window.hide_window()
 	_shop_window.hide_window()
 	_hive_window.hide_window()
+	_feeder_window.hide_window()
 	_export_window.hide_window()
 	_export_post_window.hide_window()
 	_storage_window.hide_window()
@@ -3285,6 +3312,34 @@ func _poll_logistics() -> void:
 	if reply["type"] == "logistics":
 		_logistics.apply(reply["payload"])
 		_power.apply(reply["payload"].get("power", {}))
+
+
+## Asks for the plot's animals once its feeders fed the hungry ones.
+func _poll_animals() -> void:
+	if _polling_animals:
+		return
+	_polling_animals = true
+	_next_animals_poll = Time.get_ticks_msec() + ANIMALS_POLL
+	var reply := await Net.request("plot.animals", {"x": _at.x, "y": _at.y})
+	_polling_animals = false
+	if reply["type"] == "plot.animals":
+		_clock_offset = float(reply["payload"]["serverTime"]) - Time.get_unix_time_from_system() * 1000.0
+		_apply_animals(reply["payload"]["animals"])
+
+
+## Redraws the animals whose state changed (fed by a feeder, mostly) from the server's list of the plot's animals.
+func _apply_animals(animals: Array) -> void:
+	var seen := {}
+	for animal: Dictionary in animals:
+		var cell := Vector2i(animal["tileX"], animal["tileY"])
+		seen[cell] = true
+		if not _animals.has(cell) or _animals[cell].get("readyAt") != animal.get("readyAt") or _animals[cell]["kind"] != animal["kind"]:
+			_animals[cell] = animal
+			_draw_cell(cell)
+	for cell: Vector2i in _animals.keys():
+		if not seen.has(cell):
+			_animals.erase(cell)
+			_draw_cell(cell)
 
 
 ## The objects on the plot changed (placed, picked up, turned, or the plot came in): the belts, inserters and
@@ -3761,6 +3816,8 @@ func _process(delta: float) -> void:
 		_poll_forestry()
 	if not _visitor and (_has_farmsteads() or not _farm_fields.is_empty()) and Time.get_ticks_msec() >= _next_farm_poll:
 		_poll_farmsteads()
+	if not _visitor and _kinds.has(FEEDER) and not _animals.is_empty() and Time.get_ticks_msec() >= _next_animals_poll:
+		_poll_animals()
 	if not _visitor:
 		_poll_station()
 	if Time.get_ticks_msec() >= _next_presence_poll:
@@ -4456,6 +4513,12 @@ func _build_windows() -> void:
 	_hive_window.inventory_changed.connect(_reload_inventory)
 	_hive_window.failed.connect(_show_error)
 	_hive_window.pick_up_requested.connect(_pick_up_placed)
+	_feeder_window = FeederWindow.new()
+	_feeder_window.position = Vector2(1280 - 400 - 12, 64)
+	_feeder_window.inventory_changed.connect(func(_taken: Array) -> void: _reload_inventory())
+	_feeder_window.animals_changed.connect(_apply_animals)
+	_feeder_window.failed.connect(_show_error)
+	_feeder_window.pick_up_requested.connect(_pick_up_placed)
 	_city_window = CityWindow.new()
 	_city_window.position = Vector2(1280 - 520 - 12, 64)
 	_city_window.inventory_changed.connect(_reload_inventory)
@@ -4496,6 +4559,7 @@ func _build_windows() -> void:
 	layer.add_child(_well_window)
 	layer.add_child(_shop_window)
 	layer.add_child(_hive_window)
+	layer.add_child(_feeder_window)
 	layer.add_child(_export_window)
 	layer.add_child(_export_post_window)
 	_bank_window = BankWindow.new()
@@ -4530,6 +4594,7 @@ func _reload_inventory() -> void:
 	_machine_window.set_items(_items)
 	_market_window.set_player(_items, _balance)
 	_generator_window.set_items(_items)
+	_feeder_window.set_items(_items)
 	_station_window.set_player(_items, _balance)
 	if _mine_window.visible:
 		_render_mine_window()

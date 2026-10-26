@@ -219,7 +219,7 @@ public static class Workshop
         new(Items.SteelCombine, 1, TimeSpan.FromSeconds(300), [(Items.OxygenConverter, 2), (Items.RollingMill, 2), (Items.ContinuousCaster, 1), (Items.ControlCenter, 1)], 150),
         new(Items.Megafactory, 1, TimeSpan.FromSeconds(300), [(Items.RoboticHall, 2), (Items.ControlCenter, 1), (Items.AutomatedWarehouse, 1), (Items.PrecastConcrete, 100)], 150),
         new(Items.FusionPlant, 1, TimeSpan.FromSeconds(300), [(Items.FusionReactor, 1), (Items.PrecastConcrete, 50), (Items.Alternator, 4), (Items.IndustrialRobot, 2)], 240),
-        // Husbandry and gastronomy: the canteen, the slaughterhouse, the dairy, the potato distillery, the biogas plant, the stable,
+        // Husbandry and gastronomy: the canteen, the slaughterhouse, the dairy, the potato distillery, the biogas plant, the stable, the feeder,
         // the farmer's farmstead and manor farm, and what is made of hides.
         new(Items.Canteen, 1, TimeSpan.FromSeconds(120), [(Items.Kitchen, 1), (Items.Planks, 20), (Items.IronIngot, 10), (Items.Glass, 10)], 40),
         new(Items.Slaughterhouse, 1, TimeSpan.FromSeconds(60), [(Items.Bricks, 20), (Items.IronIngot, 10), (Items.Stone, 20), (Items.Planks, 10)], 25),
@@ -227,6 +227,7 @@ public static class Workshop
         new(Items.PotatoDistillery, 1, TimeSpan.FromSeconds(90), [(Items.Bricks, 20), (Items.CopperIngot, 10), (Items.Tank, 1), (Items.Pipe, 4)], 40),
         new(Items.BiogasPlant, 1, TimeSpan.FromSeconds(180), [(Items.Bricks, 40), (Items.IronIngot, 20), (Items.Tank, 2), (Items.Pipe, 10)], 80),
         new(Items.Stable, 1, TimeSpan.FromSeconds(60), [(Items.Planks, 30), (Items.Beams, 10), (Items.Nails, 20), (Items.Hide, 2)], 25),
+        new(Items.Feeder, 1, TimeSpan.FromSeconds(25), [(Items.Planks, 12), (Items.Nails, 6)], 10),
         new(Items.Farmstead, 1, TimeSpan.FromSeconds(60), [(Items.Wood, 40), (Items.Planks, 20), (Items.Nails, 20), (Items.Hoe, 1)], 20),
         new(Items.ManorFarm, 1, TimeSpan.FromSeconds(120),
             [(Items.Farmstead, 1), (Items.Bricks, 40), (Items.Beams, 10), (Items.IronIngot, 20), (Items.Provisions, 5)], 60),

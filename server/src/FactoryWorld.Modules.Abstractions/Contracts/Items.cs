@@ -523,6 +523,9 @@ public static class Items
     public const string Stable = "furniture_stable";
     public const string Bellows = "furniture_bellows";
 
+    // A feeder stands by the pasture and feeds the hungry animals around it from the feed put in by hand or by an inserter.
+    public const string Feeder = "furniture_feeder";
+
     // A farmer's farmstead stands on 3 × 3 tiles of a fertile plot, sows the crop it is told around itself and reaps it by itself; the manor farm is its upgrade.
     public const string Farmstead = "furniture_farmstead";
     public const string ManorFarm = "furniture_manor_farm";
@@ -942,6 +945,7 @@ public static class Items
         [PotatoDistillery] = "Gorzelnia",
         [BiogasPlant] = "Biogazownia",
         [Stable] = "Stajnia",
+        [Feeder] = "Karmnik",
         [Bellows] = "Miech skórzany",
         [Farmstead] = "Zagroda rolnika",
         [ManorFarm] = "Folwark",
