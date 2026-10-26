@@ -29,14 +29,29 @@ public sealed record BotProfile(
     string Name, BotTrade Trade, double Latitude, double Longitude, int[] Look, int SessionMinutes, int RestHours);
 
 /// <summary>
-/// Every bot the server plays as, in one place: add a line here to add a bot. Each one gets an account and
-/// a character on the first start and keeps them, so its name, plots, money and badges last like a player's.
-/// Names must be free character names (3-16 letters, digits or _); a bot whose name a player took first
-/// gets a digit added.
+/// Every bot the server plays as: the <see cref="Founders"/> written out by hand, then as many made up by
+/// <see cref="BotNames"/> as <see cref="BotsOptions.Count"/> asks for. Each one gets an account and a character
+/// on the first start and keeps them, so its name, plots, money and badges last like a player's. A bot is known
+/// by its name, so the roster must come out the same on every start: never reorder or edit the founders or the
+/// word lists, only add to their ends. Names must be free character names (3-16 letters, digits or _); a bot
+/// whose name a player took first gets a digit added.
 /// </summary>
 public static class BotRoster
 {
-    public static readonly IReadOnlyList<BotProfile> All =
+    /// <summary>The first <paramref name="count"/> bots: the founders, then made-up ones.</summary>
+    public static IReadOnlyList<BotProfile> First(int count)
+    {
+        var roster = Founders.Take(count).ToList();
+        if (roster.Count < count)
+        {
+            roster.AddRange(BotNames.Profiles(Founders.Select(f => f.Name)).Take(count - roster.Count));
+        }
+
+        return roster;
+    }
+
+    /// <summary>The bots there were before the roster was made up: they keep their names, plots and money.</summary>
+    public static readonly IReadOnlyList<BotProfile> Founders =
     [
         new("Kuba_Drwal", BotTrade.Forester, 52.70, 23.85, [1, 1, 1, 0, 5, 1, 1], 60, 2),
         new("Zosia_Las", BotTrade.Forester, 53.60, 17.90, [0, 3, 3, 2, 11, 8, 1], 45, 1),

@@ -429,8 +429,20 @@ public sealed class FarmsteadService(
             return null;
         }
 
-        var farms = await OpenAsync(x, y, null, cancellationToken);
+        var farms = _prepared is { } prepared && prepared.X == x && prepared.Y == y ? prepared.Opened : await OpenAsync(x, y, null, cancellationToken);
         return farms.FirstOrDefault(f => f.Object.Id == id) is { } farm ? new Port(this, x, y, farms, farm.Patch) : null;
+    }
+
+    /// <summary>The plot's farmsteads opened once for all the ports of one run of its logistics, as opening them works out the whole plot.</summary>
+    private (int X, int Y, List<FarmsteadOnPlot> Opened)? _prepared;
+
+    public async Task PrepareAsync(IReadOnlyList<PlotObject> reached, CancellationToken cancellationToken)
+    {
+        _prepared = null;
+        if (reached.FirstOrDefault(o => Items.IsFarmstead(o.Kind)) is { } first && await objects.PlotOfAsync(first.Id, cancellationToken) is var (x, y))
+        {
+            _prepared = (x, y, await OpenAsync(x, y, null, cancellationToken));
+        }
     }
 
     public async Task<IReadOnlyList<MachineStatus>> StatusesAsync(Guid owner, CancellationToken cancellationToken)

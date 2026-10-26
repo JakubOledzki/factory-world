@@ -18,7 +18,8 @@ public sealed record BotReply(string Type, JsonElement Payload, string? Error)
 /// exactly as a player does and no module needs to know about bots. The context lives as long as the
 /// server, like a player who never logs out.
 /// </summary>
-public sealed class BotClient(Guid accountId, IReadOnlyDictionary<string, IMessageHandler> handlers, IReadOnlyList<IMessageObserver> observers, ILogger logger)
+public sealed class BotClient(
+    Guid accountId, IReadOnlyDictionary<string, IMessageHandler> handlers, IReadOnlyList<IMessageObserver> observers, ServerLoad load, ILogger logger)
 {
     public ClientContext Context { get; } = new() { ConnectionId = Guid.NewGuid(), AccountId = accountId };
 
@@ -29,6 +30,20 @@ public sealed class BotClient(Guid accountId, IReadOnlyDictionary<string, IMessa
             throw new InvalidOperationException($"No handler for '{type}'.");
         }
 
+        var started = ServerLoad.Start();
+        try
+        {
+            return await SendAsync(handler, type, payload, cancellationToken);
+        }
+        finally
+        {
+            // Counted apart from the players' own messages of the same kind.
+            load.Record("bot " + type, started);
+        }
+    }
+
+    private async Task<BotReply> SendAsync(IMessageHandler handler, string type, object? payload, CancellationToken cancellationToken)
+    {
         var request = payload is null ? (JsonElement?)null : JsonSerializer.SerializeToElement(payload, Payload.Json);
         Reply reply;
         try

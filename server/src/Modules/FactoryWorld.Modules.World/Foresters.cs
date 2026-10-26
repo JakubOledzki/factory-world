@@ -455,8 +455,20 @@ public sealed class ForesterService(
         }
 
         // Inserters run from where the plot's logistics were left, so the forester starts from its last state.
-        var forests = await OpenAsync(x, y, null, cancellationToken);
+        var forests = _prepared is { } prepared && prepared.X == x && prepared.Y == y ? prepared.Opened : await OpenAsync(x, y, null, cancellationToken);
         return forests.FirstOrDefault(f => f.Object.Id == id) is { } forester ? new Port(this, x, y, forests, forester.Patch) : null;
+    }
+
+    /// <summary>The plot's foresters opened once for all the ports of one run of its logistics, as opening them works out the whole plot.</summary>
+    private (int X, int Y, List<ForesterOnPlot> Opened)? _prepared;
+
+    public async Task PrepareAsync(IReadOnlyList<PlotObject> reached, CancellationToken cancellationToken)
+    {
+        _prepared = null;
+        if (reached.FirstOrDefault(o => Items.IsForester(o.Kind)) is { } first && await objects.PlotOfAsync(first.Id, cancellationToken) is var (x, y))
+        {
+            _prepared = (x, y, await OpenAsync(x, y, null, cancellationToken));
+        }
     }
 
     public async Task<IReadOnlyList<MachineStatus>> StatusesAsync(Guid owner, CancellationToken cancellationToken)
@@ -641,17 +653,7 @@ public sealed class ForesterService(
 
             if (patch.Cleared.Count > 0)
             {
-                var cleared = patch.Cleared.ToList();
-                await using var harvests = await db.CommandAsync(
-                    """
-                    INSERT INTO world.plot_harvests (x, y, tile_x, tile_y)
-                    SELECT @x, @y, t.tx, t.ty FROM unnest(@txs, @tys) AS t(tx, ty) ON CONFLICT DO NOTHING
-                    """, cancellationToken);
-                harvests.Parameters.AddWithValue("x", x);
-                harvests.Parameters.AddWithValue("y", y);
-                harvests.Parameters.AddWithValue("txs", cleared.Select(t => t.X).ToArray());
-                harvests.Parameters.AddWithValue("tys", cleared.Select(t => t.Y).ToArray());
-                await harvests.ExecuteNonQueryAsync(cancellationToken);
+                await PlotHarvests.MarkManyAsync(db, x, y, patch.Cleared.ToList(), at: null, cancellationToken);
                 patch.Cleared.Clear();
             }
 
@@ -679,17 +681,20 @@ public sealed class ForesterService(
         if (forests.Count > 0)
         {
             var natural = PlotLayout.Generate(x, y, map.BiomeAt(x, y));
-            await using var command = await db.CommandAsync("SELECT tile_x, tile_y FROM world.plot_harvests WHERE x = @x AND y = @y", cancellationToken);
+            await using var command = await db.CommandAsync("SELECT square, harvested_at FROM world.plot_harvests WHERE x = @x AND y = @y", cancellationToken);
             command.Parameters.AddWithValue("x", x);
             command.Parameters.AddWithValue("y", y);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                var tile = (X: reader.GetInt32(0), Y: reader.GetInt32(1));
-                if (Trees.IsTree(natural[tile.Y * PlotLayout.Size + tile.X])
-                    && forests.Any(f => Foresters.Claims(f.Patch.ForesterLevel, tile.X - f.Object.TileX, tile.Y - f.Object.TileY)))
+                foreach (var (tileX, tileY, _) in PlotHarvests.Gathered(reader.GetInt16(0), reader.GetFieldValue<DateTimeOffset?[]>(1)))
                 {
-                    cleared.Add(tile);
+                    var tile = (X: tileX, Y: tileY);
+                    if (Trees.IsTree(natural[tile.Y * PlotLayout.Size + tile.X])
+                        && forests.Any(f => Foresters.Claims(f.Patch.ForesterLevel, tile.X - f.Object.TileX, tile.Y - f.Object.TileY)))
+                    {
+                        cleared.Add(tile);
+                    }
                 }
             }
         }

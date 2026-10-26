@@ -69,6 +69,8 @@ public static class NpcPrices
         [Items.Sawmill] = 40_000,
         [Items.Planks] = 300,
         [Items.FishingRod] = 10_000,
+        // Concrete from the trader is a dear way out: making it in a mixer is far cheaper.
+        [Items.Concrete] = 25_000,
         // A bank is bought only, never made, and the trader does not buy it back.
         [Items.Bank] = 10_000_000_000_00,
         [Items.BankBranch] = 5_000_000_000_00,
@@ -327,6 +329,15 @@ public static class NpcPrices
         [Items.CitySorter] = 60_000,
         [Items.FreightTerminal] = 300_000,
         [Items.ExportChest] = 30_000,
+        // Freight chests: each size is built from the one before.
+        [Items.LoadingChest] = 21_000,
+        [Items.LoadingChest2] = 52_000,
+        [Items.LoadingChest3] = 160_000,
+        [Items.LoadingChest4] = 440_000,
+        [Items.ReceivingChest] = 21_000,
+        [Items.ReceivingChest2] = 52_000,
+        [Items.ReceivingChest3] = 160_000,
+        [Items.ReceivingChest4] = 440_000,
         [Items.BuyMarket] = 150_000,
         [Items.RailPort] = 250_000,
         [Items.CompanyHq] = 600_000,
@@ -469,6 +480,7 @@ public static class NpcPrices
         [Items.PotatoDistillery] = 85_000,
         [Items.BiogasPlant] = 150_000,
         [Items.Stable] = 31_500,
+        [Items.Feeder] = 3800,
         [Items.Bellows] = 12_000,
         [Items.Farmstead] = 28_500,
         [Items.ManorFarm] = 103_000,
@@ -665,6 +677,7 @@ public sealed class MarketModule : IGameModule
         services.AddSingleton<IMarketPrices, MarketPrices>();
         services.AddScoped<MarketService>();
         services.AddScoped<PlayerMarketService>();
+        services.AddSingleton<MarketSummary>();
         services.AddScoped<IExportMarket>(provider => provider.GetRequiredService<PlayerMarketService>());
         services.AddSingleton<IMessageHandler, PricesHandler>();
         services.AddSingleton<IMessageHandler, BuyHandler>();

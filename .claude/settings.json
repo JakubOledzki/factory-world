@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/build-server.sh\"",
+            "timeout": 300,
+            "statusMessage": "Budowanie serwera (dotnet build -warnaserror)..."
+          }
+        ]
+      }
+    ]
+  }
+}

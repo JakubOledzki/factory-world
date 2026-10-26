@@ -320,10 +320,10 @@ public sealed class PlotService(
     GameDb db, WorldMap map, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats,
     IEnumerable<ICompanyPlots> companies, BeachService beach, PestService pests, ForestLedger ledger, IOutfit outfit, TimeProvider time)
 {
-    /// <summary>The tiles of a plot as they are now; only its owner and members of its company may enter.</summary>
+    /// <summary>The tiles of a plot as they are now; only its owner and members of its company may enter, or anyone when it is public.</summary>
     public async Task<byte[]> TilesAsync(Guid player, int x, int y, CancellationToken cancellationToken)
     {
-        var biome = await RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
+        var biome = await RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Visit);
         return await TilesAsync(x, y, biome, cancellationToken);
     }
 
@@ -336,51 +336,83 @@ public sealed class PlotService(
         var blizzard = biome == Biome.Ice ? Blizzard.LastEnded(time.GetUtcNow()) : null;
         var storm = Oasis.Sandy((int)biome) ? SandWeather.LastEnded(time.GetUtcNow()) : blizzard?.End;
         var dug = new HashSet<int>();
+        var now = time.GetUtcNow();
+        var picked = now - Forestry.MushroomRegrow;
+        var harvests = new List<(int TileX, int TileY, DateTimeOffset At)>();
+        // What stands on a tile keeps what was gathered there from coming back; a reed fence shelters the tiles around it.
+        // Each table is read once and matched here, as a plot may have hundreds of objects and of tiles gathered.
+        var standing = new HashSet<(int, int)>();
+        var fences = new List<(int X, int Y)>();
         await using (var command = await db.CommandAsync(
-            $$"""
-            SELECT h.tile_x, h.tile_y, COALESCE(h.harvested_at >= @storm, false), (COALESCE(h.harvested_at < @storm, false) OR h.harvested_at < @picked)
-                AND NOT EXISTS (SELECT 1 FROM world.plot_objects o WHERE o.x = h.x AND o.y = h.y
-                    AND ({{Footprints.CoversSql("o", "h.tile_x", "h.tile_y")}}
-                        OR (o.kind = @fence AND abs(o.tile_x - h.tile_x) <= @shelter AND abs(o.tile_y - h.tile_y) <= @shelter)))
-                AND NOT EXISTS (SELECT 1 FROM world.plot_fields f WHERE f.x = h.x AND f.y = h.y AND f.tile_x = h.tile_x AND f.tile_y = h.tile_y)
-                AND NOT EXISTS (SELECT 1 FROM world.plot_trees t WHERE t.x = h.x AND t.y = h.y AND t.tile_x = h.tile_x AND t.tile_y = h.tile_y)
-                AND NOT EXISTS (SELECT 1 FROM world.plot_animals a WHERE a.x = h.x AND a.y = h.y AND a.tile_x = h.tile_x AND a.tile_y = h.tile_y),
-                COALESCE(h.harvested_at < @storm, false)
-            FROM world.plot_harvests h WHERE h.x = @x AND h.y = @y
+            """
+            SELECT 0, square, 0, harvested_at, NULL FROM world.plot_harvests WHERE x = @x AND y = @y
+            UNION ALL SELECT 1, tile_x, tile_y, NULL, kind FROM world.plot_objects WHERE x = @x AND y = @y
+            UNION ALL SELECT 2, tile_x, tile_y, NULL, NULL FROM world.plot_fields WHERE x = @x AND y = @y
+            UNION ALL SELECT 2, tile_x, tile_y, NULL, NULL FROM world.plot_trees WHERE x = @x AND y = @y
+            UNION ALL SELECT 2, tile_x, tile_y, NULL, NULL FROM world.plot_animals WHERE x = @x AND y = @y
             """, cancellationToken))
         {
             command.Parameters.AddWithValue("x", x);
             command.Parameters.AddWithValue("y", y);
-            command.Parameters.Add(new NpgsqlParameter("storm", NpgsqlDbType.TimestampTz) { Value = (object?)storm ?? DBNull.Value });
-            command.Parameters.AddWithValue("sizedKinds", Footprints.SizedKinds);
-            command.Parameters.AddWithValue("sizedSizes", Footprints.SizedSizes);
-            command.Parameters.AddWithValue("fence", Items.ReedFence);
-            command.Parameters.AddWithValue("shelter", PlotLayout.FenceShelter);
-            command.Parameters.AddWithValue("picked", time.GetUtcNow() - Forestry.MushroomRegrow);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                // A rock broken before the mines came may have stood where a mine is now, and the
-                // lake or sea came over what had been gathered on the shore.
-                var at = reader.GetInt32(1) * PlotLayout.Size + reader.GetInt32(0);
-                // Sand and ice come back with the storm; mushrooms come up again by themselves.
-                // Gathered before the storm or long enough ago, with nothing standing there since.
-                var due = reader.GetBoolean(3);
-                var regrown = due && ((reader.GetBoolean(4) && tiles[at] is (byte)TileObject.Dune or (byte)TileObject.IceBlock)
-                    || tiles[at] == (byte)TileObject.Mushrooms);
-                if (reader.GetBoolean(2))
+                var (tx, ty) = (reader.GetInt32(1), reader.GetInt32(2));
+                switch (reader.GetInt32(0))
                 {
-                    dug.Add(at);
-                }
+                    case 0:
+                        harvests.AddRange(PlotHarvests.Gathered(tx, reader.GetFieldValue<DateTimeOffset?[]>(3)));
+                        break;
+                    case 1:
+                        var kind = reader.GetString(4);
+                        standing.UnionWith(Footprints.Tiles(kind, tx, ty));
+                        if (kind == Items.ReedFence)
+                        {
+                            fences.Add((tx, ty));
+                        }
 
-                if (tiles[at] == (byte)TileObject.Crevasse)
-                {
-                    tiles[at] = (byte)TileObject.Bridge;
+                        break;
+                    default:
+                        standing.Add((tx, ty));
+                        break;
                 }
-                else if (tiles[at] is not ((byte)TileObject.Mine or (byte)TileObject.Water) && !regrown)
+            }
+        }
+
+        foreach (var (tx, ty) in fences)
+        {
+            for (var dy = -PlotLayout.FenceShelter; dy <= PlotLayout.FenceShelter; dy++)
+            {
+                for (var dx = -PlotLayout.FenceShelter; dx <= PlotLayout.FenceShelter; dx++)
                 {
-                    tiles[at] = (byte)TileObject.None;
+                    standing.Add((tx + dx, ty + dy));
                 }
+            }
+        }
+
+        foreach (var (tileX, tileY, harvestedAt) in harvests)
+        {
+            // A rock broken before the mines came may have stood where a mine is now, and the
+            // lake or sea came over what had been gathered on the shore.
+            var at = tileY * PlotLayout.Size + tileX;
+            // Sand and ice come back with the storm; mushrooms come up again by themselves.
+            // Gathered before the storm or long enough ago, with nothing standing there since.
+            var beforeStorm = harvestedAt < storm;
+            var due = (beforeStorm || harvestedAt < picked) && !standing.Contains((tileX, tileY));
+            var regrown = due && ((beforeStorm && tiles[at] is (byte)TileObject.Dune or (byte)TileObject.IceBlock)
+                || tiles[at] == (byte)TileObject.Mushrooms);
+            if (harvestedAt >= storm)
+            {
+                dug.Add(at);
+            }
+
+            if (tiles[at] == (byte)TileObject.Crevasse)
+            {
+                tiles[at] = (byte)TileObject.Bridge;
+            }
+            else if (tiles[at] is not ((byte)TileObject.Mine or (byte)TileObject.Water) && !regrown)
+            {
+                tiles[at] = (byte)TileObject.None;
             }
         }
 
@@ -516,34 +548,13 @@ public sealed class PlotService(
         }, cancellationToken);
 
     /// <summary>Records that a tile not gathered before was gathered now; false when it was.</summary>
-    private async Task<bool> TryMarkHarvestedAsync(int x, int y, int tileX, int tileY, CancellationToken cancellationToken)
-    {
-        await using var insert = await db.CommandAsync(
-            "INSERT INTO world.plot_harvests (x, y, tile_x, tile_y, harvested_at) VALUES (@x, @y, @tx, @ty, @now) ON CONFLICT DO NOTHING",
-            cancellationToken);
-        insert.Parameters.AddWithValue("x", x);
-        insert.Parameters.AddWithValue("y", y);
-        insert.Parameters.AddWithValue("tx", tileX);
-        insert.Parameters.AddWithValue("ty", tileY);
-        insert.Parameters.AddWithValue("now", time.GetUtcNow());
-        return await insert.ExecuteNonQueryAsync(cancellationToken) > 0;
-    }
+    private Task<bool> TryMarkHarvestedAsync(int x, int y, int tileX, int tileY, CancellationToken cancellationToken) =>
+        PlotHarvests.MarkAsync(db, x, y, tileX, tileY, time.GetUtcNow(), again: false, cancellationToken);
 
     /// <summary>Records that a tile was gathered now; <paramref name="always"/> also when it was before. Fails when it was and may not be again.</summary>
     private async Task MarkHarvestedAsync(int x, int y, int tileX, int tileY, bool always, CancellationToken cancellationToken)
     {
-        await using var insert = await db.CommandAsync(
-            """
-            INSERT INTO world.plot_harvests (x, y, tile_x, tile_y, harvested_at) VALUES (@x, @y, @tx, @ty, @now)
-            ON CONFLICT (x, y, tile_x, tile_y) DO UPDATE SET harvested_at = @now WHERE @regrown
-            """, cancellationToken);
-        insert.Parameters.AddWithValue("x", x);
-        insert.Parameters.AddWithValue("y", y);
-        insert.Parameters.AddWithValue("tx", tileX);
-        insert.Parameters.AddWithValue("ty", tileY);
-        insert.Parameters.AddWithValue("now", time.GetUtcNow());
-        insert.Parameters.AddWithValue("regrown", always);
-        if (await insert.ExecuteNonQueryAsync(cancellationToken) == 0)
+        if (!await PlotHarvests.MarkAsync(db, x, y, tileX, tileY, time.GetUtcNow(), always, cancellationToken))
         {
             throw new GameException("nothing_here", "This has already been gathered.");
         }
@@ -739,7 +750,8 @@ public sealed class PlotService(
         return map.BiomeAt(x, y);
     }
 
-    /// <summary>Everything for the owner; for anyone else what their role in the plot's company allows, if anything.</summary>
+    /// <summary>Everything for the owner; for anyone else what their role in the plot's company allows, if anything,
+    /// and on a public plot at least a visit.</summary>
     public async Task<IReadOnlySet<PlotRight>> RightsAsync(Guid player, int x, int y, CancellationToken cancellationToken)
     {
         if (!map.Contains(x, y))
@@ -747,17 +759,23 @@ public sealed class PlotService(
             throw new GameException("bad_plot", "There is no such plot.");
         }
 
-        await using (var command = await db.CommandAsync("SELECT owner_id FROM world.plots WHERE x = @x AND y = @y", cancellationToken))
+        bool open;
+        await using (var command = await db.CommandAsync("SELECT owner_id, public FROM world.plots WHERE x = @x AND y = @y", cancellationToken))
         {
             command.Parameters.AddWithValue("x", x);
             command.Parameters.AddWithValue("y", y);
-            switch (await command.ExecuteScalarAsync(cancellationToken))
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            if (!await reader.ReadAsync(cancellationToken))
             {
-                case Guid owner when owner == player:
-                    return AllRights;
-                case not Guid:
-                    return NoRights;
+                return NoRights;
             }
+
+            if (reader.GetGuid(0) == player)
+            {
+                return AllRights;
+            }
+
+            open = reader.GetBoolean(1);
         }
 
         var rights = new HashSet<PlotRight>();
@@ -767,7 +785,24 @@ public sealed class PlotService(
         }
 
         rights.Remove(PlotRight.Owner);
+        // Members of the plot's company may always come; anyone else only when the owner made it public, and then only to look.
+        if (rights.Count > 0 || open)
+        {
+            rights.Add(PlotRight.Visit);
+        }
+
         return rights;
+    }
+
+    /// <summary>Lets anyone come onto the owner's plot to look around, or only the owner and their company.</summary>
+    public async Task SetPublicAsync(Guid player, int x, int y, bool open, CancellationToken cancellationToken)
+    {
+        await RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Owner);
+        await using var command = await db.CommandAsync("UPDATE world.plots SET public = @open WHERE x = @x AND y = @y", cancellationToken);
+        command.Parameters.AddWithValue("x", x);
+        command.Parameters.AddWithValue("y", y);
+        command.Parameters.AddWithValue("open", open);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static readonly IReadOnlySet<PlotRight> AllRights = Enum.GetValues<PlotRight>().ToHashSet();
@@ -779,7 +814,8 @@ public sealed record EnterRequest(int X, int Y);
 
 public sealed record HarvestRequest(int X, int Y, int TileX, int TileY);
 
-/// <summary>Enters one of the player's plots: its tiles (gzip, base64) and where things stand.</summary>
+/// <summary>Enters a plot the player may visit: its tiles (gzip, base64) and where things stand. A visitor of a public plot
+/// gets its rights without <c>work</c>, so the client lets them only walk about.</summary>
 public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, TimeProvider time) : IMessageHandler
 {
     public string Type => "plot.enter";

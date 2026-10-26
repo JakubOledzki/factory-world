@@ -125,7 +125,8 @@ public sealed record PlotAnimal(int TileX, int TileY, string Kind, DateTimeOffse
 public sealed record AnimalChange(PlotAnimal? Animal, IReadOnlyList<(string Item, int Quantity)> Items, XpGain? Xp);
 
 public sealed class HusbandryService(
-    GameDb db, PlotService plots, IInventory inventory, ICharacterProgress progress, IProductionStats stats, TimeProvider time)
+    GameDb db, PlotService plots, FeederService feeders, IInventory inventory, ICharacterProgress progress, IProductionStats stats,
+    TimeProvider time)
 {
     public async Task<IReadOnlyList<PlotAnimal>> AnimalsAsync(int x, int y, CancellationToken cancellationToken)
     {
@@ -175,6 +176,7 @@ public sealed class HusbandryService(
                 throw new GameException("no_stable", "A work horse lives on a plot with a stable.");
             }
 
+            await feeders.LockAsync(x, y, cancellationToken);
             await inventory.RemoveAsync(player, kind, 1, cancellationToken);
             await stats.RecordAsync(player, [ProductionEntry.Used(kind, 1, time.GetUtcNow())], cancellationToken);
             await using (var insert = await db.CommandAsync(
@@ -188,8 +190,10 @@ public sealed class HusbandryService(
                 }
             }
 
+            // A feeder in reach feeds it at once.
+            var fed = await feeders.FeedAsync(x, y, cancellationToken);
             var xp = await progress.AddXpAsync(player, Husbandry.XpPerRelease, cancellationToken);
-            return new AnimalChange(new PlotAnimal(tileX, tileY, kind, null), [], xp);
+            return new AnimalChange(new PlotAnimal(tileX, tileY, kind, fed.TryGetValue((tileX, tileY), out var ready) ? ready : null), [], xp);
         }, cancellationToken);
 
     /// <summary>Feeds a hungry animal crops from the inventory; it then gives its product after its time.</summary>
@@ -233,6 +237,7 @@ public sealed class HusbandryService(
         db.InTransactionAsync(async () =>
         {
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
+            await feeders.LockAsync(x, y, cancellationToken);
             var (kind, readyAt, meals) = await LockAsync(x, y, tileX, tileY, cancellationToken);
             if (readyAt is null)
             {
@@ -272,8 +277,9 @@ public sealed class HusbandryService(
             }
 
             await stats.RecordAsync(player, gives.Select(g => ProductionEntry.Made(g.Item, g.Quantity, time.GetUtcNow())).ToList(), cancellationToken);
+            var fed = await feeders.FeedAsync(x, y, cancellationToken);
             var xp = await progress.AddXpAsync(player, animal.Xp, cancellationToken);
-            return new AnimalChange(new PlotAnimal(tileX, tileY, kind, null, meals), gives, xp);
+            return new AnimalChange(new PlotAnimal(tileX, tileY, kind, fed.TryGetValue((tileX, tileY), out var ready) ? ready : null, meals), gives, xp);
         }, cancellationToken);
 
     /// <summary>Takes an animal back into the inventory; what it was going to give is lost.</summary>

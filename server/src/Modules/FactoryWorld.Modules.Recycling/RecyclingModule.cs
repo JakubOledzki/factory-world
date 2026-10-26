@@ -414,6 +414,17 @@ public sealed class RecyclingService(
 
     private async Task EnsureGarageAsync(Guid owner, CancellationToken cancellationToken)
     {
+        // Nearly every garage has long had all of it: one read instead of three writes that change nothing.
+        await using (var ready = await db.CommandAsync(
+            "SELECT furnished AND research_table FROM recycling.garages WHERE owner_id = @owner", cancellationToken))
+        {
+            ready.Parameters.AddWithValue("owner", owner);
+            if (await ready.ExecuteScalarAsync(cancellationToken) is true)
+            {
+                return;
+            }
+        }
+
         await using (var command = await db.CommandAsync(
             "INSERT INTO recycling.garages (owner_id, created_at) VALUES (@owner, @at) ON CONFLICT DO NOTHING", cancellationToken))
         {

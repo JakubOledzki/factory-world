@@ -110,6 +110,10 @@ public static class TechTree
     public const string FreightHub = "freight_hub";
     public const string ExportMarket = "export_market";
     public const string RailFerry = "rail_ferry";
+    public const string RailFreight = "rail_freight";
+    public const string RailFreight2 = "rail_freight_2";
+    public const string RailFreight3 = "rail_freight_3";
+    public const string RailFreight4 = "rail_freight_4";
     public const string Headquarters = "headquarters";
     public const string Tailoring = "tailoring";
     public const string Silviculture = "silviculture";
@@ -131,6 +135,7 @@ public static class TechTree
     public const string BioLab = "bio_lab";
     public const string Farmsteads = "farmsteads";
     public const string ManorFarms = "manor_farms";
+    public const string Feeders = "feeders";
 
     // The crafting tree: one technology for each of its items, named after it.
     public const string Lubricant = "lubricant";
@@ -213,7 +218,7 @@ public static class TechTree
         new(Automation, "Automatyzacja", "Podajniki same przekładają przedmioty między taśmami, maszynami i magazynami.",
             [Logistics], [(Items.IronIngot, 20), (Items.CopperIngot, 10), (Items.Nails, 20)], TimeSpan.FromMinutes(2), 40,
             [Items.Inserter]),
-        new(Storage, "Magazynowanie", "Skrzynia żelazna mieści trzy razy więcej niż drewniana, a hałda 1000 sztuk jednego surowca.",
+        new(Storage, "Magazynowanie", "Skrzynia żelazna mieści trzy razy więcej niż drewniana, a hałda 5000 sztuk jednego surowca.",
             [Logistics], [(Items.IronIngot, 20), (Items.Stone, 50)], TimeSpan.FromSeconds(90), 30,
             [Items.IronChest, Items.Heap]),
         new(Baking, "Piekarnictwo", "Piec piekarski wypieka chleb z mąki.",
@@ -265,6 +270,19 @@ public static class TechTree
         new(Drones, "Drony transportowe", "Drony przenoszą przedmioty z portów bez filtra do portów, które mają ustawiony filtr na dany przedmiot, po całej działce, bez taśm.",
             [ExpressLogistics, LogisticsDepot, Assembly], [(Items.CircuitBoard, 20), (Items.ElectricMotor, 6), (Items.SteelIngot, 60)], TimeSpan.FromMinutes(10), 200,
             [Items.DronePort]),
+        new(RailFreight, "Transport kolejowy", "Skrzynia ładująca i odbierająca (800 sztuk): pociąg trasy między twoimi działkami czeka, aż skrzynie ładujące jednej działki będą miały cały towar, i zawozi go do skrzyń odbierających drugiej.",
+            [Storage, Automation], [(Items.IronChest, 2), (Items.IronIngot, 40), (Items.Nails, 30)], TimeSpan.FromMinutes(2), 50,
+            [Items.LoadingChest, Items.ReceivingChest]),
+        new(RailFreight2, "Większe skrzynie kolejowe", "Skrzynia ładująca i odbierająca II mieszczą po 1600 sztuk.",
+            [RailFreight, FastLogistics], [(Items.LoadingChest, 2), (Items.ReceivingChest, 2), (Items.IronIngot, 60)], TimeSpan.FromMinutes(4), 80,
+            [Items.LoadingChest2, Items.ReceivingChest2]),
+        new(RailFreight3, "Terminal przeładunkowy", "Skrzynia ładująca i odbierająca III mieszczą po 6400 sztuk.",
+            [RailFreight2, LogisticsDepot], [(Items.LoadingChest2, 2), (Items.ReceivingChest2, 2), (Items.SteelIngot, 40), (Items.Beams, 30)], TimeSpan.FromMinutes(6), 120,
+            [Items.LoadingChest3, Items.ReceivingChest3]),
+        new(RailFreight4, "Kontenerowy terminal kolejowy", "Skrzynia ładująca i odbierająca IV mieszczą po 16 000 sztuk.",
+            [RailFreight3, ExpressLogistics, Assembly], [(Items.LoadingChest3, 2), (Items.ReceivingChest3, 2), (Items.SteelIngot, 80), (Items.ElectricMotor, 8)],
+            TimeSpan.FromMinutes(10), 200,
+            [Items.LoadingChest4, Items.ReceivingChest4]),
         new(GrainStorage, "Silosy zbożowe", "Silos mieści 2000 pszenicy, kukurydzy albo słonecznika.",
             [Storage, Milling], [(Items.Wheat, 100), (Items.IronIngot, 20)], TimeSpan.FromMinutes(2), 40,
             [Items.GrainSilo]),
@@ -399,7 +417,9 @@ public static class TechTree
             [Items.WaterWell, Items.Desalinator]),
         new(BuildingMaterials, "Materiały budowlane", "Suszarnia robi cegłę z piasku, gliny i wody, piec cementowy cement, a betoniarka beton.",
             [WaterSupply], [(Items.Clay, 20), (Items.Stone, 40), (Items.Sand, 40)], TimeSpan.FromMinutes(3), 60,
-            [Items.DryingYard, Items.CementKiln, Items.ConcreteMixer, Items.AdobeBricks, Items.Cement, Items.Concrete]),
+            // Only the machines: adobe bricks, cement and concrete go into buildings of other branches and city orders, so the
+            // trader and other players sell them to anyone.
+            [Items.DryingYard, Items.CementKiln, Items.ConcreteMixer]),
         new(WindPower, "Energia wiatrowa", "Turbina wiatrowa daje prąd bez paliwa, tyle, ile wieje wiatr: najwięcej na lodowcu, stepie i tundrze.",
             [Automation], [(Items.IronIngot, 30), (Items.CopperIngot, 20), (Items.Planks, 20)], TimeSpan.FromMinutes(2), 50,
             [Items.WindTurbine]),
@@ -512,6 +532,9 @@ public static class TechTree
         new(ManorFarms, "Folwark", "Folwark obrabia większe pole, sieje szybciej rosnące uprawy i mieści więcej plonów.",
             [Farmsteads, Breeding], [(Items.Wheat, 100), (Items.Bricks, 20), (Items.Provisions, 5)], TimeSpan.FromMinutes(4), 80,
             [Items.ManorFarm]),
+        new(Feeders, "Karmniki", "Karmnik sam karmi głodne zwierzęta do 3 pól wokół siebie paszą wsypaną ręcznie albo podajnikiem.",
+            [], [(Items.Wheat, 30), (Items.Planks, 20)], TimeSpan.FromSeconds(90), 30,
+            [Items.Feeder]),
         // The crafting tree, level by level: each technology unlocks one item and needs the technologies of its ingredients first.
         new(Lubricant, "Smar techniczny", "Smaruje łożyska, przekładnie i siłowniki.",
             [Refining], [(Items.Kerosene, 10), (Items.Wax, 5)], TimeSpan.FromMinutes(2), 20,
@@ -543,7 +566,7 @@ public static class TechTree
         new(IridiumAlloy, "Stop irydowy", "Iryd i żelazo meteorytowe z lodowca stopione ze stalą.",
             [SiliconWorks], [(Items.Iridium, 5), (Items.MeteoricIron, 10), (Items.SteelIngot, 10)], TimeSpan.FromMinutes(2), 20,
             [Items.IridiumAlloy]),
-        new(Provisions, "Prowiant", "Paczka jedzenia na długą drogę: dla załogi stacji orbitalnej.",
+        new(Provisions, "Prowiant", "Kuchnia polowa, piec piekarski i wędzarnia pakują prowiant dla załóg wielkich budów i stacji orbitalnej.",
             [Cooking], [(Items.CannedFish, 5), (Items.Bread, 10), (Items.Cardboard, 5)], TimeSpan.FromMinutes(2), 20,
             [Items.Provisions]),
         new(Bearing, "Łożysko", "Stalowe kulki w smarze: bez nich nic się nie kręci.",
@@ -697,16 +720,16 @@ public static class TechTree
     [
         new("logistics", "Logistyka", Items.Belt,
             [Logistics, Automation, Storage, Sorting, FastLogistics, UndergroundBelts, LongInserters, BiggerGrippers, ExpressLogistics,
-             IndustrialGrippers, LogisticsDepot, CableTransport, ExpressCable, Drones, RailFerry, Assembling, FastAssembling, ExpressAssembling]),
+             IndustrialGrippers, LogisticsDepot, CableTransport, ExpressCable, Drones, RailFerry, RailFreight, RailFreight2, RailFreight3, RailFreight4, Assembling, FastAssembling, ExpressAssembling]),
         new("mining", "Górnictwo", Items.IronOre,
             [Stonemasonry, BrickFurnaces, Metallurgy, BlastFurnaces, MiningAutomation, Crushing, MechanizedQuarrying, ConeCrushing, Explosives,
              DeepMining, OpenPitMining, OreProcessing, MeteoriteTools]),
         new("forestry", "Leśnictwo", Items.Wood,
             [ForestryIndustry, Silviculture, Woodworking, IndustrialForestry, Sawing, Harvesters, MeteoriteSaws, Papermaking, Furniture, Charring, FireProtection, Beekeeping, ForestFoods]),
         new("food", "Przetwórstwo", Items.Bread,
-            [Milling, OilPressing, Pickling, Baking, RollerMilling, GrainStorage, Cooking, FlourIndustry, Confectionery]),
+            [Milling, OilPressing, Pickling, Baking, RollerMilling, GrainStorage, Cooking, Provisions, FlourIndustry, Confectionery]),
         new("husbandry", "Hodowla", Items.Cow,
-            [Breeding, Dairying, Distilling, Farmsteads, Butchery, Biogas, WorksCanteens, WorkMeals, BioLab, Horsemanship, FineCuisine, ManorFarms]),
+            [Breeding, Feeders, Dairying, Distilling, Farmsteads, Butchery, Biogas, WorksCanteens, WorkMeals, BioLab, Horsemanship, FineCuisine, ManorFarms]),
         new("energy", "Energia", Items.WindTurbine, [Hydropower, HydroPlant, WindPower, LargeWind]),
         new("oil", "Ropa i gaz", Items.CrudeOil,
             [OilExtraction, Refining, EnhancedRecovery, OffshoreDrilling, Cracking, Petrochemistry, Combustion, Roads]),
@@ -718,7 +741,7 @@ public static class TechTree
         new("city", "Miasta", Items.Shop,
             [Commerce, CityServices, WasteManagement, FreightHub, ExportMarket, Assembly, UrbanConstruction, Headquarters, Tailoring]),
         new("materials", "Materiały", Items.CarbonComposite,
-            [Lubricant, Paint, CaseinGlue, InsulationBoard, Firebrick, PrecastConcrete, GlassLaminate, Coolant, IridiumAlloy, Provisions,
+            [Lubricant, Paint, CaseinGlue, InsulationBoard, Firebrick, PrecastConcrete, GlassLaminate, Coolant, IridiumAlloy,
              ElectricWire, PaintedSheet, RefractoryLining, CarbonComposite, SuperconductingWire, RocketFuel]),
         new("components", "Podzespoły", Items.Gearbox,
             [MachineShop, Bearing, Coil, WiringHarness, Gearbox, Rotor, MachineHousing, CombustionChamber, CompositePanel,

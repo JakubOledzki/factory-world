@@ -49,8 +49,10 @@ public static class PlotObjects
         Items.MachineShop, Items.RoboticHall, Items.OxygenConverter, Items.RollingMill, Items.ControlCenter, Items.ContinuousCaster,
         Items.AutomatedWarehouse, Items.SteelCombine, Items.Megafactory, Items.FusionPlant,
         Items.Canteen, Items.Slaughterhouse, Items.Dairy, Items.PotatoDistillery, Items.BiogasPlant, Items.Stable, Items.Bellows,
-        Items.Farmstead, Items.ManorFarm,
+        Items.Feeder, Items.Farmstead, Items.ManorFarm,
         Items.ExportChest, Items.BuyMarket, Items.RailPort, Items.Bank, Items.BankBranch,
+        Items.LoadingChest, Items.LoadingChest2, Items.LoadingChest3, Items.LoadingChest4,
+        Items.ReceivingChest, Items.ReceivingChest2, Items.ReceivingChest3, Items.ReceivingChest4,
     };
 
     /// <summary>What stands on the glacier only, or on the glacier and the tundra.</summary>

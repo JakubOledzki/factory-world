@@ -1,9 +1,12 @@
+using System.Diagnostics;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Abstractions.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using NpgsqlTypes;
 
 namespace FactoryWorld.Modules.Logistics;
@@ -63,9 +66,13 @@ public sealed record LogisticsState(
     DateTimeOffset SimulatedAt, DateTimeOffset ServerTime, IReadOnlyList<PlotObject> Objects, IReadOnlyDictionary<Guid, Contents> Contents, IPowerGrid Power);
 
 public sealed class LogisticsService(
-    GameDb db, IPlotObjects plots, IEnumerable<IMachinePorts> machines, IPlotPower power, IInventory inventory, ITechnologies technologies, TimeProvider time)
+    GameDb db, IPlotObjects plots, IEnumerable<IMachinePorts> machines, IPlotPower power, IInventory inventory, ITechnologies technologies, TimeProvider time,
+    ILogger<LogisticsService> logger)
     : IPlotAutomation
 {
+    /// <summary>A catch-up taking longer than this is logged with where its time went.</summary>
+    private static readonly TimeSpan Slow = TimeSpan.FromMilliseconds(500);
+
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
         DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingDefault,
@@ -76,9 +83,14 @@ public sealed class LogisticsService(
 
     /// <summary>The player's plot with its belts, inserters and storage as they are now.</summary>
     public Task<LogisticsState> StateAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
+        StateAsync(player, x, y, PlotRight.Work, cancellationToken);
+
+    /// <summary>The plot as <see cref="StateAsync(Guid, int, int, CancellationToken)"/> has it, for anyone who may do
+    /// <paramref name="right"/> there (a visitor of a public plot only sees the belts move).</summary>
+    public Task<LogisticsState> StateAsync(Guid player, int x, int y, PlotRight right, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, right);
             return await RunAsync(x, y, cancellationToken);
         }, cancellationToken);
 
@@ -231,14 +243,16 @@ public sealed class LogisticsService(
         }, cancellationToken);
 
     /// <summary>Works out the plot's logistics from where they were left up to now, under a lock on the plot.</summary>
-    private async Task<LogisticsState> RunAsync(int x, int y, CancellationToken cancellationToken)
+    internal async Task<LogisticsState> RunAsync(int x, int y, CancellationToken cancellationToken)
     {
+        var started = Stopwatch.GetTimestamp();
         await using (var lockPlot = await db.CommandAsync("SELECT pg_advisory_xact_lock(@key)", cancellationToken))
         {
             lockPlot.Parameters.AddWithValue("key", ((long)x << 32 | (uint)y) ^ 0x6c6f6769_73746963);
             await lockPlot.ExecuteNonQueryAsync(cancellationToken);
         }
 
+        var locked = Stopwatch.GetTimestamp();
         var now = time.GetUtcNow();
         var objects = await plots.ObjectsAsync(x, y, cancellationToken);
         var from = await SimulatedAtAsync(x, y, cancellationToken) ?? now;
@@ -305,7 +319,9 @@ public sealed class LogisticsService(
         }
 
         var logistics = new PlotLogistics(at.Values.ToList(), contents, ports, grid, await GripsAsync(objects, cancellationToken));
+        var loaded = Stopwatch.GetTimestamp();
         var simulated = logistics.Run(from, now);
+        var ran = Stopwatch.GetTimestamp();
         await WriteAsync(x, y, logistics.Changed.Concat(storageChanged).Distinct().Select(id => (id, contents[id])).ToList(), cancellationToken);
         foreach (var module in opened.GroupBy(o => o.Module, o => o.Port))
         {
@@ -324,6 +340,15 @@ public sealed class LogisticsService(
             save.Parameters.AddWithValue("y", y);
             save.Parameters.AddWithValue("at", simulated);
             await save.ExecuteNonQueryAsync(cancellationToken);
+        }
+
+        if (Stopwatch.GetElapsedTime(started) > Slow)
+        {
+            logger.LogWarning(
+                "Slow logistics on plot {X}:{Y}: waited {Lock:0} ms for the plot, loaded {Objects} objects in {Load:0} ms, worked out {Ticks} of {Span:0} min in {Run:0} ms, saved {Saved} in {Save:0} ms",
+                x, y, Stopwatch.GetElapsedTime(started, locked).TotalMilliseconds, objects.Count, Stopwatch.GetElapsedTime(locked, loaded).TotalMilliseconds,
+                logistics.Steps, (now - from).TotalMinutes, Stopwatch.GetElapsedTime(loaded, ran).TotalMilliseconds, logistics.Changed.Count + storageChanged.Count,
+                Stopwatch.GetElapsedTime(ran).TotalMilliseconds);
         }
 
         return new LogisticsState(simulated, now, objects, contents, grid);
@@ -373,7 +398,7 @@ public sealed class LogisticsService(
         WriteAsync(x, y, [(id, contents)], cancellationToken);
 
     /// <summary>Writes what belts, inserters and storages on the plot hold, all in one query.</summary>
-    private async Task WriteAsync(int x, int y, IReadOnlyList<(Guid Id, Contents Contents)> changed, CancellationToken cancellationToken)
+    internal async Task WriteAsync(int x, int y, IReadOnlyList<(Guid Id, Contents Contents)> changed, CancellationToken cancellationToken)
     {
         if (changed.Count == 0)
         {
@@ -416,7 +441,8 @@ public sealed class LogisticsContents(GameDb db, IInventory inventory) : IMachin
 }
 
 /// <param name="Names">Send what every item is called too, for choosing a filter.</param>
-public sealed record LogisticsRequest(int X, int Y, bool Names = false);
+/// <param name="Compact">The short form of the answer (see <see cref="GetLogisticsHandler.Json"/>), which a client asking every second wants.</param>
+public sealed record LogisticsRequest(int X, int Y, bool Names = false, bool Compact = false);
 
 public sealed record StorageRequest(int X, int Y, Guid Id);
 
@@ -435,14 +461,34 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
     {
         var request = Payload.Read<LogisticsRequest>(payload);
         await using var scope = scopes.CreateAsyncScope();
-        var state = await scope.ServiceProvider.GetRequiredService<LogisticsService>()
-            .StateAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
-        return new Reply("logistics", Json(request.X, request.Y, state, request.Names));
+        var logistics = scope.ServiceProvider.GetRequiredService<LogisticsService>();
+        var player = client.RequireAccount();
+        try
+        {
+            var state = await logistics.StateAsync(player, request.X, request.Y, cancellationToken);
+            return new Reply("logistics", Json(request.X, request.Y, state, request.Names, compact: request.Compact));
+        }
+        catch (GameException e) when (e.Code == "not_owner")
+        {
+            // A visitor of a public plot sees the belts and inserters at work, but not what lies in the storages.
+            var state = await logistics.StateAsync(player, request.X, request.Y, PlotRight.Visit, cancellationToken);
+            return new Reply("logistics", Json(request.X, request.Y, state, request.Names, visitor: true, request.Compact));
+        }
     }
 
-    public static object Json(int x, int y, LogisticsState state, bool names = false)
+    /// <param name="visitor">Leaves out what the storages hold, for someone only looking around the plot.</param>
+    /// <param name="compact">The short form, a few kilobytes instead of a few hundred on a big factory: only belts that carry
+    /// something or are splitters (any other is empty), with their items and a splitter's settings; inserters with what
+    /// changes only (the hand when full, the pieces in it when more than one, the speed when not 1, the charge when not 0);
+    /// what the client knows from the kinds (speeds, reach, swing ticks, cables, tunnels) left out; the item names only when asked.</param>
+    public static object Json(int x, int y, LogisticsState state, bool names = false, bool visitor = false, bool compact = false)
     {
         Contents Of(Guid id) => state.Contents.GetValueOrDefault(id) ?? new Contents();
+        if (compact)
+        {
+            return CompactJson(x, y, state, names, visitor, Of);
+        }
+
         var cables = LogisticsRules.CableLinks(state.Objects);
         var tunnels = LogisticsRules.TunnelLinks(state.Objects);
         return new
@@ -494,10 +540,120 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
             // Drone ports: how fast their drones fly on the power they have (0 stays put).
             drones = state.Objects.Where(o => o.Kind == Items.DronePort)
                 .Select(o => new { id = o.Id, speed = state.Power.Clock(o.Id).Speed(state.SimulatedAt) }),
-            storages = state.Objects.Where(o => Storages.Find(o.Kind) is not null)
+            storages = visitor ? [] : state.Objects.Where(o => Storages.Find(o.Kind) is not null)
                 .Select(o => StorageSummary(Storages.Find(o.Kind)!, o, Of(o.Id))),
             power = state.Power.Summary(state.ServerTime),
         };
+    }
+
+    private static object CompactJson(int x, int y, LogisticsState state, bool names, bool visitor, Func<Guid, Contents> of)
+    {
+        var belts = new List<Dictionary<string, object?>>();
+        var inserters = new List<Dictionary<string, object?>>();
+        foreach (var o in state.Objects)
+        {
+            if (Items.IsConveyor(o.Kind))
+            {
+                var c = of(o.Id);
+                var splitter = o.Kind == Items.Splitter;
+                if (!splitter && (c.Belt is null || c.Belt.All(i => i is null)))
+                {
+                    continue;
+                }
+
+                var belt = new Dictionary<string, object?> { ["id"] = o.Id, ["items"] = c.Belt ?? new string?[LogisticsRules.BeltSlots * LogisticsRules.BeltLanes] };
+                if (splitter)
+                {
+                    belt["filter"] = c.Filter ?? [];
+                    belt["filterSide"] = c.FilterSide;
+                    belt["turn"] = c.Turn;
+                }
+
+                belts.Add(belt);
+            }
+            else if (Items.IsInserter(o.Kind))
+            {
+                var c = of(o.Id);
+                var inserter = new Dictionary<string, object?> { ["id"] = o.Id, ["swing"] = c.Swing };
+                if (c.Hand is not null)
+                {
+                    inserter["hand"] = c.Hand;
+                }
+
+                if (c.Held() > 1)
+                {
+                    inserter["count"] = c.Held();
+                }
+
+                if (state.Power.Clock(o.Id).Speed(state.SimulatedAt) is var speed && speed != 1)
+                {
+                    inserter["speed"] = speed;
+                }
+
+                if (c.Charge != 0)
+                {
+                    inserter["charge"] = c.Charge;
+                }
+
+                inserters.Add(inserter);
+            }
+        }
+
+        return new
+        {
+            x,
+            y,
+            compact = true,
+            simulatedAt = state.SimulatedAt.ToUnixTimeMilliseconds(),
+            serverTime = state.ServerTime.ToUnixTimeMilliseconds(),
+            tickMs = LogisticsRules.Tick.TotalMilliseconds,
+            beltSlots = LogisticsRules.BeltSlots,
+            beltLanes = LogisticsRules.BeltLanes,
+            swingTicks = LogisticsRules.SwingTicks,
+            belts,
+            names = names ? Items.Names : null,
+            filters = state.Objects.Where(o => of(o.Id).Only is not null).Select(o => new { id = o.Id, item = of(o.Id).Only }),
+            inserters,
+            drones = state.Objects.Where(o => o.Kind == Items.DronePort)
+                .Select(o => new { id = o.Id, speed = state.Power.Clock(o.Id).Speed(state.SimulatedAt) }),
+            storages = visitor ? [] : state.Objects.Where(o => Storages.Find(o.Kind) is not null)
+                .Select(o => CompactStorage(Storages.Find(o.Kind)!, o, of(o.Id))),
+            power = CompactPower(state.Power.Summary(state.ServerTime)),
+        };
+    }
+
+    /// <summary>A storage as the plot shows it: how full it is and what it holds (ids only), the filter and what it takes when set.</summary>
+    private static Dictionary<string, object?> CompactStorage(StorageKind kind, PlotObject o, Contents contents)
+    {
+        var stacks = contents.Items ?? [];
+        var storage = new Dictionary<string, object?>
+        {
+            ["id"] = o.Id,
+            ["slots"] = kind.Slots,
+            ["usedSlots"] = Storages.UsedSlots(kind, stacks),
+            ["capacity"] = kind.Capacity,
+            ["stored"] = stacks.Sum(s => s.Quantity),
+            ["items"] = stacks.Select(s => new { id = s.Item, quantity = s.Quantity }),
+        };
+        if (kind.Only is { } only)
+        {
+            storage["only"] = only.Select(i => new { id = i, name = Items.Names[i] });
+        }
+
+        if (contents.Only is { } filter)
+        {
+            storage["filter"] = filter;
+        }
+
+        return storage;
+    }
+
+    /// <summary>The power summary without the pairs of wired poles, which the client works out itself.</summary>
+    private static JsonNode? CompactPower(object summary)
+    {
+        var node = JsonSerializer.SerializeToNode(summary, Payload.Json);
+        (node as JsonObject)?.Remove("wires");
+        return node;
     }
 
     public static object StorageSummary(StorageKind kind, PlotObject o, Contents contents)
@@ -620,6 +776,7 @@ public sealed class LogisticsModule : IGameModule
         services.AddScoped<LogisticsService>();
         services.AddScoped<IPlotAutomation>(provider => provider.GetRequiredService<LogisticsService>());
         services.AddScoped<IMachineContents, LogisticsContents>();
+        services.AddScoped<IFreightChests, FreightChests>();
         services.AddSingleton<IMessageHandler, GetLogisticsHandler>();
         services.AddSingleton<IMessageHandler, SetSplitterHandler>();
         services.AddSingleton<IMessageHandler, SetFilterHandler>();

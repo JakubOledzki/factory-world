@@ -96,7 +96,21 @@ namespace FactoryWorld.Modules.Contracts.Migrations
                     b.HasIndex("Deadline")
                         .HasFilter("closed_at IS NULL");
 
-                    b.HasIndex("IssuerId", "Id");
+                    b.HasIndex("Id")
+                        .HasDatabaseName("IX_contracts_board")
+                        .HasFilter("closed_at IS NULL AND contractor_id IS NULL AND issuer_id IS NOT NULL");
+
+                    b.HasIndex("ContractorId", "ClosedAt")
+                        .HasDatabaseName("IX_contracts_closed_contractor_id_closed_at")
+                        .HasFilter("closed_at IS NOT NULL");
+
+                    b.HasIndex("IssuerId", "ClosedAt")
+                        .HasDatabaseName("IX_contracts_closed_issuer_id_closed_at")
+                        .HasFilter("closed_at IS NOT NULL");
+
+                    b.HasIndex("IssuerId", "Id")
+                        .HasDatabaseName("IX_contracts_open_issuer_id_id")
+                        .HasFilter("closed_at IS NULL");
 
                     b.ToTable("contracts", "contracts", t =>
                         {

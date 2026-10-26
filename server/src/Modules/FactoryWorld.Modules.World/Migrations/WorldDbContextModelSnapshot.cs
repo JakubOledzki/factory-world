@@ -405,6 +405,104 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("forest_ledger", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.FreightRouteRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.PrimitiveCollection<string[]>("CarriedItems")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("carried_items");
+
+                    b.PrimitiveCollection<long[]>("CarriedQuantities")
+                        .IsRequired()
+                        .HasColumnType("bigint[]")
+                        .HasColumnName("carried_quantities");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<long>("Delivered")
+                        .HasColumnType("bigint")
+                        .HasColumnName("delivered");
+
+                    b.Property<int>("FromX")
+                        .HasColumnType("integer")
+                        .HasColumnName("from_x");
+
+                    b.Property<int>("FromY")
+                        .HasColumnType("integer")
+                        .HasColumnName("from_y");
+
+                    b.PrimitiveCollection<string[]>("Items")
+                        .IsRequired()
+                        .HasColumnType("text[]")
+                        .HasColumnName("items");
+
+                    b.Property<long>("LastFeeCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("last_fee_cents");
+
+                    b.Property<string>("LastProblem")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("last_problem");
+
+                    b.Property<DateTimeOffset>("NextAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_at");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.PrimitiveCollection<long[]>("Quantities")
+                        .IsRequired()
+                        .HasColumnType("bigint[]")
+                        .HasColumnName("quantities");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("state");
+
+                    b.PrimitiveCollection<long[]>("Stock")
+                        .IsRequired()
+                        .HasColumnType("bigint[]")
+                        .HasColumnName("stock");
+
+                    b.Property<bool>("Stopping")
+                        .HasColumnType("boolean")
+                        .HasColumnName("stopping");
+
+                    b.Property<int>("ToX")
+                        .HasColumnType("integer")
+                        .HasColumnName("to_x");
+
+                    b.Property<int>("ToY")
+                        .HasColumnType("integer")
+                        .HasColumnName("to_y");
+
+                    b.Property<long>("Trips")
+                        .HasColumnType("bigint")
+                        .HasColumnName("trips");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NextAt");
+
+                    b.HasIndex("OwnerId");
+
+                    b.ToTable("freight_routes", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.HiveRow", b =>
                 {
                     b.Property<Guid>("ObjectId")
@@ -490,6 +588,11 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("bought_at");
 
+                    b.Property<string>("Name")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("name");
+
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");
@@ -497,6 +600,12 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.Property<long>("PriceCents")
                         .HasColumnType("bigint")
                         .HasColumnName("price_cents");
+
+                    b.Property<bool>("Public")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("public");
 
                     b.HasKey("X", "Y");
 
@@ -640,6 +749,39 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plot_farmsteads", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotFeederRow", b =>
+                {
+                    b.Property<Guid>("ObjectId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("object_id");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<string>("Store")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("{}")
+                        .HasColumnName("store");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("ObjectId");
+
+                    b.HasIndex("X", "Y");
+
+                    b.ToTable("plot_feeders", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.PlotField", b =>
                 {
                     b.Property<int>("X")
@@ -777,21 +919,16 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("y");
 
-                    b.Property<int>("TileX")
-                        .HasColumnType("integer")
-                        .HasColumnName("tile_x");
+                    b.Property<short>("Square")
+                        .HasColumnType("smallint")
+                        .HasColumnName("square");
 
-                    b.Property<int>("TileY")
-                        .HasColumnType("integer")
-                        .HasColumnName("tile_y");
+                    b.PrimitiveCollection<DateTimeOffset?[]>("HarvestedAt")
+                        .IsRequired()
+                        .HasColumnType("timestamp with time zone[]")
+                        .HasColumnName("harvested_at");
 
-                    b.Property<DateTimeOffset>("HarvestedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("harvested_at")
-                        .HasDefaultValueSql("now()");
-
-                    b.HasKey("X", "Y", "TileX", "TileY");
+                    b.HasKey("X", "Y", "Square");
 
                     b.ToTable("plot_harvests", "world");
                 });

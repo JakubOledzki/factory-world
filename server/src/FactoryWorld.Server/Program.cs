@@ -53,6 +53,8 @@ foreach (var module in modules)
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<MessageDispatcher>();
 builder.Services.AddSingleton<OnlinePlayers>();
+builder.Services.AddSingleton<ServerLoad>();
+builder.Services.AddHostedService<LoadReport>();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
     policy.WithOrigins(builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [])
         .AllowAnyHeader()
@@ -84,6 +86,7 @@ app.UseCors();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
 
 app.MapHealthChecks("/health");
+app.MapGet("/metrics", MetricsEndpoint.Handle);
 app.MapGet("/", () => Results.Text("Factory World server"));
 app.Map("/ws", GameSocketEndpoint.HandleAsync);
 
@@ -96,8 +99,10 @@ app.Run();
 
 // Every request borrows a pooled connection for a few short queries. By default Npgsql resets each connection
 // when it goes back to the pool (one extra round trip) and PostgreSQL parses and plans every query again; with
-// thousands of players that overhead, not the queries, saturated the database (tools/loadtest). Settings written
-// in the connection string itself win over these defaults.
+// thousands of players that overhead, not the queries, saturated the database (tools/loadtest). The pool is also
+// kept small: Npgsql's default of 100 equals PostgreSQL's whole connection limit, so under load nothing else could
+// connect, and with 30 the load test answered faster, not slower. Settings written in the connection string itself
+// win over these defaults.
 static string TunedForGame(string connectionString)
 {
     // The plain builder knows only the keys actually written; compared without spaces, as Npgsql accepts both forms.
@@ -119,6 +124,11 @@ static string TunedForGame(string connectionString)
     if (!given.Contains("autoprepareminusages"))
     {
         tuned.AutoPrepareMinUsages = 2;
+    }
+
+    if (!given.Contains("maxpoolsize") && !given.Contains("maximumpoolsize"))
+    {
+        tuned.MaxPoolSize = 30;
     }
 
     return tuned.ConnectionString;

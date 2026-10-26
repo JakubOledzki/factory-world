@@ -175,6 +175,45 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
     }
 
     [Fact]
+    public async Task Trees_cut_all_over_a_plot_stay_gone_and_are_kept_a_square_of_tiles_to_a_row()
+    {
+        using var client = await PlayerAsync();
+        var forest = await BuyAsync(client, Biome.Forest);
+        var (_, tiles) = await EnterAsync(client, forest);
+        // Trees on either side of a square's edge, and the last trees of the plot.
+        var trees = Enumerable.Range(0, tiles.Length).Where(i => Trees.IsTree(tiles[i])).Select(i => (X: i % PlotLayout.Size, Y: i / PlotLayout.Size)).ToList();
+        var picked = new[]
+        {
+            trees.First(t => t.X % PlotHarvests.Side == PlotHarvests.Side - 1),
+            trees.First(t => t.X % PlotHarvests.Side == 0 && t.X > 0),
+            trees[^1],
+        };
+
+        foreach (var (tx, ty) in picked)
+        {
+            factory.Time.Advance(HarvestRules.ChopTime);
+            Assert.Equal("plot.harvested", (await client.SendAsync("plot.harvest", new { x = forest.X, y = forest.Y, tileX = tx, tileY = ty })).Type());
+        }
+
+        var (_, after) = await EnterAsync(client, forest);
+        var cut = Enumerable.Range(0, tiles.Length).Where(i => tiles[i] != after[i]).Select(i => (X: i % PlotLayout.Size, Y: i / PlotLayout.Size)).ToList();
+        Assert.All(picked, t => Assert.Equal((byte)TileObject.None, after[t.Y * PlotLayout.Size + t.X]));
+        Assert.All(cut, t => Assert.True(Trees.IsTree(tiles[t.Y * PlotLayout.Size + t.X])));
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<GameDb>();
+        await using var command = await db.CommandAsync(
+            $"SELECT (SELECT count(*) FROM world.plot_harvests WHERE x = @x AND y = @y), (SELECT count(*) FROM {PlotHarvests.Tiles} WHERE x = @x AND y = @y)",
+            CancellationToken.None);
+        command.Parameters.AddWithValue("x", forest.X);
+        command.Parameters.AddWithValue("y", forest.Y);
+        await using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
+        Assert.True(await reader.ReadAsync(CancellationToken.None));
+        Assert.Equal(cut.Select(t => PlotHarvests.Square(t.X, t.Y)).Distinct().Count(), reader.GetInt64(0));
+        Assert.Equal(cut.Count, reader.GetInt64(1));
+    }
+
+    [Fact]
     public async Task A_chainsaw_from_the_trader_for_500_dollars_cuts_trees_70_percent_faster()
     {
         using var client = await PlayerAsync();
@@ -380,6 +419,39 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         var forest = await BuyAsync(client, Biome.Forest);
         factory.Time.Advance(HarvestRules.Time);
         Assert.Equal("not_fertile", (await client.SendAsync("plot.till", new { x = forest.X, y = forest.Y, tileX = tx, tileY = ty })).ErrorCode());
+    }
+
+    [Fact]
+    public async Task A_field_tilled_by_hand_can_be_turned_back_into_bare_ground_once_nothing_ripe_grows_on_it()
+    {
+        using var client = await PlayerAsync();
+        var farm = await BuyAsync(client, Biome.Farmland);
+        var (plot, _) = await EnterAsync(client, farm);
+        var (tx, ty) = (plot.GetProperty("spawn").GetProperty("x").GetInt32(), plot.GetProperty("spawn").GetProperty("y").GetInt32());
+        object At(string? crop = null) => new { x = farm.X, y = farm.Y, tileX = tx, tileY = ty, crop };
+
+        Assert.Equal("nothing_here", (await client.SendAsync("plot.untill", At())).ErrorCode());
+        factory.Time.Advance(HarvestRules.Time);
+        Assert.Equal("plot.field", (await client.SendAsync("plot.till", At())).Type());
+        Assert.Equal("plot.field", (await client.SendAsync("plot.plant", At(Items.Wheat))).Type());
+        factory.Time.Advance(Farming.ById[Items.Wheat].Grow);
+        Assert.Equal("reap_first", (await client.SendAsync("plot.untill", At())).ErrorCode());
+        Assert.Equal("plot.field", (await client.SendAsync("plot.reap", At())).Type());
+
+        // A crop still growing goes with the field.
+        Assert.Equal("plot.field", (await client.SendAsync("plot.plant", At(Items.Wheat))).Type());
+        var untilled = await client.SendAsync("plot.untill", At());
+        Assert.Equal("plot.untilled", untilled.Type());
+        Assert.Equal(tx, untilled.Payload().GetProperty("tileX").GetInt32());
+        var (after, _) = await EnterAsync(client, farm);
+        Assert.Equal(0, after.GetProperty("fields").GetArrayLength());
+
+        // The ground is free again: the hoe tills it once more.
+        factory.Time.Advance(HarvestRules.Time);
+        Assert.Equal("plot.field", (await client.SendAsync("plot.till", At())).Type());
+
+        using var stranger = await PlayerAsync();
+        Assert.NotEqual("plot.untilled", (await stranger.SendAsync("plot.untill", At())).Type());
     }
 
     [Fact]

@@ -190,6 +190,25 @@ public sealed class DesertTests(ServerFactory factory) : IClassFixture<ServerFac
         Assert.True(NpcPrices.Sells.ContainsKey(Items.Camel));
     }
 
+    [Fact]
+    public async Task A_player_buys_concrete_from_the_trader_before_researching_building_materials()
+    {
+        using var client = await PlayerAsync();
+        // Concrete goes into track foundations, assembly halls and city orders long before a player builds a mixer.
+        foreach (var item in new[] { Items.AdobeBricks, Items.Cement, Items.Concrete })
+        {
+            Assert.False(TechTree.ByItem.ContainsKey(item), item);
+            Assert.Equal("market.traded", (await client.SendAsync("market.buy", new { item, quantity = 10 })).Type());
+        }
+
+        var prices = (await client.SendAsync("market.prices")).Payload().GetProperty("items").EnumerateArray()
+            .ToDictionary(p => p.GetProperty("id").GetString()!);
+        Assert.Equal(250_00, NpcPrices.Sells[Items.Concrete]);
+        Assert.Equal(NpcPrices.Sells[Items.Concrete], prices[Items.Concrete].GetProperty("buyCents").GetInt64());
+        // The machines still need the research.
+        Assert.Equal("locked", (await client.SendAsync("market.buy", new { item = Items.ConcreteMixer, quantity = 1 })).ErrorCode());
+    }
+
     // --- On a plot -------------------------------------------------------------------------------
 
     private async Task<GameClient> PlayerAsync()
@@ -282,7 +301,7 @@ public sealed class DesertTests(ServerFactory factory) : IClassFixture<ServerFac
         Assert.True(placed.Type() == "plot.placed", placed.ToString());
 
         // Dug long before the last sandstorm.
-        await SqlAsync("UPDATE world.plot_harvests SET harvested_at = @long WHERE x = @x AND y = @y",
+        await SqlAsync("UPDATE world.plot_harvests SET harvested_at = ARRAY(SELECT CASE WHEN a IS NOT NULL THEN @long END FROM unnest(harvested_at) WITH ORDINALITY AS u(a, i) ORDER BY i) WHERE x = @x AND y = @y",
             ("long", factory.Time.GetUtcNow() - TimeSpan.FromDays(3)), ("x", x), ("y", y));
         var after = await TilesAsync(client, x, y);
         Assert.Equal((byte)TileObject.Dune, after[far]);

@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Abstractions.Contracts;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -118,5 +119,35 @@ public sealed class StatisticsTests(ServerFactory factory) : IClassFixture<Serve
         var hour = await StatsAsync(client, 60);
         Assert.Equal(20, Item(hour, Items.Nails)!.Value.GetProperty("producedBars").GetArrayLength());
         Assert.Equal(nails.GetProperty("produced").GetInt64(), Item(hour, Items.Nails)!.Value.GetProperty("produced").GetInt64());
+    }
+
+    [Fact]
+    public async Task Recording_drops_the_minutes_older_than_a_day_also_for_a_player_who_never_looks()
+    {
+        var owner = Guid.NewGuid();
+        async Task RecordAsync()
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            await scope.ServiceProvider.GetRequiredService<IProductionStats>().RecordAsync(
+                owner, [ProductionEntry.Made(Items.Nails, 1, factory.Time.GetUtcNow())], CancellationToken.None);
+        }
+
+        async Task<long> MinutesAsync()
+        {
+            await using var scope = factory.Services.CreateAsyncScope();
+            await using var command = await scope.ServiceProvider.GetRequiredService<GameDb>().CommandAsync(
+                "SELECT count(*) FROM stats.production WHERE owner_id = @owner", CancellationToken.None);
+            command.Parameters.AddWithValue("owner", owner);
+            return (long)(await command.ExecuteScalarAsync())!;
+        }
+
+        await RecordAsync();
+        factory.Time.Advance(TimeSpan.FromMinutes(5));
+        await RecordAsync();
+        Assert.Equal(2, await MinutesAsync());
+
+        factory.Time.Advance(TimeSpan.FromHours(25));
+        await RecordAsync();
+        Assert.Equal(1, await MinutesAsync());
     }
 }
