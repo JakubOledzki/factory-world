@@ -20,7 +20,9 @@ services:
     restart: unless-stopped
     environment:
       ConnectionStrings__Game: "Host=db;Port=5432;Database=factory_world;Username=factory;Password=${POSTGRES_PASSWORD}"
-      # One line per log entry (stack traces too), so Grafana Loki shows each entry whole.
+      # One line per log entry (stack traces too), so Grafana Loki shows each entry whole. The formatter must be
+      # named: without it .NET rebuilds the formatter options from the old console settings and drops SingleLine.
+      Logging__Console__FormatterName: simple
       Logging__Console__FormatterOptions__SingleLine: "true"
     depends_on:
       db:
@@ -48,8 +50,10 @@ services:
     restart: unless-stopped
     command: ["run", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
     hostname: factory-world
-    # cAdvisor reads every container's CPU and memory from the host.
+    # cAdvisor reads every container's CPU and memory from the host's cgroups; without the host cgroup
+    # namespace it sees only the machine as a whole.
     privileged: true
+    cgroup: host
     environment:
       GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL:-}
       GRAFANA_CLOUD_PROMETHEUS_USER: ${GRAFANA_CLOUD_PROMETHEUS_USER:-}
