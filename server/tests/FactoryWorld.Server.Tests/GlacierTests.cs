@@ -308,7 +308,7 @@ public sealed class GlacierTests(ServerFactory factory) : IClassFixture<ServerFa
         Assert.Equal(2, (await client.InventoryAsync())[Items.Ice]);
 
         // Cut long before the last blizzard, it froze again.
-        await SqlAsync("UPDATE world.plot_harvests SET harvested_at = @long WHERE x = @x AND y = @y",
+        await SqlAsync("UPDATE world.plot_harvests SET harvested_at = ARRAY(SELECT CASE WHEN a IS NOT NULL THEN @long END FROM unnest(harvested_at) WITH ORDINALITY AS u(a, i) ORDER BY i) WHERE x = @x AND y = @y",
             ("long", factory.Time.GetUtcNow() - TimeSpan.FromDays(3)), ("x", x), ("y", y));
         Assert.Equal((byte)TileObject.IceBlock, (await TilesAsync(client, x, y))[ice]);
 

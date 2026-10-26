@@ -175,6 +175,45 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
     }
 
     [Fact]
+    public async Task Trees_cut_all_over_a_plot_stay_gone_and_are_kept_a_square_of_tiles_to_a_row()
+    {
+        using var client = await PlayerAsync();
+        var forest = await BuyAsync(client, Biome.Forest);
+        var (_, tiles) = await EnterAsync(client, forest);
+        // Trees on either side of a square's edge, and the last trees of the plot.
+        var trees = Enumerable.Range(0, tiles.Length).Where(i => Trees.IsTree(tiles[i])).Select(i => (X: i % PlotLayout.Size, Y: i / PlotLayout.Size)).ToList();
+        var picked = new[]
+        {
+            trees.First(t => t.X % PlotHarvests.Side == PlotHarvests.Side - 1),
+            trees.First(t => t.X % PlotHarvests.Side == 0 && t.X > 0),
+            trees[^1],
+        };
+
+        foreach (var (tx, ty) in picked)
+        {
+            factory.Time.Advance(HarvestRules.ChopTime);
+            Assert.Equal("plot.harvested", (await client.SendAsync("plot.harvest", new { x = forest.X, y = forest.Y, tileX = tx, tileY = ty })).Type());
+        }
+
+        var (_, after) = await EnterAsync(client, forest);
+        var cut = Enumerable.Range(0, tiles.Length).Where(i => tiles[i] != after[i]).Select(i => (X: i % PlotLayout.Size, Y: i / PlotLayout.Size)).ToList();
+        Assert.All(picked, t => Assert.Equal((byte)TileObject.None, after[t.Y * PlotLayout.Size + t.X]));
+        Assert.All(cut, t => Assert.True(Trees.IsTree(tiles[t.Y * PlotLayout.Size + t.X])));
+
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<GameDb>();
+        await using var command = await db.CommandAsync(
+            $"SELECT (SELECT count(*) FROM world.plot_harvests WHERE x = @x AND y = @y), (SELECT count(*) FROM {PlotHarvests.Tiles} WHERE x = @x AND y = @y)",
+            CancellationToken.None);
+        command.Parameters.AddWithValue("x", forest.X);
+        command.Parameters.AddWithValue("y", forest.Y);
+        await using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
+        Assert.True(await reader.ReadAsync(CancellationToken.None));
+        Assert.Equal(cut.Select(t => PlotHarvests.Square(t.X, t.Y)).Distinct().Count(), reader.GetInt64(0));
+        Assert.Equal(cut.Count, reader.GetInt64(1));
+    }
+
+    [Fact]
     public async Task A_chainsaw_from_the_trader_for_500_dollars_cuts_trees_70_percent_faster()
     {
         using var client = await PlayerAsync();

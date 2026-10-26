@@ -345,7 +345,7 @@ public sealed class PlotService(
         var fences = new List<(int X, int Y)>();
         await using (var command = await db.CommandAsync(
             """
-            SELECT 0, tile_x, tile_y, harvested_at, NULL FROM world.plot_harvests WHERE x = @x AND y = @y
+            SELECT 0, square, 0, harvested_at, NULL FROM world.plot_harvests WHERE x = @x AND y = @y
             UNION ALL SELECT 1, tile_x, tile_y, NULL, kind FROM world.plot_objects WHERE x = @x AND y = @y
             UNION ALL SELECT 2, tile_x, tile_y, NULL, NULL FROM world.plot_fields WHERE x = @x AND y = @y
             UNION ALL SELECT 2, tile_x, tile_y, NULL, NULL FROM world.plot_trees WHERE x = @x AND y = @y
@@ -361,7 +361,7 @@ public sealed class PlotService(
                 switch (reader.GetInt32(0))
                 {
                     case 0:
-                        harvests.Add((tx, ty, reader.GetFieldValue<DateTimeOffset>(3)));
+                        harvests.AddRange(PlotHarvests.Gathered(tx, reader.GetFieldValue<DateTimeOffset?[]>(3)));
                         break;
                     case 1:
                         var kind = reader.GetString(4);
@@ -548,34 +548,13 @@ public sealed class PlotService(
         }, cancellationToken);
 
     /// <summary>Records that a tile not gathered before was gathered now; false when it was.</summary>
-    private async Task<bool> TryMarkHarvestedAsync(int x, int y, int tileX, int tileY, CancellationToken cancellationToken)
-    {
-        await using var insert = await db.CommandAsync(
-            "INSERT INTO world.plot_harvests (x, y, tile_x, tile_y, harvested_at) VALUES (@x, @y, @tx, @ty, @now) ON CONFLICT DO NOTHING",
-            cancellationToken);
-        insert.Parameters.AddWithValue("x", x);
-        insert.Parameters.AddWithValue("y", y);
-        insert.Parameters.AddWithValue("tx", tileX);
-        insert.Parameters.AddWithValue("ty", tileY);
-        insert.Parameters.AddWithValue("now", time.GetUtcNow());
-        return await insert.ExecuteNonQueryAsync(cancellationToken) > 0;
-    }
+    private Task<bool> TryMarkHarvestedAsync(int x, int y, int tileX, int tileY, CancellationToken cancellationToken) =>
+        PlotHarvests.MarkAsync(db, x, y, tileX, tileY, time.GetUtcNow(), again: false, cancellationToken);
 
     /// <summary>Records that a tile was gathered now; <paramref name="always"/> also when it was before. Fails when it was and may not be again.</summary>
     private async Task MarkHarvestedAsync(int x, int y, int tileX, int tileY, bool always, CancellationToken cancellationToken)
     {
-        await using var insert = await db.CommandAsync(
-            """
-            INSERT INTO world.plot_harvests (x, y, tile_x, tile_y, harvested_at) VALUES (@x, @y, @tx, @ty, @now)
-            ON CONFLICT (x, y, tile_x, tile_y) DO UPDATE SET harvested_at = @now WHERE @regrown
-            """, cancellationToken);
-        insert.Parameters.AddWithValue("x", x);
-        insert.Parameters.AddWithValue("y", y);
-        insert.Parameters.AddWithValue("tx", tileX);
-        insert.Parameters.AddWithValue("ty", tileY);
-        insert.Parameters.AddWithValue("now", time.GetUtcNow());
-        insert.Parameters.AddWithValue("regrown", always);
-        if (await insert.ExecuteNonQueryAsync(cancellationToken) == 0)
+        if (!await PlotHarvests.MarkAsync(db, x, y, tileX, tileY, time.GetUtcNow(), always, cancellationToken))
         {
             throw new GameException("nothing_here", "This has already been gathered.");
         }

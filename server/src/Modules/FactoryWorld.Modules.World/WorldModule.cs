@@ -29,19 +29,21 @@ public sealed class Plot
     public bool Public { get; set; }
 }
 
-/// <summary>A tile of a plot whose tree, rock or dune has been gathered.</summary>
+/// <summary>A square of <see cref="PlotHarvests.Side"/> × <see cref="PlotHarvests.Side"/> tiles of a plot where trees, rocks or dunes have been gathered.</summary>
 public sealed class PlotHarvest
 {
     public int X { get; set; }
 
     public int Y { get; set; }
 
-    public int TileX { get; set; }
+    /// <summary>Which square of the plot, see <see cref="PlotHarvests.Square"/>.</summary>
+    public short Square { get; set; }
 
-    public int TileY { get; set; }
-
-    /// <summary>When it was gathered: on sand a dune dug before the last sandstorm has drifted back.</summary>
-    public DateTimeOffset HarvestedAt { get; set; }
+    /// <summary>
+    /// When each tile of the square was gathered, by <see cref="PlotHarvests.Cell"/>, NULL where it was not: on sand a dune dug
+    /// before the last sandstorm has drifted back.
+    /// </summary>
+    public DateTimeOffset?[] HarvestedAt { get; set; } = [];
 }
 
 /// <summary>A tilled tile of a fertile plot, with what grows on it.</summary>
@@ -536,12 +538,11 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
         model.Entity<PlotHarvest>(e =>
         {
             e.ToTable("plot_harvests");
-            e.HasKey(h => new { h.X, h.Y, h.TileX, h.TileY });
+            e.HasKey(h => new { h.X, h.Y, h.Square });
             e.Property(h => h.X).HasColumnName("x");
             e.Property(h => h.Y).HasColumnName("y");
-            e.Property(h => h.TileX).HasColumnName("tile_x");
-            e.Property(h => h.TileY).HasColumnName("tile_y");
-            e.Property(h => h.HarvestedAt).HasColumnName("harvested_at").HasDefaultValueSql("now()");
+            e.Property(h => h.Square).HasColumnName("square");
+            e.Property(h => h.HarvestedAt).HasColumnName("harvested_at");
         });
         model.Entity<PlotField>(e =>
         {

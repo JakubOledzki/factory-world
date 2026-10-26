@@ -282,7 +282,7 @@ public sealed class DesertTests(ServerFactory factory) : IClassFixture<ServerFac
         Assert.True(placed.Type() == "plot.placed", placed.ToString());
 
         // Dug long before the last sandstorm.
-        await SqlAsync("UPDATE world.plot_harvests SET harvested_at = @long WHERE x = @x AND y = @y",
+        await SqlAsync("UPDATE world.plot_harvests SET harvested_at = ARRAY(SELECT CASE WHEN a IS NOT NULL THEN @long END FROM unnest(harvested_at) WITH ORDINALITY AS u(a, i) ORDER BY i) WHERE x = @x AND y = @y",
             ("long", factory.Time.GetUtcNow() - TimeSpan.FromDays(3)), ("x", x), ("y", y));
         var after = await TilesAsync(client, x, y);
         Assert.Equal((byte)TileObject.Dune, after[far]);
