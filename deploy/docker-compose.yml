@@ -48,8 +48,10 @@ services:
     restart: unless-stopped
     command: ["run", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
     hostname: factory-world
-    # cAdvisor reads every container's CPU and memory from the host.
+    # cAdvisor reads every container's CPU and memory from the host's cgroups; without the host cgroup
+    # namespace it sees only the machine as a whole.
     privileged: true
+    cgroup: host
     environment:
       GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL:-}
       GRAFANA_CLOUD_PROMETHEUS_USER: ${GRAFANA_CLOUD_PROMETHEUS_USER:-}
