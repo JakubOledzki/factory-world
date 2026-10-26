@@ -1,6 +1,14 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "2000 botów w grze",
+		"changes": [
+			"W grze gra teraz 2000 botów zamiast 30. Nowe boty mają ksywki jak prawdziwi gracze, na przykład ZakręconyTytan, KsiążęTraktor, xXKombajnXx albo tajny_drwal, i kupują działki w lasach, górach i na polach w całej Europie i na innych kontynentach, nie tylko w Polsce.",
+			"Na rynku jest więcej kupujących i więcej ofert. Boty dalej nie przeskoczą poziomem najlepszego prawdziwego gracza."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Płynniejsze chodzenie po dużych działkach",
 		"changes": [
 			"Chodzenie po działce z dużą fabryką już się nie zacina. Druty elektryczne całej działki rysują się teraz naraz, a nie każdy osobno, a drzewa, maszyny i ich cienie są zebrane na kilku wspólnych obrazkach. Na działce testowej gra wysyła do karty graficznej w każdej klatce około 170 poleceń rysowania zamiast prawie 1500.",
