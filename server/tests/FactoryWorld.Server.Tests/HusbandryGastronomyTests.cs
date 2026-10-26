@@ -90,6 +90,16 @@ public sealed class HusbandryGastronomyTests(ServerFactory factory) : IClassFixt
         Assert.Contains(Items.Provisions, Workshop.Find(Items.Refinery)!.Ingredients.Select(i => i.Item));
     }
 
+    [Fact]
+    public void Provisions_are_researched_in_the_food_branch_right_after_the_field_kitchen_that_packs_them()
+    {
+        var provisions = TechTree.ById[TechTree.Provisions];
+        Assert.Equal("food", TechTree.BranchOf[TechTree.Provisions].Id);
+        Assert.Equal(TechTree.Cooking, Assert.Single(provisions.Requires));
+        Assert.Same(provisions, TechTree.ByItem[Items.Provisions]);
+        Assert.NotNull(Processing.Machines.Single(m => m.Kind == Items.Kitchen).Recipe(Items.Provisions));
+    }
+
     // --- On a plot -------------------------------------------------------------------------------
 
     private async Task<GameClient> PlayerAsync()
