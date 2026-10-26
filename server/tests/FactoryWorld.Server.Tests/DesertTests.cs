@@ -203,6 +203,7 @@ public sealed class DesertTests(ServerFactory factory) : IClassFixture<ServerFac
 
         var prices = (await client.SendAsync("market.prices")).Payload().GetProperty("items").EnumerateArray()
             .ToDictionary(p => p.GetProperty("id").GetString()!);
+        Assert.Equal(250_00, NpcPrices.Sells[Items.Concrete]);
         Assert.Equal(NpcPrices.Sells[Items.Concrete], prices[Items.Concrete].GetProperty("buyCents").GetInt64());
         // The machines still need the research.
         Assert.Equal("locked", (await client.SendAsync("market.buy", new { item = Items.ConcreteMixer, quantity = 1 })).ErrorCode());
