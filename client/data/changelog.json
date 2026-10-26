@@ -1,6 +1,19 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Żywsza fabryka, plany budowy, czat i galeria",
+		"changes": [
+			"Nad maszyną, która stoi, miga znaczek: ikona brakującego składnika albo węgla, piorun przy braku prądu, strzałka, gdy jest pełna. Po najechaniu widać też powód, na przykład „stoi: czeka na składniki: ruda żelaza”.",
+			"Piece i maszyny na opał dymią, gdy pracują. Ścięte drzewo i rozbita skała sypią wiórami, a ekran lekko drży; postawiony albo schowany obiekt wzbija kurz, a awans, nowe badanie i polubienie kończą się konfetti.",
+			"Plany budowy [V]: kliknij dwa rogi kawałka fabryki, a potem miejsce, gdzie ma stanąć kopia. Cała kopia staje naraz, jeśli masz w ekwipunku wszystkie potrzebne przedmioty i wolne miejsce; zielony podgląd pokazuje, że się zmieści. Plan ma do 100 obiektów i zostaje w pamięci także na innych działkach.",
+			"[Ctrl+Z] (albo przycisk „Cofnij” na pasku) cofa ostatnie postawienie, schowanie albo całą kopię planu, do 20 kroków wstecz.",
+			"Czat: [Enter] otwiera go w rogu ekranu. Piszesz do graczy na tej działce albo do wszystkich, są też gotowe zwroty. To, co ktoś powie na działce, pojawia się w dymku nad jego głową.",
+			"„Wskaż miejsce” w czacie (albo kliknięcie środkowym przyciskiem myszy) stawia na polu działki pulsujący znacznik, który widzą wszyscy na niej.",
+			"Na cudzej działce publicznej jest przycisk „Podoba mi się”. Najczęściej lubiane fabryki trafiają do nowej „Galerii fabryk” na pasku, skąd jednym kliknięciem pójdziesz je obejrzeć. Właściciel widzi liczbę polubień pod nazwą działki."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Gra na całą szerokość ekranu",
 		"changes": [
 			"Na szerokich monitorach (21:9, 32:9) i na telefonach gra nie ma już czarnych pasów po bokach: na działce widać więcej świata, a pasek, pieniądze, minimapa i okna trzymają się krawędzi ekranu.",

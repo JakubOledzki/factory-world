@@ -49,6 +49,44 @@ func apply(players: Array) -> void:
 			_remove(id)
 
 
+## Shows what a player said over their head for a while; false if they are not on the plot.
+func say(id: String, text: String) -> bool:
+	if not _players.has(id):
+		return false
+	bubble(_players[id]["character"], text, player_scale)
+	return true
+
+
+## A speech bubble over a character's head, over its name, at its own size however small the character is drawn.
+static func bubble(character: Node2D, text: String, character_scale: float) -> void:
+	if character.has_meta("bubble"):
+		var old: Node = character.get_meta("bubble")
+		if is_instance_valid(old):
+			old.queue_free()
+	var panel := PanelContainer.new()
+	var style := StyleBoxFlat.new()
+	style.bg_color = Color(0.96, 0.94, 0.88, 0.95)
+	style.set_corner_radius_all(8)
+	style.set_content_margin_all(6)
+	panel.add_theme_stylebox_override("panel", style)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var label := UI.label(text if text.length() <= 60 else text.substr(0, 57) + "...", Color("#1c1a17"), HORIZONTAL_ALIGNMENT_CENTER, true)
+	label.add_theme_font_size_override("font_size", 14)
+	label.custom_minimum_size.x = 160
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	panel.add_child(label)
+	panel.z_index = 11
+	panel.scale = Vector2.ONE / character_scale
+	character.add_child(panel)
+	character.set_meta("bubble", panel)
+	panel.reset_size()
+	panel.position = Vector2(-panel.size.x / 2.0, -NAME_HEIGHT - 8.0 - panel.size.y) / character_scale
+	var tween := panel.create_tween()
+	tween.tween_interval(6.0)
+	tween.tween_property(panel, "modulate:a", 0.0, 0.5)
+	tween.tween_callback(panel.queue_free)
+
+
 func clear() -> void:
 	for id: String in _players.keys():
 		_remove(id)

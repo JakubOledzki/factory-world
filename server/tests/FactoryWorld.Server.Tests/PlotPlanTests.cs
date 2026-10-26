@@ -187,6 +187,7 @@ public sealed class PlotPlanTests(ServerFactory factory) : IClassFixture<ServerF
         await client.SendAsync("furnace.load", new { furnace, item = Items.Coal, quantity = 1 });
         status = (await client.SendAsync("stats.machines", new { x, y })).Payload().GetProperty("machines").EnumerateArray().Single();
         Assert.Equal("working", status.GetProperty("state").GetString());
+        Assert.True(status.GetProperty("fired").GetBoolean());
 
         // Someone with no right to work there sees nothing of it.
         Assert.Equal("not_owner", (await stranger.SendAsync("stats.machines", new { x, y })).ErrorCode());

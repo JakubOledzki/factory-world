@@ -29,7 +29,8 @@ public interface IProductionStats
 
 /// <summary>What a machine is doing now. <paramref name="Missing"/> lists what it waits for when it stands idle.</summary>
 /// <param name="Product">What it makes (its recipe), or null when nothing is set yet.</param>
-public sealed record MachineStatus(Guid Id, string Kind, string? Product, MachineActivity Activity, IReadOnlyList<string> Missing);
+/// <param name="Fired">Whether it burns fuel, so smoke rises from it while it works.</param>
+public sealed record MachineStatus(Guid Id, string Kind, string? Product, MachineActivity Activity, IReadOnlyList<string> Missing, bool Fired = false);
 
 public enum MachineActivity
 {

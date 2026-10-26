@@ -109,7 +109,7 @@ public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, IPlotOb
                     reader.IsDBNull(1) ? null : reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4),
                     reader.IsDBNull(5) ? null : reader.GetString(5), reader.GetInt32(6),
                     reader.IsDBNull(7) ? null : reader.GetFieldValue<DateTimeOffset>(7)), level, now);
-                statuses.Add(Furnace(reader.GetGuid(0), state, level.Kind));
+                statuses.Add(Furnace(reader.GetGuid(0), state, level.Kind) with { Fired = true });
             }
         }
 
@@ -141,7 +141,7 @@ public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, IPlotOb
         {
             var machine = (await Processing.OnPlotAsync(plain.Kind, db, plots, registry, id, now, cancellationToken))!;
             var clock = await Processing.ClockAsync(machine, power, id, cancellationToken);
-            var status = Machine(id, machine, Processing.Advance(machine, state, clock.At(now)));
+            var status = Machine(id, machine, Processing.Advance(machine, state, clock.At(now))) with { Fired = machine.Fired };
             statuses.Add(status.Activity == MachineActivity.Working && machine.Powered && clock.Speed(now) <= 0
                 ? status with { Activity = MachineActivity.NoPower }
                 : status);

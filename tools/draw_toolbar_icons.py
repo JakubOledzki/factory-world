@@ -254,9 +254,65 @@ def bank():
     p.save("bank")
 
 
+def blueprint():
+    p = Pen()
+    p.rect(8, 10, 50, 52, SHADE, 3)  # the sheet behind
+    p.rect(14, 16, 56, 58, INK, 3)  # the copy in front
+    p.rect(18, 20, 52, 54, CUT, 1.5)
+    for x in (27, 37, 47):  # its grid
+        p.line([(x, 22), (x, 52)], INK, 1.2)
+    for y in (29, 39, 48):
+        p.line([(20, y), (50, y)], INK, 1.2)
+    p.rect(22, 33, 32, 43, INK, 1)  # a machine on it and a belt to the next
+    p.rect(40, 25, 48, 33, INK, 1)
+    p.line([(32, 38), (44, 38), (44, 33)], INK, 3)
+    p.save("blueprint")
+
+
+def undo():
+    p = Pen()
+    p.arc(34, 36, 17, 200, 450, INK, 6)  # the way back
+    p.poly([(6, 26), (24, 16), (24, 38)], INK)  # its arrowhead
+    p.save("undo")
+
+
+def chat():
+    p = Pen()
+    p.rect(6, 8, 50, 40, SHADE, 8)  # the other's bubble behind
+    p.poly([(14, 36), (12, 48), (26, 38)], SHADE)
+    p.rect(16, 20, 58, 50, INK, 8)  # the reply in front
+    p.poly([(48, 46), (52, 58), (38, 48)], INK)
+    for x in (28, 37, 46):
+        p.dot(x, 35, 3.2, CUT)
+    p.save("chat")
+
+
+def gallery():
+    p = Pen()
+    p.rect(6, 12, 58, 54, INK, 3)  # a frame
+    p.rect(11, 17, 53, 49, CUT, 1.5)
+    p.poly([(13, 47), (26, 30), (35, 40), (42, 33), (51, 47)], SHADE)  # a landscape in it
+    p.dot(42, 23, 4, SHADE)
+    # A heart over its corner, with a gap around it.
+    p.dot(44, 46, 11, CUT)
+    p.dot(40, 43, 5, INK)
+    p.dot(48, 43, 5, INK)
+    p.poly([(35.4, 45), (44, 55), (52.6, 45)], INK)
+    p.save("gallery")
+
+
+def like():
+    p = Pen()
+    p.dot(22, 24, 14, INK)  # a heart
+    p.dot(42, 24, 14, INK)
+    p.poly([(9.2, 30), (32, 56), (54.8, 30)], INK)
+    p.dot(21, 21, 4.5, SHADE)  # its shine
+    p.save("like")
+
+
 def main() -> None:
     for draw in (backpack, garage, market, contracts, company, stats, achievements, world_map, logout,
-                 station, plant, mine_upgrade, garage_upgrade, city, bank):
+                 station, plant, mine_upgrade, garage_upgrade, city, bank, blueprint, undo, chat, gallery, like):
         draw()
 
 

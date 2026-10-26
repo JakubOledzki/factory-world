@@ -332,6 +332,7 @@ public sealed class GetPlotMachinesHandler(IServiceScopeFactory scopes) : IMessa
                 id = s.Id,
                 kind = s.Kind,
                 state = GetProductionHandler.Reason(s.Activity),
+                fired = s.Fired,
                 missing = s.Missing.Select(m => new { id = m, name = Items.Names.GetValueOrDefault(m, m) }),
             }),
         });
