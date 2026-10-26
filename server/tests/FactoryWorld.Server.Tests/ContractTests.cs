@@ -70,7 +70,8 @@ public sealed class ContractTests(ServerFactory factory) : IClassFixture<ServerF
         // Looking again gives the same orders, not new ones.
         Assert.Equal(npc.Select(Id), List(await ViewAsync(player), "npc").Select(Id));
 
-        var order = npc[0];
+        // A wooden chest may be ordered alone; this one is delivered in two parts.
+        var order = npc.First(c => c.GetProperty("quantity").GetInt64() > 1);
         var item = order.GetProperty("item").GetString()!;
         var quantity = order.GetProperty("quantity").GetInt64();
         var reward = order.GetProperty("rewardCents").GetInt64();
@@ -103,7 +104,8 @@ public sealed class ContractTests(ServerFactory factory) : IClassFixture<ServerF
     public async Task Giving_up_an_npc_order_returns_the_delivered_pieces()
     {
         using var player = await PlayerAsync();
-        var order = List(await ViewAsync(player), "npc")[0];
+        // Not an order of one piece, which delivering one would finish.
+        var order = List(await ViewAsync(player), "npc").First(c => c.GetProperty("quantity").GetInt64() > 1);
         var item = order.GetProperty("item").GetString()!;
         await GiveAsync(player, item: item, quantity: 1);
         await player.SendAsync("contracts.deliver", new { id = Id(order), quantity = 1 });
