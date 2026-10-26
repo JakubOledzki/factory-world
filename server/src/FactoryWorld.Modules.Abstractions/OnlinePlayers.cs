@@ -57,5 +57,11 @@ public sealed class OnlinePlayers
         }
     }
 
+    /// <summary>How many accounts play on a connection right now.</summary>
+    public int Players => _connections.Count;
+
+    /// <summary>How many bots are in a play session right now.</summary>
+    public int Bots => _bots.Count;
+
     public bool IsOnline(Guid accountId) => _connections.ContainsKey(accountId) || _bots.ContainsKey(accountId);
 }

@@ -86,6 +86,7 @@ app.UseCors();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
 
 app.MapHealthChecks("/health");
+app.MapGet("/metrics", MetricsEndpoint.Handle);
 app.MapGet("/", () => Results.Text("Factory World server"));
 app.Map("/ws", GameSocketEndpoint.HandleAsync);
 

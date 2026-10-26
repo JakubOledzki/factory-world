@@ -20,6 +20,8 @@ services:
     restart: unless-stopped
     environment:
       ConnectionStrings__Game: "Host=db;Port=5432;Database=factory_world;Username=factory;Password=${POSTGRES_PASSWORD}"
+      # One line per log entry (stack traces too), so Grafana Loki shows each entry whole.
+      Logging__Console__FormatterOptions__SingleLine: "true"
     depends_on:
       db:
         condition: service_healthy
@@ -39,7 +41,37 @@ services:
     depends_on:
       - server
 
+  # Sends logs and metrics to Grafana Cloud (docs/monitoring.md). Runs only with COMPOSE_PROFILES=monitoring in .env.
+  alloy:
+    image: grafana/alloy:v1.21.2
+    profiles: [monitoring]
+    restart: unless-stopped
+    command: ["run", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
+    hostname: factory-world
+    # cAdvisor reads every container's CPU and memory from the host.
+    privileged: true
+    environment:
+      GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL:-}
+      GRAFANA_CLOUD_PROMETHEUS_USER: ${GRAFANA_CLOUD_PROMETHEUS_USER:-}
+      GRAFANA_CLOUD_LOKI_URL: ${GRAFANA_CLOUD_LOKI_URL:-}
+      GRAFANA_CLOUD_LOKI_USER: ${GRAFANA_CLOUD_LOKI_USER:-}
+      GRAFANA_CLOUD_TOKEN: ${GRAFANA_CLOUD_TOKEN:-}
+      POSTGRES_DSN: "postgresql://factory:${POSTGRES_PASSWORD}@db:5432/factory_world?sslmode=disable"
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      - alloy-data:/var/lib/alloy/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /:/host/root:ro,rslave
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+      - /dev/disk:/dev/disk:ro
+    depends_on:
+      - server
+
 volumes:
   db-data:
   caddy-data:
   caddy-config:
+  alloy-data:

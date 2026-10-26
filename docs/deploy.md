@@ -173,7 +173,8 @@ Zrzuty warto też kopiować poza serwer (np. do magazynu obiektowego dostawcy VP
   które zajęły najwięcej czasu (`docker compose logs server | grep "Load in the last minute"`). Każda wiadomość
   dłuższa niż sekunda ma osobny wpis `Slow ...` (`docker compose logs server | grep Slow`). Wysokie CPU przy niewielu
   wiadomościach wskazuje na za słaby serwer, a jedna wiadomość, która ciągle prowadzi, na to, co trzeba przyspieszyć.
-  Obciążenie całej maszyny pokaże `docker stats`.
+  Obciążenie całej maszyny pokaże `docker stats`, a historię logów i czasów odpowiedzi Grafana Cloud
+  ([monitoring.md](monitoring.md)).
   Okna na jednej działce (skrzynia, piec, leśniczówka, stacja) najpierw nadrabiają czas jej taśm i podajników, więc gdy
   wszystkie są wolne naraz, szukaj wpisu `Slow logistics on plot` (`docker compose logs server | grep "Slow logistics"`):
   mówi, ile czekano na działkę, ile trwało wczytanie, liczenie i zapis.

@@ -112,11 +112,12 @@ jobs:
             HostKeyAlias deploy-server
           CONFIG
 
-      - name: Copy compose file and restart containers
+      - name: Copy compose and Alloy files and restart containers
         if: steps.check.outputs.enabled == 'true'
         run: |
-          ssh server "mkdir -p $DEPLOY_PATH"
+          ssh server "mkdir -p $DEPLOY_PATH/alloy"
           scp deploy/docker-compose.yml "server:$DEPLOY_PATH/docker-compose.yml"
+          scp deploy/alloy/config.alloy "server:$DEPLOY_PATH/alloy/config.alloy"
           ssh server "cd $DEPLOY_PATH && docker compose pull && docker compose up -d --remove-orphans && docker image prune -f"
 
       - name: Wait for the game server

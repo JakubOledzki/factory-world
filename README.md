@@ -18,7 +18,7 @@ Projekt gry: [dokument projektowy](https://claude.ai/code/artifact/50d66faa-a0b4
 | `client/tools/bench_plot.tscn` | Pomiar klienta: loguje się, wchodzi na działkę i mierzy czas wczytania i czas klatki (opis w pliku); po stronie serwera to samo mierzy `PerfTests.Big_factory_plot` (działka z 1000 obiektów) |
 | `client/tools/bench_menus.tscn` | Pomiar klienta: ile trwa otwarcie mapy świata, zakładek rynku i skrzyni na dużej działce, od kliknięcia do narysowanego okna (opis w pliku) |
 | `tools/loadtest/` | Test obciążenia: boty grające przez WebSocket (10 … 10 000 graczy naraz), czasy odpowiedzi, przepustowość, błędy, CPU i RAM, raport z wykresami ([instrukcja](tools/loadtest/README.md)) |
-| `deploy/` | Wdrożenie produkcyjne: Caddy (HTTPS + gra w przeglądarce), compose, `.env` |
+| `deploy/` | Wdrożenie produkcyjne: Caddy (HTTPS + gra w przeglądarce), compose, `.env`, Grafana Alloy (monitoring) |
 
 ## Uruchomienie lokalne
 
@@ -33,7 +33,7 @@ Całość w Dockerze: `docker compose up --build`.
 Testy serwera potrzebują PostgreSQL (`docker compose up db`), a potem: `cd server && dotnet test`.
 Każdy przebieg tworzy własną bazę testową i usuwa ją na końcu. Inny serwer bazy wskażesz zmienną `FW_TEST_DB`.
 
-Wdrożenie na serwer Linux: [docs/deploy.md](docs/deploy.md).
+Wdrożenie na serwer Linux: [docs/deploy.md](docs/deploy.md). Logi i metryki w Grafana Cloud: [docs/monitoring.md](docs/monitoring.md).
 
 ## Wydarzenia rynkowe
 
