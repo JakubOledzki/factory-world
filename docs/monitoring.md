@@ -60,6 +60,5 @@ sum by (container) (rate(container_cpu_usage_seconds_total[5m]))
 
 ## Claude i Grafana
 
-Do łącznika Grafana w claude.ai potrzebny jest adres stacku (`https://factoryworld.grafana.net`) i token konta
-usługowego: w Grafanie *Administration → Users and access → Service accounts → Add service account*, rola **Viewer**,
-potem *Add service account token*. Rola Viewer wystarcza do czytania logów i metryk i niczego nie zmienia.
+W claude.ai: *Ustawienia → Łączniki (Connectors)*, znajdź **Grafana Cloud**, *Połącz* i zaloguj się kontem Grafana,
+na którym jest stack `factoryworld`. Potem Claude w czacie i w projektach może sam czytać logi i metryki z tego stacku.
