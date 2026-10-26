@@ -841,6 +841,8 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
         var objects = await scope.ServiceProvider.GetRequiredService<PlotObjectService>().ObjectsAsync(request.X, request.Y, cancellationToken);
         var pests = await scope.ServiceProvider.GetRequiredService<PestService>().StateAsync(request.X, request.Y, cancellationToken);
         var certificate = await scope.ServiceProvider.GetRequiredService<ForestLedger>().JsonAsync(client.RequireAccount(), cancellationToken);
+        var (likes, liked) = await scope.ServiceProvider.GetRequiredService<LikeService>()
+            .LikesAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
         var cities = scope.ServiceProvider.GetRequiredService<CityService>();
         object? city = null;
         if (cities.TownOf(request.X, request.Y) is { } town)
@@ -862,6 +864,9 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             y = request.Y,
             biome = (int)biome,
             rights = rights.Order().Select(r => r.ToString().ToLowerInvariant()),
+            // How many players like the plot, and whether this one does.
+            likes,
+            liked,
             size = PlotLayout.Size,
             tileMeters = PlotLayout.TileMeters,
             tiles = Convert.ToBase64String(packed.ToArray()),

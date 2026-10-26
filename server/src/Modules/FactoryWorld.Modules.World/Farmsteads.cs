@@ -459,21 +459,30 @@ public sealed class FarmsteadService(
         }
 
         var statuses = new List<MachineStatus>();
-        var now = time.GetUtcNow();
         foreach (var (x, y) in plotsOf)
         {
-            var farms = await OpenAsync(x, y, now, cancellationToken);
-            foreach (var farm in farms)
-            {
-                farm.Patch.Advance(now);
-            }
-
-            await SaveAsync(x, y, farms, cancellationToken);
-            statuses.AddRange(farms.Where(f => f.Object.Owner == owner).Select(f => new MachineStatus(
-                f.Object.Id, f.Object.Kind, f.Patch.Crop.Item, f.Patch.Full ? MachineActivity.OutputFull : MachineActivity.Working, [])));
+            statuses.AddRange(await OnPlotAsync(x, y, owner, cancellationToken));
         }
 
         return statuses;
+    }
+
+    public Task<IReadOnlyList<MachineStatus>> StatusesOnPlotAsync(int x, int y, IReadOnlyCollection<Guid> ids, CancellationToken cancellationToken) =>
+        OnPlotAsync(x, y, null, cancellationToken);
+
+    /// <summary>The plot's farmsteads, only <paramref name="owner"/>'s when given.</summary>
+    private async Task<IReadOnlyList<MachineStatus>> OnPlotAsync(int x, int y, Guid? owner, CancellationToken cancellationToken)
+    {
+        var now = time.GetUtcNow();
+        var farms = await OpenAsync(x, y, now, cancellationToken);
+        foreach (var farm in farms)
+        {
+            farm.Patch.Advance(now);
+        }
+
+        await SaveAsync(x, y, farms, cancellationToken);
+        return farms.Where(f => owner is null || f.Object.Owner == owner).Select(f => new MachineStatus(
+            f.Object.Id, f.Object.Kind, f.Patch.Crop.Item, f.Patch.Full ? MachineActivity.OutputFull : MachineActivity.Working, [])).ToList();
     }
 
     private static Dictionary<string, int> ReadStore(string json) =>

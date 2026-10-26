@@ -4,6 +4,7 @@ using FactoryWorld.Modules.Accounts;
 using FactoryWorld.Modules.Achievements;
 using FactoryWorld.Modules.Bots;
 using FactoryWorld.Modules.Characters;
+using FactoryWorld.Modules.Chat;
 using FactoryWorld.Modules.Contracts;
 using FactoryWorld.Modules.Companies;
 using FactoryWorld.Modules.Crafting;
@@ -43,6 +44,7 @@ IGameModule[] modules =
     new ResearchModule(),
     new AchievementsModule(),
     new BotsModule(),
+    new ChatModule(),
 ];
 
 foreach (var module in modules)

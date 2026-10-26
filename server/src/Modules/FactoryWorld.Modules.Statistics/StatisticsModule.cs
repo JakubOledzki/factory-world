@@ -144,7 +144,7 @@ public sealed record ProductionReport(
     public double Elapsed => Math.Max(1.0 / 60, (Now - Start).TotalMinutes);
 }
 
-public sealed class ProductionReports(GameDb db, IEnumerable<IMachineStatuses> machines, TimeProvider time)
+public sealed class ProductionReports(GameDb db, IEnumerable<IMachineStatuses> machines, IPlotObjects plots, TimeProvider time)
 {
     /// <summary>Drops the player's minutes older than the statistics reach.</summary>
     public static async Task PruneAsync(GameDb db, Guid owner, DateTimeOffset now, CancellationToken cancellationToken)
@@ -206,6 +206,21 @@ public sealed class ProductionReports(GameDb db, IEnumerable<IMachineStatuses> m
                 flows.Values.OrderByDescending(f => f.TotalProduced + f.TotalConsumed).ThenBy(f => f.Item, StringComparer.Ordinal).ToList(),
                 statuses, [], []);
             return report with { Stalls = Stalls(statuses), Shortages = Shortages(report) };
+        }, cancellationToken);
+
+    /// <summary>What every machine on one plot is doing now, for the marks over stalled machines.</summary>
+    public Task<IReadOnlyList<MachineStatus>> OnPlotAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
+            var ids = (await plots.ObjectsAsync(x, y, cancellationToken)).Select(o => o.Id).ToHashSet();
+            var statuses = new List<MachineStatus>();
+            foreach (var module in machines)
+            {
+                statuses.AddRange((await module.StatusesOnPlotAsync(x, y, ids, cancellationToken)).Where(s => ids.Contains(s.Id)));
+            }
+
+            return (IReadOnlyList<MachineStatus>)statuses;
         }, cancellationToken);
 
     public static IReadOnlyList<Stall> Stalls(IEnumerable<MachineStatus> statuses) =>
@@ -284,7 +299,7 @@ public sealed class GetProductionHandler(IServiceScopeFactory scopes) : IMessage
 
     private static string Name(string item) => Items.Names.GetValueOrDefault(item, item);
 
-    private static string Reason(MachineActivity activity) => activity switch
+    public static string Reason(MachineActivity activity) => activity switch
     {
         MachineActivity.NoInput => "no_input",
         MachineActivity.NoFuel => "no_fuel",
@@ -293,6 +308,35 @@ public sealed class GetProductionHandler(IServiceScopeFactory scopes) : IMessage
         MachineActivity.NoPower => "no_power",
         _ => "working",
     };
+}
+
+public sealed record PlotMachinesRequest(int X, int Y);
+
+/// <summary>What each machine on a plot is doing, so the plot marks the ones that stand still and why.</summary>
+public sealed class GetPlotMachinesHandler(IServiceScopeFactory scopes) : IMessageHandler
+{
+    public string Type => "stats.machines";
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<PlotMachinesRequest>(payload);
+        await using var scope = scopes.CreateAsyncScope();
+        var statuses = await scope.ServiceProvider.GetRequiredService<ProductionReports>()
+            .OnPlotAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
+        return new Reply("stats.machines", new
+        {
+            x = request.X,
+            y = request.Y,
+            machines = statuses.Select(s => new
+            {
+                id = s.Id,
+                kind = s.Kind,
+                state = GetProductionHandler.Reason(s.Activity),
+                fired = s.Fired,
+                missing = s.Missing.Select(m => new { id = m, name = Items.Names.GetValueOrDefault(m, m) }),
+            }),
+        });
+    }
 }
 
 /// <summary>Production statistics: what each player's factory makes and uses up, and where it stalls. Owns the <c>stats</c> schema.</summary>
@@ -306,6 +350,7 @@ public sealed class StatisticsModule : IGameModule
         services.AddScoped<IProductionStats, ProductionStats>();
         services.AddScoped<ProductionReports>();
         services.AddSingleton<IMessageHandler, GetProductionHandler>();
+        services.AddSingleton<IMessageHandler, GetPlotMachinesHandler>();
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>

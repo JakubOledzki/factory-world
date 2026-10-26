@@ -960,6 +960,17 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(s => s.Day).HasColumnName("day");
             e.Property(s => s.Count).HasColumnName("count");
         });
+        model.Entity<PlotLikeRow>(e =>
+        {
+            e.ToTable("plot_likes");
+            // A player likes a plot once.
+            e.HasKey(l => new { l.X, l.Y, l.PlayerId });
+            e.Property(l => l.X).HasColumnName("x");
+            e.Property(l => l.Y).HasColumnName("y");
+            e.Property(l => l.PlayerId).HasColumnName("player_id");
+            e.Property(l => l.LikedAt).HasColumnName("liked_at");
+            e.HasIndex(l => l.PlayerId);
+        });
         model.Entity<TownVoteRow>(e =>
         {
             e.ToTable("town_votes");
@@ -1540,6 +1551,12 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, SurveyHandler>();
         services.AddSingleton<IMessageHandler, PlaceOnPlotHandler>();
         services.AddSingleton<IMessageHandler, PickUpFromPlotHandler>();
+        services.AddSingleton<IMessageHandler, PlaceManyOnPlotHandler>();
+        services.AddSingleton<PlotGallery>();
+        services.AddScoped<LikeService>();
+        services.AddSingleton<IMessageHandler, LikePlotHandler>();
+        services.AddSingleton<IMessageHandler, GalleryHandler>();
+        services.AddSingleton<IMessageHandler, PickUpManyFromPlotHandler>();
         services.AddSingleton<IMessageHandler, RotateOnPlotHandler>();
         services.AddSingleton(_ => Towns.Load());
         services.AddScoped<CityService>();

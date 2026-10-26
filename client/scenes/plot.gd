@@ -41,6 +41,7 @@ const ACTIONS := {
 	"hotbar_3": [KEY_3],
 	"hotbar_4": [KEY_4],
 	"hotbar_5": [KEY_5],
+	"plan": [KEY_V],
 }
 
 const LAYOUT_FILE := "res://art/plot/layout.json"
@@ -373,6 +374,18 @@ const STATION_POLL := 4000.0
 const PRESENCE_POLL := 150.0
 ## How often (ms) a player alone on the plot says where they stand.
 const PRESENCE_POLL_ALONE := 1000.0
+## How often (ms) the plot asks what its machines are doing, for the marks over the ones that stand still.
+const MACHINES_POLL := 5000.0
+## Objects a building plan does not copy: they stand only at a particular place (by a mine, an oil field, the station,
+## the shore) or once on a plot, so a copy of them could not stand anywhere else.
+const NOT_IN_PLANS := ["furniture_drill", "furniture_heavy_drill", "furniture_pumpjack", "furniture_gas_well", "furniture_offshore_platform",
+	"furniture_lighthouse", "furniture_export_chest"]
+## The most objects one plan holds (as the server's PlotObjects.MaxPlan), and the most steps Ctrl+Z undoes.
+const MAX_PLAN := 100
+const MAX_UNDO := 20
+## How far (px) the screen shakes at a felled tree or a broken rock, and how fast that dies down (px a second).
+const SHAKE := 5.0
+const SHAKE_FADE := 30.0
 ## Crops in the order of the art; the server sends their names and growing times.
 const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower"]
 ## A crop shows as a sprout until this much of its growing time is left, then half grown.
@@ -608,6 +621,28 @@ var _splitter_window: SplitterWindow
 var _filter_window: FilterWindow
 ## Small icons of the filtered item on every object with a filter, over everything standing on the plot.
 var _filter_marks: Node2D
+## Marks over machines that stand still, smoke, dust and confetti.
+var _effects: PlotEffects
+var _next_machines_poll := 0.0
+var _polling_machines := false
+var _shake := 0.0
+## Building plans: "copy" while the player marks the corners of what to copy, "paste" while the copy follows the mouse; "" otherwise.
+var _plan_mode := ""
+var _plan_corner := Vector2i(-1, -1)
+## The copied plan, kept while the game runs, also on other plots: [{ kind, dx, dy, rotation }] from its top left tile.
+static var _plan: Array[Dictionary] = []
+## What Ctrl+Z undoes, newest last: { placed: [ids] } to take back what was put up, or { picked: [objects] } to put back what was picked up.
+var _undo: Array[Dictionary] = []
+var _plan_button: Button
+var _undo_button: Button
+## The chat in the corner, and whether the next click on the plot points at a place for the others.
+var _chat: ChatBox
+var _pinging := false
+## Likes: how many players like this plot, whether this player does (a visitor), and the button to like it.
+var _likes := 0
+var _liked := false
+var _like_button: Button
+var _gallery_window: GalleryWindow
 var _company_window: CompanyWindow
 var _stats_window: StatsWindow
 var _machine_window: MachineWindow
@@ -736,6 +771,10 @@ func _build_world() -> void:
 	_filter_marks.draw.connect(_draw_filters)
 	add_child(_filter_marks)
 	_logistics.filters_changed.connect(_on_filters_changed)
+	_effects = PlotEffects.new()
+	_effects.tile = TILE
+	_effects.centre_of = _object_centre
+	add_child(_effects)
 
 	_camera.position_smoothing_enabled = true
 	_camera.position_smoothing_speed = 8.0
@@ -1720,7 +1759,7 @@ func _update_field_label(cell: Vector2i) -> void:
 		return
 	var crop: Variant = _fields[cell]["crop"] if _fields.has(cell) else null
 	if _placed.has(cell):
-		_field_label.text = _placed_label(cell)
+		_field_label.text = _placed_label(cell) + _effects.note(str(_placed[cell]["id"]))
 	elif _animals.has(cell):
 		_field_label.text = _animal_label(cell)
 	elif _trees.has(cell):
@@ -1880,6 +1919,7 @@ func _draw_marks() -> void:
 		_draw_ring(_cell_centre(ground), Color(0.56, 0.84, 0.35, 0.8))
 	if _work.x >= 0:
 		_draw_ring(_cell_centre(_work), Color(1, 1, 1, 0.7))
+	_draw_plan(ground)
 
 
 ## A gently pulsing golden ring (and the footprint of a big one) under the object whose window is open,
@@ -1992,6 +2032,9 @@ func _draw_reach(cell: Vector2i, r: int) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if not _ready_to_play or _pinch_zoom(event):
 		return
+	if _chat_input(event):
+		get_viewport().set_input_as_handled()
+		return
 	if _visitor and _visitor_input(event):
 		return
 	if event is InputEventMouseButton and event.pressed:
@@ -2008,7 +2051,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			if event.device == InputEvent.DEVICE_ID_EMULATION:
 				_start_hold(MOUSE_BUTTON_LEFT)
 			var cell := Vector2i((get_global_mouse_position() / TILE).floor())
-			if _placing != "":
+			if _plan_mode != "":
+				_plan_click(cell)
+			elif _placing != "":
 				if _can_place(cell) and _big(_placing):
 					_place_big(cell)
 				elif _can_place(cell):
@@ -2037,14 +2082,18 @@ func _unhandled_input(event: InputEvent) -> void:
 				if _tile(cell) >= 0:
 					_walk_to(cell)
 		get_viewport().set_input_as_handled()
+	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_Z and (event.ctrl_pressed or event.meta_pressed):
+		_undo_last()
 	elif event.is_action_pressed("cancel"):
-		if _placing != "":
+		if _plan_mode != "":
+			_stop_plan()
+		elif _placing != "":
 			_stop_placing()
 		elif _releasing != "":
 			_stop_releasing()
-		elif _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _achievements_window.visible \
+		elif _gallery_window.visible or _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _achievements_window.visible \
 				or _mine_window.visible or _character_window.visible or _bank_window.visible or _using_window_open():
-			for window: GameWindow in [_station_window, _inventory_window, _crafting_window, _research_window, _furnace_window, _machine_window, _forester_window, _farmstead_window, _canteen_window, _generator_window, _storage_window, _splitter_window, _filter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window, _bank_window]:
+			for window: GameWindow in [_gallery_window, _station_window, _inventory_window, _crafting_window, _research_window, _furnace_window, _machine_window, _forester_window, _farmstead_window, _canteen_window, _generator_window, _storage_window, _splitter_window, _filter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window, _bank_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -2102,11 +2151,50 @@ func _unhandled_input(event: InputEvent) -> void:
 		Game.open_world_map()
 	elif event.is_action_pressed("garage"):
 		Game.open_garage()
+	elif event.is_action_pressed("plan"):
+		_toggle_plan()
 	else:
 		for slot in Hotbar.SLOTS:
 			if event.is_action_pressed("hotbar_%d" % (slot + 1)):
 				_hotbar.use(slot)
 				break
+
+
+## Enter opens the chat, Esc closes it; a middle click (or a click after "Wskaż miejsce") points at a tile; true if it took the event.
+func _chat_input(event: InputEvent) -> bool:
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ENTER, KEY_KP_ENTER] and not _chat.is_open:
+		_chat.open()
+		return true
+	if event.is_action_pressed("cancel") and (_chat.is_open or _pinging):
+		_pinging = false
+		_chat.close()
+		return true
+	if event is InputEventMouseButton and event.pressed and (event.button_index == MOUSE_BUTTON_MIDDLE \
+			or (_pinging and event.button_index == MOUSE_BUTTON_LEFT)):
+		var cell := Vector2i((get_global_mouse_position() / TILE).floor())
+		_pinging = false
+		if _tile(cell) >= 0:
+			_chat.ping(cell)
+		return true
+	return false
+
+
+## Shows a new chat message on the plot: over the head of who said it, and a ping as a mark on the ground.
+func _on_chat_heard(message: Dictionary) -> void:
+	if message["channel"] != "plot":
+		return
+	var mine := str(message["name"]) == str(Game.character.get("name", ""))
+	var ping: Variant = message.get("ping")
+	if ping != null:
+		var cell := Vector2i(int(ping["x"]), int(ping["y"]))
+		_effects.ping(_cell_centre(cell))
+		if not mine:
+			_show_toast("%s wskazuje miejsce na działce." % message["name"], Color("#5ab4e8"))
+		return
+	if mine:
+		PlotPlayers.bubble(_player, str(message["text"]), PLAYER_SCALE)
+	else:
+		_others.say(str(message["from"]), str(message["text"]))
 
 
 ## On a public plot of someone else a click only walks there, and nothing is used, built or gathered; true if it took the event.
@@ -2118,7 +2206,7 @@ func _visitor_input(event: InputEvent) -> bool:
 				_walk_to(cell)
 		get_viewport().set_input_as_handled()
 		return true
-	for action: String in ["interact", "rotate", "plant", "upgrade_mine", "station", "market"]:
+	for action: String in ["interact", "rotate", "plant", "upgrade_mine", "station", "market", "plan"]:
 		if event.is_action_pressed(action):
 			_show_toast("To nie twoja działka: możesz tu tylko chodzić i oglądać.", UI.MUTED)
 			return true
@@ -2313,6 +2401,8 @@ func _harvest(cell: Vector2i) -> void:
 		return
 	var result: Dictionary = reply["payload"]
 	_clear_tile(cell, kind)
+	_effects.chips(_cell_centre(cell), Color("#a07a48") if kind in TREES else Color("#b5b0a6"))
+	_shake_screen(SHAKE if kind in TREES or kind == ROCK else SHAKE * 0.4)
 	# A saw may fell the trees next to it at the same cut.
 	for felled: Dictionary in result.get("felled", []):
 		var other := Vector2i(int(felled["tileX"]), int(felled["tileY"]))
@@ -2331,9 +2421,16 @@ func _harvest(cell: Vector2i) -> void:
 	Game.gain_xp(result["xp"])
 	_refresh_character()
 	if result["xp"].get("leveledUp", false):
-		_show_toast("Awans! Poziom %d" % int(result["xp"]["level"]), UI.GOLD)
+		_level_up(int(result["xp"]["level"]))
 	if _inventory_window.visible or _station_window.visible:
 		_reload_inventory()
+
+
+## A new level: confetti over the player and the news under the quick bar.
+func _level_up(level: int) -> void:
+	_show_toast("Awans! Poziom %d" % level, UI.GOLD)
+	_effects.confetti(_player.position)
+	_shake_screen(SHAKE * 0.6)
 
 
 ## Removes a worked object: it falls over (a tree) or crumbles, and the tile becomes free.
@@ -2947,6 +3044,8 @@ func _place_object(cell: Vector2i) -> void:
 		return
 	var object: Dictionary = reply["payload"]["object"]
 	var at := Vector2i(object["tileX"], object["tileY"])
+	_effects.dust(_object_centre(object["kind"], at), Footprints.size(object["kind"]))
+	_remember({"placed": [str(object["id"])]})
 	_put_placed(object)
 	for covered in _footprint(object["kind"], at):
 		_astar.set_point_solid(covered, not _walkable(covered))
@@ -3166,21 +3265,12 @@ func _pick_up_placed(id: String) -> void:
 	if reply["type"] != "plot.pickedUp":
 		_show_error(reply)
 		return
-	var shown := false
 	var forester := _foresters.has(id)
-	_foresters.erase(id)
 	var farm := _farmsteads.has(id)
-	_farmsteads.erase(id)
-	for cell: Vector2i in _placed.keys():
-		if _placed[cell]["id"] == id:
-			if not shown:
-				_show_toast("%s: schowano do ekwipunku%s." % [_placed[cell]["name"], ", a z nim jego las" if forester else ", a z nią jej pola" if farm else ""])
-				shown = true
-			_placed.erase(cell)
-			_astar.set_point_solid(cell, _tile(cell) in SOLID)
-			if _hovered == cell:
-				_hovered = Vector2i(-1, -1)
-			_draw_cell(cell)
+	var object := _forget_placed(id)
+	if not object.is_empty():
+		_remember({"picked": [object]})
+		_show_toast("%s: schowano do ekwipunku%s." % [object["name"], ", a z nim jego las" if forester else ", a z nią jej pola" if farm else ""])
 	_placed_changed()
 	_hide_placed_windows()
 	_update_market_button()
@@ -3192,6 +3282,235 @@ func _pick_up_placed(id: String) -> void:
 		_poll_forestry()
 	if farm:
 		_poll_farmsteads()
+
+
+## Takes a picked up object off the tiles it covered, with dust where it stood; returns it, or {} if it was not there.
+func _forget_placed(id: String) -> Dictionary:
+	var object := {}
+	_foresters.erase(id)
+	_farmsteads.erase(id)
+	for cell: Vector2i in _placed.keys():
+		if str(_placed[cell]["id"]) == id:
+			if object.is_empty():
+				object = _placed[cell]
+				_effects.dust(_object_centre(object["kind"], _anchor(cell)), Footprints.size(object["kind"]))
+			_placed.erase(cell)
+			_astar.set_point_solid(cell, _tile(cell) in SOLID)
+			if _hovered == cell:
+				_hovered = Vector2i(-1, -1)
+			_draw_cell(cell)
+	return object
+
+
+## Puts an object the server placed on the tiles it covers.
+func _show_placed(object: Dictionary) -> void:
+	var at := Vector2i(object["tileX"], object["tileY"])
+	_put_placed(object)
+	for covered in _footprint(object["kind"], at):
+		_astar.set_point_solid(covered, not _walkable(covered))
+		_draw_cell(covered)
+
+
+# --- Building plans and undo -----------------------------------------------------------------
+
+func _toggle_plan() -> void:
+	if _visitor:
+		_show_toast("Na cudzej działce niczego nie postawisz.", UI.ERROR)
+		return
+	if _plan_mode == "copy":
+		_stop_plan()
+		return
+	_stop_placing()
+	_set_planting(false)
+	_stop_releasing()
+	_stop_work()
+	_plan_mode = "copy"
+	_plan_corner = Vector2i(-1, -1)
+	_show_toast("Plan budowy: kliknij dwa przeciwne rogi kawałka fabryki, który chcesz skopiować.")
+	_update_hint()
+
+
+func _stop_plan() -> void:
+	_plan_mode = ""
+	_plan_corner = Vector2i(-1, -1)
+	_marks.queue_redraw()
+	_update_hint()
+
+
+func _plan_click(cell: Vector2i) -> void:
+	if _plan_mode == "copy":
+		if _plan_corner.x < 0:
+			_plan_corner = cell
+			_update_hint()
+		else:
+			_copy_plan(Rect2i(_plan_corner, Vector2i.ZERO).expand(cell))
+	elif _plan_mode == "paste":
+		_paste_plan(cell)
+
+
+## Copies what stands in the rectangle (both corners included): every object whose tile is inside it.
+func _copy_plan(area: Rect2i) -> void:
+	area.size += Vector2i.ONE
+	var copied: Array[Dictionary] = []
+	var skipped := 0
+	var seen := {}
+	for cell: Vector2i in _placed:
+		var object: Dictionary = _placed[cell]
+		var anchor := _anchor(cell)
+		if seen.has(object["id"]) or not area.has_point(anchor):
+			continue
+		seen[object["id"]] = true
+		if object["kind"] in NOT_IN_PLANS or object["kind"] in ONE_PER_PLOT:
+			skipped += 1
+			continue
+		copied.append({"kind": str(object["kind"]), "dx": anchor.x - area.position.x, "dy": anchor.y - area.position.y,
+			"rotation": int(object.get("rotation", 0))})
+	_plan_corner = Vector2i(-1, -1)
+	if copied.is_empty():
+		_show_toast("W zaznaczonym miejscu nie ma niczego, co da się skopiować.", UI.ERROR)
+		_update_hint()
+		return
+	if copied.size() > MAX_PLAN:
+		_show_toast("Plan może mieć najwyżej %d obiektów, a tu jest %d. Zaznacz mniejszy kawałek." % [MAX_PLAN, copied.size()], UI.ERROR)
+		_update_hint()
+		return
+	_plan = copied
+	_plan_mode = "paste"
+	_show_toast("Skopiowano: %d obiektów%s. Kliknij, gdzie postawić kopię." % [copied.size(),
+		" (bez %d, które stoją tylko w jednym miejscu)" % skipped if skipped > 0 else ""], UI.GOOD)
+	_update_hint()
+
+
+## The plan's objects as they would stand with its top left tile on `corner`.
+func _plan_at(corner: Vector2i) -> Array[Dictionary]:
+	var objects: Array[Dictionary] = []
+	for o: Dictionary in _plan:
+		objects.append({"kind": o["kind"], "tileX": corner.x + int(o["dx"]), "tileY": corner.y + int(o["dy"]), "rotation": int(o["rotation"])})
+	return objects
+
+
+## Whether every tile the plan covers from `corner` is free, and nothing of it overlaps itself.
+func _plan_fits(corner: Vector2i) -> bool:
+	var taken := {}
+	var city := _biome() == CITY
+	for o: Dictionary in _plan_at(corner):
+		for at in _footprint(o["kind"], Vector2i(o["tileX"], o["tileY"])):
+			if taken.has(at) or not _free_ground(at, false) or (city and not _in_city_area(at)):
+				return false
+			taken[at] = true
+	return true
+
+
+## What the inventory lacks to put the plan up, as "2× taśmociąg, 1× podajnik"; "" when it holds enough.
+func _plan_missing() -> String:
+	var needed := {}
+	for o: Dictionary in _plan:
+		needed[o["kind"]] = int(needed.get(o["kind"], 0)) + 1
+	var missing: Array[String] = []
+	for kind: String in needed:
+		var lacking := int(needed[kind]) - _count(kind)
+		if lacking > 0:
+			missing.append("%d× %s" % [lacking, _item_name(kind).to_lower()])
+	return ", ".join(missing)
+
+
+func _paste_plan(corner: Vector2i) -> void:
+	if not _plan_fits(corner):
+		_show_toast("Tu się nie zmieści: kopia potrzebuje wolnych pól pod wszystkimi obiektami.", UI.ERROR)
+		return
+	var missing := _plan_missing()
+	if missing != "":
+		_show_toast("Brakuje w ekwipunku: %s." % missing, UI.ERROR)
+		return
+	var reply := await Net.request("plot.placeMany", {"x": _at.x, "y": _at.y, "objects": _plan_at(corner)})
+	if reply["type"] != "plot.placedMany":
+		_show_error(reply)
+		return
+	var ids: Array[String] = []
+	var middle := Vector2.ZERO
+	var objects: Array = reply["payload"]["objects"]
+	for object: Dictionary in objects:
+		_show_placed(object)
+		ids.append(str(object["id"]))
+		middle += _object_centre(object["kind"], Vector2i(object["tileX"], object["tileY"]))
+	_placed_changed()
+	_update_market_button()
+	_remember({"placed": ids})
+	if not objects.is_empty():
+		middle /= objects.size()
+		_effects.dust(middle, 3.0)
+		_effects.confetti(middle)
+	_show_toast("Postawiono kopię: %d obiektów. [Ctrl+Z] cofa." % objects.size(), UI.GOOD)
+	_reload_inventory()
+	_poll_logistics()
+	_next_machines_poll = 0.0
+
+
+## Ghost of the copy under the mouse in green where it fits, red where it does not; in copy mode, the marked rectangle.
+func _draw_plan(ground: Vector2i) -> void:
+	if _plan_mode == "copy" and ground.x >= 0:
+		var from := _plan_corner if _plan_corner.x >= 0 else ground
+		var area := Rect2i(from, Vector2i.ZERO).expand(ground)
+		area.size += Vector2i.ONE
+		var rect := Rect2(Vector2(area.position) * TILE, Vector2(area.size) * TILE)
+		_marks.draw_rect(rect, Color(0.36, 0.7, 0.9, 0.12))
+		_marks.draw_rect(rect, Color(0.36, 0.7, 0.9, 0.85), false, 2.0)
+	elif _plan_mode == "paste" and ground.x >= 0:
+		var tint := Color(0.56, 0.84, 0.35, 0.8) if _plan_fits(ground) else Color(1.0, 0.42, 0.35, 0.8)
+		for o: Dictionary in _plan_at(ground):
+			var cell := Vector2i(o["tileX"], o["tileY"])
+			for at in _footprint(o["kind"], cell):
+				var rect := Rect2(Vector2(at) * TILE, TILE).grow(-2.0)
+				_marks.draw_rect(rect, Color(tint, 0.15))
+				_marks.draw_rect(rect, Color(tint, 0.6), false, 1.5)
+			var size := 18.0 + 10.0 * (Footprints.size(o["kind"]) - 1)
+			_marks.draw_texture_rect(_logistics._icon(o["kind"]), Rect2(_object_centre(o["kind"], cell) - Vector2(size, size) / 2, Vector2(size, size)), false, Color(1, 1, 1, 0.75))
+
+
+## Notes a step Ctrl+Z can undo.
+func _remember(step: Dictionary) -> void:
+	_undo.append(step)
+	if _undo.size() > MAX_UNDO:
+		_undo.pop_front()
+	_undo_button.visible = true
+
+
+func _undo_last() -> void:
+	if _visitor or _undo.is_empty():
+		_show_toast("Nie ma czego cofnąć.", UI.MUTED)
+		return
+	var step: Dictionary = _undo.pop_back()
+	_undo_button.visible = not _undo.is_empty()
+	if step.has("placed"):
+		var ids: Array = step["placed"].filter(func(id: String) -> bool: return _placed_cell(id).x >= 0)
+		if ids.is_empty():
+			_undo_last()
+			return
+		var reply := await Net.request("plot.pickupMany", {"x": _at.x, "y": _at.y, "ids": ids})
+		if reply["type"] != "plot.pickedUpMany":
+			_show_error(reply)
+			return
+		for id: String in ids:
+			_forget_placed(id)
+		_placed_changed()
+		_show_toast("Cofnięto: schowano %d obiektów do ekwipunku." % ids.size())
+	else:
+		var picked: Array = step["picked"]
+		var objects: Array = picked.map(func(o: Dictionary) -> Dictionary:
+			return {"kind": o["kind"], "tileX": int(o["tileX"]), "tileY": int(o["tileY"]), "rotation": int(o.get("rotation", 0))})
+		var reply := await Net.request("plot.placeMany", {"x": _at.x, "y": _at.y, "objects": objects})
+		if reply["type"] != "plot.placedMany":
+			_show_error(reply)
+			return
+		for object: Dictionary in reply["payload"]["objects"]:
+			_show_placed(object)
+			_effects.dust(_object_centre(object["kind"], Vector2i(object["tileX"], object["tileY"])), Footprints.size(object["kind"]))
+		_placed_changed()
+		_show_toast("Cofnięto: %s stoi z powrotem." % str(picked[0]["name"]) if picked.size() == 1 else "Cofnięto.")
+	_hide_placed_windows()
+	_update_market_button()
+	_reload_inventory()
+	_poll_logistics()
 
 
 # --- Holding an object to put it away -------------------------------------------------------
@@ -3456,6 +3775,7 @@ func _apply_animals(animals: Array) -> void:
 ## power lines follow, and so do the kinds standing here, which the frames look at instead of every object.
 func _placed_changed() -> void:
 	_logistics.set_objects(_placed)
+	_effects.set_objects(_placed)
 	_draw_tunnels()
 	_power.set_objects(_placed)
 	_update_screening()
@@ -3576,6 +3896,7 @@ func _on_crafted(done: Array, xp: Variant) -> void:
 
 func _on_researched(finished: Array, xp: Variant) -> void:
 	_gain(xp, _player.position, 0.0)
+	_effects.confetti(_player.position)
 	_show_toast("Zbadano: %s. Nowe przepisy czekają przy stole." % ", ".join(finished.map(func(t: Dictionary) -> String: return t["name"])), UI.GOOD)
 	# The workbench shows the recipes the research unlocked.
 	_crafting_window.refresh()
@@ -3602,7 +3923,7 @@ func _gain(xp: Variant, at: Vector2, delay: float) -> void:
 	Game.gain_xp(xp)
 	_refresh_character()
 	if xp.get("leveledUp", false):
-		_show_toast("Awans! Poziom %d" % int(xp["level"]), UI.GOLD)
+		_level_up(int(xp["level"]))
 
 
 # --- Mining --------------------------------------------------------------------------------------
@@ -3734,6 +4055,8 @@ func _mine_request(id: int, blast := false) -> void:
 	var r := _mine_rect(id)
 	var at := Vector2(r.get_center().x, r.end.y - 1.0) * TILE
 	var items: Array = result["items"]
+	_effects.chips(at, Color("#b5b0a6"))
+	_shake_screen(SHAKE * 2.0 if blast else SHAKE * 0.6)
 	if blast:
 		_float_text("BUM! %d urobków" % int(result.get("blasted", 5)), UI.GOLD, at - Vector2(0, 20))
 		_reload_inventory()
@@ -3748,7 +4071,7 @@ func _mine_request(id: int, blast := false) -> void:
 	Game.gain_xp(result["xp"])
 	_refresh_character()
 	if result["xp"].get("leveledUp", false):
-		_show_toast("Awans! Poziom %d" % int(result["xp"]["level"]), UI.GOLD)
+		_level_up(int(result["xp"]["level"]))
 	if _inventory_window.visible or _station_window.visible:
 		_reload_inventory()
 	if int(state["units"]) <= 0:
@@ -3905,7 +4228,10 @@ func _process(delta: float) -> void:
 	_update_chunks()
 	_update_fade()
 	_camera.position = _player.position
+	_update_shake(delta)
 	_update_hover()
+	if _plan_mode != "":
+		_marks.queue_redraw()
 	_update_hold(delta)
 	_update_work(delta)
 	_update_minimap_dot()
@@ -3933,6 +4259,34 @@ func _process(delta: float) -> void:
 		_poll_station()
 	if Time.get_ticks_msec() >= _next_presence_poll:
 		_poll_presence()
+	if not _visitor and not _placed.is_empty() and Time.get_ticks_msec() >= _next_machines_poll:
+		_poll_machines()
+
+
+## Asks what every machine on the plot is doing, to mark the ones that stand still and smoke over the fired ones at work.
+func _poll_machines() -> void:
+	if _polling_machines:
+		return
+	_polling_machines = true
+	_next_machines_poll = Time.get_ticks_msec() + MACHINES_POLL
+	var reply := await Net.request("stats.machines", {"x": _at.x, "y": _at.y})
+	_polling_machines = false
+	if reply["type"] == "stats.machines":
+		_effects.apply(reply["payload"]["machines"])
+	else:
+		_effects.clear()
+
+
+## Shakes the screen a little, e.g. when a tree falls.
+func _shake_screen(strength := SHAKE) -> void:
+	_shake = maxf(_shake, strength)
+
+
+func _update_shake(delta: float) -> void:
+	if _shake <= 0.0:
+		return
+	_shake = move_toward(_shake, 0.0, SHAKE_FADE * delta)
+	_camera.offset = Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * _shake if _shake > 0.0 else Vector2.ZERO
 
 
 ## Says where the player stands and shows the other players on the plot.
@@ -4227,6 +4581,33 @@ func _build_hud() -> void:
 	tool_panel.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 12)
 	tool_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 
+	# The chat over the tools: its last lines fade away by themselves, [Enter] opens it.
+	_chat = ChatBox.new()
+	_chat.failed.connect(_show_error)
+	_chat.heard.connect(_on_chat_heard)
+	_chat.ping_requested.connect(func() -> void:
+		_pinging = true
+		_chat.close()
+		_show_toast("Kliknij pole działki, które chcesz wskazać innym. Esc anuluje."))
+	_hud.add_child(_chat)
+	_chat.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 12)
+	_chat.offset_bottom = -12 - tool_panel.get_combined_minimum_size().y - 10
+	_chat.offset_top = _chat.offset_bottom
+	_chat.grow_vertical = Control.GROW_DIRECTION_BEGIN
+
+	# On someone else's public plot: like it, so it climbs the gallery.
+	_like_button = UI.button("Podoba mi się", _toggle_like)
+	_like_button.icon = UI.texture("icons/toolbar_like")
+	_like_button.expand_icon = false
+	_like_button.add_theme_constant_override("icon_max_width", 22)
+	_like_button.toggle_mode = true
+	_like_button.visible = false
+	_hud.add_child(_like_button)
+	_like_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 12)
+	_like_button.offset_top = 60
+	_like_button.offset_bottom = 60
+	_like_button.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+
 	var bar := HBoxContainer.new()
 	bar.add_theme_constant_override("separation", 4)
 	bar.add_child(UI.toolbar_button("inventory", "Ekwipunek  [I]", func() -> void:
@@ -4260,7 +4641,14 @@ func _build_hud() -> void:
 	_mine_button.visible = false
 	bar.add_child(_mine_button)
 	bar.add_child(UI.toolbar_button("stats", "Statystyki  [L]", func() -> void: _stats_window.toggle()))
+	_plan_button = UI.toolbar_button("blueprint", "Plany budowy  [V]\nZaznacz kawałek fabryki i postaw jego kopię gdzie indziej", _toggle_plan)
+	bar.add_child(_plan_button)
+	_undo_button = UI.toolbar_button("undo", "Cofnij  [Ctrl+Z]\nCofa ostatnie postawienie albo schowanie", _undo_last)
+	_undo_button.visible = false
+	bar.add_child(_undo_button)
 	bar.add_child(UI.toolbar_button("world_map", "Mapa świata  [N]", Game.open_world_map))
+	bar.add_child(UI.toolbar_button("gallery", "Galeria fabryk\nNajczęściej lubiane działki: odwiedź je", func() -> void: _gallery_window.toggle()))
+	bar.add_child(UI.toolbar_button("chat", "Czat  [Enter]\nDo graczy na działce albo do wszystkich", func() -> void: _chat.toggle()))
 	bar.add_child(UI.toolbar_button("achievements", "Osiągnięcia  [O]", func() -> void: _achievements_window.toggle()))
 	bar.add_child(UI.toolbar_button("garage", "Garaż  [G]", Game.open_garage))
 	_hud.add_child(bar)
@@ -4413,6 +4801,12 @@ func _update_hint() -> void:
 	}
 	if _visitor:
 		_hint.text = "Zwiedzasz cudzą działkę: możesz po niej chodzić i oglądać, ale nie zajrzysz do skrzyń, niczego nie zbierzesz, nie wydobędziesz ani nie postawisz."
+		return
+	if _plan_mode == "copy":
+		_hint.text = "Plan budowy: kliknij %s róg kawałka fabryki do skopiowania. Esc kończy." % ("pierwszy" if _plan_corner.x < 0 else "drugi, przeciwny")
+		return
+	if _plan_mode == "paste":
+		_hint.text = "Plan budowy (%d obiektów): kliknij, gdzie postawić kopię; lewy górny róg jest pod myszą. [V] kopiuje inny kawałek, Esc kończy." % _plan.size()
 		return
 	if _placing in MACHINERY:
 		_hint.text = "Stawianie: kliknij wolne pole, aby postawić %s %s %s. [R] obraca, Esc kończy." % [
@@ -4652,8 +5046,12 @@ func _build_windows() -> void:
 	_stats_window = StatsWindow.new()
 	_stats_window.dock_right()
 	_stats_window.failed.connect(_show_error)
+	_gallery_window = GalleryWindow.new()
+	_gallery_window.dock_right()
+	_gallery_window.failed.connect(_show_error)
 	var layer := _hud
 	layer.add_child(_stats_window)
+	layer.add_child(_gallery_window)
 	layer.add_child(_inventory_window)
 	layer.add_child(_company_window)
 	layer.add_child(_storage_window)
@@ -4785,9 +5183,14 @@ func _load() -> void:
 	_city_button.visible = city != null
 	if city != null:
 		_subtitle.text = "%s %s  ·  5 × 5 km" % [city["levelName"], city["name"]]
+	_chat.plot = _at
+	_likes = int(plot["payload"].get("likes", 0))
+	_liked = bool(plot["payload"].get("liked", false))
+	_update_likes()
 	if _visitor:
 		_subtitle.text += "  ·  zwiedzanie"
 		_plant_button.visible = false
+		_plan_button.visible = false
 		_show_toast("Działka publiczna: możesz po niej chodzić i oglądać.", UI.MUTED)
 	_update_hint()
 	_loading.queue_free()
@@ -4826,6 +5229,33 @@ func _float_text(text: String, color: Color, at: Vector2, delay := 0.0, item := 
 	tween.parallel().tween_property(row, "position:y", start.y - 50, 1.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 	tween.tween_property(row, "modulate:a", 0.0, 0.4)
 	tween.tween_callback(row.queue_free)
+
+
+## How many like the plot: on the visitor's like button, and for the owner after the plot's name.
+func _update_likes() -> void:
+	_like_button.visible = _visitor
+	_like_button.button_pressed = _liked
+	_like_button.text = "Podoba mi się (%d)" % _likes
+	_like_button.tooltip_text = "Kliknij jeszcze raz, aby cofnąć polubienie" if _liked else "Polub tę fabrykę: najczęściej lubiane trafiają do galerii"
+	if not _visitor:
+		_subtitle.tooltip_text = "Udostępnij działkę na mapie świata, a inni gracze będą mogli ją odwiedzić i polubić." if _likes == 0 else ""
+		var base := _subtitle.text.get_slice("  ·  polubienia", 0)
+		_subtitle.text = base + ("  ·  polubienia: %d" % _likes if _likes > 0 else "")
+
+
+func _toggle_like() -> void:
+	var reply := await Net.request("plot.like", {"x": _at.x, "y": _at.y, "like": not _liked})
+	if reply["type"] != "plot.likes":
+		_show_error(reply)
+		_update_likes()
+		return
+	var was := _liked
+	_likes = int(reply["payload"]["likes"])
+	_liked = bool(reply["payload"]["liked"])
+	_update_likes()
+	if _liked and not was:
+		_effects.confetti(_player.position)
+		_show_toast("Polubiono tę fabrykę. Dzięki temu wspina się w galerii.", UI.GOOD)
 
 
 func _toggle_city() -> void:
