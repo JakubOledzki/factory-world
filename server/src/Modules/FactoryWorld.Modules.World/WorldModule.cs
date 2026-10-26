@@ -1492,6 +1492,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, TillHandler>();
         services.AddSingleton<IMessageHandler, PlantHandler>();
         services.AddSingleton<IMessageHandler, ReapHandler>();
+        services.AddSingleton<IMessageHandler, UntillHandler>();
         services.AddSingleton<IMessageHandler, PlantTreeHandler>();
         services.AddSingleton<IMessageHandler, ReleaseAnimalHandler>();
         services.AddSingleton<IMessageHandler, FeedAnimalHandler>();

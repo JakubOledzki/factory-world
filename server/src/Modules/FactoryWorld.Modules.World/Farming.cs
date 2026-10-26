@@ -197,6 +197,48 @@ public sealed class FarmService(
             return new FieldChange(new Field(tileX, tileY, null, null), [(crop, info.Yield)], xp);
         }, cancellationToken);
 
+    /// <summary>Turns a field tilled by hand back into bare ground; a crop still growing on it is lost, a ripe one has to be reaped first.
+    /// Fields of a farmstead go only with the farmstead.</summary>
+    public Task UntillAsync(Guid player, int x, int y, int tileX, int tileY, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
+            string? crop;
+            DateTimeOffset? planted;
+            await using (var select = await db.CommandAsync(
+                """
+                SELECT farmstead_id IS NOT NULL, crop, planted_at FROM world.plot_fields
+                WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty
+                FOR UPDATE
+                """, cancellationToken))
+            {
+                Bind(select, x, y, tileX, tileY);
+                await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+                if (!await reader.ReadAsync(cancellationToken))
+                {
+                    throw new GameException("nothing_here", "There is no field here.");
+                }
+
+                if (reader.GetBoolean(0))
+                {
+                    throw new GameException("farmstead_field", "This field belongs to a farmstead; it goes when the farmstead is picked up.");
+                }
+
+                crop = reader.IsDBNull(1) ? null : reader.GetString(1);
+                planted = reader.IsDBNull(2) ? null : reader.GetFieldValue<DateTimeOffset>(2);
+            }
+
+            if (Read(tileX, tileY, crop, planted).ReadyAt is { } ready && ready <= time.GetUtcNow())
+            {
+                throw new GameException("reap_first", "Reap the ripe crop first.");
+            }
+
+            await using var delete = await db.CommandAsync(
+                "DELETE FROM world.plot_fields WHERE x = @x AND y = @y AND tile_x = @tx AND tile_y = @ty AND farmstead_id IS NULL", cancellationToken);
+            Bind(delete, x, y, tileX, tileY);
+            await delete.ExecuteNonQueryAsync(cancellationToken);
+        }, cancellationToken);
+
     private static Field Read(int tileX, int tileY, string? crop, DateTimeOffset? planted) =>
         new(tileX, tileY, crop, crop is not null && planted is { } at && Farming.ById.TryGetValue(crop, out var info) ? at + info.Grow : null);
 
@@ -271,4 +313,17 @@ public sealed class ReapHandler(IServiceScopeFactory scopes, TimeProvider time) 
 
     protected override Task<FieldChange> RunAsync(FarmService farm, ClientContext client, FieldRequest r, CancellationToken cancellationToken) =>
         farm.ReapAsync(client.RequireAccount(), r.X, r.Y, r.TileX, r.TileY, cancellationToken);
+}
+
+public sealed class UntillHandler(IServiceScopeFactory scopes, TimeProvider time) : IMessageHandler
+{
+    public string Type => "plot.untill";
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        var r = Payload.Read<FieldRequest>(payload);
+        await using var scope = scopes.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<FarmService>().UntillAsync(client.RequireAccount(), r.X, r.Y, r.TileX, r.TileY, cancellationToken);
+        return new Reply("plot.untilled", new { tileX = r.TileX, tileY = r.TileY, serverTime = time.GetUtcNow().ToUnixTimeMilliseconds() });
+    }
 }
