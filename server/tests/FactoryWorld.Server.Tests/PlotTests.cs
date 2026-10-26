@@ -422,6 +422,39 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
     }
 
     [Fact]
+    public async Task A_field_tilled_by_hand_can_be_turned_back_into_bare_ground_once_nothing_ripe_grows_on_it()
+    {
+        using var client = await PlayerAsync();
+        var farm = await BuyAsync(client, Biome.Farmland);
+        var (plot, _) = await EnterAsync(client, farm);
+        var (tx, ty) = (plot.GetProperty("spawn").GetProperty("x").GetInt32(), plot.GetProperty("spawn").GetProperty("y").GetInt32());
+        object At(string? crop = null) => new { x = farm.X, y = farm.Y, tileX = tx, tileY = ty, crop };
+
+        Assert.Equal("nothing_here", (await client.SendAsync("plot.untill", At())).ErrorCode());
+        factory.Time.Advance(HarvestRules.Time);
+        Assert.Equal("plot.field", (await client.SendAsync("plot.till", At())).Type());
+        Assert.Equal("plot.field", (await client.SendAsync("plot.plant", At(Items.Wheat))).Type());
+        factory.Time.Advance(Farming.ById[Items.Wheat].Grow);
+        Assert.Equal("reap_first", (await client.SendAsync("plot.untill", At())).ErrorCode());
+        Assert.Equal("plot.field", (await client.SendAsync("plot.reap", At())).Type());
+
+        // A crop still growing goes with the field.
+        Assert.Equal("plot.field", (await client.SendAsync("plot.plant", At(Items.Wheat))).Type());
+        var untilled = await client.SendAsync("plot.untill", At());
+        Assert.Equal("plot.untilled", untilled.Type());
+        Assert.Equal(tx, untilled.Payload().GetProperty("tileX").GetInt32());
+        var (after, _) = await EnterAsync(client, farm);
+        Assert.Equal(0, after.GetProperty("fields").GetArrayLength());
+
+        // The ground is free again: the hoe tills it once more.
+        factory.Time.Advance(HarvestRules.Time);
+        Assert.Equal("plot.field", (await client.SendAsync("plot.till", At())).Type());
+
+        using var stranger = await PlayerAsync();
+        Assert.NotEqual("plot.untilled", (await stranger.SendAsync("plot.untill", At())).Type());
+    }
+
+    [Fact]
     public void A_cut_tree_gives_one_wood_and_three_times_in_ten_a_sapling()
     {
         Assert.Equal([(Items.Wood, 1), (Items.Sapling, 1)], PlotLayout.Yield(TileObject.Tree, 0));
