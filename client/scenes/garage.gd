@@ -6,6 +6,8 @@ extends Control
 
 ## The garage is lit by one bulb, so the character is drawn darker than in the editor.
 const ROOM_LIGHT := Color(0.74, 0.7, 0.66)
+## The size of the room render (see tools/render_art.py), in screen pixels.
+const STAGE_SIZE := Vector2(1280, 720)
 ## How close to a piece of furniture (in metres, from the edge of its footprint) the player
 ## must stand to use it, and when the sorting window closes again after walking away.
 const REACH := 0.55
@@ -79,6 +81,8 @@ var _footprint: Polygon2D
 var _sorted: Node2D
 var _player: GaragePlayer
 var _overlay: Control
+## Holds the room render and everything drawn on it, in the middle of a screen wider or taller than it.
+var _stage := Node2D.new()
 
 ## Where the player is walking after a click, and what to do on arrival.
 var _path: PackedVector2Array = []
@@ -172,31 +176,41 @@ func _ready() -> void:
 # --- Room ------------------------------------------------------------------------
 
 func _build_room() -> void:
+	# The render's edges are black, so a wider screen shows black beside it.
+	var backdrop := ColorRect.new()
+	backdrop.color = Color.BLACK
+	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(backdrop)
+	add_child(_stage)
+	resized.connect(_center_stage)
+	_center_stage()
+
 	_floor = Sprite2D.new()
 	_floor.centered = false
-	add_child(_floor)
+	_stage.add_child(_floor)
 	_walls = Sprite2D.new()
 	_walls.centered = false
-	add_child(_walls)
+	_stage.add_child(_walls)
 	var vignette := Sprite2D.new()
 	vignette.texture = load("res://art/garage/rooms/vignette.png")
 	vignette.centered = false
-	add_child(vignette)
+	_stage.add_child(vignette)
 
 	# Shadows lie on the floor under everything; the rest is drawn back to front.
 	_shadows = Node2D.new()
-	add_child(_shadows)
+	_stage.add_child(_shadows)
 	_grid = Node2D.new()
 	_grid.visible = false
 	_grid.draw.connect(_draw_grid)
-	add_child(_grid)
+	_stage.add_child(_grid)
 	_footprint = Polygon2D.new()
 	_footprint.visible = false
 	_footprint.z_index = 1
-	add_child(_footprint)
+	_stage.add_child(_footprint)
 	_sorted = Node2D.new()
 	_sorted.y_sort_enabled = true
-	add_child(_sorted)
+	_stage.add_child(_sorted)
 	_show_room({})
 
 	var layout := RoomProjection.layout()
@@ -207,9 +221,9 @@ func _build_room() -> void:
 	_player.move_to(Vector2(layout["player"]["x"], layout["player"]["y"]))
 
 	_overlay = Control.new()
-	_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+	_overlay.size = STAGE_SIZE
 	_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_overlay)
+	_stage.add_child(_overlay)
 
 	_prompt = _outlined(UI.label("", UI.GOLD, HORIZONTAL_ALIGNMENT_CENTER))
 	_prompt.visible = false
@@ -241,6 +255,15 @@ func _build_room() -> void:
 	_hold_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hold_ring.draw.connect(_draw_hold)
 	_overlay.add_child(_hold_ring)
+
+
+func _center_stage() -> void:
+	_stage.position = ((size - STAGE_SIZE) / 2).round()
+
+
+## The mouse on the room render, which is what RoomProjection and the furniture work in.
+func _stage_mouse() -> Vector2:
+	return _stage.get_local_mouse_position()
 
 
 ## Shows the floor and walls of the upgrades bought (track → level), and the room as bright as
@@ -495,7 +518,7 @@ func _update_hover() -> void:
 	var over_ui := get_viewport().gui_get_hovered_control() != null
 	var found: Furniture = null
 	if not over_ui and _placing == "" and not _menu.visible:
-		found = _object_at(get_global_mouse_position())
+		found = _object_at(_stage_mouse())
 	if found != _hovered:
 		if _hovered != null and is_instance_valid(_hovered):
 			_hovered.set_highlighted(false)
@@ -526,7 +549,7 @@ func _unhandled_input(event: InputEvent) -> void:
 					_start_hold(_hovered, MOUSE_BUTTON_LEFT)
 				_open_menu(_hovered, mouse)
 			else:
-				var target := RoomProjection.to_floor(mouse)
+				var target := RoomProjection.to_floor(_stage_mouse())
 				if Rect2(Vector2.ZERO, _room).has_point(target):
 					_walk_to(target)
 		elif event.button_index == MOUSE_BUTTON_RIGHT and _hovered != null:
@@ -639,7 +662,7 @@ func _update_hold(delta: float) -> void:
 		return
 	# The menu a tap opens covers the furniture, so a finger only has to stay put.
 	var still := get_viewport().get_mouse_position().distance_to(_hold_from) <= HOLD_SLIP if finger \
-		else _object_at(get_global_mouse_position()) == object and get_viewport().gui_get_hovered_control() == null
+		else _object_at(_stage_mouse()) == object and get_viewport().gui_get_hovered_control() == null
 	if not Input.is_mouse_button_pressed(_hold_button):
 		_stop_hold()
 		if not finger and still:
@@ -724,7 +747,7 @@ func _turn_ghost(direction: int) -> void:
 
 func _update_ghost() -> void:
 	var size := _ghost.size_cells(_ghost_rotation)
-	var pos := RoomProjection.to_floor(get_global_mouse_position()) / _cell_size
+	var pos := RoomProjection.to_floor(_stage_mouse()) / _cell_size
 	# The mouse points at the footprint's centre; keep the footprint inside the room.
 	var corner := Vector2i((pos - Vector2(size) / 2).round())
 	corner = corner.clamp(Vector2i.ZERO, _grid_size() - size)
@@ -891,13 +914,13 @@ func _gain_xp(gain: Dictionary) -> void:
 
 func _build_windows() -> void:
 	_sorting_window = GameWindow.new("Kosz na śmieci", 320)
-	_sorting_window.position = Vector2(1280 - 320 - 12, 64)
+	_sorting_window.dock_right()
 	_build_sorting(_sorting_window.content)
 	_inventory_window = GameWindow.new("Ekwipunek", 0)
 	_inventory_window.position = Vector2(12, 120)
 	_build_storage(_inventory_window.content)
 	_market_window = MarketWindow.new()
-	_market_window.position = Vector2(1280 - 440 - 12, 64)
+	_market_window.dock_right()
 	_market_window.traded.connect(_on_traded)
 	_market_window.to_pallet.connect(func(_item: String) -> void:
 		_show_toast("Ekwipunek pełny: zakup czeka na palecie dostaw.", UI.GOLD))
@@ -906,7 +929,7 @@ func _build_windows() -> void:
 	_contracts_window.changed.connect(_on_contracts_changed)
 	_contracts_window.failed.connect(_show_error)
 	_crafting_window = CraftingWindow.new()
-	_crafting_window.position = Vector2(1280 - 400 - 12, 64)
+	_crafting_window.dock_right()
 	_crafting_window.finished.connect(_on_crafted)
 	_crafting_window.inventory_changed.connect(_reload_inventory)
 	_crafting_window.failed.connect(_show_error)
@@ -916,16 +939,16 @@ func _build_windows() -> void:
 	_research_window.failed.connect(_show_error)
 	_research_window.researched.connect(_on_researched)
 	_furnace_window = FurnaceWindow.new()
-	_furnace_window.position = Vector2(1280 - 400 - 12, 64)
+	_furnace_window.dock_right()
 	_furnace_window.updated.connect(func(furnace: Dictionary) -> void: _furnaces[furnace["id"]] = furnace)
 	_furnace_window.inventory_changed.connect(_on_furnace_emptied)
 	_furnace_window.failed.connect(_show_error)
 	_sorter_window = SorterWindow.new()
-	_sorter_window.position = Vector2(1280 - 360 - 12, 64)
+	_sorter_window.dock_right()
 	_sorter_window.inventory_changed.connect(_on_sorter_emptied)
 	_sorter_window.failed.connect(_show_error)
 	_company_window = CompanyWindow.new()
-	_company_window.position = Vector2(1280 - 520 - 12, 64)
+	_company_window.dock_right()
 	_company_window.inventory_changed.connect(_reload_inventory)
 	_company_window.balance_changed.connect(func() -> void:
 		var wallet := await Net.request("wallet.get")
@@ -933,24 +956,24 @@ func _build_windows() -> void:
 			_set_balance(int(wallet["payload"]["balanceCents"])))
 	_company_window.failed.connect(_show_error)
 	_bank_window = BankWindow.new()
-	_bank_window.position = Vector2(1280 - 520 - 12, 64)
+	_bank_window.dock_right()
 	_bank_window.balance_changed.connect(_reload_balance)
 	_bank_window.failed.connect(_show_error)
 	_stats_window = StatsWindow.new()
-	_stats_window.position = Vector2(1280 - 640 - 12, 64)
+	_stats_window.dock_right()
 	_stats_window.failed.connect(_show_error)
 	_achievements_window = AchievementsWindow.new()
 	_achievements_window.failed.connect(_show_error)
 	_upgrades_window = UpgradesWindow.new()
-	_upgrades_window.position = Vector2(1280 - 560 - 12, 64)
+	_upgrades_window.dock_right()
 	_upgrades_window.upgraded.connect(_on_upgraded)
 	_upgrades_window.failed.connect(_show_error)
 	_storage_window = StorageWindow.new()
-	_storage_window.position = Vector2(1280 - 420 - 12, 64)
+	_storage_window.dock_right()
 	_storage_window.inventory_changed.connect(_reload_inventory)
 	_storage_window.failed.connect(_show_error)
 	_wardrobe_window = WardrobeWindow.new()
-	_wardrobe_window.position = Vector2(1280 - 470 - 12, 64)
+	_wardrobe_window.dock_right()
 	_wardrobe_window.changed.connect(func() -> void:
 		_reload_inventory()
 		Game.reload_character())

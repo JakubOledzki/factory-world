@@ -1,6 +1,14 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Gra na całą szerokość ekranu",
+		"changes": [
+			"Na szerokich monitorach (21:9, 32:9) i na telefonach gra nie ma już czarnych pasów po bokach: na działce widać więcej świata, a pasek, pieniądze, minimapa i okna trzymają się krawędzi ekranu.",
+			"Garaż stoi na środku ekranu, a okna maszyn i skrzyń otwierają się przy prawej krawędzi, także na bardzo szerokim monitorze."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Węgiel jako opał w odlewni",
 		"changes": [
 			"Gdy odlewnia robi stal, węgiel z wiersza „Opał” trafia teraz do ognia, a nie do składników. Węgiel drzewny też da się tam dołożyć jako opał.",
