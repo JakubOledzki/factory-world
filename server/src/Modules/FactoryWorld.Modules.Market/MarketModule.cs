@@ -674,6 +674,7 @@ public sealed class MarketModule : IGameModule
         services.AddSingleton<IMarketPrices, MarketPrices>();
         services.AddScoped<MarketService>();
         services.AddScoped<PlayerMarketService>();
+        services.AddSingleton<MarketSummary>();
         services.AddScoped<IExportMarket>(provider => provider.GetRequiredService<PlayerMarketService>());
         services.AddSingleton<IMessageHandler, PricesHandler>();
         services.AddSingleton<IMessageHandler, BuyHandler>();

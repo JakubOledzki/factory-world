@@ -169,3 +169,8 @@ Zrzuty warto też kopiować poza serwer (np. do magazynu obiektowego dostawcy VP
   serwer się przedstawia. Wklej cały wynik `ssh-keyscan adres-serwera` (przy innym porcie: `ssh-keyscan -p PORT adres-serwera`);
   nazwa hosta w tych liniach nie ma znaczenia. Po przeinstalowaniu serwera klucz się zmienia i trzeba go podmienić.
 - **Job `deploy` kończy się `permission denied ... docker.sock`:** `DEPLOY_USER` nie należy do grupy `docker`.
+- **Gra działa wolno:** serwer co minutę zapisuje w logu, czym był zajęty: zużycie procesora, liczbę wiadomości i te,
+  które zajęły najwięcej czasu (`docker compose logs server | grep "Load in the last minute"`). Każda wiadomość
+  dłuższa niż sekunda ma osobny wpis `Slow ...` (`docker compose logs server | grep Slow`). Wysokie CPU przy niewielu
+  wiadomościach wskazuje na za słaby serwer, a jedna wiadomość, która ciągle prowadzi, na to, co trzeba przyspieszyć.
+  Obciążenie całej maszyny pokaże `docker stats`.

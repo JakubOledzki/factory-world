@@ -9,6 +9,8 @@ var _args := {}
 var _phase := "connect"
 var _started := 0
 var _frames: Array[float] = []
+## Time the scripts took each frame (_process), apart from drawing.
+var _scripts: Array[float] = []
 var _last := 0
 var _measure_until := 0
 var _plot: Node = null
@@ -88,6 +90,7 @@ func _process(_delta: float) -> void:
 				_last = now
 		"measure":
 			_frames.append((now - _last) / 1000.0)
+			_scripts.append(Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0)
 			_last = now
 			if now >= _measure_until:
 				_report()
@@ -101,6 +104,10 @@ func _report() -> void:
 	var total := 0.0
 	for f in _frames:
 		total += f
+	var scripts := 0.0
+	for s in _scripts:
+		scripts += s
+	print("BENCH scripts per frame %.2f ms" % (scripts / _scripts.size()))
 	var logistics: Variant = _plot.get("_logistics")
 	print("BENCH frames %d, mean %.2f ms, median %.2f ms, p95 %.2f ms, p99 %.2f ms, worst %.1f ms; load %.0f ms, again %.0f ms; belts %d, inserters %d" % [
 		_frames.size(), total / _frames.size(), sorted[sorted.size() / 2], sorted[int(sorted.size() * 0.95)],

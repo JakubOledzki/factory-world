@@ -145,8 +145,10 @@ func refresh() -> void:
 ## One request at a time: clicking through tabs faster than the server answers only asks once
 ## more for whatever is open when the answer comes, instead of piling up requests.
 func _reload() -> void:
+	var shown: Variant = null
 	if _tab == TRADER or _has_cached():
 		_render()
+		shown = _shown()
 	if _loading:
 		_again = true
 		return
@@ -159,7 +161,14 @@ func _reload() -> void:
 	if reply["type"] == "error":
 		failed.emit(reply)
 		return
-	_render()
+	# The window is drawn anew only when the answer changed what it shows: drawing a long list takes a while.
+	if shown == null or _shown() != shown:
+		_render()
+
+
+## What the open tab is drawn from, to tell whether a fresh answer changes it.
+func _shown() -> Array:
+	return [_tab, _item, _prices, _event, _next, _board, _overview, _mine]
 
 
 ## Asks the server for what the open tab shows and keeps it.

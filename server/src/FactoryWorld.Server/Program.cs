@@ -53,6 +53,8 @@ foreach (var module in modules)
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton<MessageDispatcher>();
 builder.Services.AddSingleton<OnlinePlayers>();
+builder.Services.AddSingleton<ServerLoad>();
+builder.Services.AddHostedService<LoadReport>();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
     policy.WithOrigins(builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [])
         .AllowAnyHeader()

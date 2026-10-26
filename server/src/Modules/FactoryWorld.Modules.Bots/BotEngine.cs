@@ -19,6 +19,7 @@ public sealed class BotEngine(
     IEnumerable<IMessageObserver> observers,
     TimeProvider time,
     OnlinePlayers online,
+    ServerLoad load,
     ILogger<BotEngine> logger)
 {
     private readonly IReadOnlyDictionary<string, IMessageHandler> _handlers = handlers.ToDictionary(h => h.Type, StringComparer.Ordinal);
@@ -61,7 +62,7 @@ public sealed class BotEngine(
                 if (!_bots.ContainsKey(profile.Name))
                 {
                     var account = row.AccountId;
-                    _bots[profile.Name] = new Bot(profile, row, new BotClient(account, _handlers, _observers, logger), logger,
+                    _bots[profile.Name] = new Bot(profile, row, new BotClient(account, _handlers, _observers, load, logger), logger,
                         (cents, ct) => GrantAsync(account, cents, ct));
                 }
             }
@@ -80,6 +81,7 @@ public sealed class BotEngine(
             return;
         }
 
+        var started = ServerLoad.Start();
         try
         {
             var now = time.GetUtcNow();
@@ -117,6 +119,7 @@ public sealed class BotEngine(
         }
         finally
         {
+            load.Record("bots.tick", started);
             _ticking.Release();
         }
     }
@@ -188,7 +191,7 @@ public sealed class BotEngine(
     /// <summary>Registers the bot like a new player would: an account with a password nobody keeps, then a character.</summary>
     private async Task<BotRow?> CreateAsync(BotProfile profile, CancellationToken cancellationToken)
     {
-        var client = new BotClient(Guid.Empty, _handlers, _observers, logger);
+        var client = new BotClient(Guid.Empty, _handlers, _observers, load, logger);
         client.Context.AccountId = null;
         var email = $"{profile.Name.ToLowerInvariant()}@boty.factoryworld.local";
         var password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));

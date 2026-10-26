@@ -67,7 +67,13 @@ namespace FactoryWorld.Modules.Market.Migrations
                     b.HasIndex("ItemId", "PriceCents")
                         .HasFilter("closed_at IS NULL");
 
-                    b.HasIndex("OwnerId", "Id");
+                    b.HasIndex("OwnerId", "ClosedAt")
+                        .HasDatabaseName("IX_listings_closed_owner_id_closed_at")
+                        .HasFilter("closed_at IS NOT NULL");
+
+                    b.HasIndex("OwnerId", "Id")
+                        .HasDatabaseName("IX_listings_open_owner_id_id")
+                        .HasFilter("closed_at IS NULL");
 
                     b.ToTable("listings", "market", t =>
                         {
@@ -121,7 +127,13 @@ namespace FactoryWorld.Modules.Market.Migrations
                     b.HasIndex("ItemId", "PriceCents")
                         .HasFilter("closed_at IS NULL");
 
-                    b.HasIndex("OwnerId", "Id");
+                    b.HasIndex("OwnerId", "ClosedAt")
+                        .HasDatabaseName("IX_orders_closed_owner_id_closed_at")
+                        .HasFilter("closed_at IS NOT NULL");
+
+                    b.HasIndex("OwnerId", "Id")
+                        .HasDatabaseName("IX_orders_open_owner_id_id")
+                        .HasFilter("closed_at IS NULL");
 
                     b.ToTable("orders", "market", t =>
                         {
