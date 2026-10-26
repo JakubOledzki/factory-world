@@ -1,0 +1,147 @@
+// Grafana Alloy: sends the logs of every container and the metrics of the host, the containers, PostgreSQL and
+// the game server to Grafana Cloud. Started by deploy/docker-compose.yml with COMPOSE_PROFILES=monitoring;
+// the GRAFANA_CLOUD_* addresses and the token come from .env (docs/monitoring.md).
+
+logging {
+  level = "warn"
+}
+
+// ---------- Logs ----------
+
+discovery.docker "containers" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "containers" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "containers" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.containers.targets
+  relabel_rules = discovery.relabel.containers.rules
+  labels        = {"env" = "production"}
+  forward_to    = [loki.process.containers.receiver]
+}
+
+loki.process "containers" {
+  // The game server writes one line per entry: "info: FactoryWorld.Server.LoadReport[0] Load in the last minute: ...".
+  stage.match {
+    selector = "{service=\"server\"}"
+
+    stage.regex {
+      expression = "^(?P<level>trce|dbug|info|warn|fail|crit): "
+    }
+
+    stage.labels {
+      values = {level = ""}
+    }
+  }
+
+  forward_to = [loki.write.cloud.receiver]
+}
+
+loki.write "cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_LOKI_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_LOKI_USER")
+      password = sys.env("GRAFANA_CLOUD_TOKEN")
+    }
+  }
+}
+
+// ---------- Metrics ----------
+
+// The game server: message times by kind, players online, CPU and memory (server/src/FactoryWorld.Server/MetricsEndpoint.cs).
+prometheus.scrape "game" {
+  targets         = [{"__address__" = "server:5080", "service" = "server"}]
+  metrics_path    = "/metrics"
+  scrape_interval = "30s"
+  forward_to      = [prometheus.remote_write.cloud.receiver]
+}
+
+// The machine: CPU, memory, disk, network. The host's directories are mounted read-only under /host.
+prometheus.exporter.unix "host" {
+  procfs_path    = "/host/proc"
+  sysfs_path     = "/host/sys"
+  rootfs_path    = "/host/root"
+  set_collectors = ["cpu", "diskstats", "filesystem", "loadavg", "meminfo", "netdev", "pressure", "uname"]
+
+  filesystem {
+    fs_types_exclude     = "^(autofs|binfmt_misc|bpf|cgroup2?|configfs|debugfs|devpts|devtmpfs|fusectl|hugetlbfs|iso9660|mqueue|nsfs|overlay|proc|procfs|pstore|rpc_pipefs|securityfs|selinuxfs|squashfs|sysfs|tmpfs|tracefs)$"
+    mount_points_exclude = "^/(dev|proc|run|sys|var/lib/docker/.+)($|/)"
+  }
+}
+
+prometheus.scrape "host" {
+  targets         = prometheus.exporter.unix.host.targets
+  scrape_interval = "60s"
+  forward_to      = [prometheus.remote_write.cloud.receiver]
+}
+
+// Each container: CPU, memory, network, disk.
+prometheus.exporter.cadvisor "containers" {
+  docker_host            = "unix:///var/run/docker.sock"
+  docker_only            = true
+  store_container_labels = false
+  storage_duration       = "2m"
+}
+
+prometheus.scrape "containers" {
+  targets         = prometheus.exporter.cadvisor.containers.targets
+  scrape_interval = "60s"
+  forward_to      = [prometheus.relabel.containers.receiver]
+}
+
+// The free Grafana Cloud plan counts metric series, so only the ones worth looking at are kept.
+prometheus.relabel "containers" {
+  rule {
+    source_labels = ["__name__"]
+    regex         = "container_(cpu_usage_seconds_total|memory_working_set_bytes|memory_rss|network_receive_bytes_total|network_transmit_bytes_total|fs_reads_bytes_total|fs_writes_bytes_total|last_seen|start_time_seconds)"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["name"]
+    target_label  = "container"
+  }
+
+  forward_to = [prometheus.remote_write.cloud.receiver]
+}
+
+// PostgreSQL: connections, transactions, database size, locks.
+prometheus.exporter.postgres "db" {
+  data_source_names = [sys.env("POSTGRES_DSN")]
+}
+
+prometheus.scrape "db" {
+  targets         = prometheus.exporter.postgres.db.targets
+  scrape_interval = "60s"
+  forward_to      = [prometheus.remote_write.cloud.receiver]
+}
+
+prometheus.remote_write "cloud" {
+  endpoint {
+    url = sys.env("GRAFANA_CLOUD_PROMETHEUS_URL")
+
+    basic_auth {
+      username = sys.env("GRAFANA_CLOUD_PROMETHEUS_USER")
+      password = sys.env("GRAFANA_CLOUD_TOKEN")
+    }
+  }
+
+  external_labels = {"env" = "production"}
+}
