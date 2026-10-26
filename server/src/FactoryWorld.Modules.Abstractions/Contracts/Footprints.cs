@@ -60,9 +60,9 @@ public static class Footprints
             AND {ty} BETWEEN {o}.tile_y - (f.size - 1) / 2 AND {o}.tile_y + f.size / 2))
         """;
 
-    /// <summary>Goes up by one whenever <see cref="Sizes"/> grows: on the next start the world's footprint migration moves, or gives back,
-    /// whatever no longer fits on plots built before.</summary>
-    public const int Version = 1;
+    /// <summary>Goes up by one whenever <see cref="Sizes"/> grows or a sized kind may stand on fewer plots (<see cref="Items.IsCityOnly"/>):
+    /// on the next start the world's footprint migration moves, or gives back, whatever no longer fits on plots built before.</summary>
+    public const int Version = 2;
 
     /// <summary>What stands on more than one tile, and on how many each way.</summary>
     public static readonly IReadOnlyDictionary<string, int> Sizes = new Dictionary<string, int>
