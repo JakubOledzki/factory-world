@@ -93,10 +93,13 @@ prometheus.scrape "host" {
   forward_to      = [prometheus.remote_write.cloud.receiver]
 }
 
-// Each container: CPU, memory, network, disk.
+// Each container: CPU, memory, network, disk. cAdvisor reads the host's cgroups directly: with its Docker
+// integration on, it reported no container at all on Docker 29 (only the machine as a whole). Each compose service runs in its own systemd slice (cgroup_parent in docker-compose.yml), and
+// the slice name says which container a cgroup belongs to. docker_host points nowhere on purpose, so cAdvisor
+// leaves containers to its plain cgroup reader.
 prometheus.exporter.cadvisor "containers" {
-  docker_host            = "unix:///var/run/docker.sock"
-  docker_only            = true
+  docker_host            = "unix:///nonexistent.sock"
+  docker_only            = false
   store_container_labels = false
   storage_duration       = "2m"
 }
@@ -107,7 +110,8 @@ prometheus.scrape "containers" {
   forward_to      = [prometheus.relabel.containers.receiver]
 }
 
-// The free Grafana Cloud plan counts metric series, so only the ones worth looking at are kept.
+// The free Grafana Cloud plan counts metric series, so only the ones worth looking at are kept, and only for the
+// game's containers (factory-world-<service>.slice/docker-<id>.scope, or <id> under the cgroupfs driver).
 prometheus.relabel "containers" {
   rule {
     source_labels = ["__name__"]
@@ -116,8 +120,16 @@ prometheus.relabel "containers" {
   }
 
   rule {
-    source_labels = ["name"]
+    source_labels = ["id"]
+    regex         = ".*/factory-world-([a-z]+)\\.slice/(docker-)?[0-9a-f]{64}(\\.scope)?"
     target_label  = "container"
+    replacement   = "$1"
+  }
+
+  rule {
+    source_labels = ["container"]
+    regex         = ""
+    action        = "drop"
   }
 
   forward_to = [prometheus.remote_write.cloud.receiver]

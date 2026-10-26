@@ -3,6 +3,8 @@
 services:
   db:
     image: postgres:17
+    # Each service in its own systemd slice, so Alloy's cAdvisor can tell the containers apart (deploy/alloy).
+    cgroup_parent: factory-world-db.slice
     restart: unless-stopped
     environment:
       POSTGRES_DB: factory_world
@@ -17,6 +19,7 @@ services:
 
   server:
     image: ghcr.io/jakuboledzki/factory-world-server:${TAG:-latest}
+    cgroup_parent: factory-world-server.slice
     restart: unless-stopped
     environment:
       ConnectionStrings__Game: "Host=db;Port=5432;Database=factory_world;Username=factory;Password=${POSTGRES_PASSWORD}"
@@ -30,6 +33,7 @@ services:
 
   web:
     image: ghcr.io/jakuboledzki/factory-world-web:${TAG:-latest}
+    cgroup_parent: factory-world-web.slice
     restart: unless-stopped
     environment:
       DOMAIN: ${DOMAIN:?set DOMAIN in .env}
@@ -46,6 +50,7 @@ services:
   # Sends logs and metrics to Grafana Cloud (docs/monitoring.md). Runs only with COMPOSE_PROFILES=monitoring in .env.
   alloy:
     image: grafana/alloy:v1.21.2
+    cgroup_parent: factory-world-alloy.slice
     profiles: [monitoring]
     restart: unless-stopped
     command: ["run", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
@@ -54,6 +59,8 @@ services:
     # namespace it sees only the machine as a whole.
     privileged: true
     cgroup: host
+    # cAdvisor reads each container's network counters from /proc of a process inside it.
+    pid: host
     environment:
       GRAFANA_CLOUD_PROMETHEUS_URL: ${GRAFANA_CLOUD_PROMETHEUS_URL:-}
       GRAFANA_CLOUD_PROMETHEUS_USER: ${GRAFANA_CLOUD_PROMETHEUS_USER:-}

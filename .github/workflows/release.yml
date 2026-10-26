@@ -119,6 +119,8 @@ jobs:
           scp deploy/docker-compose.yml "server:$DEPLOY_PATH/docker-compose.yml"
           scp deploy/alloy/config.alloy "server:$DEPLOY_PATH/alloy/config.alloy"
           ssh server "cd $DEPLOY_PATH && docker compose pull && docker compose up -d --remove-orphans && docker image prune -f"
+          # Alloy reads its config only at start, and a changed config alone does not recreate the container.
+          ssh server "cd $DEPLOY_PATH && if [ -n \"\$(docker compose ps -q alloy)\" ]; then docker compose restart alloy; fi"
 
       - name: Wait for the game server
         if: steps.check.outputs.enabled == 'true'
