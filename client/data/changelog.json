@@ -1,6 +1,13 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Podajniki za piecami widać",
+		"changes": [
+			"Piec, odlewnia albo inna maszyna stojąca przed podajnikiem, taśmą lub rozdzielaczem znowu robi się lekko przezroczysta, więc to, co stoi za nią, jest widoczne."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Maszyny widać na całym zajmowanym polu",
 		"changes": [
 			"Maszyny, które zajmują 2 × 2, 3 × 3 albo 4 × 4 pola (kruszarka, mielerz, piec, młyn i inne), stoją teraz na kamiennej płycie na całym swoim polu i są narysowane na jego szerokość, więc od razu widać, którędy nie przejdziesz.",

@@ -1161,7 +1161,8 @@ func _draw_cell(cell: Vector2i) -> void:
 		_stages.erase(cell)
 		return
 	var tile: Vector3i = _sources[sprite]
-	var look := 1 if cell == _hovered else (2 if _faded.has(cell) else 0)
+	# Alternative tiles (see _pack_tile_set): 1 brightened, 2 see-through in front of the player, 3 a little see-through in front of machinery.
+	var look := 1 if cell == _hovered else (2 if _faded.has(cell) else (3 if _screening.has(cell) else 0))
 	_objects.set_cell(cell, tile.x, Vector2i(tile.y, tile.z), look)
 	if _fields.has(cell) or _trees.has(cell):
 		_stages[cell] = sprite
