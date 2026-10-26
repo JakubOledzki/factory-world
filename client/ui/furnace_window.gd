@@ -135,6 +135,7 @@ func _render() -> void:
 
 	for child in _load.get_children():
 		child.free()
+	intake.clear()
 	var smeltable := _smeltable()
 	var any := false
 	for stack: Dictionary in _items:
@@ -145,6 +146,8 @@ func _render() -> void:
 		var owned := int(stack["quantity"])
 		var room := int(_state["maxFuel"]) - fuel if FUELS.has(item) else int(_state["maxInput"]) - (int(input["quantity"]) if input != null else 0)
 		var blocked: bool = not FUELS.has(item) and input != null and input["id"] != item
+		if not blocked:
+			offer(item, room, func(quantity: int) -> void: _put(item, quantity))
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 6)
 		row.add_child(UI.item_icon(item, 26))

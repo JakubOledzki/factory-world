@@ -3,6 +3,7 @@ extends Node2D
 ## What makes the plot feel alive: a mark over every machine that stands still (what it waits for, blinking),
 ## smoke over the fired machines at work, and short bursts of dust, sparks and confetti. Only what is on the
 ## screen is drawn, and there are only so many smoke plumes and bursts at a time, so a big factory costs no more.
+## The marks and pings always show; smoke and bursts only while the player has effects on (Settings).
 
 ## The most smoke plumes and bursts at a time; the plumes go to the working machines nearest the middle of the screen.
 const MAX_SMOKE := 16
@@ -251,7 +252,7 @@ func _place_smoke() -> void:
 	var view := _view()
 	var middle := view.get_center()
 	var working: Array = []
-	for id: String in _statuses:
+	for id: String in _statuses if Settings.effects else {}:
 		var status: Dictionary = _statuses[id]
 		if status["state"] != "working" or not status["fired"] or not _objects.has(id):
 			continue
@@ -282,6 +283,9 @@ func _view() -> Rect2:
 
 ## A one-shot burst, freed when it is done; null when too many are flying already.
 func _burst(amount: int, lifetime: float) -> CPUParticles2D:
+	# The player turned effects off (Settings).
+	if not Settings.effects:
+		return null
 	if _bursts >= MAX_BURSTS:
 		return null
 	var burst := _particles(amount, lifetime)

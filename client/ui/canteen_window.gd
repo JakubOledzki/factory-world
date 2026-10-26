@@ -81,12 +81,15 @@ func _render() -> void:
 	_crews.text = "Karmi %d %s; porcja wystarcza jednej maszynie na %d min." % [crews, "maszynę" if crews == 1 else "maszyny" if crews < 5 else "maszyn",
 		int(_state["portionMinutes"])]
 	UI.clear(_dishes)
+	intake.clear()
 	var any := false
 	for dish: Dictionary in _state.get("dishes", []):
 		var owned := _count(dish["id"])
 		if owned == 0:
 			continue
 		any = true
+		var id: String = dish["id"]
+		offer(id, owned, func(quantity: int) -> void: _load(id, quantity))
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 6)
 		row.add_child(UI.item_icon(dish["id"], 26))

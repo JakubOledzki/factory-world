@@ -136,6 +136,7 @@ func _render() -> void:
 
 	for child in _slots.get_children():
 		child.free()
+	intake.clear()
 	if not recipe.is_empty():
 		for input: Dictionary in _state["inputs"]:
 			var room := int(_state["maxInput"]) - int(input["quantity"])
@@ -218,6 +219,7 @@ func _stack_row(item: String, text: String, amounts: Array, room: int, fuel := f
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(label)
 	var owned := _count(item)
+	offer(item, room, func(quantity: int) -> void: _put(item, quantity, fuel))
 	var shown := {}
 	for amount: int in amounts:
 		if shown.has(amount):

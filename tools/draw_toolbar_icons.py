@@ -310,9 +310,34 @@ def like():
     p.save("like")
 
 
+def bell():
+    p = Pen()
+    p.dot(32, 8, 3.5, INK)  # the ring it hangs from
+    p.poly([(14, 46), (18, 24), (24, 15), (32, 12), (40, 15), (46, 24), (50, 46)], INK)  # the bell
+    p.dot(32, 24, 14, INK)
+    p.rect(8, 44, 56, 50, INK, 3)  # its rim
+    p.dot(32, 55, 5, SHADE)  # the clapper
+    p.arc(32, 26, 9, 200, 250, CUT, 2.5)  # a shine
+    p.save("bell")
+
+
+def settings():
+    p = Pen()
+    for i in range(8):  # a cog: eight teeth round a wheel with a hole
+        a = math.radians(i * 45)
+        c, s = math.cos(a), math.sin(a)
+        w = 5.5
+        p.poly([(32 + c * 18 - s * w, 32 + s * 18 + c * w), (32 + c * 28 - s * w * 0.8, 32 + s * 28 + c * w * 0.8),
+                (32 + c * 28 + s * w * 0.8, 32 + s * 28 - c * w * 0.8), (32 + c * 18 + s * w, 32 + s * 18 - c * w)], INK)
+    p.dot(32, 32, 21, INK)
+    p.ring(32, 32, 15, SHADE, 3)
+    p.dot(32, 32, 8, CUT)
+    p.save("settings")
+
+
 def main() -> None:
     for draw in (backpack, garage, market, contracts, company, stats, achievements, world_map, logout,
-                 station, plant, mine_upgrade, garage_upgrade, city, bank, blueprint, undo, chat, gallery, like):
+                 station, plant, mine_upgrade, garage_upgrade, city, bank, blueprint, undo, chat, gallery, like, bell, settings):
         draw()
 
 

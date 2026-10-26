@@ -245,12 +245,15 @@ var character := {}:
 		character_changed.emit()
 ## The plot the player is on or last left, so the world map opens there; (-1, -1) if none.
 var plot := Vector2i(-1, -1)
+## The game's messages to the player, on every screen.
+var notices := NoticeFeed.new()
 
 
 func _ready() -> void:
 	get_tree().root.theme = UI.theme()
 	add_child(ItemTooltip.new())
 	add_child(AchievementToast.new())
+	add_child(notices)
 	var config := ConfigFile.new()
 	if config.load(SESSION_FILE) == OK:
 		token = config.get_value("session", "token", "")

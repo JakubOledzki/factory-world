@@ -57,6 +57,10 @@ na działce albo w garażu chowa go do ekwipunku (na komputerze: przytrzymanie p
 przeglądarki (Android); na iPhonie ten sam efekt daje *Udostępnij → Do ekranu początkowego*.
 Pasek szybkiego wyboru (5 slotów nad dolnym paskiem na działce) działa dotykiem: dotknięcie slotu bierze przedmiot do stawiania
 (na komputerze klawisze 1–5), przytrzymanie palca otwiera listę, by zmienić przedmiot albo opróżnić slot (na komputerze prawy przycisk myszy).
+Przy otwartej skrzyni albo maszynie dotknięcie przedmiotu w ekwipunku (albo w skrzyni) otwiera suwak z liczbą sztuk do włożenia lub wzięcia
+(na komputerze: Shift + klik wkłada cały stos, Ctrl + klik połowę). Pipeta i kopiowanie ustawień maszyn są w menu taśm i podajników oraz na dole okien maszyn
+(na komputerze: [F], Shift + prawy i Shift + lewy przycisk). Zębatka obok pieniędzy otwiera ustawienia (na komputerze także [F1]): wielkość interfejsu,
+efekty, limit 30 klatek oszczędzający baterię i klawisze; zapisują się w `user://settings.cfg` na urządzeniu. Dzwonek obok niej pokazuje ostatnie komunikaty gry.
 Sterowanie dotykowe na komputerze włącza `?touch=1` w adresie (`?touch=0` je wyłącza).
 
 ## Protokół
