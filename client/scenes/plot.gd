@@ -535,6 +535,8 @@ var _on_arrival := Callable()
 var _hovered := Vector2i(-1, -1)
 ## Objects in front of the player, drawn see-through so the character never gets lost.
 var _faded := {}
+## Objects standing in front of belts or inserters (over them on screen), a little see-through so those show.
+var _screening := {}
 var _hover_station := false
 ## The object being held to put it away (its id, the button holding it and where the finger started), and how long so far.
 var _hold_id := ""
@@ -648,6 +650,8 @@ func _exit_tree() -> void:
 # --- World ---------------------------------------------------------------------------
 
 func _build_world() -> void:
+	# The plot's pictures are stored finer than drawn (PlotArt); their mipmaps keep them smooth from afar.
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	_ground = Node2D.new()
 	add_child(_ground)
 	add_child(_daylight)
@@ -745,15 +749,13 @@ func _build_world() -> void:
 	_camera.add_child(_snow)
 
 
-## Grown machines' sprites enlarged to their squares, by file: made once while the game runs, not again on every walk onto a plot.
-static var _grown_cache := {}
 ## The objects' and the shadows' tile sets with where each sprite lies on them, by whether they are the shadows.
 static var _tile_set_cache := {}
 
 
 ## The sprites are packed onto a few big pictures (pages), each one atlas source, rather than each in a source
 ## of its own: the many objects on the screen are then drawn in a few batches, not one drawing command each.
-## Every sprite keeps its own size and anchor; an alternative tile of each object is brightened for the mouse.
+## Every sprite keeps its own size and anchor; alternative tiles of each object are brightened for the mouse or see-through.
 ## Packing takes a while, so the tile sets are made once while the game runs.
 func _tile_set(shadows: bool) -> TileSet:
 	if not _tile_set_cache.has(shadows):
@@ -789,16 +791,18 @@ func _pack_tile_set(shadows: bool) -> Dictionary:
 			sprites.append_array([crop + "_young", crop + "_ripe"])
 		for sprite in sprites:
 			pictures.append(_picture(sprite, sprite, true))
-	# Shelves of pictures, the tallest first, on a grid of PACK_CELL pixels; every picture has a clear pixel
-	# around it, so smoothing a zoomed picture does not pick up its neighbour's edge.
+	# Shelves of pictures, the tallest first, on a grid of PACK_CELL pixels on screen; every picture has a clear pixel
+	# around it, so smoothing a zoomed picture does not pick up its neighbour's edge. A page is stored
+	# PlotArt.SUPERSAMPLING times bigger than it is drawn, like the pictures on it, so PACK_PAGE is its stored size.
 	pictures.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a["image"].get_height() > b["image"].get_height())
 	var pages: Array[Image] = []
 	var at := Vector2i.ZERO
 	var shelf := 0
-	var cells := PACK_PAGE / PACK_CELL
+	var ss := PlotArt.SUPERSAMPLING
+	var cells := PACK_PAGE / ss / PACK_CELL
 	for picture in pictures:
 		var image: Image = picture["image"]
-		var size := Vector2i(ceili((image.get_width() + 2) / float(PACK_CELL)), ceili((image.get_height() + 2) / float(PACK_CELL)))
+		var size := Vector2i(ceili((image.get_width() / float(ss) + 2) / PACK_CELL), ceili((image.get_height() / float(ss) + 2) / PACK_CELL))
 		if at.x + size.x > cells:
 			at = Vector2i(0, at.y + shelf)
 			shelf = 0
@@ -806,21 +810,25 @@ func _pack_tile_set(shadows: bool) -> Dictionary:
 			pages.append(Image.create_empty(PACK_PAGE, PACK_PAGE, false, Image.FORMAT_RGBA8))
 			at = Vector2i.ZERO
 			shelf = 0
-		pages[-1].blit_rect(image, Rect2i(Vector2i.ZERO, image.get_size()), at * PACK_CELL + Vector2i.ONE)
+		pages[-1].blit_rect(image, Rect2i(Vector2i.ZERO, image.get_size()), (at * PACK_CELL + Vector2i.ONE) * ss)
 		picture["page"] = pages.size() - 1
 		picture["at"] = at
 		picture["size"] = size
 		at.x += size.x
 		shelf = maxi(shelf, size.y)
 	# The last page only as tall as what is on it.
-	pages[-1].crop(PACK_PAGE, mini((at.y + shelf) * PACK_CELL, PACK_PAGE))
+	pages[-1].crop(PACK_PAGE, mini((at.y + shelf) * PACK_CELL * ss, PACK_PAGE))
 	var set := TileSet.new()
 	set.tile_size = Vector2i(TILE)
 	var sources: Array[TileSetAtlasSource] = []
 	var ids: Array[int] = []
 	for page in pages:
 		var source := TileSetAtlasSource.new()
-		source.texture = ImageTexture.create_from_image(page)
+		# Drawn at its size on screen; the mipmaps keep it smooth when the camera is zoomed out.
+		page.generate_mipmaps()
+		var texture := ImageTexture.create_from_image(page)
+		texture.set_size_override(page.get_size() / ss)
+		source.texture = texture
 		source.texture_region_size = Vector2i(PACK_CELL, PACK_CELL)
 		source.use_texture_padding = false
 		sources.append(source)
@@ -838,13 +846,13 @@ func _pack_tile_set(shadows: bool) -> Dictionary:
 		packed["tiles"][sprite] = tile
 		if not picture["looks"]:
 			continue
-		for modulate: Color in [Color(1.45, 1.4, 1.25), Color(1, 1, 1, 0.4)]:
+		for modulate: Color in [Color(1.45, 1.4, 1.25), Color(1, 1, 1, 0.4), Color(1, 1, 1, 0.6)]:
 			var alternative := source.create_alternative_tile(coords)
 			var data := source.get_tile_data(coords, alternative)
 			data.texture_origin = origin
 			data.modulate = modulate
 		packed["names"][tile] = sprite
-		packed["images"][sprite] = picture["image"]
+		packed["images"][sprite] = picture["mask"]
 		if picture.has("grown"):
 			packed["grown"][sprite] = picture["grown"]
 		if picture["anchor"] != Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"]):
@@ -853,32 +861,23 @@ func _pack_tile_set(shadows: bool) -> Dictionary:
 
 
 ## A sprite's picture and its anchor, as it is drawn. A grown machine's sprite is enlarged to its square
-## and stands in the square's middle.
+## and stands in the square's middle. The picture for the pages is PlotArt.SUPERSAMPLING times its size on screen;
+## the mask, for the mouse, is its size on screen.
 func _picture(sprite: String, file: String, looks: bool) -> Dictionary:
-	var texture: Texture2D = load("res://art/plot/%s.png" % file)
 	var anchor := Vector2(_layout[sprite]["anchorX"], _layout[sprite]["anchorY"])
 	var kind := _placed_kind(sprite)
+	var scale := 1.0
 	var picture := {"sprite": sprite, "looks": looks}
 	if Footprints.GROWN.has(kind):
-		var scale := Footprints.sprite_scale(kind, Vector2(_layout_size(sprite)), TILE)
-		if not _grown_cache.has(file):
-			var image := texture.get_image()
-			if image.is_compressed():
-				image.decompress()
-			image.resize(roundi(image.get_width() * scale), roundi(image.get_height() * scale), Image.INTERPOLATE_CUBIC)
-			_grown_cache[file] = ImageTexture.create_from_image(image)
-		texture = _grown_cache[file]
+		scale = Footprints.sprite_scale(kind, Vector2(_layout_size(sprite)), TILE)
 		anchor *= scale
-		picture["grown"] = texture
+		picture["grown"] = PlotArt.texture(file, scale)
 	if Footprints.shift(kind) != Vector2.ZERO:
 		# An even square's middle lies on the corner of its tiles, half a tile right of and below the object's own tile.
 		anchor -= Footprints.shift(kind) * TILE
-	var image := texture.get_image()
-	if image.is_compressed():
-		image.decompress()
-	if image.get_format() != Image.FORMAT_RGBA8:
-		image.convert(Image.FORMAT_RGBA8)
-	picture["image"] = image
+	picture["image"] = PlotArt.pixels(file, scale * PlotArt.SUPERSAMPLING)
+	if looks:
+		picture["mask"] = PlotArt.mask(file, scale)
 	picture["anchor"] = anchor
 	return picture
 
@@ -886,10 +885,12 @@ func _picture(sprite: String, file: String, looks: bool) -> Dictionary:
 ## Adds a flat sprite (water, a field, a road) as a tile set's source of its own, anchored on the cell's centre.
 ## Returns the source id.
 func _add_source(set: TileSet, file: String) -> int:
-	var texture: Texture2D = load("res://art/plot/%s.png" % file)
+	var texture := PlotArt.texture(file)
 	var anchor := Vector2(_layout[file]["anchorX"], _layout[file]["anchorY"])
 	var source := TileSetAtlasSource.new()
 	source.texture = texture
+	# Padding redraws the texture from its image, at the size it is stored and not drawn; one tile needs none.
+	source.use_texture_padding = false
 	source.texture_region_size = Vector2i(texture.get_size())
 	source.create_tile(Vector2i.ZERO)
 	source.get_tile_data(Vector2i.ZERO, 0).texture_origin = Vector2i(anchor.round()) - Vector2i(texture.get_size() / 2)
@@ -904,8 +905,7 @@ func _placed_kind(sprite: String) -> String:
 
 ## The size of a sprite's own picture (its shadow may be bigger), which a grown machine's sprite is enlarged by.
 func _layout_size(sprite: String) -> Vector2i:
-	var texture: Texture2D = load("res://art/plot/%s.png" % sprite)
-	return Vector2i(texture.get_size())
+	return Vector2i(PlotArt.texture(sprite).get_size())
 
 
 ## Where a sprite's anchor lies in its picture as drawn: on the cell's centre.
@@ -953,7 +953,7 @@ func _apply_plot(plot: Dictionary) -> void:
 	# The ground: the biome's texture repeated over the plot, squashed to the 45° view.
 	var floor_name: String = FLOORS.get(int(plot["biome"]), "grass")
 	var ground := Sprite2D.new()
-	ground.texture = load("res://art/plot/floor_%s.png" % floor_name)
+	ground.texture = PlotArt.texture("floor_" + floor_name)
 	ground.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	ground.centered = false
 	ground.region_enabled = true
@@ -980,7 +980,7 @@ func _apply_plot(plot: Dictionary) -> void:
 
 	# The railway across the plot.
 	var rail := Sprite2D.new()
-	rail.texture = load("res://art/plot/rail.png")
+	rail.texture = PlotArt.texture("rail")
 	rail.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	rail.region_enabled = true
 	rail.centered = false
@@ -994,14 +994,14 @@ func _apply_plot(plot: Dictionary) -> void:
 	var foot := Vector2((int(s["x"]) + int(s["width"]) / 2.0) * TILE.x, (int(s["y"]) + int(s["height"])) * TILE.y)
 	var station_anchor := Vector2(_layout["station"]["anchorX"], _layout["station"]["anchorY"])
 	_station = Sprite2D.new()
-	_station.texture = load("res://art/plot/station.png")
+	_station.texture = PlotArt.texture("station")
 	_station.centered = false
 	_station.offset = -station_anchor
 	_station.position = foot
 	_sorted.add_child(_station)
-	_images["station"] = _station.texture.get_image()
+	_images["station"] = PlotArt.mask("station")
 	var station_shadow := Sprite2D.new()
-	station_shadow.texture = load("res://art/plot/station_shadow.png")
+	station_shadow.texture = PlotArt.texture("station_shadow")
 	station_shadow.centered = false
 	station_shadow.offset = -station_anchor
 	station_shadow.position = foot
@@ -1384,6 +1384,46 @@ func _objects_at(point: Vector2, first_only := false) -> Array[Vector2i]:
 				if first_only:
 					return found
 	return found
+
+
+## The placed objects whose sprites have a solid pixel over a point, drawn on the objects layer yet or not.
+func _placed_over(point: Vector2) -> Array[Vector2i]:
+	var found: Array[Vector2i] = []
+	var base := Vector2i((point / TILE).floor())
+	for dy in range(11, -3, -1):
+		for dx: int in AROUND:
+			var cell := base + Vector2i(dx, dy)
+			if not _placed.has(cell):
+				continue
+			var sprite := _sprite_at(cell)
+			if not _images.has(sprite):
+				continue
+			var image: Image = _images[sprite]
+			var pixel := Vector2i(point - _cell_centre(cell) + _sprite_anchor(sprite))
+			if Rect2i(Vector2i.ZERO, image.get_size()).has_point(pixel) and image.get_pixelv(pixel).a > 0.4:
+				found.append(cell)
+	return found
+
+
+## Makes the objects standing in front of belts and inserters a little see-through, so the machinery behind them shows.
+func _update_screening() -> void:
+	var screening := {}
+	for cell: Vector2i in _placed:
+		if _placed[cell]["kind"] not in MACHINERY:
+			continue
+		var centre := _cell_centre(cell)
+		for lift in [0.0, 16.0]:
+			for found in _placed_over(centre - Vector2(0, lift)):
+				if _cell_centre(found).y > centre.y:
+					screening[found] = true
+	if screening == _screening:
+		return
+	var changed := _screening.keys()
+	changed.append_array(screening.keys())
+	_screening = screening
+	for cell: Vector2i in changed:
+		if _chunks.has(Vector2i((Vector2(cell) / CHUNK).floor())):
+			_draw_cell(cell)
 
 
 ## Makes the objects standing in front of the character see-through.
@@ -1855,7 +1895,7 @@ func _draw_ghost(cell: Vector2i) -> void:
 		else PlotLogistics.TUNNEL_SPRITES[(_place_rotation + 2) & 3] if _placing == UNDERGROUND else PLACED_SPRITES.get(_placing, "")
 	if sprite == "" or not _layout.has(sprite):
 		return
-	var texture: Texture2D = _grown_textures[sprite] if _grown_textures.has(sprite) else load("res://art/plot/%s.png" % sprite)
+	var texture: Texture2D = _grown_textures[sprite] if _grown_textures.has(sprite) else PlotArt.texture(sprite)
 	_marks.draw_texture(texture, _cell_centre(cell) - _sprite_anchor(sprite), Color(1, 1, 1, 0.55))
 	if _placing in MACHINERY:
 		var dir := Vector2(PlotLogistics.facing(_place_rotation)) * TILE
@@ -2288,7 +2328,7 @@ func _clear_tile(cell: Vector2i, kind: int) -> void:
 ## A copy of a sprite that falls over (a tree) or sinks into the ground, then disappears.
 func _vanish(sprite_name: String, cell: Vector2i, fall: bool) -> void:
 	var falling := Sprite2D.new()
-	falling.texture = load("res://art/plot/%s.png" % sprite_name)
+	falling.texture = PlotArt.texture(sprite_name)
 	falling.centered = false
 	falling.offset = -Vector2(_layout[sprite_name]["anchorX"], _layout[sprite_name]["anchorY"])
 	falling.position = _cell_centre(cell)
@@ -3348,6 +3388,7 @@ func _placed_changed() -> void:
 	_logistics.set_objects(_placed)
 	_draw_tunnels()
 	_power.set_objects(_placed)
+	_update_screening()
 	_kinds = {}
 	for cell: Vector2i in _placed:
 		_kinds[_placed[cell]["kind"]] = true
@@ -3501,19 +3542,19 @@ func _add_mine(mine: Dictionary) -> void:
 	var foot := Vector2((int(mine["x"]) + int(mine["width"]) / 2.0) * TILE.x, (int(mine["y"]) + int(mine["height"])) * TILE.y)
 	var anchor := Vector2(_layout["mine"]["anchorX"], _layout["mine"]["anchorY"])
 	var sprite := Sprite2D.new()
-	sprite.texture = load("res://art/plot/mine.png")
+	sprite.texture = PlotArt.texture("mine")
 	sprite.centered = false
 	sprite.offset = -anchor
 	sprite.position = foot
 	_sorted.add_child(sprite)
 	var shadow := Sprite2D.new()
-	shadow.texture = load("res://art/plot/mine_shadow.png")
+	shadow.texture = PlotArt.texture("mine_shadow")
 	shadow.centered = false
 	shadow.offset = -anchor
 	shadow.position = foot
 	_shadows.add_child(shadow)
 	if not _images.has("mine"):
-		_images["mine"] = sprite.texture.get_image()
+		_images["mine"] = PlotArt.mask("mine")
 	var state := mine.duplicate()
 	state["sprite"] = sprite
 	_mines[int(mine["id"])] = state

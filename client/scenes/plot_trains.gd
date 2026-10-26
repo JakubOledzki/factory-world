@@ -136,12 +136,12 @@ func _build(train: Dictionary) -> Array:
 		var name: String = names[i]
 		var anchor := Vector2(layout[name]["anchorX"], layout[name]["anchorY"])
 		var sprite := Sprite2D.new()
-		sprite.texture = load("res://art/plot/%s.png" % name)
+		sprite.texture = PlotArt.texture(name)
 		sprite.centered = false
 		sprite.offset = -anchor
 		add_child(sprite)
 		var shadow := Sprite2D.new()
-		shadow.texture = load("res://art/plot/%s_shadow.png" % name)
+		shadow.texture = PlotArt.texture(name + "_shadow")
 		shadow.centered = false
 		shadow.offset = -anchor
 		shadows_parent.add_child(shadow)

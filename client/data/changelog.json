@@ -1,6 +1,15 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Ostrzejsze obiekty na działkach",
+		"changes": [
+			"Drzewa, skały, maszyny, taśmy i inne obiekty na działkach mają grafikę w dwa razy większej rozdzielczości, więc nie są już rozmyte na dużym ekranie, na telefonie i po przybliżeniu.",
+			"Maszyny, które rosną z poziomem (2 × 2, 3 × 3, 4 × 4), są narysowane jeszcze dokładniej, żeby po powiększeniu też były ostre.",
+			"Budynek stojący przed podajnikiem albo taśmą jest lekko przezroczysty, więc podajniki za nim widać."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Karmnik dla zwierząt",
 		"changes": [
 			"Nowe badanie Karmniki (w drzewku Hodowla, bez wymagań) odblokowuje karmnik: 12 desek i 6 gwoździ przy stole warsztatowym, u handlarza 380 $.",

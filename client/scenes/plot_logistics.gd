@@ -121,7 +121,7 @@ var _drones: DroneFlights
 func _ready() -> void:
 	for sprite: String in ["belt_ns", "belt_ew"] + CURVE_SPRITES.values():
 		for suffix: String in ["", "_fast", "_express", "_pipe"]:
-			_textures[sprite + suffix] = load("res://art/plot/%s%s.png" % [sprite, suffix])
+			_textures[sprite + suffix] = PlotArt.texture(sprite + suffix)
 
 
 ## "_fast" or "_express" for upgraded belts and inserters, "_pipe" for pipes, whose sprites end so; "" for the rest.

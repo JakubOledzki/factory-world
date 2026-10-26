@@ -19,6 +19,7 @@ ART = Path(__file__).resolve().parent.parent / "client" / "art"
 PLOT = ART / "plot"
 ICONS = ART / "icons"
 S = 4  # supersampling
+PLOT_SS = 2  # plot sprites are stored twice their size on screen, like the renders (SS in render_plot_art.py)
 SPRITE = (112, 96)
 ANCHOR = (56, 62)
 ICON = 64
@@ -57,7 +58,7 @@ def ground_shadow(size, anchor, rx, ry, strength=0.6):
     # The sun stands front left, so the shadow falls a little back and to the right.
     draw.ellipse((cx - rx * S + 2 * S, cy - ry * S - 2 * S, cx + rx * S + 4 * S, cy + ry * S - 1 * S), fill=(0, 0, 0, round(255 * strength)))
     img = img.filter(ImageFilter.GaussianBlur(2.5 * S))
-    return finish(img, size)
+    return finish(img, (size[0] * PLOT_SS, size[1] * PLOT_SS))
 
 
 # --- Animals -------------------------------------------------------------------------------------
@@ -206,7 +207,7 @@ def render_animals(layout):
     for name, (paint, (rx, ry)) in ANIMALS.items():
         img, draw = canvas(SPRITE)
         paint(draw, ANCHOR[0] * S, ANCHOR[1] * S)
-        finish(img, SPRITE).save(PLOT / f"{name}.png", optimize=True)
+        finish(img, (SPRITE[0] * PLOT_SS, SPRITE[1] * PLOT_SS)).save(PLOT / f"{name}.png", optimize=True)
         ground_shadow(SPRITE, ANCHOR, rx, ry).save(PLOT / f"{name}_shadow.png", optimize=True)
         layout[name] = {"anchorX": ANCHOR[0], "anchorY": ANCHOR[1]}
 
@@ -249,7 +250,7 @@ def draw_feeder(draw, cx, cy, k=1.0):
 def render_feeder(layout):
     img, draw = canvas(SPRITE)
     draw_feeder(draw, ANCHOR[0] * S, ANCHOR[1] * S, 0.9)
-    finish(img, SPRITE).save(PLOT / "feeder.png", optimize=True)
+    finish(img, (SPRITE[0] * PLOT_SS, SPRITE[1] * PLOT_SS)).save(PLOT / "feeder.png", optimize=True)
     ground_shadow(SPRITE, ANCHOR, 27, 8).save(PLOT / "feeder_shadow.png", optimize=True)
     layout["feeder"] = {"anchorX": ANCHOR[0], "anchorY": ANCHOR[1]}
 

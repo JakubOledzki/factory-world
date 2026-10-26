@@ -2,7 +2,8 @@
  "tile": {
   "width": 64,
   "height": 45,
-  "pixelsPerMetre": 32
+  "pixelsPerMetre": 32,
+  "supersampling": 2
  },
  "tree_0": {
   "anchorX": 128,
@@ -135,7 +136,8 @@
  },
  "furnace": {
   "anchorX": 48,
-  "anchorY": 70
+  "anchorY": 70,
+  "supersampling": 4
  },
  "belt_ew": {
   "anchorX": 36,
@@ -171,23 +173,28 @@
  },
  "mill": {
   "anchorX": 64,
-  "anchorY": 101
+  "anchorY": 101,
+  "supersampling": 4
  },
  "oil_press": {
   "anchorX": 56,
-  "anchorY": 76
+  "anchorY": 76,
+  "supersampling": 4
  },
  "pickling_barrel": {
   "anchorX": 48,
-  "anchorY": 59
+  "anchorY": 59,
+  "supersampling": 4
  },
  "bakery": {
   "anchorX": 56,
-  "anchorY": 74
+  "anchorY": 74,
+  "supersampling": 4
  },
  "kitchen": {
   "anchorX": 56,
-  "anchorY": 77
+  "anchorY": 77,
+  "supersampling": 4
  },
  "belt_ne": {
   "anchorX": 36,
@@ -215,11 +222,13 @@
  },
  "brick_furnace": {
   "anchorX": 56,
-  "anchorY": 92
+  "anchorY": 92,
+  "supersampling": 6
  },
  "blast_furnace": {
   "anchorX": 56,
-  "anchorY": 103
+  "anchorY": 103,
+  "supersampling": 8
  },
  "belt_ew_fast": {
   "anchorX": 36,
@@ -334,15 +343,18 @@
  },
  "sawmill": {
   "anchorX": 56,
-  "anchorY": 74
+  "anchorY": 74,
+  "supersampling": 4
  },
  "electric_sawmill": {
   "anchorX": 56,
-  "anchorY": 74
+  "anchorY": 74,
+  "supersampling": 6
  },
  "industrial_sawmill": {
   "anchorX": 56,
-  "anchorY": 91
+  "anchorY": 91,
+  "supersampling": 8
  },
  "drill": {
   "anchorX": 56,
@@ -366,19 +378,23 @@
  },
  "quarry": {
   "anchorX": 56,
-  "anchorY": 74
+  "anchorY": 74,
+  "supersampling": 4
  },
  "crusher": {
   "anchorX": 56,
-  "anchorY": 72
+  "anchorY": 72,
+  "supersampling": 4
  },
  "stonemason": {
   "anchorX": 56,
-  "anchorY": 67
+  "anchorY": 67,
+  "supersampling": 4
  },
  "foundry": {
   "anchorX": 56,
-  "anchorY": 109
+  "anchorY": 109,
+  "supersampling": 6
  },
  "cable_station": {
   "anchorX": 40,
@@ -394,11 +410,13 @@
  },
  "smokehouse": {
   "anchorX": 56,
-  "anchorY": 98
+  "anchorY": 98,
+  "supersampling": 4
  },
  "cannery": {
   "anchorX": 64,
-  "anchorY": 96
+  "anchorY": 96,
+  "supersampling": 4
  },
  "salt_pan": {
   "anchorX": 64,
@@ -441,8 +459,8 @@
   "anchorY": 41
  },
  "water": {
-  "anchorX": 32,
-  "anchorY": 22
+  "anchorX": 64,
+  "anchorY": 45
  },
  "pumpjack": {
   "anchorX": 64,
@@ -466,19 +484,23 @@
  },
  "distillery": {
   "anchorX": 48,
-  "anchorY": 90
+  "anchorY": 90,
+  "supersampling": 4
  },
  "refinery": {
   "anchorX": 68,
-  "anchorY": 133
+  "anchorY": 133,
+  "supersampling": 6
  },
  "cracker": {
   "anchorX": 64,
-  "anchorY": 113
+  "anchorY": 113,
+  "supersampling": 6
  },
  "chemical_plant": {
   "anchorX": 68,
-  "anchorY": 86
+  "anchorY": 86,
+  "supersampling": 6
  },
  "tank": {
   "anchorX": 56,
@@ -530,11 +552,13 @@
  },
  "glassworks": {
   "anchorX": 64,
-  "anchorY": 88
+  "anchorY": 88,
+  "supersampling": 4
  },
  "arc_furnace": {
   "anchorX": 64,
-  "anchorY": 88
+  "anchorY": 88,
+  "supersampling": 6
  },
  "water_well": {
   "anchorX": 56,
@@ -550,11 +574,13 @@
  },
  "cement_kiln": {
   "anchorX": 68,
-  "anchorY": 78
+  "anchorY": 78,
+  "supersampling": 4
  },
  "concrete_mixer": {
   "anchorX": 56,
-  "anchorY": 66
+  "anchorY": 66,
+  "supersampling": 4
  },
  "reed_fence": {
   "anchorX": 64,
@@ -620,11 +646,13 @@
  },
  "ice_melter": {
   "anchorX": 56,
-  "anchorY": 76
+  "anchorY": 76,
+  "supersampling": 4
  },
  "cold_store": {
   "anchorX": 64,
-  "anchorY": 76
+  "anchorY": 76,
+  "supersampling": 4
  },
  "server_room": {
   "anchorX": 64,
@@ -682,7 +710,8 @@
  },
  "multistorey_factory": {
   "anchorX": 64,
-  "anchorY": 148
+  "anchorY": 148,
+  "supersampling": 4
  },
  "shop": {
   "anchorX": 64,
@@ -758,19 +787,23 @@
  },
  "paper_mill": {
   "anchorX": 72,
-  "anchorY": 108
+  "anchorY": 108,
+  "supersampling": 4
  },
  "carpentry": {
   "anchorX": 64,
-  "anchorY": 82
+  "anchorY": 82,
+  "supersampling": 4
  },
  "charcoal_kiln": {
   "anchorX": 64,
-  "anchorY": 73
+  "anchorY": 73,
+  "supersampling": 4
  },
  "tar_kiln": {
   "anchorX": 64,
-  "anchorY": 75
+  "anchorY": 75,
+  "supersampling": 4
  },
  "beehive": {
   "anchorX": 40,
@@ -790,7 +823,8 @@
  },
  "machine_shop": {
   "anchorX": 64,
-  "anchorY": 86
+  "anchorY": 86,
+  "supersampling": 4
  },
  "robotic_hall": {
   "anchorX": 128,
@@ -840,15 +874,18 @@
  },
  "slaughterhouse": {
   "anchorX": 56,
-  "anchorY": 80
+  "anchorY": 80,
+  "supersampling": 4
  },
  "dairy": {
   "anchorX": 56,
-  "anchorY": 75
+  "anchorY": 75,
+  "supersampling": 4
  },
  "potato_distillery": {
   "anchorX": 56,
-  "anchorY": 89
+  "anchorY": 89,
+  "supersampling": 4
  },
  "biogas_plant": {
   "anchorX": 120,

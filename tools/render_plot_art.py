@@ -4,6 +4,9 @@ icons of tools and raw materials into client/art/icons/.
 
 Same studio as tools/render_art.py (it reuses its helpers), same 45° view from above, but at a
 smaller scale: a tile of a plot is 2 × 2 m on screen, 64 × 45 px, at 32 px per metre.
+Every picture is stored at SS times that size and the game draws it back at screen size, so it
+stays sharp when the window or the camera zoom enlarges it. Anchors and sizes in layout.json are
+in screen pixels.
 
     .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [tree] [assemblers] [machine_levels] [logistics] [husbandry] [export] [freight] [banks] [<sprite>...] [icons | item_<id>...]
 
@@ -27,6 +30,17 @@ OUT = ra.ART / "plot"
 ICONS = ra.ART / "icons"
 TMP = ra.TMP / "plot"
 PPM = 32
+SS = 2
+# Machines that grow with their level (GROWN in client/scenes/footprints.gd): the game enlarges their
+# one-tile sprites to the square they cover, so they are rendered that many times finer still.
+GROWN = {
+    "furnace": 2, "mill": 2, "oil_press": 2, "pickling_barrel": 2, "bakery": 2, "kitchen": 2, "sawmill": 2, "quarry": 2,
+    "crusher": 2, "stonemason": 2, "smokehouse": 2, "cannery": 2, "distillery": 2, "glassworks": 2, "cement_kiln": 2,
+    "concrete_mixer": 2, "ice_melter": 2, "cold_store": 2, "paper_mill": 2, "carpentry": 2, "charcoal_kiln": 2, "tar_kiln": 2,
+    "dairy": 2, "slaughterhouse": 2, "potato_distillery": 2, "machine_shop": 2, "multistorey_factory": 2,
+    "brick_furnace": 3, "electric_sawmill": 3, "foundry": 3, "refinery": 3, "cracker": 3, "chemical_plant": 3, "arc_furnace": 3,
+    "blast_furnace": 4, "industrial_sawmill": 4,
+}
 PITCH = math.radians(45)
 TILE_M = 2.0
 
@@ -35,14 +49,15 @@ random.seed(11)
 
 # --- Studio -----------------------------------------------------------------------------------
 
-def outdoor_scene(width_px: int, height_px: int, target: Vector, samples=64, pitch=PITCH, true_scale=False):
+def outdoor_scene(width_px: int, height_px: int, target: Vector, samples=64, pitch=PITCH, true_scale=False, ss=SS):
     """Dusk under a heavy sky: a warm sun from the front left and a cold blue fill. Blender fits the
     camera's width to the longer side of the picture, so a tall one comes out zoomed in unless
-    `true_scale` keeps it at PPM pixels per metre."""
+    `true_scale` keeps it at PPM pixels per metre. The picture comes out `ss` times bigger."""
     scene = ra.reset()
     scene.cycles.samples = samples
     ra.set_world((0.035, 0.045, 0.065), 1.0)
     ra.camera(scene, target, (max(width_px, height_px) if true_scale else width_px) / PPM, (width_px, height_px), pitch=pitch)
+    scene.render.resolution_percentage = 100 * ss
     ra.light("SUN", (0, 0, 10), 2.6, (1.0, 0.82, 0.62), size=0.06,
              rotation=(math.radians(36), 0, math.radians(-40)))
     ra.light("SUN", (0, 0, 10), 0.35, (0.55, 0.65, 0.9), size=0.6,
@@ -65,7 +80,8 @@ def shadow_catcher(size=40.0):
 
 def render_sprite(name: str, width: int, height: int, target: Vector, build, true_scale=False) -> dict:
     """Renders an object and, separately, the shadow it throws on the ground."""
-    outdoor_scene(width, height, target, true_scale=true_scale)
+    ss = SS * GROWN.get(name, 1)
+    outdoor_scene(width, height, target, true_scale=true_scale, ss=ss)
     objs = build()
     catcher = shadow_catcher()
     catcher.hide_render = True
@@ -80,11 +96,12 @@ def render_sprite(name: str, width: int, height: int, target: Vector, build, tru
     # Keep only the darkening, as a soft black shape.
     alpha = shadow.getchannel("A").point(lambda v: min(255, int(v * 0.85)))
     flat = Image.new("RGBA", shadow.size, (2, 3, 6, 0))
-    flat.putalpha(alpha.filter(ImageFilter.GaussianBlur(1.2)))
+    flat.putalpha(alpha.filter(ImageFilter.GaussianBlur(1.2 * ss)))
     flat.save(OUT / f"{name}_shadow.png", optimize=True)
     ax, ay = anchor(width, height, target)
     print("sprite", name)
-    return {"anchorX": ax, "anchorY": ay}
+    # Anchors are in screen pixels; a sprite stored finer than the rest says how much.
+    return {"anchorX": ax, "anchorY": ay} | ({"supersampling": ss} if ss != SS else {})
 
 
 def meshes():
@@ -2195,7 +2212,7 @@ def render_water_tile():
     col = m.ramp(wave.outputs["Fac"], [(0.0, (0.02, 0.07, 0.12)), (0.7, (0.035, 0.12, 0.19)), (1.0, (0.12, 0.25, 0.32))]).outputs["Color"]
     ra.box("sea", (24, 24, 0.02), (0, 0, -0.01), m.done(col, 0.15, 0.0, wave.outputs["Fac"], 0.4))
     ra.render(TMP / "water_big.png")
-    tile = (round(TILE_M * PPM), round(TILE_M * PPM * math.sin(PITCH)))
+    tile = (round(TILE_M * PPM) * SS, round(TILE_M * PPM * math.sin(PITCH)) * SS)
     seamless(Image.open(TMP / "water_big.png").convert("RGBA")).resize(tile, Image.LANCZOS).save(OUT / "water.png", optimize=True)
     print("sprite water")
     return {"anchorX": tile[0] // 2, "anchorY": tile[1] // 2}
@@ -6871,7 +6888,7 @@ if __name__ == "__main__":
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
     layout = json.loads(layout_file.read_text()) if layout_file.exists() else {}
-    layout["tile"] = {"width": round(TILE_M * PPM), "height": round(TILE_M * PPM * math.sin(PITCH)), "pixelsPerMetre": PPM}
+    layout["tile"] = {"width": round(TILE_M * PPM), "height": round(TILE_M * PPM * math.sin(PITCH)), "pixelsPerMetre": PPM, "supersampling": SS}
     if "floors" in args:
         render_floors()
     if "nature" in args:
