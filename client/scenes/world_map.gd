@@ -25,6 +25,13 @@ const CLICK_SLOP := 6.0
 const MAX_LABELS := 160
 const MINE := Color("#f5b041")
 const OTHERS := Color("#d4553f")
+## The exclamation mark over a bot's plot when it asks players for help.
+const HELP := Color("#ffd23f")
+## Why a bot asks for help, as the server names it.
+const HELP_REASONS := {
+	"stalled": "Linia produkcyjna stoi, choć ma wszystko, czego potrzebuje. Pomóż ją ustawić od nowa.",
+	"parts": "Brakuje części do linii produkcyjnej albo opału. Przynieś je z ekwipunku.",
+}
 ## Deposit sizes as the server numbers them.
 const DEPOSITS := ["brak", "małe złoże", "średnie złoże", "duże złoże"]
 ## The coast biome, whose seabed may hold oil as well.
@@ -37,6 +44,8 @@ var _biomes := {}
 var _my_plots: Array[Vector2i] = []
 ## Owned plots loaded around the view: Vector2i → true when they are the player's.
 var _owned := {}
+## Bots asking for help: Vector2i → their call, as bots.helpWanted sends it.
+var _help := {}
 var _balance := 0
 var _next_base_price := 0
 
@@ -325,6 +334,10 @@ func _draw_overlay() -> void:
 		# Too small to see a plot: mark the player's own with pins.
 		for plot in _my_plots:
 			_draw_pin(_to_screen(Vector2(plot) + Vector2(0.5, 0.5)), MINE)
+	for plot: Vector2i in _help:
+		var centre := _to_screen(Vector2(plot) + Vector2(0.5, 0.5))
+		if Rect2(Vector2.ZERO, size).grow(20.0).has_point(centre):
+			_draw_help(centre)
 
 	if _zoom >= 4.0 and _hovered.y >= 0 and _hovered.y < _data.height:
 		_overlay.draw_rect(Rect2(_to_screen(Vector2(_hovered)), plot_size), Color(1, 1, 1, 0.55), false, 1.0)
@@ -340,6 +353,18 @@ func _draw_overlay() -> void:
 
 	_draw_towns()
 	_draw_scale()
+
+
+## A yellow badge with an exclamation mark: a bot on this plot asks for help.
+func _draw_help(at: Vector2) -> void:
+	var radius := clampf(_zoom * 0.35, 7.0, 12.0)
+	_overlay.draw_circle(at, radius + 1.5, Color.BLACK)
+	_overlay.draw_circle(at, radius, HELP)
+	var font := UI.bold()
+	var font_size := int(radius * 1.6)
+	var text_size := font.get_string_size("!", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var baseline := at + Vector2(-text_size.x / 2.0, font.get_ascent(font_size) - text_size.y / 2.0)
+	_overlay.draw_string(font, baseline, "!", HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color.BLACK)
 
 
 func _draw_pin(at: Vector2, color: Color) -> void:
@@ -618,6 +643,8 @@ func _show_plot() -> void:
 				_plot_box.add_child(UI.button("Odwiedź działkę", Game.enter_plot.bind(plot), true))
 			else:
 				_plot_box.add_child(_note("Działka prywatna: wchodzą tylko właściciel i jego spółka."))
+			if _help.has(plot) and not mine:
+				_show_help(plot)
 		elif _plot.get("priceCents") != null:
 			var price: int = _plot["priceCents"]
 			var price_row := HBoxContainer.new()
@@ -639,6 +666,39 @@ func _show_plot() -> void:
 				_plot_box.add_child(_small("Kliknij jeszcze raz, by zapłacić %s." % UI.money(price), UI.MUTED))
 	_panel.visible = true
 	_panel.reset_size()
+	_overlay.queue_redraw()
+
+
+## A bot's call for help: what it needs, what it pays, and the button to help it.
+func _show_help(plot: Vector2i) -> void:
+	var call: Dictionary = _help[plot]
+	_plot_box.add_child(HSeparator.new())
+	var head := UI.label("! %s prosi o pomoc" % call.get("bot", "Bot"), HELP)
+	head.add_theme_font_override("font", UI.bold())
+	_plot_box.add_child(head)
+	_plot_box.add_child(_note(HELP_REASONS.get(call.get("reason", ""), "Coś nie działa w jego fabryce.")))
+	var needs: Array = call.get("needs", [])
+	for need: Dictionary in needs:
+		_plot_box.add_child(_small("• %s × %d" % [need["name"], int(need["quantity"])], UI.TEXT))
+	var pay := int(call.get("payCents", 0))
+	_plot_box.add_child(UI.label("Zapłata: %s" % UI.money(pay), UI.GOOD))
+	_plot_box.add_child(UI.button("Pomóż (+%s)" % UI.money(pay), _on_help.bind(plot), true))
+
+
+func _on_help(plot: Vector2i) -> void:
+	var reply := await Net.request("bots.help", {"x": plot.x, "y": plot.y})
+	if reply["type"] != "bots.helped":
+		_show_error(reply)
+		await _load_help()
+		if _selected == plot:
+			_show_plot()
+		return
+	var helped: Dictionary = reply["payload"]
+	_set_balance(int(helped["balanceCents"]))
+	_help.erase(plot)
+	_show_toast("%s dziękuje za pomoc!  +%s" % [helped.get("bot", "Bot"), UI.money(int(helped["payCents"]))], UI.GOLD)
+	if _selected == plot:
+		_show_plot()
 	_overlay.queue_redraw()
 
 
@@ -817,6 +877,7 @@ func _load() -> void:
 		_my_plots.append(Vector2i(plot["x"], plot["y"]))
 	_update_mine_button()
 	_set_balance(int(wallet["payload"]["balanceCents"]))
+	await _load_help()
 	# The legend was built before the names arrived.
 	var shown := _legend.visible
 	_hud.erase(_legend)
@@ -824,6 +885,18 @@ func _load() -> void:
 	_build_legend()
 	_legend.visible = shown
 	_hud.append(_legend)
+	_overlay.queue_redraw()
+
+
+## Loads the bots that ask for help, for the exclamation marks.
+func _load_help() -> void:
+	var reply := await Net.request("bots.helpWanted")
+	if reply["type"] != "bots.helpWanted":
+		return
+	var calls := {}
+	for call: Dictionary in reply["payload"]["requests"]:
+		calls[Vector2i(call["x"], call["y"])] = call
+	_help = calls
 	_overlay.queue_redraw()
 
 

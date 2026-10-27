@@ -69,6 +69,63 @@ public static class BotRules
     /// <summary>Saplings a forestry bot has in the ground at once.</summary>
     public const int MaxPlanted = 40;
 
+    /// <summary>
+    /// Cents a bot takes from the NPC trader and NPC orders in one session at most. Selling to the trader makes new money
+    /// (a sale between players only moves it), and two thousand bots selling all they gather swamped the economy, so past
+    /// this a bot sells only to players and lets the rest wait in its inventory and on its listings.
+    /// </summary>
+    public const long MaxTraderIncome = 100_00;
+
+    /// <summary>With this many pieces to sell piling up, a bot gathers less and works its line and the market more.</summary>
+    public const long Glut = 600;
+
+    /// <summary>How often a bot looks after its production line: empties the output, refills the input and the generator.</summary>
+    public static readonly TimeSpan TendEvery = TimeSpan.FromMinutes(2);
+
+    /// <summary>How often a bot opens the contracts board.</summary>
+    public static readonly TimeSpan ContractsEvery = TimeSpan.FromMinutes(3);
+
+    /// <summary>How long the market overview one bot fetched serves every bot (as long as the server keeps its own summary).</summary>
+    public static readonly TimeSpan OverviewFor = TimeSpan.FromSeconds(10);
+
+    /// <summary>What a bot pays a player who helps it on top of what the parts are worth (or alone, for setting a stalled line going).</summary>
+    public const long HelpFee = 10_00;
+
+    /// <summary>A bot pays for parts a player brings this many times what the trader pays for them, and the fee.</summary>
+    public const double HelpMarkup = 1.25;
+
+    /// <summary>A bot pays for parts at most this share of what the NPC trader charges for them, the fee included.</summary>
+    public const double HelpBelowTrader = 0.95;
+
+    /// <summary>A bot waits this long for help before it gives up and sets its line going itself.</summary>
+    public static readonly TimeSpan HelpWait = TimeSpan.FromMinutes(30);
+
+    /// <summary>A bot that could not put its line up three times tries again after this long.</summary>
+    public static readonly TimeSpan RetryBuildAfter = TimeSpan.FromMinutes(30);
+
+    /// <summary>A bot asks for parts once it has wanted them this long without getting them.</summary>
+    public static readonly TimeSpan PartsWait = TimeSpan.FromMinutes(20);
+
+    /// <summary>Looks after its line this many times in a row without anything coming out of it, and the bot calls the line stalled.</summary>
+    public const int StalledAfter = 2;
+
+    /// <summary>A bot buys a part of its line from the NPC trader, when it cannot make it, only for at most this many times what the trader pays.</summary>
+    public const double MaxPartMarkup = 3;
+
+    /// <summary>
+    /// The production line the bot puts up on its plot once it has researched what it takes: miners, smelters and
+    /// crafters smelt ore, farmers grind wheat, foresters saw planks. Traders live off the market alone.
+    /// </summary>
+    public static BotLine? Line(BotTrade trade) => trade switch
+    {
+        BotTrade.Miner or BotTrade.Smelter or BotTrade.Industrialist => new BotLine(Items.Furnace, null,
+            Ores, [Items.Wood, Items.Coal],
+            [Items.IronIngot, Items.CopperIngot, Items.TinIngot, Items.SilverIngot, Items.GoldIngot]),
+        BotTrade.Farmer => new BotLine(Items.Mill, Items.Flour, [Items.Wheat], [Items.Wood, Items.Coal], [Items.Flour]),
+        BotTrade.Forester => new BotLine(Items.Sawmill, Items.Planks, [Items.Wood], [Items.Wood], [Items.Planks]),
+        _ => null,
+    };
+
     /// <summary>Plots a bot buys over its life; the third costs 100 000 $, so few get that far.</summary>
     public static int MaxPlots(BotTrade trade) => trade switch
     {
@@ -83,6 +140,7 @@ public static class BotRules
         BotTrade.Miner => owned == 0 ? [Biomes.Mountains] : [Biomes.Mountains, Biomes.Forest],
         BotTrade.Farmer => owned == 0 ? [Biomes.Farmland] : [Biomes.Farmland, Biomes.Forest],
         BotTrade.Industrialist => owned == 0 ? [Biomes.Forest] : [Biomes.Mountains],
+        BotTrade.Smelter => owned == 0 ? [Biomes.Forest] : [Biomes.Mountains, Biomes.Forest],
         _ => [Biomes.Forest],
     };
 
@@ -101,32 +159,41 @@ public static class BotRules
         _ => [Items.WoodenChest],
     };
 
-    /// <summary>What the bot makes at the workbench, when it has the ingredients and the technology.</summary>
+    /// <summary>What the bot makes at the workbench for the market, when it has the ingredients and the technology; the dearest first.</summary>
     public static string[] Products(BotTrade trade) => trade switch
     {
-        BotTrade.Forester => [Items.WoodPile, Items.WoodenChest],
+        BotTrade.Forester => [Items.WoodenChest, Items.WoodPile],
         BotTrade.Miner => [Items.Nails],
-        BotTrade.Industrialist => [Items.Nails, Items.Belt, Items.WoodenChest, Items.IronChest],
+        BotTrade.Smelter => [Items.Nails],
+        BotTrade.Industrialist => [Items.Inserter, Items.IronChest, Items.WoodenChest, Items.Pole, Items.Belt, Items.Nails],
         _ => [],
     };
 
-    /// <summary>Technologies the bot researches, in order, when it can pay for them.</summary>
+    /// <summary>How many of a product the bot makes ahead before it waits for them to sell.</summary>
+    public static long Stock(string product) => product switch
+    {
+        Items.Inserter or Items.IronChest => 10,
+        _ => 20,
+    };
+
+    /// <summary>Technologies the bot researches, in order, when it can pay for them; the line needs the first ones.</summary>
     public static string[] Research(BotTrade trade) => trade switch
     {
-        BotTrade.Forester => ["logistics", "storage"],
-        BotTrade.Miner => ["logistics", "storage"],
-        BotTrade.Industrialist => ["logistics", "automation", "storage"],
-        BotTrade.Farmer => ["milling"],
+        BotTrade.Forester => ["logistics", "automation", "forestry_industry", "storage"],
+        BotTrade.Miner or BotTrade.Smelter or BotTrade.Industrialist => ["logistics", "automation", "storage"],
+        BotTrade.Farmer => ["milling", "logistics", "automation"],
         _ => [],
     };
 
-    /// <summary>What the bot looks for on the players' market.</summary>
+    /// <summary>What the bot looks for on the players' market: the inputs of its trade. What it still lacks for its line and its
+    /// research it looks for too (<see cref="Bot"/> adds that).</summary>
     public static string[] Buys(BotTrade trade) => trade switch
     {
         BotTrade.Forester => [Items.Sapling, Items.Nails],
         BotTrade.Miner => [Items.Wood, Items.Coal],
-        BotTrade.Farmer => [Items.Stone],
-        BotTrade.Industrialist => [Items.IronOre, Items.CopperOre, Items.Coal, Items.Wood],
+        BotTrade.Farmer => [Items.Wheat, Items.Wood, Items.Coal],
+        BotTrade.Industrialist => [Items.IronIngot, Items.CopperIngot, Items.IronOre, Items.Coal, Items.Wood],
+        BotTrade.Smelter => [Items.IronOre, Items.CopperOre, Items.TinOre, Items.Coal, Items.Wood],
         _ => [],
     };
 
@@ -143,6 +210,10 @@ public static class BotRules
         (BotTrade.Miner, Items.Wood) => 50,
         (BotTrade.Farmer, Items.Wheat) => 60,
         (BotTrade.Farmer, Items.Stone) => 30,
+        (BotTrade.Farmer, Items.Wood or Items.Coal) => 20,
+        (BotTrade.Smelter, Items.IronOre or Items.CopperOre or Items.TinOre or Items.SilverOre or Items.GoldOre) => 1000,
+        (BotTrade.Smelter, Items.Coal or Items.Wood) => 30,
+        (BotTrade.Smelter, Items.IronIngot) => 20,
         (BotTrade.Industrialist, Items.IronOre or Items.CopperOre or Items.TinOre or Items.SilverOre or Items.GoldOre) => 1000,
         (BotTrade.Industrialist, Items.Coal) => 30,
         (BotTrade.Industrialist, Items.IronIngot or Items.CopperIngot) => 30,
@@ -156,8 +227,9 @@ public static class BotRules
         Items.Wood, Items.Stone, Items.Sand, Items.Coal, Items.Sapling,
         Items.IronOre, Items.CopperOre, Items.TinOre, Items.SilverOre, Items.GoldOre,
         Items.IronIngot, Items.CopperIngot, Items.TinIngot, Items.SilverIngot, Items.GoldIngot,
-        Items.Nails, Items.Belt, Items.WoodenChest, Items.IronChest, Items.WoodPile,
+        Items.Nails, Items.Belt, Items.WoodenChest, Items.IronChest, Items.WoodPile, Items.Inserter, Items.Pole,
         Items.Wheat, Items.Carrot, Items.Cabbage, Items.Corn, Items.Potato, Items.Sunflower,
+        Items.Flour, Items.Planks,
     };
 
     /// <summary>What sorting trash gives; bots sell it to the trader like new players do.</summary>

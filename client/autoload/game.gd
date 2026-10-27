@@ -187,6 +187,8 @@ const ERRORS := {
 	"no_pasture": "Tu nie wypasiesz tego zwierzęcia: na pustyni żyją tylko wielbłądy, a na lodowcu nic.",
 	"already_surveyed": "Ta działka jest już zbadana.",
 	"no_offer": "Tej oferty już nie ma.",
+	"no_help_needed": "Ten bot nie potrzebuje już pomocy.",
+	"bot_cannot_pay": "Bot nie ma już pieniędzy, żeby zapłacić za pomoc.",
 	"own_offer": "To twoja własna oferta.",
 	"not_enough_offered": "W ofercie zostało mniej sztuk.",
 	"too_many_offers": "Możesz mieć najwyżej 20 otwartych ofert każdego rodzaju.",

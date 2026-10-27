@@ -21,12 +21,14 @@ public sealed class BotEngine(
     OnlinePlayers online,
     ServerLoad load,
     BotsOptions options,
+    BotHelpBoard help,
     ILogger<BotEngine> logger)
 {
     private readonly IReadOnlyDictionary<string, IMessageHandler> _handlers = handlers.ToDictionary(h => h.Type, StringComparer.Ordinal);
     private readonly IReadOnlyList<IMessageObserver> _observers = observers.ToList();
     private readonly Dictionary<string, Bot> _bots = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _ticking = new(1, 1);
+    private readonly BotCommons _commons = new(help);
 
     public Random Random { get; init; } = Random.Shared;
 
@@ -64,11 +66,12 @@ public sealed class BotEngine(
                 }
 
                 online.AddBotAccount(row.AccountId);
+                _commons.AddBot(row.CharacterName);
                 if (!_bots.ContainsKey(profile.Name))
                 {
                     var account = row.AccountId;
                     _bots[profile.Name] = new Bot(profile, row, new BotClient(account, _handlers, _observers, load, logger), logger,
-                        (cents, ct) => GrantAsync(account, cents, ct));
+                        (cents, ct) => GrantAsync(account, cents, ct), _commons);
                 }
             }
         }
@@ -99,6 +102,8 @@ public sealed class BotEngine(
                     row.SessionUntil = null;
                     row.NextSessionAt = now + Jitter(TimeSpan.FromHours(bot.Profile.RestHours));
                     bot.EndSession();
+                    // Nobody can help a bot that has gone; it asks again next time if it still needs to.
+                    help.Withdraw(row.Name);
                     online.SetBot(row.AccountId, false);
                     await SaveScheduleAsync(row, cancellationToken);
                     logger.LogInformation("Bot {Bot} logged out until {Next}", row.CharacterName, row.NextSessionAt);

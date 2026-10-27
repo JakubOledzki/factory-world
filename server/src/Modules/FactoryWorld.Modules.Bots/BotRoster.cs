@@ -3,20 +3,24 @@ namespace FactoryWorld.Modules.Bots;
 /// <summary>What a bot is mostly up to; it decides the biome of its plots, what it makes and what it trades.</summary>
 public enum BotTrade
 {
-    /// <summary>Buys forest, chops and plants trees, sells wood and saplings, makes wood piles and chests.</summary>
+    /// <summary>Buys forest, chops and plants trees, saws wood into planks on a sawmill line, sells wood, planks and chests.</summary>
     Forester,
 
-    /// <summary>Buys mountains, works the mines, smelts ore in a furnace, sells stone, coal, ore and ingots.</summary>
+    /// <summary>Buys mountains, works the mines, smelts ore on a furnace line, sells stone, coal, ore and ingots.</summary>
     Miner,
 
-    /// <summary>Buys fertile soil, tills, sows and reaps, sells crops.</summary>
+    /// <summary>Buys fertile soil, tills, sows and reaps, grinds wheat on a mill line, sells crops and flour.</summary>
     Farmer,
 
-    /// <summary>Buys ore and coal from other players, smelts and crafts nails, belts and chests for the market.</summary>
+    /// <summary>The crafter: buys ingots, ore and wood on the market, smelts on a furnace line and crafts inserters, belts,
+    /// poles and chests for the market.</summary>
     Industrialist,
 
-    /// <summary>Lives off the market: buys cheap listings, sells them on, fills buy orders and gives out orders.</summary>
+    /// <summary>Lives off the market: buys cheap listings from players, sells them on, fills buy orders and gives out orders.</summary>
     Trader,
+
+    /// <summary>Buys ore and coal from miners and players, smelts it on a furnace line on its plot, sells ingots and nails.</summary>
+    Smelter,
 }
 
 /// <summary>One bot of the roster.</summary>
