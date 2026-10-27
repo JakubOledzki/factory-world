@@ -67,8 +67,6 @@ var _money: Label
 var _search: LineEdit
 var _mine_button: Button
 var _legend: PanelContainer
-var _toast: Label
-var _toast_tween: Tween
 var _loading: Label
 
 var _panel: PanelContainer
@@ -80,13 +78,7 @@ var _confirming := false
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	for action: String in ACTIONS:
-		if not InputMap.has_action(action):
-			InputMap.add_action(action)
-			for key: Key in ACTIONS[action]:
-				var event := InputEventKey.new()
-				event.physical_keycode = key
-				InputMap.action_add_event(action, event)
+	Settings.register(ACTIONS)
 
 	var background := ColorRect.new()
 	background.color = WorldData.COLORS[WorldData.OCEAN] * Color(0.86, 0.88, 0.92)
@@ -461,9 +453,7 @@ func _build_hud() -> void:
 	_money.add_theme_font_size_override("font_size", 17)
 	money_row.add_child(_money)
 	money_parts[1].add_child(money_row)
-	add_child(money_panel)
-	money_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 12)
-	money_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	var corner := CornerButtons.beside(self, money_panel)
 
 	var bottom := HBoxContainer.new()
 	bottom.add_theme_constant_override("separation", 6)
@@ -480,16 +470,12 @@ func _build_hud() -> void:
 	_status.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	add_child(_status)
 
-	_toast = _outlined(UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	_toast.add_theme_font_size_override("font_size", 18)
-	_toast.size = Vector2(800, 30)
-	_toast.position = Vector2((size.x - 800) / 2.0, 70)
-	_toast.modulate.a = 0.0
-	add_child(_toast)
+	# Messages show at the top, under the search, where the map has nothing to say.
+	Game.notices.dock(70.0, true)
 
 	_build_legend()
 	_build_panel()
-	_hud.assign([top, money_panel, bottom, _status, _panel, _legend])
+	_hud.assign([top, corner, bottom, _status, _panel, _legend])
 
 
 func _build_legend() -> void:
@@ -904,16 +890,9 @@ func _outlined(label: Label) -> Label:
 	return label
 
 
+## A message at the top of the map, kept under the bell.
 func _show_toast(text: String, color := UI.TEXT) -> void:
-	_toast.text = text
-	_toast.add_theme_color_override("font_color", color)
-	_toast.position.x = (size.x - _toast.size.x) / 2.0
-	if _toast_tween != null:
-		_toast_tween.kill()
-	_toast.modulate.a = 1.0
-	_toast_tween = create_tween()
-	_toast_tween.tween_interval(3.0)
-	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.6)
+	Game.notices.show_notice(text, color)
 
 
 func _show_error(reply: Dictionary) -> void:

@@ -20,6 +20,14 @@ var poll_every := 0.0:
 		poll_every = value
 		set_process(visible and value > 0.0)
 
+## What the window takes in from the inventory, by item: { room, put: Callable(quantity) }. A window that
+## loads items fills it while it draws its rows (offer), and a Shift-click, a drag or a tap on an
+## inventory tile puts the item in through it (InventoryGrid).
+var intake := {}
+
+## Counts how often windows were opened, so the one opened last is found (receiver).
+static var _opened := 0
+
 ## Set by dock_right(): until the player drags it, the window opens this far from the right edge of
 ## the screen, however wide the screen is (-1: wherever its position puts it).
 var _right_gap := -1.0
@@ -29,6 +37,8 @@ var _poll_busy := false
 var _title: Label
 var _bar := HBoxContainer.new()
 var _scroll := ScrollContainer.new()
+## Under the content: buttons the screen adds for the object the window shows (set_tools).
+var _tools := HBoxContainer.new()
 ## On the title bar of windows of objects that can have a filter (see show_filter_button).
 var _filter_button: Button
 var _on_filter := Callable()
@@ -68,6 +78,9 @@ func _init(title: String, width: int) -> void:
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.add_child(content)
 	box.add_child(_scroll)
+	_tools.add_theme_constant_override("separation", 4)
+	_tools.visible = false
+	box.add_child(_tools)
 	visibility_changed.connect(func() -> void:
 		# A hidden window that only polls has nothing to do each frame.
 		if poll_every > 0.0:
@@ -92,6 +105,8 @@ func dock_right(gap := 12.0, top := 64.0) -> void:
 
 func show_window() -> void:
 	visible = true
+	_opened += 1
+	set_meta("opened", _opened)
 	move_to_front()
 	_dock()
 	_fit.call_deferred()
@@ -113,7 +128,8 @@ func _fit() -> void:
 		_scroll.custom_minimum_size.y = screen.y - 2 * fill_margin.y - get_combined_minimum_size().y
 		reset_size()
 		return
-	var room := screen.y - 16 - frame - _bar.get_combined_minimum_size().y - 40
+	var room := screen.y - 16 - frame - _bar.get_combined_minimum_size().y - 40 \
+		- (_tools.get_combined_minimum_size().y + 6 if _tools.visible else 0.0)
 	_scroll.custom_minimum_size.y = minf(content.get_combined_minimum_size().y, room)
 	reset_size()
 	_dock()
@@ -157,6 +173,35 @@ func has_filter_button() -> bool:
 func hide_filter_button() -> void:
 	_on_filter = Callable()
 	_filter_button.visible = false
+
+
+## Says the window takes `item` in, at most `room` pieces, through `put` (called with the quantity).
+func offer(item: String, room: int, put: Callable) -> void:
+	if not intake.has(item) and room > 0:
+		intake[item] = {"room": room, "put": put}
+
+
+## The open window last opened that takes `item` in, or null; with `at` (global, in pixels) the one under it.
+static func receiver(tree: SceneTree, item: String, at := Vector2.INF) -> GameWindow:
+	var best: GameWindow = null
+	for window: GameWindow in tree.get_nodes_in_group(GROUP):
+		if not window.is_visible_in_tree() or not window.intake.has(item):
+			continue
+		if at != Vector2.INF and not window.get_global_rect().has_point(at):
+			continue
+		if best == null or int(window.get_meta("opened", 0)) > int(best.get_meta("opened", 0)):
+			best = window
+	return best
+
+
+## Buttons under the content for the object shown, e.g. "Kopiuj ustawienia"; none takes them away.
+func set_tools(buttons: Array[Button]) -> void:
+	UI.clear(_tools)
+	for b in buttons:
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		_tools.add_child(b)
+	_tools.visible = not buttons.is_empty()
+	_fit.call_deferred()
 
 
 func set_title(title: String) -> void:

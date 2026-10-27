@@ -197,6 +197,7 @@ func _render() -> void:
 
 	for child in _load.get_children():
 		child.free()
+	intake.clear()
 	var any := false
 	var held := int(fuel["quantity"]) if fuel != null else 0
 	for option: Dictionary in _state.get("fuels", []):
@@ -206,6 +207,9 @@ func _render() -> void:
 		any = true
 		var blocked: bool = fuel != null and fuel["id"] != option["id"]
 		var room := int(_state["maxFuel"]) - held
+		if not blocked:
+			var id: String = option["id"]
+			offer(id, room, func(quantity: int) -> void: _put(id, quantity))
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 6)
 		row.add_child(UI.item_icon(option["id"], 26))

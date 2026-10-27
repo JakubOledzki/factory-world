@@ -138,6 +138,7 @@ func _render() -> void:
 	for stack: Dictionary in _state["items"]:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 6)
+		_take_on_click(row, stack)
 		row.add_child(UI.item_icon(stack["id"], 28))
 		var name_label := UI.label("%s  ×%d" % [stack["name"], int(stack["quantity"])])
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -150,6 +151,7 @@ func _render() -> void:
 
 	for child in _load.get_children():
 		child.free()
+	intake.clear()
 	_load.visible = can_put
 	_load_heading.visible = can_put
 	_help.text = ""
@@ -165,6 +167,7 @@ func _render() -> void:
 			continue
 		any = true
 		var owned := int(stack["quantity"])
+		offer(item, room, func(quantity: int) -> void: _put(item, quantity))
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 6)
 		row.add_child(UI.item_icon(item, 26))
@@ -188,7 +191,29 @@ func _render() -> void:
 		_help.text = "Mieści tylko: %s, jeden rodzaj naraz." % ", ".join((only as Array).map(func(o: Dictionary) -> String: return o["name"].to_lower()))
 	else:
 		_help.text = "Każdy rodzaj przedmiotu zajmuje osobne miejsca. Podajnik ustawiony przodem do skrzyni wkłada do niej, tyłem wyjmuje."
+	_help.text += " Przy otwartym ekwipunku [I] dotknij przedmiotu, aby go tu włożyć." if UI.touch() \
+		else " Przy otwartym ekwipunku [I] Shift + klik na przedmiot wkłada go tu cały, a przeciągnięcie na to okno też."
 	_fit.call_deferred()
+
+
+## Shift-click on what lies in the storage takes all of it, Ctrl-click half; a tap on a phone asks how many.
+func _take_on_click(row: Control, stack: Dictionary) -> void:
+	var item: String = stack["id"]
+	var stored := int(stack["quantity"])
+	row.mouse_filter = Control.MOUSE_FILTER_STOP
+	row.tooltip_text = "Dotknij, aby wybrać, ile wziąć" if UI.touch() else "Shift + klik: weź wszystko, Ctrl + klik: połowę"
+	row.gui_input.connect(func(event: InputEvent) -> void:
+		if not (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
+			return
+		if UI.touch():
+			QuantityDialog.ask(self, item, stack["name"], "Weź", stored, func(quantity: int) -> void: _take(item, quantity))
+		elif event.shift_pressed:
+			_take(item, 0)
+		elif event.ctrl_pressed:
+			_take(item, ceili(stored / 2.0))
+		else:
+			return
+		row.accept_event())
 
 
 func _holds(item: String) -> bool:

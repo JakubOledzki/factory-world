@@ -15,6 +15,7 @@ Game="*res://autoload/game.gd"
 Touch="*res://autoload/touch.gd"
 Tutorial="*res://autoload/tutorial.gd"
 Online="*res://autoload/online.gd"
+Settings="*res://autoload/settings.gd"
 
 [display]
 

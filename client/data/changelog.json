@@ -1,6 +1,19 @@
 [
 	{
 		"date": "2026-10-26",
+		"title": "Ustawienia, powiadomienia i szybsze przenoszenie",
+		"changes": [
+			"Nowe okno „Ustawienia” (zębatka obok pieniędzy albo [F1]): wielkość interfejsu od 75% do 150% (świat na działce zostaje tej samej wielkości), wyłączenie dymu, konfetti i drżenia ekranu oraz limit 60 albo 30 klatek, który oszczędza baterię telefonu.",
+			"W zakładce „Sterowanie” widać wszystkie skróty i można zmienić każdy klawisz: kliknij go i naciśnij nowy. Ustawienia zostają na tym urządzeniu.",
+			"Komunikaty gry nie kasują się już nawzajem: układają się jeden nad drugim, a ten sam powtórzony pokazuje tylko licznik „×2”. Dzwonek obok pieniędzy trzyma 30 ostatnich, z godziną; „Pokaż” przy wskazanym miejscu prowadzi tam postać.",
+			"Przy otwartej skrzyni, maszynie, piecu, generatorze, stołówce albo magazynie spółki: Shift + klik na przedmiot w ekwipunku wkłada cały stos, Ctrl + klik połowę, a przedmiot można też po prostu przeciągnąć na okno. Shift + klik na to, co leży w skrzyni, wyjmuje wszystko.",
+			"Na telefonie dotknięcie przedmiotu (w ekwipunku albo w skrzyni) otwiera suwak: wybierasz, ile włożyć lub wziąć.",
+			"Pipeta [F]: najedź na obiekt na działce, a weźmiesz z ekwipunku taki sam do postawienia, obrócony tak samo.",
+			"Shift + prawy przycisk kopiuje ustawienia maszyny (przepis, filtr, strony rozdzielacza), a Shift + lewy wkleja je na inną. Te same przyciski („Taki sam”, „Kopiuj ustawienia”, „Wklej”) są na dole okna maszyny, pieca, skrzyni i generatora oraz w menu taśm i podajników, więc działa to też na telefonie."
+		]
+	},
+	{
+		"date": "2026-10-26",
 		"title": "Żywsza fabryka, plany budowy, czat i galeria",
 		"changes": [
 			"Nad maszyną, która stoi, miga znaczek: ikona brakującego składnika albo węgla, piorun przy braku prądu, strzałka, gdy jest pełna. Po najechaniu widać też powód, na przykład „stoi: czeka na składniki: ruda żelaza”.",

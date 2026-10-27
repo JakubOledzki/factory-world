@@ -109,8 +109,6 @@ var _prompt: Label
 var _bin_status: VBoxContainer
 var _bin_bar: ProgressBar
 var _bin_text: Label
-var _toast: Label
-var _toast_tween: Tween
 
 var _level: Label
 var _xp_bar: ProgressBar
@@ -158,13 +156,7 @@ var _slots: InventoryGrid
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
-	for action: String in ACTIONS:
-		if not InputMap.has_action(action):
-			InputMap.add_action(action)
-			for key: Key in ACTIONS[action]:
-				var event := InputEventKey.new()
-				event.physical_keycode = key
-				InputMap.action_add_event(action, event)
+	Settings.register(ACTIONS)
 	_build_room()
 	_build_hud()
 	_build_windows()
@@ -244,11 +236,8 @@ func _build_room() -> void:
 	_bin_status.add_child(_bin_bar)
 	_overlay.add_child(_bin_status)
 
-	_toast = _outlined(UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	_toast.size = Vector2(800, 30)
-	_toast.position = Vector2(240, 628)
-	_toast.modulate.a = 0.0
-	_overlay.add_child(_toast)
+	# Messages show just above the toolbar.
+	Game.notices.dock(62.0)
 
 	_hold_ring = Control.new()
 	_hold_ring.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -257,8 +246,11 @@ func _build_room() -> void:
 	_overlay.add_child(_hold_ring)
 
 
+## The room fills the screen as it would at the interface's usual size (Settings), in the middle.
 func _center_stage() -> void:
-	_stage.position = ((size - STAGE_SIZE) / 2).round()
+	var fit := minf(size.x / STAGE_SIZE.x, size.y / STAGE_SIZE.y) if size.x > 0.0 else 1.0
+	_stage.scale = Vector2.ONE * fit
+	_stage.position = ((size - STAGE_SIZE * fit) / 2).round()
 
 
 ## The mouse on the room render, which is what RoomProjection and the furniture work in.
@@ -728,7 +720,7 @@ func _start_placing(kind: String, steps := 0) -> void:
 	_grid.visible = true
 	_grid.queue_redraw()
 	_update_ghost()
-	_show_toast("Kliknij, aby postawić. R lub kółko myszy obraca, prawy przycisk lub Esc anuluje.")
+	_show_toast("Kliknij, aby postawić. R lub kółko myszy obraca, prawy przycisk lub Esc anuluje.", UI.TEXT, false)
 
 
 func _stop_placing() -> void:
@@ -853,9 +845,7 @@ func _build_hud() -> void:
 	_money.add_theme_font_size_override("font_size", 17)
 	money_row.add_child(_money)
 	money_parts[1].add_child(money_row)
-	add_child(money_panel)
-	money_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 12)
-	money_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	CornerButtons.beside(self, money_panel)
 
 	# The tool in hand, bottom left.
 	var tool_parts := UI.panel(2)
@@ -1432,15 +1422,9 @@ func _pulse() -> void:
 	tween.tween_property(bin, "modulate", Color.WHITE, 0.35)
 
 
-func _show_toast(text: String, color := UI.TEXT) -> void:
-	_toast.text = text
-	_toast.add_theme_color_override("font_color", color)
-	if _toast_tween != null:
-		_toast_tween.kill()
-	_toast.modulate.a = 1.0
-	_toast_tween = create_tween()
-	_toast_tween.tween_interval(3.0)
-	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.6)
+## A message above the toolbar, kept under the bell; `keep` false for a mere instruction, which isn't.
+func _show_toast(text: String, color := UI.TEXT, keep := true) -> void:
+	Game.notices.show_notice(text, color, {}, keep)
 
 
 func _on_portrait_input(event: InputEvent, panel: Control) -> void:

@@ -134,6 +134,7 @@ func _render() -> void:
 	for i in _tab_buttons.size():
 		_tab_buttons[i].set_pressed_no_signal(i == _tab)
 	UI.clear(_body)
+	intake.clear()
 	var company: Variant = _state.get("company")
 	set_title("Spółka" if company == null else "Spółka: %s" % company["name"])
 	# Without a company only founding, the exchange and the rankings make sense.
@@ -318,6 +319,8 @@ func _render_company(company: Dictionary) -> void:
 	for stack: Dictionary in _items:
 		var owned := int(stack["quantity"])
 		var line := _item_row(stack["id"], "%s  ×%d" % [stack["name"], owned])
+		var id: String = stack["id"]
+		offer(id, room, func(quantity: int) -> void: _send("company.put", {"item": id, "quantity": quantity}, true))
 		for amount: int in [1, 10, 0]:
 			var count := mini(owned, room) if amount == 0 else amount
 			var b := UI.button("Wszystko" if amount == 0 else "+%d" % amount, _send.bind("company.put", {"item": stack["id"], "quantity": count}, true))

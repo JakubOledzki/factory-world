@@ -42,6 +42,7 @@ const ACTIONS := {
 	"hotbar_4": [KEY_4],
 	"hotbar_5": [KEY_5],
 	"plan": [KEY_V],
+	"pipette": [KEY_F],
 }
 
 const LAYOUT_FILE := "res://art/plot/layout.json"
@@ -597,8 +598,6 @@ var _menu_cell := Vector2i(-1, -1)
 var _animal_menu: PopupMenu
 var _menu_animal := Vector2i(-1, -1)
 var _work_bar: ProgressBar
-var _toast: Label
-var _toast_tween: Tween
 var _minimap: TextureRect
 var _minimap_image: Image
 var _minimap_dot: Control
@@ -637,6 +636,8 @@ var _plan_button: Button
 var _undo_button: Button
 ## The chat in the corner, and whether the next click on the plot points at a place for the others.
 var _chat: ChatBox
+## Settings copied from an object (Shift + right click) to paste onto another: { kind, name, recipe?, recipeName?, filter?, splitter? }.
+var _copied := {}
 var _pinging := false
 ## Likes: how many players like this plot, whether this player does (a visitor), and the button to like it.
 var _likes := 0
@@ -670,19 +671,24 @@ var _next_station_poll := 0.0
 
 
 func _ready() -> void:
-	for action: String in ACTIONS:
-		if not InputMap.has_action(action):
-			InputMap.add_action(action)
-			for key: Key in ACTIONS[action]:
-				var event := InputEventKey.new()
-				event.physical_keycode = key
-				InputMap.action_add_event(action, event)
+	Settings.register(ACTIONS)
 	RenderingServer.set_default_clear_color(Color("#08090a"))
 	_layout = JSON.parse_string(FileAccess.get_file_as_string(LAYOUT_FILE))
 	_build_world()
 	_build_hud()
 	_build_windows()
+	Game.notices.place_chosen.connect(_on_notice_place)
+	Settings.changed.connect(func() -> void: _set_zoom(_zoom))
 	_load()
+
+
+## A message about a place on this plot was clicked: the player goes there.
+func _on_notice_place(place: Dictionary) -> void:
+	if place.get("plot") == _at and _ready_to_play:
+		Game.notices.take_pending(_at)
+		var cell: Vector2i = place["cell"]
+		_stop_work()
+		_walk_to(cell, Callable(), _solid(cell))
 
 
 func _exit_tree() -> void:
@@ -779,6 +785,7 @@ func _build_world() -> void:
 	_camera.position_smoothing_enabled = true
 	_camera.position_smoothing_speed = 8.0
 	add_child(_camera)
+	_set_zoom(_zoom)
 	_snow = CPUParticles2D.new()
 	_snow.emitting = false
 	_snow.amount = 500
@@ -1103,6 +1110,10 @@ func _apply_plot(plot: Dictionary) -> void:
 	_camera.reset_smoothing()
 	_update_chunks(true)
 	_ready_to_play = true
+	# Came here from a message about a place on this plot (NoticeFeed): go there.
+	var place := Game.notices.take_pending(_at)
+	if not place.is_empty():
+		_on_notice_place(place)
 
 
 func _tile(cell: Vector2i) -> int:
@@ -2042,6 +2053,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_set_zoom(_zoom * 1.1)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_set_zoom(_zoom / 1.1)
+		elif event.button_index == MOUSE_BUTTON_RIGHT and event.shift_pressed:
+			_update_hover()
+			if _placed.has(_hovered):
+				_copy_settings(_hovered)
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			_update_hover()
 			_start_hold(MOUSE_BUTTON_RIGHT)
@@ -2051,7 +2066,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			if event.device == InputEvent.DEVICE_ID_EMULATION:
 				_start_hold(MOUSE_BUTTON_LEFT)
 			var cell := Vector2i((get_global_mouse_position() / TILE).floor())
-			if _plan_mode != "":
+			if event.shift_pressed and _plan_mode == "" and _placing == "" and _releasing == "" and _placed.has(_hovered):
+				_paste_settings(_hovered)
+			elif _plan_mode != "":
 				_plan_click(cell)
 			elif _placing != "":
 				if _can_place(cell) and _big(_placing):
@@ -2153,6 +2170,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		Game.open_garage()
 	elif event.is_action_pressed("plan"):
 		_toggle_plan()
+	elif event.is_action_pressed("pipette"):
+		_update_hover()
+		_pipette(_hovered)
 	else:
 		for slot in Hotbar.SLOTS:
 			if event.is_action_pressed("hotbar_%d" % (slot + 1)):
@@ -2189,7 +2209,7 @@ func _on_chat_heard(message: Dictionary) -> void:
 		var cell := Vector2i(int(ping["x"]), int(ping["y"]))
 		_effects.ping(_cell_centre(cell))
 		if not mine:
-			_show_toast("%s wskazuje miejsce na działce." % message["name"], Color("#5ab4e8"))
+			_show_toast("%s wskazuje miejsce na działce." % message["name"], Color("#5ab4e8"), true, cell)
 		return
 	if mine:
 		PlotPlayers.bubble(_player, str(message["text"]), PLAYER_SCALE)
@@ -2206,7 +2226,7 @@ func _visitor_input(event: InputEvent) -> bool:
 				_walk_to(cell)
 		get_viewport().set_input_as_handled()
 		return true
-	for action: String in ["interact", "rotate", "plant", "upgrade_mine", "station", "market", "plan"]:
+	for action: String in ["interact", "rotate", "plant", "upgrade_mine", "station", "market", "plan", "pipette"]:
 		if event.is_action_pressed(action):
 			_show_toast("To nie twoja działka: możesz tu tylko chodzić i oglądać.", UI.MUTED)
 			return true
@@ -2238,7 +2258,8 @@ func _pinch_zoom(event: InputEvent) -> bool:
 
 func _set_zoom(value: float) -> void:
 	_zoom = clampf(value, MIN_ZOOM, MAX_ZOOM)
-	_camera.zoom = Vector2.ONE * _zoom
+	# A bigger interface (Settings) would make the world bigger too; the camera takes it back.
+	_camera.zoom = Vector2.ONE * _zoom / Settings.ui_scale
 
 
 # --- Working trees, rocks and dunes ----------------------------------------------------------
@@ -2707,7 +2728,7 @@ func _set_planting(on: bool) -> void:
 		var kind: Dictionary = _tree_kinds.get(_planting_sapling, {})
 		var minutes := _grow_seconds(kind.get("id", "pine")) / 60.0
 		_show_toast("Sadzenie: kliknij wolne pole. %s urośnie tu w %s min." % [SPECIES_NAMES.get(kind.get("id", "pine"), "Drzewo"),
-			str(snappedf(minutes, 0.1)).trim_suffix(".0").replace(".", ",")])
+			str(snappedf(minutes, 0.1)).trim_suffix(".0").replace(".", ",")], UI.TEXT, false)
 	_update_plant_button()
 	_update_hint()
 
@@ -3000,9 +3021,9 @@ func _start_placing(kind: String) -> void:
 	_inventory_window.hide_window()
 	_placing = kind
 	if kind in MACHINERY:
-		_show_toast("Kliknij wolne pole, aby postawić: %s. [R] obraca, Esc kończy." % _item_name(kind).to_lower())
+		_show_toast("Kliknij wolne pole, aby postawić: %s. [R] obraca, Esc kończy." % _item_name(kind).to_lower(), UI.TEXT, false)
 	else:
-		_show_toast("Kliknij wolne pole, aby postawić: %s. Esc anuluje." % _item_name(kind))
+		_show_toast("Kliknij wolne pole, aby postawić: %s. Esc anuluje." % _item_name(kind), UI.TEXT, false)
 	_update_hint()
 
 
@@ -3146,12 +3167,15 @@ func _use_placed(cell: Vector2i) -> void:
 	elif object["kind"] in FURNACES:
 		_furnace_window.open_at(object["id"])
 		_offer_filter(_furnace_window, object, "machine")
+		_furnace_window.set_tools(_object_tools(cell))
 	elif object["kind"] in MACHINES:
 		_machine_window.open_at(object["id"], object["name"])
 		_offer_filter(_machine_window, object, "machine")
+		_machine_window.set_tools(_object_tools(cell))
 	elif object["kind"] in STORAGES:
 		_storage_window.open_at(_at, object["id"])
 		_offer_filter(_storage_window, object, "storage")
+		_storage_window.set_tools(_object_tools(cell))
 	elif object["kind"] in ["furniture_workbench", "furniture_anvil", SHIPYARD, "furniture_tailor"]:
 		_crafting_window.open_at(object["id"], object["kind"])
 	elif object["kind"] == ResearchWindow.TABLE:
@@ -3164,6 +3188,7 @@ func _use_placed(cell: Vector2i) -> void:
 			_offer_filter(_generator_window, object, "machine")
 		else:
 			_generator_window.hide_filter_button()
+		_generator_window.set_tools(_object_tools(cell))
 	elif object["kind"] in WELLS:
 		_well_window.open_at(_at, object["id"])
 	elif object["kind"] == SHOP:
@@ -3622,6 +3647,11 @@ func _open_object_menu(cell: Vector2i) -> void:
 	if _turnable(cell):
 		_object_menu.add_item("Obróć  [R]", 0)
 	_object_menu.add_item("Schowaj do ekwipunku", 1)
+	_object_menu.add_item("Weź taki sam do postawienia  [F]", 4)
+	if _has_settings(cell):
+		_object_menu.add_item("Kopiuj ustawienia  [Shift + PPM]", 5)
+	if _can_paste(cell):
+		_object_menu.add_item("Wklej ustawienia: %s  [Shift + LPM]" % _copied_text(), 6)
 	if _placed.has(cell) and _placed[cell]["kind"] == SPLITTER:
 		_object_menu.add_item("Ustaw, co idzie w którą stronę", 2)
 	if _placed.has(cell) and _placed[cell]["kind"] in INSERTERS:
@@ -3647,6 +3677,12 @@ func _on_object_chosen(choice: int) -> void:
 		_open_splitter(cell)
 	elif choice == 3:
 		_open_filter(_placed[cell], "inserter")
+	elif choice == 4:
+		_pipette(cell)
+	elif choice == 5:
+		_copy_settings(cell)
+	elif choice == 6:
+		_paste_settings(cell)
 	else:
 		_go_and(cell, func(at: Vector2i) -> void:
 			if _placed.has(at):
@@ -3688,6 +3724,165 @@ func _open_filter(object: Dictionary, role: String) -> void:
 ## The "Filtr" button on the title bar of the window of a storage or a machine that can have a filter.
 func _offer_filter(window: GameWindow, object: Dictionary, role: String) -> void:
 	window.show_filter_button(_logistics.filter(object["id"]), func() -> void: _open_filter(object, role))
+
+
+# --- Pipette, copy and paste of settings --------------------------------------------------
+
+## The pipette ([F] over an object, or its menu): the same item from the inventory in hand to place,
+## turned the way that one is.
+func _pipette(cell: Vector2i) -> void:
+	if not _placed.has(cell):
+		_show_toast("Pipeta: najedź myszą na obiekt na działce i naciśnij [F].", UI.MUTED, false)
+		return
+	var object: Dictionary = _placed[cell]
+	var kind: String = object["kind"]
+	if _count(kind) == 0:
+		_show_toast("Nie masz już: %s. Zrób więcej albo kup u handlarza." % String(object["name"]).to_lower(), UI.ERROR)
+		return
+	_hide_placed_windows()
+	_start_placing(kind)
+	_place_rotation = int(object.get("rotation", _place_rotation)) & 3
+	_update_hint()
+
+
+## Buttons under the window of a machine, furnace, storage or generator: the pipette and its settings.
+func _object_tools(cell: Vector2i) -> Array[Button]:
+	var tools: Array[Button] = []
+	var same := UI.button("Taki sam", _pipette.bind(cell))
+	same.tooltip_text = "Pipeta [F]: weź z ekwipunku taki sam obiekt do postawienia"
+	tools.append(same)
+	if _has_settings(cell):
+		var copy := UI.button("Kopiuj ustawienia", func() -> void:
+			await _copy_settings(cell)
+			if _using == cell:
+				_refresh_tools(cell))
+		copy.tooltip_text = "Shift + prawy przycisk na obiekcie: przepis i filtr, by wkleić je na inny"
+		tools.append(copy)
+	if _can_paste(cell):
+		var paste := UI.button("Wklej", _paste_settings.bind(cell))
+		paste.tooltip_text = "Wklej ustawienia: %s  [Shift + lewy przycisk]" % _copied_text()
+		tools.append(paste)
+	return tools
+
+
+func _refresh_tools(cell: Vector2i) -> void:
+	for window: GameWindow in [_furnace_window, _machine_window, _storage_window, _generator_window]:
+		if window.visible:
+			window.set_tools(_object_tools(cell))
+
+
+## Whether an object may have settings to copy: a recipe, a filter or a splitter's sides.
+func _has_settings(cell: Vector2i) -> bool:
+	if not _placed.has(cell):
+		return false
+	var object: Dictionary = _placed[cell]
+	if object["kind"] in MACHINES:
+		return true  # its recipe is asked for when copying
+	if object["kind"] == SPLITTER:
+		return not (_logistics.splitter(object["id"])["items"] as Array).is_empty()
+	return _logistics.filter(object["id"]) != ""
+
+
+func _filterable(kind: String) -> bool:
+	return kind in INSERTERS or kind in STORAGES or kind in MACHINES or kind in FURNACES or kind in GENERATORS
+
+
+func _can_paste(cell: Vector2i) -> bool:
+	if _copied.is_empty() or not _placed.has(cell) or _placed[cell]["id"] == _copied.get("id"):
+		return false
+	var kind: String = _placed[cell]["kind"]
+	return (_copied.has("recipe") and kind == _copied["kind"]) or (_copied.has("filter") and _filterable(kind)) \
+		or (_copied.has("splitter") and kind == SPLITTER)
+
+
+## What was copied, e.g. "przepis: mąka, filtr: pszenica".
+func _copied_text() -> String:
+	var parts: Array[String] = []
+	if _copied.has("recipe"):
+		parts.append("przepis: %s" % String(_copied["recipeName"]).to_lower())
+	if _copied.has("filter"):
+		parts.append("filtr: %s" % _filter_name(_copied["filter"]).to_lower())
+	if _copied.has("splitter"):
+		var count := (_copied["splitter"]["items"] as Array).size()
+		parts.append("rozdzielacz: %d %s %s" % [count, "przedmiot" if count == 1 else "przedmioty" if count < 5 else "przedmiotów",
+			"w lewo" if int(_copied["splitter"]["side"]) == 0 else "w prawo"])
+	return ", ".join(parts)
+
+
+## Shift + right click on an object (or its menu, or the button in its window): keeps its recipe, filter
+## or splitter's sides, to paste onto others.
+func _copy_settings(cell: Vector2i) -> void:
+	if _visitor or not _placed.has(cell):
+		return
+	var object: Dictionary = _placed[cell]
+	var kind: String = object["kind"]
+	var copied := {"id": object["id"], "kind": kind, "name": object["name"]}
+	var only := _logistics.filter(object["id"])
+	if only != "":
+		copied["filter"] = only
+	if kind == SPLITTER:
+		var sides := _logistics.splitter(object["id"])
+		if not (sides["items"] as Array).is_empty():
+			copied["splitter"] = sides
+	if kind in MACHINES:
+		var reply := await Net.request("machine.get", {"machine": object["id"]})
+		if reply["type"] == "machine" and reply["payload"].get("recipe") != null:
+			copied["recipe"] = reply["payload"]["recipe"]
+			for recipe: Dictionary in reply["payload"].get("recipes", []):
+				if recipe["id"] == copied["recipe"]:
+					copied["recipeName"] = recipe["name"]
+			copied["recipeName"] = copied.get("recipeName", copied["recipe"])
+	if not (copied.has("recipe") or copied.has("filter") or copied.has("splitter")):
+		_show_toast("%s nie ma ustawień do skopiowania: bez przepisu i filtra." % object["name"], UI.MUTED, false)
+		return
+	_copied = copied
+	_show_toast("Skopiowano (%s). Shift + lewy przycisk na innym obiekcie wkleja." % _copied_text() if not UI.touch()
+		else "Skopiowano (%s). Wklejasz w menu albo oknie innego obiektu." % _copied_text(), UI.GOLD, false)
+
+
+## Shift + left click on an object: gives it the copied recipe, filter or splitter's sides, as far as they fit it.
+func _paste_settings(cell: Vector2i) -> void:
+	if _visitor or not _placed.has(cell):
+		return
+	if _copied.is_empty():
+		_show_toast("Najpierw skopiuj ustawienia: Shift + prawy przycisk na maszynie.", UI.MUTED, false)
+		return
+	if not _can_paste(cell):
+		_show_toast("Skopiowane ustawienia (%s) tu nie pasują." % _copied_text(), UI.MUTED, false)
+		return
+	var object: Dictionary = _placed[cell]
+	var kind: String = object["kind"]
+	var done: Array[String] = []
+	if _copied.has("recipe") and kind == _copied["kind"]:
+		# A machine already making it keeps what it has in it: a new recipe would give its ingredients back.
+		var state := await Net.request("machine.get", {"machine": object["id"]})
+		if state["type"] == "machine" and state["payload"].get("recipe") != _copied["recipe"]:
+			var reply := await Net.request("machine.recipe", {"machine": object["id"], "recipe": _copied["recipe"]})
+			if reply["type"] != "machine":
+				_show_error(reply)
+				return
+			_reload_inventory()
+		done.append("przepis")
+	if _copied.has("filter") and _filterable(kind) and _logistics.filter(object["id"]) != _copied["filter"]:
+		var reply := await Net.request("filter.set", {"x": _at.x, "y": _at.y, "id": object["id"], "item": _copied["filter"]})
+		if reply["type"] != "logistics":
+			_show_error(reply)
+			return
+		_logistics.apply(reply["payload"])
+		done.append("filtr")
+	if _copied.has("splitter") and kind == SPLITTER:
+		var sides: Dictionary = _copied["splitter"]
+		var reply := await Net.request("splitter.set", {"x": _at.x, "y": _at.y, "id": object["id"], "side": int(sides["side"]), "items": sides["items"]})
+		if reply["type"] != "logistics":
+			_show_error(reply)
+			return
+		_logistics.apply(reply["payload"])
+		done.append("strony rozdzielacza")
+	_show_toast("%s: wklejono %s." % [object["name"], ", ".join(done)] if not done.is_empty() else "%s ma już te ustawienia." % object["name"],
+		UI.GOOD, false)
+	_effects.dust(_object_centre(kind, _anchor(cell)) if _big(kind) else _cell_centre(cell), 0.6)
+	if _using == cell:
+		_use_placed(cell)
 
 
 func _on_filters_changed() -> void:
@@ -4279,7 +4474,8 @@ func _poll_machines() -> void:
 
 ## Shakes the screen a little, e.g. when a tree falls.
 func _shake_screen(strength := SHAKE) -> void:
-	_shake = maxf(_shake, strength)
+	if Settings.effects:
+		_shake = maxf(_shake, strength)
 
 
 func _update_shake(delta: float) -> void:
@@ -4563,9 +4759,7 @@ func _build_hud() -> void:
 	_money.add_theme_font_size_override("font_size", 17)
 	money_row.add_child(_money)
 	money_parts[1].add_child(money_row)
-	_hud.add_child(money_panel)
-	money_panel.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT, Control.PRESET_MODE_MINSIZE, 12)
-	money_panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	CornerButtons.beside(_hud, money_panel)
 
 	# The tool in hand, bottom left.
 	var tool_parts := UI.panel(2)
@@ -4588,7 +4782,7 @@ func _build_hud() -> void:
 	_chat.ping_requested.connect(func() -> void:
 		_pinging = true
 		_chat.close()
-		_show_toast("Kliknij pole działki, które chcesz wskazać innym. Esc anuluje."))
+		_show_toast("Kliknij pole działki, które chcesz wskazać innym. Esc anuluje.", UI.TEXT, false))
 	_hud.add_child(_chat)
 	_chat.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT, Control.PRESET_MODE_MINSIZE, 12)
 	_chat.offset_bottom = -12 - tool_panel.get_combined_minimum_size().y - 10
@@ -4739,15 +4933,8 @@ func _build_hud() -> void:
 	_work_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_hud.add_child(_work_bar)
 
-	_toast = _outlined(UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER))
-	# Above the quick bar, in the middle of the screen however wide it is.
-	_toast.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_toast.offset_left = -450
-	_toast.offset_right = 450
-	_toast.offset_bottom = -(720 - 636) - Hotbar.TILE * (UI.TOUCH_SCALE if UI.touch() else 1.0) - 6
-	_toast.offset_top = _toast.offset_bottom - 30
-	_toast.modulate.a = 0.0
-	_hud.add_child(_toast)
+	# Messages show above the quick bar, in the middle of the screen however wide it is.
+	Game.notices.dock((720 - 636) + Hotbar.TILE * (UI.TOUCH_SCALE if UI.touch() else 1.0) + 6)
 
 	_loading = UI.title("Wchodzę na działkę...", 22)
 	_loading.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -4776,7 +4963,7 @@ func _refresh_character() -> void:
 
 func _on_tool_changed() -> void:
 	var names := Game.tools().map(func(t: Dictionary) -> String: return t["name"])
-	_show_toast("W ręku: %s" % ", ".join(names) if not names.is_empty() else "Narzędzia schowane do ekwipunku.")
+	_show_toast("W ręku: %s" % ", ".join(names) if not names.is_empty() else "Narzędzia schowane do ekwipunku.", UI.TEXT, false)
 	_update_hint()
 	if _inventory_window.visible or _station_window.visible:
 		_reload_inventory()
@@ -5265,15 +5452,10 @@ func _toggle_city() -> void:
 		_city_window.open_at(_at)
 
 
-func _show_toast(text: String, color := UI.TEXT) -> void:
-	_toast.text = text
-	_toast.add_theme_color_override("font_color", color)
-	if _toast_tween != null:
-		_toast_tween.kill()
-	_toast.modulate.a = 1.0
-	_toast_tween = create_tween()
-	_toast_tween.tween_interval(3.0)
-	_toast_tween.tween_property(_toast, "modulate:a", 0.0, 0.6)
+## A message over the quick bar, kept under the bell; `keep` false for a mere instruction, which isn't, and
+## `cell` for a place on this plot the message leads to.
+func _show_toast(text: String, color := UI.TEXT, keep := true, cell := Vector2i(-1, -1)) -> void:
+	Game.notices.show_notice(text, color, {"plot": _at, "cell": cell} if cell.x >= 0 else {}, keep)
 
 
 ## New clothes or a new look: the portrait and the character on the plot follow.

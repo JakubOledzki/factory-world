@@ -4,6 +4,8 @@ extends GridContainer
 ## Kinds beyond the tiles (given back while the inventory was full) show after them, in red. Drag an item onto another tile to move it there (onto
 ## an item, they swap places); the server keeps the order. Works with the mouse and with a
 ## finger, which Godot turns into a mouse. A tap or click without dragging emits `clicked`.
+## With a chest or a machine open (GameWindow.intake), Shift-click puts the whole stack in, Ctrl-click
+## half, and so does dragging the item onto its window; on a phone a tap asks how many (QuantityDialog).
 
 ## The player clicked an item; the screen decides what that does (e.g. take a tool in hand).
 signal clicked(item: String)
@@ -48,6 +50,26 @@ func show_items(inventory: Dictionary) -> void:
 	var count := maxi(ceili(slots / float(COLUMNS)) * COLUMNS, ceili((last + 1) / float(COLUMNS)) * COLUMNS)
 	for slot in count:
 		add_child(Tile.new(self, slot, by_slot.get(slot, {})))
+
+
+## Puts the item into the open window that takes it: all that fits, or half; on a touch screen the
+## player picks how many. With `at` (global position) only into the window under it. False when no
+## open window takes the item.
+func put_away(stack: Dictionary, half := false, at := Vector2.INF) -> bool:
+	var item: String = stack["id"]
+	var window := GameWindow.receiver(get_tree(), item, at)
+	if window == null:
+		return false
+	var entry: Dictionary = window.intake[item]
+	var owned := int(stack["quantity"])
+	var most := mini(owned, int(entry["room"]))
+	if most < 1:
+		return false
+	if UI.touch():
+		QuantityDialog.ask(window, item, stack["name"], "Włóż", most, entry["put"])
+	else:
+		(entry["put"] as Callable).call(mini(ceili(owned / 2.0), most) if half else most)
+	return true
 
 
 ## Moves the item at once, then asks the server; its reply (or a refusal) redraws the tiles.
@@ -132,7 +154,8 @@ class Tile extends PanelContainer:
 			tooltip_text += "\n" + hint
 		if slot >= _grid.slots:
 			tooltip_text += "\nNie mieści się w ekwipunku: przenieś na wolny kafelek albo załóż większy plecak"
-		tooltip_text += "\nPrzeciągnij, aby przenieść"
+		tooltip_text += "\nPrzeciągnij, aby przenieść" if UI.touch() \
+			else "\nPrzeciągnij, aby przenieść; Shift + klik wkłada do otwartej skrzyni lub maszyny, Ctrl + klik połowę"
 		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 
 	func _gui_input(event: InputEvent) -> void:
@@ -143,6 +166,9 @@ class Tile extends PanelContainer:
 			_dragged = false
 		elif not _dragged and not stack.is_empty() and event.position.distance_to(_press) < CLICK_SLOP:
 			_press = Vector2.INF
+			# Into the open chest or machine: Shift for all, Ctrl for half; a tap on a phone asks how many.
+			if (event.shift_pressed or event.ctrl_pressed or UI.touch()) and _grid.put_away(stack, event.ctrl_pressed and not event.shift_pressed):
+				return
 			_grid.clicked.emit(stack["id"])
 
 	func _get_drag_data(_at: Vector2) -> Variant:
@@ -172,6 +198,10 @@ class Tile extends PanelContainer:
 	func _notification(what: int) -> void:
 		if what == NOTIFICATION_DRAG_END:
 			_light(false)
+			# Dropped over a chest's or a machine's window: it goes in there.
+			if _dragged and not stack.is_empty() and not get_viewport().gui_is_drag_successful():
+				_dragged = false
+				_grid.put_away(stack, false, get_global_mouse_position())
 			if not stack.is_empty():
 				set_stack(stack)
 
