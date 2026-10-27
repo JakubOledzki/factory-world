@@ -42,7 +42,45 @@ internal sealed class BotPlot(int x, int y, int biome)
     public int Planted { get; set; }
 
     /// <summary>What stands on the plot (workbenches, furnaces, chests...), as plot.enter sent it.</summary>
-    public List<(Guid Id, string Kind)> Objects { get; } = [];
+    public List<(Guid Id, string Kind, int X, int Y)> Objects { get; } = [];
+
+    /// <summary>Tiles taken by objects (all the tiles a machine covers), fields, trees, mines, the railway and the station.</summary>
+    public HashSet<(int X, int Y)> Busy { get; } = [];
+
+    /// <summary>Trees, rocks and dunes the bot clears to make room for its line.</summary>
+    public List<(int X, int Y)> Clearing { get; } = [];
+}
+
+/// <summary>Where the bot's production line stands, found by its machine with the chests and the generator in their places.</summary>
+internal sealed record BotLineSite(
+    BotPlot Plot, Guid Input, Guid Machine, Guid Output, Guid Generator, IReadOnlyList<(Guid Id, string Kind, int X, int Y)> Parts);
+
+/// <summary>What all the bots share: who is a bot, the market overview one of them fetched, and the board of calls for help.</summary>
+public sealed class BotCommons(BotHelpBoard help)
+{
+    private readonly HashSet<string> _names = new(StringComparer.Ordinal);
+
+    public BotHelpBoard Help { get; } = help;
+
+    /// <summary>The market overview as some bot last fetched it, and when.</summary>
+    internal (JsonElement Overview, DateTimeOffset At)? Overview { get; set; }
+
+    public void AddBot(string character)
+    {
+        lock (_names)
+        {
+            _names.Add(character);
+        }
+    }
+
+    /// <summary>Whether a name on the market belongs to a bot: bots do not trade among themselves to sell on.</summary>
+    public bool IsBot(string? character)
+    {
+        lock (_names)
+        {
+            return character is not null && _names.Contains(character);
+        }
+    }
 }
 
 /// <summary>
@@ -51,13 +89,32 @@ internal sealed class BotPlot(int x, int y, int biome)
 /// when a session starts. Every action that gives XP is skipped while it would carry the bot over its cap.
 /// </summary>
 /// <param name="grant">Credits the bot's wallet with this many cents (the server's allowance, see <see cref="BotRules.Allowance"/>).</param>
-public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogger logger, Func<long, CancellationToken, Task>? grant = null)
+/// <param name="commons">What the bots share; a bot on its own has its own.</param>
+public sealed class Bot(
+    BotProfile profile, BotRow row, BotClient client, ILogger logger, Func<long, CancellationToken, Task>? grant = null, BotCommons? commons = null)
 {
+    private readonly BotCommons _commons = commons ?? new BotCommons(new BotHelpBoard());
+    private readonly BotLine? _line = BotRules.Line(profile.Trade);
+    private BotLineSite? _site;
+    private DateTimeOffset _tendAt;
+    private bool _recipeSet;
+    private long _lastInputs = -1;
+    private int _stalls;
+    private int _placeFailures;
+    private DateTimeOffset _gaveUpAt;
+    private DateTimeOffset _wantingSince;
+    private HelpRequest? _help;
+    private DateTimeOffset _helpUntil;
+    private long _traderIncome;
+    private DateTimeOffset _contractsAt;
+    private Dictionary<string, long> _needs = new(StringComparer.Ordinal);
+    private Dictionary<string, long> _reserved = new(StringComparer.Ordinal);
+
     private readonly Dictionary<string, long> _inventory = new(StringComparer.Ordinal);
     private readonly List<BotPlot> _plots = [];
     private readonly Dictionary<string, long> _floor = new(StringComparer.Ordinal);
     private readonly Dictionary<string, long> _traderSells = new(StringComparer.Ordinal);
-    private readonly Dictionary<string, (long Xp, List<(string Item, long Quantity)> Ingredients, bool Locked, string Station)> _recipes = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, (long Xp, List<(string Item, long Quantity)> Ingredients, bool Locked, string Station, long Makes)> _recipes = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (string Status, long Xp, List<(string Item, long Quantity)> Cost)> _techs = new(StringComparer.Ordinal);
     private readonly Dictionary<string, (int Width, int Depth)> _footprints = new(StringComparer.Ordinal);
     private readonly List<(string Kind, int X, int Y, int Rotation)> _garage = [];
@@ -94,11 +151,23 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
     /// <summary>The bot's XP as it last saw it.</summary>
     public long Xp => _xp;
 
+    /// <summary>Whether the bot has its production line standing (as far as it saw this session).</summary>
+    public bool HasLine => _site is not null;
+
+    /// <summary>The bot's call for help, while players may answer it.</summary>
+    public HelpRequest? Help => _help;
+
     /// <summary>The session ended: whatever was seen is stale, and the next step looks around again first.</summary>
     public void EndSession()
     {
         _fresh = false;
         _purchases = 0;
+        _traderIncome = 0;
+        _help = null;
+        _recipeSet = false;
+        _lastInputs = -1;
+        _placeFailures = 0;
+        _gaveUpAt = default;
         foreach (var plot in _plots)
         {
             plot.Tiles = null;
@@ -119,6 +188,24 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             if (_broken)
             {
                 return null;
+            }
+        }
+
+        if (_commons.Help.TakeAnswer(Row.Name) is { } answered)
+        {
+            return await HelpedAsync(answered, world, cancellationToken);
+        }
+
+        if (_help is not null && _helpUntil <= world.Now)
+        {
+            // Nobody came: the bot sets about it itself.
+            _commons.Help.Withdraw(Row.Name);
+            var reason = _help.Reason;
+            _help = null;
+            if (reason == HelpReasons.Stalled && _site is { } stalled)
+            {
+                await RepairAsync(stalled, cancellationToken);
+                return "repair line";
             }
         }
 
@@ -153,6 +240,10 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
 
     private long Have(string item) => _inventory.GetValueOrDefault(item);
 
+    /// <summary>How many of <paramref name="quantity"/> pieces the bot sells to the trader, so as to stay within what it may take from NPCs in a session.</summary>
+    private long TraderMay(string item, long quantity) =>
+        Math.Clamp((BotRules.MaxTraderIncome - _traderIncome) / Math.Max(Floor(item), 1), 1, quantity);
+
     private long Floor(string item) => _floor.GetValueOrDefault(item);
 
     private bool Has(IEnumerable<(string Item, long Quantity)> cost) => cost.All(c => Have(c.Item) >= c.Quantity);
@@ -163,6 +254,10 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         var trade = Profile.Trade;
         var list = new List<(int, string, Func<CancellationToken, Task<bool>>)>();
         void Add(int weight, string name, Func<CancellationToken, Task<bool>> run) => list.Add((weight, name, run));
+        _needs = Needs();
+        _reserved = Reserved();
+        var toSell = Surplus().Sum(s => s.Quantity);
+        var traderPays = _traderIncome < BotRules.MaxTraderIncome;
 
         if (_sortQueue > 0 && _sortDoneAt <= world.Now)
         {
@@ -180,9 +275,9 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         }
 
         var waste = BotRules.Waste.FirstOrDefault(w => Have(w) >= 10);
-        if (waste is not null)
+        if (waste is not null && traderPays)
         {
-            Add(8, "sell waste", ct => TradeAsync("market.sell", waste, Have(waste), ct));
+            Add(8, "sell waste", ct => TradeAsync("market.sell", waste, TraderMay(waste, Have(waste)), ct));
         }
 
         if (_plots.Count < BotRules.MaxPlots(trade) && _mapWidth > 0)
@@ -212,7 +307,8 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                 Biomes.Farmland => trade is BotTrade.Farmer,
                 _ => false,
             };
-            Add(own ? 16 : 6, "work plot", ct => WorkPlotAsync(plot, world, ct));
+            // With goods piling up unsold, the bot gathers less and sees to its line and the market instead.
+            Add(toSell >= BotRules.Glut ? 2 : own ? 16 : 6, "work plot", ct => WorkPlotAsync(plot, world, ct));
 
             if (plot.Biome is Biomes.Forest or Biomes.Farmland && Have(Items.Sapling) > 0 && plot.Planted < BotRules.MaxPlanted)
             {
@@ -234,9 +330,10 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                 }
             }
 
-            foreach (var (id, kind) in plot.Objects)
+            foreach (var (id, kind, _, _) in plot.Objects)
             {
-                if (kind == Items.Furnace)
+                // The furnace of the line is the inserters' to work.
+                if (kind == Items.Furnace && id != _site?.Machine)
                 {
                     Add(ore is not null && Have(Items.Coal) >= 1 ? 6 : 2, "plot furnace", ct => FurnaceAsync(id, world, ct));
                 }
@@ -265,7 +362,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         {
             foreach (var product in BotRules.Products(trade))
             {
-                if (!IsLocked(product) && Has(Recipe(product)) && Have(product) < 20)
+                if (!IsLocked(product) && Has(Recipe(product)) && Have(product) < BotRules.Stock(product) && !UsesNeeded(product))
                 {
                     Add(5, "craft", ct => CraftAsync(product, ct));
                     break;
@@ -292,6 +389,11 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             Add(1, "check research", ct => ParseResearchAsync(ct));
         }
 
+        if (_line is not null && _help is null)
+        {
+            LineCandidates(_line, world, Add);
+        }
+
         if (_openListings < BotRules.MaxListings && _lastListingAt + BotRules.ListEvery <= world.Now && Surplus().Any())
         {
             Add(trade == BotTrade.Trader ? 10 : 7, "list", ct => ListAsync(world, ct));
@@ -303,9 +405,9 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         }
 
         var glut = Surplus().FirstOrDefault(s => s.Quantity >= 150 && Floor(s.Item) > 0).Item;
-        if (glut is not null)
+        if (glut is not null && traderPays)
         {
-            Add(3, "quick sale", ct => TradeAsync("market.sell", glut, 50, ct));
+            Add(3, "quick sale", ct => TradeAsync("market.sell", glut, TraderMay(glut, 50), ct));
         }
 
         if (_money > BotRules.Reserve + 5_00 && _purchases < BotRules.MaxPurchases)
@@ -315,12 +417,15 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
 
         Add(4, "fill order", ct => FillOrderAsync(world, ct));
 
-        if (_openOrders < BotRules.MaxOrders && _money > BotRules.Reserve + 50_00 && BotRules.Buys(trade).Length > 0)
+        if (_openOrders < BotRules.MaxOrders && _money > BotRules.Reserve + 50_00 && Wanted().Any())
         {
             Add(2, "place order", ct => PlaceOrderAsync(world, ct));
         }
 
-        Add(6, "contracts", ct => ContractsAsync(world, ct));
+        if (_contractsAt <= world.Now)
+        {
+            Add(6, "contracts", ct => ContractsAsync(world, ct));
+        }
 
         return list;
     }
@@ -485,7 +590,8 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                 r.Long("xp"),
                 r.Each("ingredients").Select(i => (i.Text("id")!, i.Long("quantity"))).ToList(),
                 r.Text("locked") is not null,
-                r.Text("station") ?? Items.Workbench);
+                r.Text("station") ?? Items.Workbench,
+                Math.Max(1, r.Long("quantity")));
         }
 
         _craftQueue = crafting.Each("queue").Count();
@@ -717,7 +823,8 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             }
         }
 
-        var fuel = state.Payload.Get("fuel")?.Long("quantity") ?? 0;
+        // A furnace shows its coal as a number.
+        var fuel = state.Payload.Long("fuel");
         var maxFuel = state.Payload.Long("maxFuel");
         if (fuel < 5 && Have(Items.Coal) > 0)
         {
@@ -853,11 +960,52 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         };
         var busy = new HashSet<(int, int)>();
         plot.Objects.Clear();
+        plot.Busy.Clear();
         foreach (var o in p.Each("objects"))
         {
-            busy.Add(((int)o.Long("tileX"), (int)o.Long("tileY")));
-            plot.Objects.Add((o.Id("id") ?? Guid.Empty, o.Text("kind")!));
+            var (kind, ox, oy) = (o.Text("kind")!, (int)o.Long("tileX"), (int)o.Long("tileY"));
+            busy.Add((ox, oy));
+            plot.Busy.UnionWith(Footprints.Tiles(kind, ox, oy));
+            plot.Objects.Add((o.Id("id") ?? Guid.Empty, kind, ox, oy));
         }
+
+        foreach (var m in p.Each("mines"))
+        {
+            var (mx, my) = ((int)m.Long("x"), (int)m.Long("y"));
+            for (var dx = 0; dx < Math.Max(1, m.Long("width")); dx++)
+            {
+                for (var dy = 0; dy < Math.Max(1, m.Long("height")); dy++)
+                {
+                    plot.Busy.Add((mx + dx, my + dy));
+                }
+            }
+        }
+
+        if (p.Get("station") is { } station)
+        {
+            var (sx, sy) = ((int)station.Long("x"), (int)station.Long("y"));
+            for (var dx = -1; dx <= station.Long("width"); dx++)
+            {
+                for (var dy = -1; dy <= station.Long("height"); dy++)
+                {
+                    plot.Busy.Add((sx + dx, sy + dy));
+                }
+            }
+        }
+
+        if (p.LongOrNull("railRow") is { } rail)
+        {
+            for (var x = 0; x < plot.Size; x++)
+            {
+                for (var dy = -1; dy <= 1; dy++)
+                {
+                    plot.Busy.Add((x, (int)rail + dy));
+                }
+            }
+        }
+
+        plot.Busy.Add(plot.Spawn);
+        FindSite(plot);
 
         plot.Fields.Clear();
         foreach (var f in p.Each("fields"))
@@ -876,6 +1024,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         }
 
         plot.Planted = trees.Count;
+        plot.Busy.UnionWith(busy);
         plot.Mines.Clear();
         foreach (var m in p.Each("mines"))
         {
@@ -1132,7 +1281,8 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             {
                 // A machine covers more tiles than the one it stands on.
                 plot.Free.RemoveAll(t => Footprints.Covers(kind, x, y, t.X, t.Y));
-                plot.Objects.Add((reply.Payload.Get("object")?.Id("id") ?? Guid.Empty, kind));
+                plot.Objects.Add((reply.Payload.Get("object")?.Id("id") ?? Guid.Empty, kind, x, y));
+                plot.Busy.UnionWith(Footprints.Tiles(kind, x, y));
                 _inventory[kind] = Math.Max(0, Have(kind) - 1);
                 return true;
             }
@@ -1196,14 +1346,582 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
     private static List<string> Tools(JsonElement payload) =>
         payload.Each("tools").Where(t => t.ValueKind == JsonValueKind.Object).Select(t => t.Text("id")).OfType<string>().ToList();
 
+    // ----- The production line -----
+
+    /// <summary>What the bot looks for on the market: what its trade works with, and what it lacks for its line and its next research.</summary>
+    private IEnumerable<string> Wanted() => BotRules.Buys(Profile.Trade).Concat(_needs.Keys).Distinct(StringComparer.Ordinal);
+
+    /// <summary>Whether the bot has researched everything its line is made of.</summary>
+    private bool LineReady(BotLine line) => line.Kit.All(k => !IsLocked(k.Item) || Have(k.Item) >= k.Quantity);
+
+    /// <summary>Parts of the line the bot still lacks, while none stands.</summary>
+    private List<(string Item, long Quantity)> Missing(BotLine line) =>
+        _site is not null ? [] : line.Kit.Select(k => (k.Item, Quantity: k.Quantity - Have(k.Item))).Where(k => k.Quantity > 0).ToList();
+
+    /// <summary>What making the missing parts at the workbench takes, in all.</summary>
+    private Dictionary<string, long> Makings(BotLine line)
+    {
+        var makings = new Dictionary<string, long>(StringComparer.Ordinal);
+        foreach (var (part, quantity) in Missing(line))
+        {
+            // Locked recipes too: what a part not yet researched will take is kept back for it already.
+            if (!_recipes.TryGetValue(part, out var recipe) || recipe.Station != Items.Workbench)
+            {
+                continue;
+            }
+
+            var crafts = (quantity + recipe.Makes - 1) / recipe.Makes;
+            foreach (var (item, each) in recipe.Ingredients)
+            {
+                makings[item] = makings.GetValueOrDefault(item) + crafts * each;
+            }
+        }
+
+        return makings;
+    }
+
+    /// <summary>What the bot lacks for its line and for the next technology on its list, to look for on the market.</summary>
+    private Dictionary<string, long> Needs()
+    {
+        var needs = new Dictionary<string, long>(StringComparer.Ordinal);
+        if (_line is { } line && _site is null && _plots.Count > 0 && LineReady(line))
+        {
+            foreach (var (item, quantity) in Makings(line))
+            {
+                if (quantity > Have(item))
+                {
+                    needs[item] = quantity - Have(item);
+                }
+            }
+        }
+
+        foreach (var tech in BotRules.Research(Profile.Trade))
+        {
+            if (_techs.TryGetValue(tech, out var t) && t.Status == "available")
+            {
+                foreach (var (item, quantity) in t.Cost.Where(c => c.Quantity > Have(c.Item)))
+                {
+                    needs[item] = needs.GetValueOrDefault(item) + quantity - Have(item);
+                }
+
+                break;
+            }
+        }
+
+        return needs;
+    }
+
+    /// <summary>What the bot does not sell: the cost of the technologies it can research next, and while its line is not up,
+    /// the parts and what it makes them of.</summary>
+    private Dictionary<string, long> Reserved()
+    {
+        var reserved = _line is { } line && _site is null && _plots.Count > 0
+            ? Makings(line)
+            : new Dictionary<string, long>(StringComparer.Ordinal);
+        if (_line is not null && _site is null && _plots.Count > 0)
+        {
+            foreach (var (item, quantity) in _line.Kit)
+            {
+                reserved[item] = reserved.GetValueOrDefault(item) + quantity;
+            }
+        }
+
+        foreach (var tech in BotRules.Research(Profile.Trade))
+        {
+            if (_techs.TryGetValue(tech, out var t) && t.Status == "available")
+            {
+                foreach (var (item, quantity) in t.Cost)
+                {
+                    reserved[item] = reserved.GetValueOrDefault(item) + quantity;
+                }
+            }
+        }
+
+        return reserved;
+    }
+
+    /// <summary>Whether crafting <paramref name="product"/> for the market would eat into what the line needs.</summary>
+    private bool UsesNeeded(string product) =>
+        !_reserved.ContainsKey(product) && Recipe(product).Any(i => Have(i.Item) - i.Quantity < _reserved.GetValueOrDefault(i.Item));
+
+    /// <summary>What the bot could do about its line: look at its plots, tend it, build it or get its parts together.</summary>
+    private void LineCandidates(BotLine line, BotWorld world, Action<int, string, Func<CancellationToken, Task<bool>>> add)
+    {
+        if (_plots.Count == 0)
+        {
+            return;
+        }
+
+        if (_plots.Any(p => p.Tiles is null))
+        {
+            // Whether a line stands already shows only on the plot.
+            add(10, "look over plots", ct => LookOverAsync(world, ct));
+            return;
+        }
+
+        if (_site is { } site)
+        {
+            if (_tendAt <= world.Now)
+            {
+                add(10, "tend line", ct => TendAsync(line, site, world, ct));
+            }
+
+            return;
+        }
+
+        if (!LineReady(line))
+        {
+            return;
+        }
+
+        var missing = Missing(line);
+        if (_placeFailures >= 3)
+        {
+            // After a while the bot tries again: the plot may have changed, and it may have the tools now.
+            _gaveUpAt = _gaveUpAt == default ? world.Now : _gaveUpAt;
+            if (world.Now - _gaveUpAt >= BotRules.RetryBuildAfter)
+            {
+                (_placeFailures, _gaveUpAt) = (0, default);
+            }
+        }
+
+        if (missing.Count == 0)
+        {
+            if (_plots.FirstOrDefault(p => p.Clearing.Count > 0) is { } clearing)
+            {
+                add(14, "clear ground", ct => ClearAsync(clearing, ct));
+            }
+            else if (_placeFailures < 3)
+            {
+                add(12, "build line", ct => BuildLineAsync(line, world, ct));
+            }
+
+            return;
+        }
+
+        if (_wantingSince == default)
+        {
+            _wantingSince = world.Now;
+        }
+
+        var craftable = _workbench is not null && _craftQueue < 5;
+        var part = missing.Select(m => m.Item).FirstOrDefault(p => craftable && !IsLocked(p) && Has(Recipe(p)));
+        if (part is not null)
+        {
+            add(10, "craft line part", ct => CraftAsync(part, ct));
+        }
+        else if (craftable && _needs.ContainsKey(Items.Nails) && !_needs.ContainsKey(Items.IronIngot) && !IsLocked(Items.Nails) && Has(Recipe(Items.Nails)))
+        {
+            add(6, "craft nails", ct => CraftAsync(Items.Nails, ct));
+        }
+
+        // A part it cannot make it may buy from the trader, dear: money leaves the game that way.
+        var dear = missing.Select(m => m.Item).FirstOrDefault(p =>
+            _traderSells.TryGetValue(p, out var price) && price <= Floor(p) * BotRules.MaxPartMarkup && _money >= price + BotRules.Reserve + 20_00);
+        if (dear is not null)
+        {
+            add(3, "buy line part", ct => TradeAsync("market.buy", dear, 1, ct));
+        }
+
+        if (world.Now - _wantingSince >= BotRules.PartsWait)
+        {
+            add(3, "ask for parts", ct => AskForPartsAsync(missing, world, ct));
+        }
+    }
+
+    private async Task<bool> LookOverAsync(BotWorld world, CancellationToken cancellationToken)
+    {
+        var looked = false;
+        foreach (var plot in _plots.Where(p => p.Tiles is null).ToList())
+        {
+            looked |= await EnterAsync(plot, world, cancellationToken);
+        }
+
+        return looked;
+    }
+
+    /// <summary>Finds the bot's line among what stands on the plot: its machine with the chests and the generator in their places.</summary>
+    private void FindSite(BotPlot plot)
+    {
+        if (_line is not { } line || _site is not null && _site.Plot != plot)
+        {
+            return;
+        }
+
+        _site = null;
+        foreach (var machine in plot.Objects.Where(o => o.Kind == line.Machine))
+        {
+            var (x, y) = (machine.X - BotFactory.MachineX, machine.Y);
+            var input = plot.Objects.FirstOrDefault(o => o.Kind == Items.WoodenChest && o.X == x && o.Y == y);
+            var output = plot.Objects.FirstOrDefault(o => o.Kind == Items.WoodenChest && o.X == x + BotFactory.OutputX && o.Y == y);
+            var generator = plot.Objects.FirstOrDefault(o =>
+                o.Kind == Items.Generator && o.X == x + BotFactory.GeneratorX && o.Y == y + BotFactory.GeneratorY);
+            if (input.Kind is null || output.Kind is null || generator.Kind is null)
+            {
+                continue;
+            }
+
+            var parts = plot.Objects.Where(o => o.X >= x && o.X < x + BotFactory.Width && o.Y >= y && o.Y < y + BotFactory.Depth).ToList();
+            _site = new BotLineSite(plot, input.Id, machine.Id, output.Id, generator.Id, parts);
+            return;
+        }
+    }
+
+    /// <summary>Tiles nothing may be built on: something stands, grows or lies there.</summary>
+    private static bool[,] Blocked(BotPlot plot)
+    {
+        var blocked = new bool[plot.Size, plot.Size];
+        for (var y = 0; y < plot.Size; y++)
+        {
+            for (var x = 0; x < plot.Size; x++)
+            {
+                blocked[x, y] = plot.Tiles![y * plot.Size + x] != Tiles.None || plot.Busy.Contains((x, y));
+            }
+        }
+
+        return blocked;
+    }
+
+    /// <summary>Puts the whole line up at once, with a building plan, where it fits nearest to the spawn.</summary>
+    private async Task<bool> BuildLineAsync(BotLine line, BotWorld world, CancellationToken cancellationToken)
+    {
+        foreach (var plot in _plots.Where(p => p.Tiles is not null))
+        {
+            if (BotFactory.FindSpot(Blocked(plot), plot.Spawn) is not { } spot)
+            {
+                continue;
+            }
+
+            var objects = BotFactory.Layout(line.Machine)
+                .Select(p => new { kind = p.Kind, tileX = spot.X + p.Dx, tileY = spot.Y + p.Dy, rotation = BotFactory.East })
+                .ToList();
+            var reply = await SendAsync("plot.placeMany", new { x = plot.X, y = plot.Y, objects }, cancellationToken);
+            if (!reply.Is("plot.placedMany"))
+            {
+                // Something the bot did not see is in the way: it looks again before the next try.
+                _placeFailures++;
+                plot.Tiles = null;
+                return false;
+            }
+
+            foreach (var o in reply.Payload.Each("objects"))
+            {
+                var (kind, ox, oy) = (o.Text("kind")!, (int)o.Long("tileX"), (int)o.Long("tileY"));
+                plot.Objects.Add((o.Id("id") ?? Guid.Empty, kind, ox, oy));
+                plot.Busy.UnionWith(Footprints.Tiles(kind, ox, oy));
+            }
+
+            FindSite(plot);
+            await InventoryAsync(cancellationToken);
+            _wantingSince = default;
+            _tendAt = world.Now;
+            _recipeSet = false;
+            logger.LogInformation("Bot {Bot} built a {Machine} line on {X}:{Y}", Row.CharacterName, line.Machine, plot.X, plot.Y);
+            return true;
+        }
+
+        // No room anywhere: the bot makes some where the fewest trees and rocks stand in the way.
+        foreach (var plot in _plots.Where(p => p.Tiles is not null))
+        {
+            var clearable = new bool[plot.Size, plot.Size];
+            var blocked = Blocked(plot);
+            for (var y = 0; y < plot.Size; y++)
+            {
+                for (var x = 0; x < plot.Size; x++)
+                {
+                    clearable[x, y] = blocked[x, y] && !plot.Busy.Contains((x, y)) && plot.Tiles![y * plot.Size + x] is Tiles.Tree or Tiles.Rock or Tiles.Dune;
+                    blocked[x, y] &= !clearable[x, y];
+                }
+            }
+
+            if (BotFactory.FindSpot(blocked, clearable, plot.Spawn) is { } spot)
+            {
+                plot.Clearing.Clear();
+                plot.Clearing.AddRange(BotFactory.Ground(spot.X, spot.Y).Where(t => clearable[t.X, t.Y]));
+                return true;
+            }
+        }
+
+        _placeFailures++;
+        return false;
+    }
+
+    /// <summary>Fells or breaks the next thing on the ground the line is to stand on.</summary>
+    private async Task<bool> ClearAsync(BotPlot plot, CancellationToken cancellationToken)
+    {
+        plot.Clearing.RemoveAll(t => plot.Tiles![t.Y * plot.Size + t.X] == Tiles.None);
+        if (plot.Clearing.Count == 0)
+        {
+            return false;
+        }
+
+        var next = plot.Clearing[0];
+        plot.Targets.Remove(next);
+        plot.Targets.Insert(0, next);
+        if (await HarvestAsync(plot, cancellationToken))
+        {
+            return true;
+        }
+
+        if (plot.Tiles![next.Y * plot.Size + next.X] != Tiles.None && !plot.Targets.Contains(next))
+        {
+            // Out of the bot's reach (no tool for it): it gives the clearing up and looks for ground without it.
+            plot.Clearing.Clear();
+            plot.Busy.Add(next);
+            _placeFailures++;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Looks after the line: takes the products out, fills the input chest, keeps the generator burning and sets the
+    /// machine's recipe. When nothing came out twice in a row although everything was there, the line is stalled and the
+    /// bot asks players for help; without fuel it cannot get, it asks for fuel.
+    /// </summary>
+    private async Task<bool> TendAsync(BotLine line, BotLineSite site, BotWorld world, CancellationToken cancellationToken)
+    {
+        _tendAt = world.Now + BotRules.TendEvery;
+        var (x, y) = (site.Plot.X, site.Plot.Y);
+        var output = await SendAsync("storage.get", new { x, y, id = site.Output }, cancellationToken);
+        if (!output.Is("storage"))
+        {
+            // Gone (or taken down): the bot looks at the plot again.
+            _site = null;
+            site.Plot.Tiles = null;
+            return false;
+        }
+
+        long taken = 0;
+        foreach (var (item, quantity) in Stored(output.Payload))
+        {
+            if ((await SendAsync("storage.take", new { x, y, id = site.Output, item, quantity = 0 }, cancellationToken)).Ok)
+            {
+                taken += quantity;
+            }
+        }
+
+        var input = await SendAsync("storage.get", new { x, y, id = site.Input }, cancellationToken);
+        var inside = input.Is("storage") ? Stored(input.Payload) : [];
+        var before = line.Inputs.Sum(i => inside.GetValueOrDefault(i));
+        await InventoryAsync(cancellationToken);
+
+        // The generator first: without power the inserters stand.
+        var generator = await SendAsync("generator.get", new { x, y, id = site.Generator }, cancellationToken);
+        var fuel = generator.Payload.Get("fuel")?.Long("quantity") ?? 0;
+        var burning = generator.Payload.Get("fuel")?.Text("id");
+        if (fuel < 10)
+        {
+            var spare = line.Fuels.FirstOrDefault(f => (burning is null || burning == f) && Have(f) > 0);
+            if (spare is not null)
+            {
+                var loaded = await SendAsync("generator.load", new { x, y, id = site.Generator, item = spare, quantity = Math.Min(Have(spare), 20) }, cancellationToken);
+                if (loaded.Ok)
+                {
+                    fuel += Math.Min(Have(spare), 20);
+                    _inventory[spare] = Have(spare) - Math.Min(Have(spare), 20);
+                }
+            }
+        }
+
+        // A furnace gets its coal from the bot's hand: coal in the chest would sit behind the ore once the furnace is full of it.
+        var heated = true;
+        if (line.Machine == Items.Furnace)
+        {
+            var furnace = await SendAsync("furnace.get", new { furnace = site.Machine }, cancellationToken);
+            var coal = furnace.Payload.Long("fuel");
+            if (coal < 10 && Have(Items.Coal) > 0)
+            {
+                var quantity = Math.Min(Have(Items.Coal), 20);
+                if ((await SendAsync("furnace.load", new { furnace = site.Machine, item = Items.Coal, quantity }, cancellationToken)).Ok)
+                {
+                    coal += quantity;
+                    _inventory[Items.Coal] = Have(Items.Coal) - quantity;
+                }
+            }
+
+            heated = coal > 0;
+        }
+
+        foreach (var (item, quantity) in Refill(line, inside))
+        {
+            if ((await SendAsync("storage.put", new { x, y, id = site.Input, item, quantity }, cancellationToken)).Ok)
+            {
+                inside[item] = inside.GetValueOrDefault(item) + quantity;
+                _inventory[item] = Have(item) - quantity;
+            }
+        }
+
+        if (line.Recipe is { } recipe && !_recipeSet)
+        {
+            _recipeSet = (await SendAsync("machine.recipe", new { machine = site.Machine, recipe }, cancellationToken)).Ok;
+        }
+
+        // Stalled: it had all it needs since the last look, and used none of it.
+        var complete = heated && line.Inputs.Any(i => inside.GetValueOrDefault(i) > 0);
+        _stalls = taken == 0 && fuel > 0 && complete && _lastInputs >= 0 && before >= _lastInputs ? _stalls + 1 : 0;
+        _lastInputs = line.Inputs.Sum(i => inside.GetValueOrDefault(i));
+
+        if (fuel == 0)
+        {
+            Ask(HelpReasons.Parts, [(line.Fuels[^1], 20L)], site.Plot, world);
+        }
+        else if (_stalls >= BotRules.StalledAfter)
+        {
+            Ask(HelpReasons.Stalled, [], site.Plot, world);
+        }
+
+        return true;
+    }
+
+    /// <summary>What to put into the input chest: one kind of ore at a time for a furnace (mixed, the inserter would jam with the
+    /// other kind in its hand), the grain or the wood for the others.</summary>
+    private List<(string Item, long Quantity)> Refill(BotLine line, Dictionary<string, long> inside)
+    {
+        var puts = new List<(string, long)>();
+        if (line.Machine == Items.Furnace)
+        {
+            var ore = BotRules.Ores.FirstOrDefault(o => inside.GetValueOrDefault(o) > 0)
+                ?? BotRules.Ores.Where(o => Have(o) > 0).OrderByDescending(Have).FirstOrDefault();
+            if (ore is not null && inside.GetValueOrDefault(ore) < 20 && Have(ore) > 0)
+            {
+                puts.Add((ore, Math.Min(Have(ore), 40)));
+            }
+
+            return puts;
+        }
+
+        var input = line.Inputs[0];
+        // Wood is the sawmill's fuel too: some stays back for the generator.
+        var spare = Have(input) - (line.Fuels.Contains(input) ? 20 : 0);
+        if (inside.GetValueOrDefault(input) < 30 && spare > 0)
+        {
+            puts.Add((input, Math.Min(spare, 60)));
+        }
+
+        return puts;
+    }
+
+    private static Dictionary<string, long> Stored(JsonElement storage) =>
+        storage.Each("items").GroupBy(i => i.Text("id")!).ToDictionary(g => g.Key, g => g.Sum(i => i.Long("quantity")), StringComparer.Ordinal);
+
+    /// <summary>Takes the belts and inserters up and puts them back: whatever jammed them comes back to the inventory.</summary>
+    private async Task RepairAsync(BotLineSite site, CancellationToken cancellationToken)
+    {
+        var (x, y) = (site.Plot.X, site.Plot.Y);
+        var moving = site.Parts.Where(p => p.Kind is Items.Inserter or Items.Belt).ToList();
+        foreach (var part in moving)
+        {
+            await SendAsync("plot.pickup", new { x, y, id = part.Id }, cancellationToken);
+        }
+
+        var objects = moving.Select(p => new { kind = p.Kind, tileX = p.X, tileY = p.Y, rotation = BotFactory.East }).ToList();
+        await SendAsync("plot.placeMany", new { x, y, objects }, cancellationToken);
+        _site = null;
+        site.Plot.Tiles = null;
+        _stalls = 0;
+        _lastInputs = -1;
+        _tendAt = default;
+        await InventoryAsync(cancellationToken);
+        logger.LogInformation("Bot {Bot} set its line on {X}:{Y} up anew", Row.CharacterName, x, y);
+    }
+
+    /// <summary>Asks players for the parts it lacks, as many as it can pay for.</summary>
+    private Task<bool> AskForPartsAsync(List<(string Item, long Quantity)> missing, BotWorld world, CancellationToken cancellationToken)
+    {
+        var plot = _plots[0];
+        return Task.FromResult(Ask(HelpReasons.Parts, missing, plot, world));
+    }
+
+    /// <summary>Puts up a call for help over the plot: an exclamation mark on the world map, as long as the bot can pay.</summary>
+    private bool Ask(string reason, IReadOnlyList<(string Item, long Quantity)> needs, BotPlot plot, BotWorld world)
+    {
+        if (_help is not null)
+        {
+            return false;
+        }
+
+        var pay = BotRules.HelpFee;
+        var asked = new List<(string Item, long Quantity)>();
+        foreach (var (item, quantity) in needs)
+        {
+            var worth = (long)Math.Ceiling(Math.Max(Floor(item), 1) * quantity * BotRules.HelpMarkup);
+            if (pay + worth + BotRules.Reserve > _money)
+            {
+                break;
+            }
+
+            pay += worth;
+            asked.Add((item, quantity));
+        }
+
+        if (pay + BotRules.Reserve > _money || needs.Count > 0 && asked.Count == 0)
+        {
+            return false;
+        }
+
+        // Never more than the trader charges for the same parts, so buying them from him to bring them here pays nobody.
+        if (asked.Count > 0 && asked.All(a => _traderSells.ContainsKey(a.Item)))
+        {
+            pay = Math.Min(pay, (long)(asked.Sum(a => _traderSells[a.Item] * a.Quantity) * BotRules.HelpBelowTrader));
+        }
+
+        _help = new HelpRequest(Row.Name, Row.CharacterName, Row.AccountId, plot.X, plot.Y, reason, asked, pay, world.Now);
+        _helpUntil = world.Now + BotRules.HelpWait;
+        _commons.Help.Post(_help);
+        logger.LogInformation("Bot {Bot} asks for help on {X}:{Y}: {Reason}", Row.CharacterName, plot.X, plot.Y, reason);
+        return true;
+    }
+
+    /// <summary>A player answered the call: the parts are in the inventory, or the stalled line is to be set up anew.</summary>
+    private async Task<string> HelpedAsync(HelpRequest answered, BotWorld world, CancellationToken cancellationToken)
+    {
+        _help = null;
+        _wantingSince = default;
+        await InventoryAsync(cancellationToken);
+        _money = (await SendAsync("wallet.get", null, cancellationToken)).Payload.Long("balanceCents");
+        if (answered.Reason == HelpReasons.Stalled && _site is { } site)
+        {
+            await RepairAsync(site, cancellationToken);
+            return "helped: line set up anew";
+        }
+
+        _tendAt = world.Now;
+        return "helped: got parts";
+    }
+
+    /// <summary>The market overview: one bot fetches it, and the others use it for a few seconds, as the server sums it up that often anyway.</summary>
+    private async Task<JsonElement?> OverviewAsync(BotWorld world, CancellationToken cancellationToken)
+    {
+        if (_commons.Overview is { } kept && world.Now - kept.At < BotRules.OverviewFor && world.Now >= kept.At)
+        {
+            return kept.Overview;
+        }
+
+        var reply = await SendAsync("market.overview", null, cancellationToken);
+        if (!reply.Is("market.overview"))
+        {
+            return null;
+        }
+
+        _commons.Overview = (reply.Payload, world.Now);
+        return reply.Payload;
+    }
+
     // ----- The market -----
 
     private async Task<bool> TradeAsync(string type, string item, long quantity, CancellationToken cancellationToken)
     {
+        var before = _money;
         var reply = await SendAsync(type, new { item, quantity = Math.Min(quantity, 1000) }, cancellationToken);
         if (!reply.Is("market.traded"))
         {
             return false;
+        }
+
+        if (type == "market.sell")
+        {
+            _traderIncome += Math.Max(0, _money - before);
         }
 
         await InventoryAsync(cancellationToken);
@@ -1217,9 +1935,10 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             .Select(i => (Item: i.Key, Quantity: i.Value - Keep(i.Key)))
             .OrderByDescending(s => s.Quantity * Math.Max(Floor(s.Item), 1));
 
-    /// <summary>What the bot holds back: what its trade keeps, and whatever it still means to build on its plots.</summary>
+    /// <summary>What the bot holds back: what its trade keeps, whatever it still means to build on its plots, and its line's parts and their makings.</summary>
     private long Keep(string item) =>
-        BotRules.Keep(Profile.Trade, item) + _plots.Where(p => p.Tiles is not null).Sum(p => StillToBuild(p).Count(k => k == item));
+        BotRules.Keep(Profile.Trade, item) + _plots.Where(p => p.Tiles is not null).Sum(p => StillToBuild(p).Count(k => k == item))
+        + _reserved.GetValueOrDefault(item);
 
     private async Task<bool> ListAsync(BotWorld world, CancellationToken cancellationToken)
     {
@@ -1273,15 +1992,14 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
     /// <summary>Buys from other players: what the bot needs for its work, or, as a trader, anything cheap enough to sell on.</summary>
     private async Task<bool> ShopAsync(BotWorld world, CancellationToken cancellationToken)
     {
-        var overview = await SendAsync("market.overview", null, cancellationToken);
-        if (!overview.Is("market.overview"))
+        if (await OverviewAsync(world, cancellationToken) is not { } overview)
         {
             return false;
         }
 
-        var wanted = BotRules.Buys(Profile.Trade);
+        var wanted = Wanted().ToHashSet(StringComparer.Ordinal);
         var deals = new List<(string Item, long Price)>();
-        foreach (var entry in overview.Payload.Each("items"))
+        foreach (var entry in overview.Each("items"))
         {
             var id = entry.Text("id")!;
             if (entry.LongOrNull("lowestCents") is not { } lowest || entry.Long("listed") == 0)
@@ -1308,7 +2026,10 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
         }
 
         var most = Limit(item, Floor(item)) ?? 0;
-        foreach (var listing in board.Payload.Each("listings").Where(l => !l.True("mine") && l.Long("priceCents") <= most))
+        // From other bots only what it needs itself: bots buying from bots to sell on only pushed money round in circles.
+        var fromBots = wanted.Contains(item);
+        foreach (var listing in board.Payload.Each("listings")
+                     .Where(l => !l.True("mine") && l.Long("priceCents") <= most && (fromBots || !_commons.IsBot(l.Text("owner")))))
         {
             var price = listing.Long("priceCents");
             var budget = (_money - BotRules.Reserve) / Math.Max(price, 1);
@@ -1342,7 +2063,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             return null;
         }
 
-        var limit = BotRules.Buys(Profile.Trade).Contains(item) && Have(item) < 200 ? floor * 2.0
+        var limit = (BotRules.Buys(Profile.Trade).Contains(item) || _needs.ContainsKey(item)) && Have(item) < 200 ? floor * 2.0
             : Profile.Trade == BotTrade.Trader ? floor * 1.5
             : BotRules.Goods.Contains(item) ? floor * 1.3
             : 0;
@@ -1363,13 +2084,12 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
             return false;
         }
 
-        var overview = await SendAsync("market.overview", null, cancellationToken);
-        if (!overview.Is("market.overview"))
+        if (await OverviewAsync(world, cancellationToken) is not { } overview)
         {
             return false;
         }
 
-        var options = overview.Payload.Each("items")
+        var options = overview.Each("items")
             .Where(e => surplus.ContainsKey(e.Text("id")!) && e.Long("wanted") > 0 && e.LongOrNull("highestCents") is { } best && best >= Floor(e.Text("id")!))
             .Select(e => e.Text("id")!)
             .ToList();
@@ -1401,7 +2121,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
 
     private async Task<bool> PlaceOrderAsync(BotWorld world, CancellationToken cancellationToken)
     {
-        var wanted = BotRules.Buys(Profile.Trade).Where(i => Have(i) < 20).ToList();
+        var wanted = Wanted().Where(i => Have(i) < 20 && Floor(i) > 0).ToList();
         if (wanted.Count == 0)
         {
             return false;
@@ -1409,7 +2129,7 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
 
         var item = wanted[world.Random.Next(wanted.Count)];
         var price = Math.Max(1, (long)Math.Round(Math.Max(Floor(item), 1) * (1.1 + world.Random.NextDouble() * 0.3)));
-        const long quantity = 20;
+        var quantity = Math.Clamp(_needs.GetValueOrDefault(item, 20), 5, 40);
         if (price * quantity > (_money - BotRules.Reserve) / 3)
         {
             return false;
@@ -1431,13 +2151,16 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
     /// at once, and now and then gives one out for what it needs.</summary>
     private async Task<bool> ContractsAsync(BotWorld world, CancellationToken cancellationToken)
     {
+        _contractsAt = world.Now + BotRules.ContractsEvery;
         var view = await SendAsync("contracts.get", null, cancellationToken);
         if (!view.Is("contracts"))
         {
             return false;
         }
 
-        foreach (var c in view.Payload.Each("npc").Concat(view.Payload.Each("taken")))
+        // NPC orders pay new money like the trader does, so they count towards what the bot may take from NPCs in a session.
+        var npc = _traderIncome < BotRules.MaxTraderIncome ? view.Payload.Each("npc") : [];
+        foreach (var (c, isNpc) in npc.Select(c => (c, true)).Concat(view.Payload.Each("taken").Select(c => (c, false))))
         {
             var item = c.Text("item")!;
             var left = c.Long("quantity") - c.Long("delivered");
@@ -1453,10 +2176,16 @@ public sealed class Bot(BotProfile profile, BotRow row, BotClient client, ILogge
                 continue;
             }
 
+            var before = _money;
             var reply = await SendAsync("contracts.deliver", new { id = c.Long("id"), quantity }, cancellationToken);
             if (reply.Is("contracts.done"))
             {
                 _inventory[item] = Have(item) - quantity;
+                if (isNpc)
+                {
+                    _traderIncome += Math.Max(0, _money - before);
+                }
+
                 return true;
             }
         }

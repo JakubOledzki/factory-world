@@ -33,7 +33,8 @@ public static class BotNames
         "Grzyb", "Kaktus", "Bałwan", "Pirat", "Rycerz", "Szeryf", "Kosmita", "Dynamit", "Bigos", "Śrubokręt",
     ];
 
-    /// <summary>Where each trade finds its land (latitude, longitude): forests, mountains, farmland, forests near industry.</summary>
+    /// <summary>Where each trade finds its land (latitude, longitude): forests, mountains, farmland, forests near industry,
+    /// cities, steel towns. Every list has 16 places.</summary>
     private static readonly IReadOnlyDictionary<BotTrade, (double Lat, double Lon)[]> Homes = new Dictionary<BotTrade, (double, double)[]>
     {
         [BotTrade.Forester] =
@@ -61,9 +62,20 @@ public static class BotNames
             (52.2, 21.0), (48.9, 2.4), (51.5, -0.1), (53.6, 10.0), (52.4, 4.9), (50.9, 4.4), (41.0, 29.0), (55.7, 12.6),
             (60.2, 24.9), (40.7, -74.0), (45.5, -73.6), (37.5, 127.0), (31.2, 121.5), (-23.5, -46.6), (54.4, 18.6), (46.2, 6.1),
         ],
+        // Steel towns between forests and mountains: wood for the fire, ore from the miners nearby.
+        [BotTrade.Smelter] =
+        [
+            (50.3, 18.7), (51.4, 7.0), (49.6, 18.6), (48.7, 21.3), (46.6, 15.6), (47.1, 15.4), (60.6, 15.6), (59.4, 16.5),
+            (53.4, 59.0), (56.8, 60.6), (40.4, -80.0), (46.5, -84.3), (49.4, 6.2), (45.7, 13.8), (43.3, -2.9), (-20.3, -43.9),
+        ],
     };
 
-    private static readonly BotTrade[] Trades = [BotTrade.Forester, BotTrade.Miner, BotTrade.Farmer, BotTrade.Industrialist, BotTrade.Trader];
+    /// <summary>
+    /// The trades made-up bots get in turn. Every list of homes is as long as the others, so a bot's trade does not change
+    /// what the seed gives next and adding a trade here keeps every name; a bot that gets a new trade keeps its plots.
+    /// </summary>
+    private static readonly BotTrade[] Trades =
+        [BotTrade.Forester, BotTrade.Miner, BotTrade.Farmer, BotTrade.Industrialist, BotTrade.Trader, BotTrade.Smelter];
 
     /// <summary>Made-up bots one after another, none named like <paramref name="taken"/>; endless, take as many as needed.</summary>
     public static IEnumerable<BotProfile> Profiles(IEnumerable<string> taken)

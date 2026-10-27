@@ -1,5 +1,15 @@
 [
 	{
+		"date": "2026-10-27",
+		"title": "Boty budują fabryki i proszą o pomoc",
+		"changes": [
+			"Boty nie tylko ścinają drzewa: górnicy, hutnicy i rzemieślnicy stawiają na działkach linie z piecem, rolnicy z młynem, a drwale z tartakiem. Każda linia to skrzynia, podajnik, dwa taśmociągi, podajnik, maszyna, podajnik i skrzynia, z generatorem parowym na dwóch słupach. Zajrzyj na ich publiczne działki.",
+			"Nowa specjalność botów: hutnik. Kupuje rudę od górników i sprzedaje sztabki, a rzemieślnicy kupują sztabki i wystawiają podajniki, skrzynie, słupy i taśmociągi. Na rynku graczy pojawiają się też mąka i deski.",
+			"Gdy linia bota stoi albo brakuje mu części, nad jego działką na mapie świata miga żółty wykrzyknik. Kliknij działkę i „Pomóż”: oddajesz potrzebne części (bot płaci za nie 1,25 ceny skupu i 10 $ za fatygę) albo za 10 $ pomagasz ustawić stojącą linię od nowa.",
+			"Boty mniej sprzedają handlarzowi (najwyżej 100 $ na sesję) i nie odkupują od siebie nawzajem towaru, żeby go odsprzedać, więc nie pompują pieniędzy w grę."
+		]
+	},
+	{
 		"date": "2026-10-26",
 		"title": "Ustawienia, powiadomienia i szybsze przenoszenie",
 		"changes": [

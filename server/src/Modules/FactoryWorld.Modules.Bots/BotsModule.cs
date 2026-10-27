@@ -55,9 +55,10 @@ public sealed class BotRunner(BotEngine engine, BotsOptions options, TimeProvide
 }
 
 /// <summary>
-/// Players run by the server: they sort trash, buy plots, chop, mine, farm, smelt, craft, research,
-/// trade on the market, take orders and earn badges through the same messages a client sends, so they
-/// appear in rankings and on the market like anyone else. Owns the <c>bots</c> schema.
+/// Players run by the server: they sort trash, buy plots, chop, mine, farm, smelt, craft, research, build production
+/// lines on their plots, trade on the market, take orders and earn badges through the same messages a client sends, so
+/// they appear in rankings and on the market like anyone else. A bot whose line does not work asks players for help
+/// (<c>bots.helpWanted</c>, <c>bots.help</c>) and pays whoever helps. Owns the <c>bots</c> schema.
 /// </summary>
 public sealed class BotsModule : IGameModule
 {
@@ -67,6 +68,9 @@ public sealed class BotsModule : IGameModule
     {
         services.AddModuleDbContext<BotsDbContext>(BotsDbContext.Schema);
         services.AddSingleton(configuration.GetSection("Bots").Get<BotsOptions>() ?? new BotsOptions());
+        services.AddSingleton<BotHelpBoard>();
+        services.AddSingleton<IMessageHandler, HelpWantedHandler>();
+        services.AddSingleton<IMessageHandler, HelpBotHandler>();
         services.AddSingleton<BotEngine>();
         services.AddHostedService<BotRunner>();
     }
