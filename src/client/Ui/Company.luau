@@ -39,6 +39,27 @@ local function muted(body, text, order, height)
 	})
 end
 
+-- A button that asks once more before it acts: the first click turns it into "Na pewno?".
+local function careful(parent, text, onConfirm, props)
+	local armed = false
+	local button
+	button = Kit.Button(parent, text, function()
+		if armed then
+			onConfirm()
+		else
+			armed = true
+			button.Text = "Na pewno? Kliknij"
+			task.delay(4, function()
+				if button.Parent then
+					armed = false
+					button.Text = text
+				end
+			end)
+		end
+	end, props)
+	return button
+end
+
 local function timeLeft(seconds)
 	local days = math.floor(seconds / 86400)
 	local hours = math.floor((seconds % 86400) / 3600)
@@ -127,12 +148,12 @@ local function inside(body, c, serverTime, call)
 		r.LayoutOrder = 40 + i
 		local share = c.shares > 0 and math.floor(m.shares / c.shares * 1000 + 0.5) / 10 or 0
 		Kit.Label(r, "<b>" .. m.name .. "</b>" .. (m.owner and "  (założyciel)" or "") .. "   " .. m.shares .. " udziałów, " .. share .. "%", {
-			RichText = true, TextSize = 14, Size = UDim2.new(1, -110, 1, 0),
+			RichText = true, TextSize = 14, Size = UDim2.new(1, -150, 1, 0),
 		})
 		if c.isOwner and not m.owner then
-			Kit.Button(r, "Usuń", function()
+			careful(r, "Usuń", function()
 				call("CompanyKick", { member = tonumber(m.id) })
-			end, { Size = UDim2.fromOffset(80, 26), BackgroundColor3 = Kit.Colors.Danger })
+			end, { Size = UDim2.fromOffset(130, 26), BackgroundColor3 = Kit.Colors.Danger })
 		end
 	end
 	if c.isOwner then
@@ -153,7 +174,7 @@ local function inside(body, c, serverTime, call)
 	local r = Kit.Row(body, 40)
 	r.LayoutOrder = 100
 	r.BackgroundTransparency = 1
-	Kit.Button(r, c.isOwner and #c.members == 1 and "Zamknij spółkę" or "Odejdź ze spółki", function()
+	careful(r, c.isOwner and #c.members == 1 and "Zamknij spółkę" or "Odejdź ze spółki", function()
 		call("CompanyLeave")
 	end, { Size = UDim2.fromOffset(180, 30), BackgroundColor3 = Kit.Colors.Danger })
 	Kit.Label(r, "Udziały sprzedasz spółce przy odejściu.", { TextSize = 13, TextColor3 = Kit.Colors.Muted, Size = UDim2.new(1, -200, 1, 0) })

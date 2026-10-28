@@ -260,10 +260,12 @@ local function refresh(player, profile, maxAge)
 		return
 	end
 	local id = me(player)
-	if record and (record.owed[id] or 0) > 0 then
-		run(player, profile, key, { kind = "collect", member = id })
+	local owed = record and (record.owed[id] or 0) > 0
+	if owed then
+		owed = not run(player, profile, key, { kind = "collect", member = id })
 	end
-	if record == nil or record.closed or record.members[id] == nil then
+	-- Forgets the company only once nothing is left to collect from it.
+	if not owed and (record == nil or record.closed or record.members[id] == nil) then
 		if player.Parent and record then
 			Net.Toast(player, "Nie jesteś już w spółce " .. record.name .. ".")
 		end
