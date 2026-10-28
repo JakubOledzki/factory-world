@@ -48,6 +48,7 @@ Companies.OrderItems = {
 	Items.Wood, Items.Stone, Items.Coal, Items.IronOre, Items.CopperOre, Items.Planks, Items.Beams,
 	Items.StoneBlocks, Items.IronIngot, Items.CopperIngot, Items.TinIngot, Items.SilverIngot,
 	Items.Nails, Items.Bricks, Items.BronzeIngot, Items.SteelIngot,
+	Items.Wheat, Items.Potato, Items.Flour, Items.Bread,
 }
 Companies.OrderValueCents = { 100000, 400000 }
 -- The big projects, in the order the window shows them. `parts` are { item, quantity }; `hours` the
