@@ -14,6 +14,7 @@ local WorkshopWindow = require(Ui.Workshop)
 local ChestWindow = require(Ui.Chest)
 local MachineWindow = require(Ui.Machine)
 local ResearchWindow = require(Ui.Research)
+local MarketWindow = require(Ui.Market)
 local BuildBar = require(Ui.BuildBar)
 require(script.Parent:WaitForChild("Game"))
 local GridView = require(script.Parent:WaitForChild("GridView"))
@@ -41,6 +42,8 @@ Hud.Mount(screen, function()
 	show(InventoryWindow.Open)
 end, BuildBar.Toggle, function()
 	show(ResearchWindow.Open)
+end, function()
+	show(MarketWindow.Open)
 end)
 BuildBar.Mount(screen)
 task.spawn(GridView.Start)
@@ -64,6 +67,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		end
 	elseif input.KeyCode == Enum.KeyCode.T then
 		show(ResearchWindow.Open)
+	elseif input.KeyCode == Enum.KeyCode.M then
+		show(MarketWindow.Open)
 	end
 end)
 

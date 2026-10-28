@@ -1,7 +1,7 @@
 -- The inventory window: the player's items on tiles as in the 2D game. Drag an item onto another
 -- tile to move it there; pointing at one names it with the merchant's price.
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
-local Prices = require(Shared.Prices)
+local MarketEvents = require(Shared.MarketEvents)
 local Money = require(Shared.Money)
 local Kit = require(script.Parent.Kit)
 local ItemGrid = require(script.Parent.ItemGrid)
@@ -21,7 +21,7 @@ function Inventory.Open(screen)
 		columns = Inventory.Columns,
 		tile = 54,
 		hint = function(entry)
-			local price = Prices.Buys[entry.item]
+			local price = MarketEvents.Prices(Game.Now()).buys[entry.item]
 			return price and ("skup " .. Money.Format(price)) or nil
 		end,
 		onMove = function(_from, to, entry)

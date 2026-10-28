@@ -1,10 +1,11 @@
 -- The merchant on the square: sells tools and buys everything the player makes, at the prices
--- of Shared.Prices. The money and the items change together, with nothing that yields between
+-- of Shared.Prices changed by the market's events and drift (Shared.MarketEvents). The money and the items change together, with nothing that yields between
 -- the check and the change, so a trade is all or nothing.
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local PlotLayout = require(Shared.PlotLayout)
 local Items = require(Shared.Items)
 local Prices = require(Shared.Prices)
+local MarketEvents = require(Shared.MarketEvents)
 local Research = require(Shared.Research)
 local Clock = require(script.Parent.Clock)
 local Inventory = require(script.Parent.Inventory)
@@ -17,19 +18,38 @@ local Merchant = {}
 local Reach = 20
 local StallPosition = Vector3.new(PlotLayout.Stall.x, 2, PlotLayout.Stall.z)
 
+local function event(e)
+	return e and {
+		id = e.event.id,
+		name = e.event.name,
+		description = e.event.description,
+		startsAt = e.startsAt,
+		endsAt = e.endsAt,
+	}
+end
+
+-- What the merchant trades now, with the usual prices to compare, and the market's events.
 local function list()
+	local now = Clock.Now()
+	local prices = MarketEvents.Prices(now)
 	local items = {}
 	for _, id in ipairs(Items.Order) do
-		if Prices.Sells[id] or Prices.Buys[id] then
-			table.insert(items, { id = id, buyCents = Prices.Sells[id], sellCents = Prices.Buys[id] })
+		if prices.sells[id] or prices.buys[id] then
+			table.insert(items, {
+				id = id,
+				buyCents = prices.sells[id],
+				sellCents = prices.buys[id],
+				usualBuyCents = Prices.Sells[id],
+				usualSellCents = Prices.Buys[id],
+			})
 		end
 	end
-	return items
+	return { ok = true, items = items, event = event(prices.event), nextEvent = event(MarketEvents.Next(now)), serverTime = now }
 end
 
 function Merchant.Start()
 	Net.Handle("Prices", function()
-		return { ok = true, items = list() }
+		return list()
 	end)
 
 	Net.Handle("Buy", function(player, profile, payload)
@@ -41,7 +61,7 @@ function Merchant.Start()
 		if not Net.Near(player, StallPosition, Reach) then
 			return Net.Error("too_far")
 		end
-		local price = Prices.Sells[item]
+		local price = MarketEvents.Prices(Clock.Now()).sells[item]
 		if price == nil then
 			return Net.Error("not_sold")
 		end
@@ -65,7 +85,7 @@ function Merchant.Start()
 		if not Net.Near(player, StallPosition, Reach) then
 			return Net.Error("too_far")
 		end
-		local price = Prices.Buys[item]
+		local price = MarketEvents.Prices(Clock.Now()).buys[item]
 		if price == nil then
 			return Net.Error("not_bought")
 		end

@@ -563,3 +563,138 @@ test("Every item has a picture of parts Roblox can build", function()
 		checkModel("Icon " .. id, Icons.Model(id))
 	end
 end)
+
+test("Market events: the merchant always pays less than it charges, and prices drift at most 10%", function()
+	local MarketEvents = load_shared("MarketEvents")
+	local seen, last = {}, nil
+	local start = 1790000000
+	for h = 0, 24 * 60 do
+		local now = start + h * 3600
+		local p = MarketEvents.Prices(now)
+		for item, pays in pairs(p.buys) do
+			assert(pays >= 1 and pays % 1 == 0, item)
+			if p.sells[item] then
+				assert(pays < p.sells[item], item .. " at " .. now)
+			end
+			local drift = MarketEvents.DriftAt(item, now)
+			assert(drift >= -10 and drift <= 10, item)
+		end
+		local e = MarketEvents.At(now)
+		if e then
+			seen[e.event.id] = true
+			assert(e.startsAt <= now and now < e.endsAt, "event covers its time")
+			assert(last == nil or last.startsAt == e.startsAt or last.event ~= e.event, "the same event never runs twice in a row")
+		end
+		last = e
+		local nxt = MarketEvents.Next(now)
+		assert(nxt == nil or nxt.startsAt > now, "the next event is ahead")
+	end
+	local kinds = 0
+	for _ in pairs(seen) do kinds = kinds + 1 end
+	assert(kinds >= 4, "several kinds of events in two months, saw " .. kinds)
+	for _, e in ipairs(MarketEvents.Events) do
+		for item in pairs(e.pays) do assert(Items.Names[item], item) end
+		for item in pairs(e.charges) do assert(Items.Names[item], item) end
+	end
+	-- The same moment gives the same prices on every server.
+	eq(MarketEvents.Prices(start).buys[Items.IronOre], MarketEvents.Prices(start).buys[Items.IronOre])
+end)
+
+test("Player market: listings are bought, orders filled, earnings wait in the book until collected", function()
+	local Market = load_shared("Market")
+	local book = Market.EmptyBook()
+	local function step(action)
+		local b, r = Market.Apply(book, action)
+		if b then book = b end
+		return r
+	end
+	local a = step({ tx = "1", kind = "list", owner = "10", name = "Ala", quantity = 100, priceCents = 300, at = 0 })
+	local b = step({ tx = "2", kind = "list", owner = "10", name = "Ala", quantity = 5, priceCents = 250, at = 0 })
+	eq(a.id, 1)
+	eq(b.id, 2)
+	eq(Market.Board(book).listings[1].priceCents, 250, "cheapest first")
+	eq(Market.Summary(book).listed, 105)
+	-- Not one's own offer, not at another price, not more than is left.
+	eq(select(2, Market.Apply(book, { tx = "3", kind = "buy", taker = "10", id = 1, quantity = 1, priceCents = 300 })), "own_offer")
+	eq(select(2, Market.Apply(book, { tx = "3", kind = "buy", taker = "20", id = 1, quantity = 1, priceCents = 200 })), "price_changed")
+	eq(select(2, Market.Apply(book, { tx = "3", kind = "buy", taker = "20", id = 2, quantity = 6, priceCents = 250 })), "not_enough_offered")
+	step({ tx = "3", kind = "buy", taker = "20", id = 2, quantity = 5, priceCents = 250 })
+	step({ tx = "4", kind = "buy", taker = "20", id = 1, quantity = 40, priceCents = 300 })
+	eq(#book.listings, 1, "a listing sold out is gone")
+	eq(book.listings[1].left, 60)
+	eq(Market.Owed(book, "10").cents, 5 * 250 + 40 * 300)
+	-- A step is done once: the same transaction again is refused, and the book remembers its result.
+	eq(select(2, Market.Apply(book, { tx = "4", kind = "buy", taker = "20", id = 1, quantity = 40, priceCents = 300 })), "duplicate")
+	eq(Market.Done(book, "4").result.owner, "10")
+	local got = step({ tx = "5", kind = "collect", owner = "10" })
+	eq(got.cents, 13250)
+	eq(Market.Owed(book, "10"), nil)
+	eq(select(2, Market.Apply(book, { tx = "6", kind = "collect", owner = "10" })), "nothing_owed")
+	-- An order: the buyer's money waits; a seller fills part, the items wait for the buyer.
+	local o = step({ tx = "7", kind = "order", owner = "20", name = "Olek", quantity = 50, priceCents = 280, at = 0 })
+	step({ tx = "8", kind = "fill", taker = "10", id = o.id, quantity = 30, priceCents = 280 })
+	eq(Market.Owed(book, "20").quantity, 30)
+	-- Cancelling gives back what is left: items of a listing, money of an order; only to the owner.
+	eq(select(2, Market.Apply(book, { tx = "9", kind = "cancel", owner = "20", offerKind = "listing", id = 1 })), "no_offer")
+	local back = step({ tx = "9", kind = "cancel", owner = "10", offerKind = "listing", id = 1 })
+	eq(back.quantity, 60)
+	back = step({ tx = "10", kind = "cancel", owner = "20", offerKind = "order", id = o.id })
+	eq(back.cents, 20 * 280)
+	eq(#Market.Mine(book, "20"), 0)
+	eq(step({ tx = "11", kind = "collect", owner = "20" }).quantity, 30)
+end)
+
+test("Player market: no money or items appear or vanish, whatever the order of steps", function()
+	local Market = load_shared("Market")
+	local book = Market.EmptyBook()
+	-- Two players as the server keeps them: their side is taken first, then the book decides.
+	local players = { ["1"] = { cents = 100000, items = 500 }, ["2"] = { cents = 100000, items = 500 } }
+	local function total()
+		local cents, items = 0, 0
+		for _, p in pairs(players) do cents = cents + p.cents; items = items + p.items end
+		for _, o in ipairs(book.listings) do items = items + o.left end
+		for _, o in ipairs(book.orders) do cents = cents + o.left * o.priceCents end
+		for _, w in pairs(book.owed) do cents = cents + w.cents; items = items + w.quantity end
+		return cents, items
+	end
+	local cents0, items0 = total()
+	local seed = 7
+	local function rnd(n) seed = (seed * 16807) % 2147483647; return seed % n + 1 end
+	for i = 1, 600 do
+		local who = tostring(rnd(2))
+		local p = players[who]
+		local kinds = { "list", "order", "buy", "fill", "cancel", "collect" }
+		local kind = kinds[rnd(6)]
+		local q, price = rnd(20), 100 + rnd(5) * 10
+		local action = { tx = tostring(i), kind = kind, owner = who, taker = who, name = who, quantity = q, priceCents = price, at = 0 }
+		local list = (kind == "buy" or kind == "fill") and (kind == "buy" and book.listings or book.orders) or nil
+		if list and #list > 0 then
+			local offer = list[rnd(#list)]
+			action.id, action.priceCents = offer.id, offer.priceCents
+		elseif kind == "cancel" then
+			local mine = Market.Mine(book, who)
+			if #mine > 0 then
+				local m = mine[rnd(#mine)]
+				action.id, action.offerKind = m.id, m.offerKind
+			end
+		end
+		-- The player's side.
+		local cost = (kind == "order" or kind == "buy") and action.quantity * action.priceCents or 0
+		local give = (kind == "list" or kind == "fill") and action.quantity or 0
+		if p.cents >= cost and p.items >= give then
+			p.cents, p.items = p.cents - cost, p.items - give
+			local b, r = Market.Apply(book, action)
+			if b then
+				book = b
+				if kind == "buy" then p.items = p.items + action.quantity
+				elseif kind == "fill" then p.cents = p.cents + action.quantity * action.priceCents
+				elseif kind == "cancel" or kind == "collect" then p.cents = p.cents + r.cents; p.items = p.items + r.quantity end
+			else
+				p.cents, p.items = p.cents + cost, p.items + give
+			end
+		end
+		local cents, items = total()
+		eq(cents, cents0, "money after step " .. i)
+		eq(items, items0, "items after step " .. i)
+	end
+end)

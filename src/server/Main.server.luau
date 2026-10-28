@@ -14,6 +14,7 @@ local Lab = require(Services.Lab)
 local Inventory = require(Services.Inventory)
 local Merchant = require(Services.Merchant)
 local Workshop = require(Services.Workshop)
+local PlayerMarket = require(Services.PlayerMarket)
 
 -- Remote events exist before any client looks for them.
 Net.Event("State")
@@ -27,6 +28,7 @@ Machines.Start()
 Lab.Start()
 Merchant.Start()
 Workshop.Start()
+PlayerMarket.Start()
 
 local function addStats(player)
 	local stats = Instance.new("Folder")

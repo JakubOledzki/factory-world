@@ -174,17 +174,19 @@ function views() {
     let objects = square().concat(forest([0, 0, 160]));
     for (let i = 1; i <= L.Count; i++) objects = objects.concat(plot(i, { furnaces: ["lit"] }).objects);
     const buys = lua.call("Prices.Buys");
+    const boom = { iron_ore: 55, iron_ingot: 60, nails: 40 };
     const sellable = lua.call("Items.Order").filter((id) => have[id] && buys[id]).map((id) => [id, buys[id]]);
     out["4-handlarz"] = { objects, camera: { pos: [17, 6.5, 1], look: [2, 4.5, -17] }, shadowRadius: 60, hud: "1 284,50 $", caption,
       avatars: [{ at: [4, 0, -10], yaw: Math.PI + 0.4, shirt: [200, 60, 60] }],
       labels: [{ at: [L.Stall.x, 13.5, L.Stall.z], text: "Handlarz", color: "#ffe678", size: 20 }, { at: [L.Workbench.x, 7.5, L.Workbench.z], text: "Stół warsztatowy", color: "#dce6ff", size: 15 }],
       overlay: `<div class="win" style="width:560px;right:16px;bottom:40px"><div class="hd">Handlarz<span class="x">✕</span></div><div class="bd">
+        <div class="card" style="background:#5c481e;padding:7px 10px;font-size:13px;line-height:1.35"><b>Boom na stal</b> (jeszcze 3 h 12 min): Huty nie nadążają z zamówieniami. Ruda żelaza, sztabki, stal i gwoździe są w cenie.</div>
         ${tabs(["Sprzedaj", "Kup"], "Sprzedaj")}
         <div class="card" style="height:112px"><div style="position:absolute;left:10px;top:12px">${slot("iron_ore", "14", { size: 88 })}</div>
           <div style="position:absolute;left:110px;top:10px;font-weight:800;font-size:18px">Ruda żelaza</div>
-          <div class="gold" style="position:absolute;left:110px;top:36px;font-size:15px">Płaci: 6 $ za sztukę &nbsp;·&nbsp; masz 14</div>
+          <div class="gold" style="position:absolute;left:110px;top:36px;font-size:15px">Płaci: 9,30 $ za sztukę &nbsp;(+55%, zwykle 6 $) &nbsp;·&nbsp; masz 14</div>
           <div style="position:absolute;left:110px;top:66px;display:flex;gap:8px"><span class="btn" style="width:100px;text-align:center">Sprzedaj 1</span><span class="btn" style="width:100px;text-align:center">Sprzedaj 10</span><span class="btn alt" style="width:100px;text-align:center">Wszystko</span></div></div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px 8px">${sellable.map(([id, cents]) => slot(id, have[id], { size: 56, caption: lua.call(`Money.Format(${cents})`), captionColor: GOLD, stroke: id === "iron_ore" ? GOLD : null })).join("")}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px 8px">${sellable.map(([id, cents]) => slot(id, have[id], { size: 56, caption: lua.call(`Money.Format(${boom[id] ? Math.round(cents * (100 + boom[id]) / 100) : cents})`), captionColor: boom[id] ? GREEN : GOLD, stroke: id === "iron_ore" ? GOLD : null })).join("")}</div>
       </div></div>` };
   }
   // 5. The models side by side.
@@ -417,6 +419,39 @@ function views() {
         ${contents(inputs, 0.55, slot(chosen.id, "6/100", { size: 56, caption: "Gotowe", captionColor: "#ebecf0" }))}
         <div class="muted" style="font-size:14px">Ekwipunek: kliknij składnik albo paliwo, aby włożyć (Shift: połowę)</div>
         ${haveGrid(8, 16)}
+      </div></div>` };
+  }
+  // 11. The market between players: items with their lowest price, the chosen item's offers.
+  {
+    let objects = square().concat(forest([0, 0, 160]));
+    for (let i = 1; i <= L.Count; i++) objects = objects.concat(plot(i, { furnaces: ["lit"] }).objects);
+    const offers = { planks: [250, 105], wood: [220, 340], iron_ingot: [1150, 48], stone: [95, 900], coal: [450, 120], nails: [320, 60], logistics_belt: [900, 12] };
+    const locked = ["furniture_stonemason", "furniture_crusher", "furniture_foundry", "crushed_iron_ore", "crushed_copper_ore", "crushed_tin_ore", "sand", "bronze_ingot", "steel_ingot", "bricks", "stone_blocks"];
+    const money = (c) => lua.call(`Money.Format(${c})`);
+    const tiles = lua.call("Items.Order").map((id) => {
+      const o = offers[id];
+      return slot(id, o ? o[1] : "", { size: 52, dim: locked.includes(id), badge: locked.includes(id) ? "🔒" : null, caption: o ? money(o[0]) : "—", captionColor: o ? GOLD : null, stroke: id === "planks" ? GOLD : null });
+    });
+    const row = (price, left, who, button, cls) => `<div class="row"><b class="gold" style="width:100px">${money(price)}</b><span style="width:80px;font-size:14px">${left} szt.</span><span class="muted" style="width:170px;font-size:14px">${who}</span>${button ? `<span class="btn ${cls}" style="width:100px;text-align:center">${button}</span>` : `<span class="gold" style="font-size:13px">twoja oferta</span>`}</div>`;
+    out["11-rynek"] = { objects, camera: { pos: [17, 6.5, 1], look: [2, 4.5, -17] }, shadowRadius: 60, hud: "1 284,50 $", caption,
+      overlay: `<div class="win" style="width:900px;left:50%;transform:translateX(-50%);top:40px;bottom:30px;overflow:hidden"><div class="hd">Rynek graczy<span class="x">✕</span></div><div class="bd">
+        ${tabs(["Rynek", "Moje oferty"], "Rynek")}
+        <div style="display:flex;gap:12px">
+          <div style="width:300px;flex:none"><div class="muted" style="font-size:13px;margin-bottom:4px">Towary (najniższa cena)</div>
+            <div style="display:grid;grid-template-columns:repeat(5,52px);gap:2px 6px">${tiles.join("")}</div></div>
+          <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+            <div class="card" style="height:100px"><div style="position:absolute;left:10px;top:12px">${slot("planks", "12", { size: 76 })}</div>
+              <div style="position:absolute;left:98px;top:8px;font-weight:800;font-size:18px">Deski &nbsp;(masz 12)</div>
+              <div class="gold" style="position:absolute;left:98px;top:34px;font-size:13px">Najtaniej: 2,50 $ (105 szt.) &nbsp;·&nbsp; Najwięcej płacą: 2,20 $ (50 szt.)</div>
+              <div class="muted" style="position:absolute;left:98px;top:56px;font-size:13px">Handlarz: skupuje po 1,50 $, sprzedaje po 3 $</div></div>
+            <div class="row" style="height:44px"><span style="font-size:14px">Ilość</span><span style="width:70px;height:32px;border-radius:6px;background:#181b21;border:1px solid #5a6273;display:flex;align-items:center;justify-content:center">40</span>
+              <span style="font-size:14px">Cena za szt. ($)</span><span style="width:90px;height:32px;border-radius:6px;background:#181b21;border:1px solid #5a6273;display:flex;align-items:center;justify-content:center">2,40</span><span class="muted" style="font-size:13px">razem 96 $</span></div>
+            <div style="display:flex;gap:8px;align-items:center"><span class="btn" style="width:160px;text-align:center;padding:8px 10px">Wystaw na sprzedaż</span><span class="btn alt" style="width:140px;text-align:center;padding:8px 10px">Złóż zamówienie</span><span class="muted" style="font-size:12px">Towar lub pieniądze czekają w ofercie.</span></div>
+            <b style="font-size:15px">Na sprzedaż (od najtańszych): kupujesz tyle, ile wpisane w Ilość</b>
+            ${row(250, 5, "Ola_Buduje", "Kup", "")}${row(300, 100, "kopacz77", "Kup", "")}${row(320, 40, "Jakub", null)}
+            <b style="font-size:15px">Zamówienia (kto płaci najwięcej): sprzedajesz ze swojego ekwipunku</b>
+            ${row(220, 50, "Tartak_Bartka", "Sprzedaj", "alt")}${row(180, 200, "Ola_Buduje", "Sprzedaj", "alt")}
+          </div></div>
       </div></div>` };
   }
   // The windows' item pictures: every item's parts, drawn by index.html.

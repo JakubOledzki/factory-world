@@ -54,6 +54,9 @@ local function newProfile()
 		grid = { objects = {}, layout = PlotLayout.Grid.layout },
 		-- Technologies started: [id] = { startsAt, finishesAt } (Shared.Research).
 		research = {},
+		-- The market between players (Services/PlayerMarket): books with the player's offers or
+		-- earnings, their open offers and steps on their way.
+		market = { items = {}, offers = {}, pending = {} },
 		nextId = 1,
 		lock = nil,
 	}

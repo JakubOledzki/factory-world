@@ -47,6 +47,15 @@ Game.Errors = {
 	machine_full = "Maszyna jest pełna.",
 	machine_wrong_item = "Ta maszyna nie przyjmie tego przy tym przepisie.",
 	no_recipe = "Najpierw wybierz, co maszyna ma robić.",
+	market_busy = "Poprzednia transakcja na rynku jeszcze trwa.",
+	market_unavailable = "Rynek chwilowo nie odpowiada. Nic nie przepadło, spróbuj za chwilę.",
+	no_offer = "Tej oferty już nie ma.",
+	own_offer = "To twoja własna oferta.",
+	price_changed = "Cena tej oferty się zmieniła.",
+	not_enough_offered = "W tej ofercie zostało mniej, niż chcesz.",
+	too_many_offers = "Masz już najwięcej otwartych ofert. Anuluj którąś w „Moje oferty”.",
+	nothing_owed = "Nic na ciebie nie czeka.",
+	duplicate = "Ta transakcja już się odbyła.",
 }
 
 function Game.ErrorText(code)

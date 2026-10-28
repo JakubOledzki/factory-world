@@ -1,8 +1,10 @@
 -- The merchant's window: buy tools and buildings, sell what the plot gave. Items are tiles with
--- their price under them; a click picks one and the card above says what it costs and trades it.
+-- their price under them (green when better than usual, red when worse); a click picks one and the
+-- card above says what it costs and trades it. On top, the market's event now or the next one.
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Items = require(Shared.Items)
 local Money = require(Shared.Money)
+local MarketEvents = require(Shared.MarketEvents)
 local Kit = require(script.Parent.Kit)
 local ItemGrid = require(script.Parent.ItemGrid)
 local Recipes = require(script.Parent.Recipes)
@@ -16,11 +18,32 @@ function Merchant.Open(screen)
 		return nil
 	end
 	local connection
-	local window, body = Kit.Window(screen, "Handlarz", 560, 600, function()
+	local window, body = Kit.Window(screen, "Handlarz", 560, 640, function()
 		connection:Disconnect()
 	end)
+	Game.SyncTime(reply.serverTime)
 	local tab = "sell"
 	local selected = { sell = nil, buy = nil }
+
+	-- "3 h 12 min" until `at`.
+	local function until_(at)
+		local left = math.max(0, math.floor(at - Game.Now()))
+		local h, m = math.floor(left / 3600), math.floor(left % 3600 / 60)
+		return h > 0 and (h .. " h " .. m .. " min") or (m .. " min")
+	end
+
+	-- How a price compares with the usual one, for the player: better is green.
+	local function compare(cents, usual, higherIsBetter)
+		if usual == nil or cents == usual then
+			return nil, nil
+		end
+		local change = MarketEvents.Change(cents, usual)
+		if change == 0 then
+			return nil, nil
+		end
+		local better = (change > 0) == higherIsBetter
+		return (change > 0 and "+" or "") .. change .. "%", better and Recipes.Colors.Enough or Recipes.Colors.Short
+	end
 
 	local function trade(kind, item, quantity)
 		if quantity > 0 then
@@ -30,6 +53,22 @@ function Merchant.Open(screen)
 
 	local function render()
 		Kit.Clear(body)
+		local e = reply.event
+		local banner = Kit.New("Frame", {
+			Size = UDim2.new(1, -8, 0, 46),
+			BackgroundColor3 = e and Color3.fromRGB(92, 72, 30) or Kit.Colors.Row,
+			Parent = body,
+		}, { Kit.Corner(8), Kit.New("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }) })
+		local text
+		if e then
+			text = "<b>" .. e.name .. "</b> (jeszcze " .. until_(e.endsAt) .. "): " .. e.description
+		elseif reply.nextEvent then
+			text = "Spokojny rynek. Ceny skupu wahają się codziennie do 10%. Następne wydarzenie: <b>"
+				.. reply.nextEvent.name .. "</b> za " .. until_(reply.nextEvent.startsAt) .. "."
+		else
+			text = "Spokojny rynek. Ceny skupu wahają się codziennie do 10%."
+		end
+		Kit.Label(banner, text, { Size = UDim2.fromScale(1, 1), RichText = true, TextWrapped = true, TextSize = 13 })
 		Recipes.Tabs(body, { { id = "sell", name = "Sprzedaj" }, { id = "buy", name = "Kup" } }, tab, function(id)
 			tab = id
 			render()
@@ -72,7 +111,10 @@ function Merchant.Open(screen)
 			TextSize = 18,
 		})
 		local cents = tab == "buy" and chosen.buyCents or chosen.sellCents
-		Kit.Label(card, (tab == "buy" and "Cena: " or "Płaci: ") .. Money.Format(cents) .. " za sztukę   ·   masz " .. have, {
+		local usual = tab == "buy" and chosen.usualBuyCents or chosen.usualSellCents
+		local change = compare(cents, usual, tab == "sell")
+		Kit.Label(card, (tab == "buy" and "Cena: " or "Płaci: ") .. Money.Format(cents) .. " za sztukę"
+			.. (change and ("  (" .. change .. ", zwykle " .. Money.Format(usual) .. ")") or "") .. "   ·   masz " .. have, {
 			Position = UDim2.fromOffset(110, 34),
 			Size = UDim2.new(1, -120, 0, 20),
 			TextSize = 15,
@@ -129,10 +171,11 @@ function Merchant.Open(screen)
 		})
 		for index, entry in ipairs(shown) do
 			local price = tab == "buy" and entry.buyCents or entry.sellCents
+			local _, color = compare(price, tab == "buy" and entry.usualBuyCents or entry.usualSellCents, tab == "sell")
 			local slot = ItemGrid.Slot(grid, {
 				size = 56,
 				caption = Money.Format(price),
-				captionColor = Kit.Colors.Money,
+				captionColor = color or Kit.Colors.Money,
 				layoutOrder = index,
 				onClick = function()
 					selected[tab] = entry.id

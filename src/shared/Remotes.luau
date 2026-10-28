@@ -29,4 +29,12 @@ return {
 	ResearchGet = "ResearchGet",
 	ResearchStart = "ResearchStart", -- { id }
 	InventoryMove = "InventoryMove", -- { item, slot }
+	MarketGet = "MarketGet",
+	MarketBoard = "MarketBoard", -- { item }
+	MarketMine = "MarketMine",
+	MarketList = "MarketList", -- { item, quantity, priceCents }
+	MarketOrder = "MarketOrder", -- { item, quantity, priceCents }
+	MarketBuy = "MarketBuy", -- { item, id, quantity, priceCents }
+	MarketFill = "MarketFill", -- { item, id, quantity, priceCents }
+	MarketCancel = "MarketCancel", -- { item, offerKind, id }
 }
