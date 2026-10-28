@@ -1045,7 +1045,7 @@ end)
 test("Weekly orders pay the company more than the merchant and the one who delivers gets shares", function()
 	local now = 1000000
 	local orders = Companies.Orders("c1", Companies.Week(now))
-	eq(#orders, Companies.OrdersPerWeek)
+	eq(#orders, Companies.OrdersWithWarehouse)
 	eq(Companies.Orders("c1", Companies.Week(now))[2].item, orders[2].item, "always the same")
 	for _, o in ipairs(orders) do
 		assert(o.rewardCents > Prices.Buys[o.item], "an order pays more than the merchant")
@@ -1101,4 +1101,36 @@ test("Company names are unique in the directory and trimmed; members' trains cos
 	eq(#d.list, 0)
 	assert(Rail.FeeCents(1000, 500, true) < Rail.FeeCents(1000, 500), "a member's train is cheaper")
 	eq(Rail.FeeCents(1000, 500, true), Rail.BaseFeeCents + 3500)
+end)
+
+test("Big projects take parts from members, build for a while and then help the company", function()
+	local now = 1000000
+	local c = step(nil, { kind = "create", id = "c1", name = "Huta", owner = "1", ownerName = "Ala", cents = Companies.FoundingCents, at = now })
+	c = step(c, { kind = "join", member = "2", name = "Bob", at = now })
+	eq(select(2, Companies.Apply(c, { tx = "p", kind = "project", member = "2", project = "hq", at = now })), "not_owner")
+	eq(select(2, Companies.Apply(c, { tx = "p", kind = "project", member = "1", project = "railway", at = now })), "project_locked")
+	eq(select(2, Companies.Apply(c, { tx = "p", kind = "contribute", member = "2", item = Items.Beams, quantity = 5, at = now })), "no_project")
+	c = step(c, { kind = "project", member = "1", project = "hq", at = now })
+	eq(select(2, Companies.Apply(c, { tx = "q", kind = "project", member = "1", project = "warehouse", at = now })), "project_busy")
+	eq(select(2, Companies.Apply(c, { tx = "q", kind = "contribute", member = "2", item = Items.Wood, quantity = 5, at = now })), "part_done", "a part the project does not take")
+	local result
+	local hq = Companies.Project("hq")
+	for _, part in ipairs(hq.parts) do
+		c, result = step(c, { kind = "contribute", member = "2", item = part[1], quantity = part[2] + 3, at = now })
+		eq(result.quantity, part[2], "only what is still needed is taken")
+	end
+	eq(c.project.readyAt, now + hq.hours * 3600)
+	eq(Companies.Built(c, "hq", now), false, "it is still being built")
+	eq(Companies.MaxMembersOf(c, now), Companies.MaxMembers)
+	local later = now + hq.hours * 3600
+	eq(Companies.Built(c, "hq", later), true)
+	eq(Companies.MaxMembersOf(c, later), Companies.MaxMembersWithHq)
+	c = step(c, { kind = "project", member = "1", project = "warehouse", at = later })
+	eq(c.built.hq, later, "the finished project is written down")
+	eq(select(2, Companies.Apply(c, { tx = "r", kind = "project", member = "1", project = "hq", at = later })), "project_built")
+	-- A warehouse brings more orders; the first ones stay the same.
+	eq(Companies.OrderCount(c, later), Companies.OrdersPerWeek)
+	c.built.warehouse = later
+	eq(Companies.OrderCount(c, later), Companies.OrdersWithWarehouse)
+	eq(Companies.Left(c, Companies.OrdersWithWarehouse, later) > 0, true)
 end)

@@ -4,8 +4,10 @@
 -- company for a little less. Each week the company gets orders for goods; members deliver them
 -- from their inventories, the company is paid more than the merchant would pay, and the one who
 -- delivered gets shares worth what the merchant pays, so the rest raises the price of everyone's
--- shares. Once a day the owner can pay part of the cash out to all members by their shares. Trains
--- between members cost less (Shared.Rail).
+-- shares. Once a day the owner can pay part of the cash out to all members by their shares. Big
+-- projects (BigProjects in CompanyEconomyRules.cs) take thousands of parts from the members and a
+-- day or two to build, and then help every member: more members, more orders, cheaper trains
+-- between members (Shared.Rail).
 --
 -- Each company is one DataStore key, changed one step at a time (Companies.Apply), and a directory
 -- key lists every company by name (Companies.ApplyDirectory), so the server can make each step in
@@ -13,7 +15,8 @@
 --
 -- A company: { id, name, owner, ownerName, members = { [userId] = { name, shares, joinedAt } },
 -- shares, cashCents, owed = { [userId] = cents }, week, delivered = { [order] = quantity },
--- dividendDay, log = { { at, text } }, closed, done = { { tx, result } } }.
+-- dividendDay, project = { id, delivered = { [item] = quantity }, readyAt }, built = { [id] = at },
+-- log = { { at, text } }, closed, done = { { tx, result } } }.
 local Items = require(script.Parent.Items)
 local Money = require(script.Parent.Money)
 local Prices = require(script.Parent.Prices)
@@ -29,12 +32,14 @@ Companies.BuybackPercent = 95
 -- The owner pays out this percent of the cash once a day.
 Companies.DividendPercent = 20
 Companies.MaxMembers = 10
+Companies.MaxMembersWithHq = 20
 Companies.NameMin = 3
 Companies.NameMax = 24
 -- Most a member puts in at once, in cents.
 Companies.MaxDepositCents = 100000000000
--- Orders each week, and how much more than the merchant they pay.
+-- Orders each week (more with a warehouse), and how much more than the merchant they pay.
 Companies.OrdersPerWeek = 3
+Companies.OrdersWithWarehouse = 5
 Companies.RewardPercent = 160
 Companies.WeekSeconds = 7 * 24 * 3600
 Companies.DaySeconds = 24 * 3600
@@ -45,6 +50,75 @@ Companies.OrderItems = {
 	Items.Nails, Items.Bricks, Items.BronzeIngot, Items.SteelIngot,
 }
 Companies.OrderValueCents = { 100000, 400000 }
+-- The big projects, in the order the window shows them. `parts` are { item, quantity }; `hours` the
+-- time it takes to build once every part is in; `requires` a project built before.
+Companies.Projects = {
+	{
+		id = "hq",
+		name = "Siedziba spółki",
+		text = "Biuro spółki. Spółka może mieć do 20 wspólników zamiast 10.",
+		parts = { { Items.StoneBlocks, 500 }, { Items.Beams, 400 }, { Items.Bricks, 200 }, { Items.IronIngot, 150 } },
+		hours = 24,
+	},
+	{
+		id = "warehouse",
+		name = "Magazyn spółki",
+		text = "Co tydzień 5 zleceń zamiast 3.",
+		parts = { { Items.Planks, 2000 }, { Items.IronIngot, 800 }, { Items.CopperIngot, 500 }, { Items.BronzeIngot, 200 } },
+		hours = 24,
+		requires = "hq",
+	},
+	{
+		id = "railway",
+		name = "Kolej spółki",
+		text = "Pociągi między wspólnikami płacą o 30% mniej za odległość, także na trasach.",
+		parts = { { Items.SteelIngot, 600 }, { Items.Beams, 1500 }, { Items.StoneBlocks, 1000 }, { Items.Bricks, 400 } },
+		hours = 48,
+		requires = "hq",
+	},
+}
+
+function Companies.Project(id)
+	for _, p in ipairs(Companies.Projects) do
+		if p.id == id then
+			return p
+		end
+	end
+	return nil
+end
+
+-- Whether the company has project `id` built by `now`.
+function Companies.Built(company, id, now)
+	if company.built and company.built[id] then
+		return true
+	end
+	local p = company.project
+	return p ~= nil and p.id == id and p.readyAt ~= nil and p.readyAt <= now
+end
+
+function Companies.MaxMembersOf(company, now)
+	return Companies.Built(company, "hq", now) and Companies.MaxMembersWithHq or Companies.MaxMembers
+end
+
+function Companies.OrderCount(company, now)
+	return Companies.Built(company, "warehouse", now) and Companies.OrdersWithWarehouse or Companies.OrdersPerWeek
+end
+
+-- How many of `item` the company's project still needs (0 when the project does not take it).
+function Companies.Needed(company, item)
+	local p = company.project
+	local info = p and Companies.Project(p.id)
+	if info == nil or p.readyAt then
+		return 0
+	end
+	for _, part in ipairs(info.parts) do
+		if part[1] == item then
+			return part[2] - (p.delivered[item] or 0)
+		end
+	end
+	return 0
+end
+
 Companies.LogKept = 30
 Companies.DoneKept = 300
 Companies.DirectoryMax = 500
@@ -127,7 +201,8 @@ local function seeded(text)
 end
 
 -- The orders of company `id` in week `week`, always the same: { { item, quantity, rewardCents } },
--- rewardCents for one piece.
+-- rewardCents for one piece. As many as a company with a warehouse gets; the first
+-- OrdersPerWeek are the same either way (Companies.OrderCount says how many a company has).
 function Companies.Orders(id, week)
 	local random = seeded(tostring(id) .. ":" .. tostring(week))
 	local pool = {}
@@ -137,7 +212,7 @@ function Companies.Orders(id, week)
 		end
 	end
 	local orders = {}
-	while #orders < Companies.OrdersPerWeek and #pool > 0 do
+	while #orders < Companies.OrdersWithWarehouse and #pool > 0 do
 		local item = table.remove(pool, random(#pool) + 1)
 		local unit = Prices.Buys[item]
 		local low, high = Companies.OrderValueCents[1], Companies.OrderValueCents[2]
@@ -151,7 +226,7 @@ end
 -- How many of order `index` are still wanted this week.
 function Companies.Left(company, index, now)
 	local order = Companies.Orders(company.id, Companies.Week(now))[index]
-	if order == nil then
+	if order == nil or index > Companies.OrderCount(company, now) then
 		return 0
 	end
 	local delivered = 0
@@ -192,6 +267,8 @@ end
 --   "sell": member, shares -> { cents }
 --   "deliver": member, order, quantity -> { quantity, shares } taken of the quantity brought
 --   "dividend": owner -> { cents } paid out into `owed`
+--   "project": owner, project -> {} (starts a big project; one at a time)
+--   "contribute": member, item, quantity -> { quantity } taken for the project
 --   "collect": member -> { cents } owed to them (also after they left)
 function Companies.Apply(company, action)
 	if action.kind == "create" then
@@ -224,6 +301,11 @@ function Companies.Apply(company, action)
 	if Companies.Done(c, action.tx) then
 		return nil, "duplicate"
 	end
+	c.built = c.built or {}
+	if c.project and c.project.readyAt and c.project.readyAt <= action.at then
+		c.built[c.project.id] = c.project.readyAt
+		c.project = nil
+	end
 	local kind = action.kind
 	local member = action.member or action.owner
 	local m = c.members[member]
@@ -234,7 +316,7 @@ function Companies.Apply(company, action)
 		if kind ~= "join" and m == nil then
 			return nil, "not_member"
 		end
-		if (kind == "kick" or kind == "dividend") and member ~= c.owner then
+		if (kind == "kick" or kind == "dividend" or kind == "project") and member ~= c.owner then
 			return nil, "not_owner"
 		end
 	end
@@ -243,7 +325,7 @@ function Companies.Apply(company, action)
 		if m ~= nil then
 			return nil, "already_member"
 		end
-		if count(c.members) >= Companies.MaxMembers then
+		if count(c.members) >= Companies.MaxMembersOf(c, action.at) then
 			return nil, "company_full"
 		end
 		c.members[member] = { name = action.name, shares = 0, joinedAt = action.at }
@@ -313,7 +395,7 @@ function Companies.Apply(company, action)
 			c.delivered = {}
 		end
 		local order = Companies.Orders(c.id, week)[action.order]
-		if order == nil then
+		if order == nil or action.order > Companies.OrderCount(c, action.at) then
 			return nil, "bad_payload"
 		end
 		local taken = math.min(action.quantity, order.quantity - (c.delivered[action.order] or 0))
@@ -348,6 +430,48 @@ function Companies.Apply(company, action)
 		c.dividendDay = day
 		log(c, action.at, "Dywidenda: " .. Money.Format(paid) .. " dla wspólników.")
 		result = { cents = paid }
+	elseif kind == "project" then
+		local info = Companies.Project(action.project)
+		if info == nil then
+			return nil, "bad_payload"
+		end
+		if c.built[info.id] then
+			return nil, "project_built"
+		end
+		if c.project then
+			return nil, "project_busy"
+		end
+		if info.requires and not c.built[info.requires] then
+			return nil, "project_locked"
+		end
+		c.project = { id = info.id, delivered = {} }
+		log(c, action.at, "Spółka zaczyna projekt: " .. info.name .. ".")
+		result = {}
+	elseif kind == "contribute" then
+		if c.project == nil then
+			return nil, "no_project"
+		end
+		if c.project.readyAt then
+			return nil, "project_building"
+		end
+		local taken = math.min(action.quantity, Companies.Needed(c, action.item))
+		if taken <= 0 then
+			return nil, "part_done"
+		end
+		c.project.delivered[action.item] = (c.project.delivered[action.item] or 0) + taken
+		local info = Companies.Project(c.project.id)
+		log(c, action.at, m.name .. " oddaje " .. taken .. " × " .. Items.Name(action.item) .. " na projekt.")
+		local complete = true
+		for _, part in ipairs(info.parts) do
+			if (c.project.delivered[part[1]] or 0) < part[2] then
+				complete = false
+			end
+		end
+		if complete then
+			c.project.readyAt = action.at + info.hours * 3600
+			log(c, action.at, "Wszystkie części są. Budowa: " .. info.name .. " (" .. info.hours .. " h).")
+		end
+		result = { quantity = taken }
 	elseif kind == "collect" then
 		local cents = c.owed[member] or 0
 		if cents <= 0 then

@@ -59,4 +59,6 @@ return {
 	CompanySell = "CompanySell", -- { shares }
 	CompanyDeliver = "CompanyDeliver", -- { order, quantity }
 	CompanyDividend = "CompanyDividend",
+	CompanyProject = "CompanyProject", -- { project }
+	CompanyContribute = "CompanyContribute", -- { item, quantity }
 }

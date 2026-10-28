@@ -643,8 +643,14 @@ function views() {
       local o = Companies.Orders("huta", Companies.Week(now))
       c = step(c, { kind = "deliver", member = "2", order = 1, quantity = math.floor(o[1].quantity / 2) })
       c = step(c, { kind = "deliver", member = "3", order = 2, quantity = o[2].quantity })
+      c = step(c, { kind = "project", member = "1", project = "hq" })
+      c = step(c, { kind = "contribute", member = "2", item = Items.StoneBlocks, quantity = 500 })
+      c = step(c, { kind = "contribute", member = "3", item = Items.Beams, quantity = 260 })
+      c = step(c, { kind = "contribute", member = "1", item = Items.Bricks, quantity = 80 })
+      local hq = {}
+      for i, part in ipairs(Companies.Project("hq").parts) do hq[i] = { item = part[1], quantity = part[2], delivered = c.project.delivered[part[1]] or 0 } end
       local orders = {}
-      for i, x in ipairs(o) do orders[i] = { item = x.item, quantity = x.quantity, left = Companies.Left(c, i, now), rewardCents = x.rewardCents } end
+      for i, x in ipairs(o) do if i <= Companies.OrderCount(c, now) then orders[i] = { item = x.item, quantity = x.quantity, left = Companies.Left(c, i, now), rewardCents = x.rewardCents } end end
       local members = {}
       for id, m in pairs(c.members) do members[#members + 1] = { name = m.name, shares = m.shares, owner = id == c.owner } end
       table.sort(members, function(a, b) return a.shares > b.shares end)
@@ -652,7 +658,7 @@ function views() {
       for i = #c.log, 1, -1 do log[#log + 1] = c.log[i].text end
       local mine, value = Companies.Stake(c, "3")
       return { name = c.name, cash = Money.Format(c.cashCents), price = Money.Format(Companies.SharePrice(c)), shares = c.shares, mine = mine, value = Money.Format(value),
-        orders = orders, members = members, log = log, weekLeft = (Companies.Week(now) + 1) * Companies.WeekSeconds - now }
+        orders = orders, members = members, log = log, hq = hq, hqText = Companies.Project("hq").text, weekLeft = (Companies.Week(now) + 1) * Companies.WeekSeconds - now }
     end)()`);
     const pct = (n) => Math.round(n / c.shares * 1000) / 10;
     const days = Math.floor(c.weekLeft / 86400), hours = Math.floor((c.weekLeft % 86400) / 3600);
@@ -672,10 +678,12 @@ function views() {
         <b style="font-size:17px">Zlecenia tygodnia (zostało ${days} d ${hours} h)</b>
         <div class="muted" style="font-size:13px">Spółka dostaje za towar więcej niż u handlarza. Ty dostajesz udziały warte tyle, ile dałby handlarz, a reszta podnosi cenę udziałów wszystkich.</div>
         ${c.orders.map(order).join("")}
+        <b style="font-size:17px">Wielkie projekty</b>
+        <div class="row" style="height:40px;font-size:13px"><span><b>Siedziba spółki</b> &nbsp;${c.hqText} &nbsp;<i>zbieranie części</i></span></div>
+        ${c.hq.map((p) => { const left = p.quantity - p.delivered; const give = Math.min(have[p.item] || 0, left);
+          return `<div class="row" style="height:40px">${slot(p.item, "", { size: 32 })}<span style="flex:1;font-size:14px">${name(p.item)} &nbsp; ${p.delivered} / ${p.quantity}</span><span class="btn" style="width:150px;text-align:center;padding:8px 0;${left > 0 && give > 0 ? "" : "background:#4e5460"}">${left <= 0 ? "Zebrane" : give > 0 ? "Oddaj " + give : "Nie masz"}</span></div>`; }).join("")}
         <b style="font-size:17px">Wspólnicy</b>
         ${c.members.map((m) => `<div class="row" style="height:34px;font-size:14px"><span><b>${m.name}</b>${m.owner ? " (założyciel)" : ""} &nbsp; ${m.shares} udziałów, ${pct(m.shares)}%</span></div>`).join("")}
-        <b style="font-size:17px">Ostatnio</b>
-        ${c.log.slice(0, 4).map((t) => `<div class="muted" style="font-size:13px">${t}</div>`).join("")}
       </div></div>` };
   }
   // The windows' item pictures: every item's parts, drawn by index.html.

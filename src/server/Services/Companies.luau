@@ -177,7 +177,7 @@ local function finish(player, profile, key, action, result)
 		end
 	elseif kind == "sell" then
 		Wallet.Credit(profile, result.cents, "company_shares_sold")
-	elseif kind == "deliver" then
+	elseif kind == "deliver" or kind == "contribute" then
 		if action.quantity > result.quantity then
 			Inventory.Add(profile, action.item, action.quantity - result.quantity)
 		end
@@ -196,7 +196,7 @@ local function refund(profile, action)
 		Wallet.Credit(profile, action.cents, "company_refund")
 	elseif kind == "deposit" then
 		Wallet.Credit(profile, action.cents, "company_refund")
-	elseif kind == "deliver" then
+	elseif kind == "deliver" or kind == "contribute" then
 		Inventory.Add(profile, action.item, action.quantity)
 	end
 end
@@ -279,6 +279,13 @@ function Service.IsMate(player, profile, userId)
 	return record ~= nil and tostring(userId) ~= me(player) and record.members[tostring(userId)] ~= nil
 end
 
+-- Whether a train to user `userId` pays less: a member of the player's company once it built its
+-- railway (as last read; nothing yields).
+function Service.Discount(player, profile, userId)
+	local record = cached(profile)
+	return Service.IsMate(player, profile, userId) and Companies.Built(record, "railway", Clock.Now())
+end
+
 -- The other members of the player's company, as last read: { { id, name } }.
 function Service.Mates(player, profile)
 	local out = {}
@@ -328,6 +335,9 @@ local function view(player, profile)
 	local week = Companies.Week(now)
 	local orders = {}
 	for i, o in ipairs(Companies.Orders(c.id, week)) do
+		if i > Companies.OrderCount(c, now) then
+			break
+		end
 		table.insert(orders, { item = o.item, quantity = o.quantity, left = Companies.Left(c, i, now), rewardCents = o.rewardCents, sharesFor = Companies.SharePrice(c) })
 	end
 	local log = {}
@@ -335,6 +345,27 @@ local function view(player, profile)
 		table.insert(log, c.log[i])
 	end
 	local shares, value = Companies.Stake(c, id)
+	-- The big projects: built, on the way (parts or building), ready to start or not yet.
+	local projects = {}
+	for _, info in ipairs(Companies.Projects) do
+		local p = { id = info.id, name = info.name, text = info.text, hours = info.hours, parts = {} }
+		local current = c.project and c.project.id == info.id and c.project or nil
+		if Companies.Built(c, info.id, now) then
+			p.state = "built"
+		elseif current then
+			p.state = current.readyAt and "building" or "parts"
+			p.readyAt = current.readyAt
+		elseif info.requires and not Companies.Built(c, info.requires, now) then
+			p.state = "locked"
+			p.requires = Companies.Project(info.requires).name
+		else
+			p.state = c.project and not Companies.Built(c, c.project.id, now) and "waiting" or "ready"
+		end
+		for _, part in ipairs(info.parts) do
+			table.insert(p.parts, { item = part[1], quantity = part[2], delivered = current and (current.delivered[part[1]] or 0) or (p.state == "built" and part[2] or 0) })
+		end
+		table.insert(projects, p)
+	end
 	return {
 		ok = true,
 		company = {
@@ -348,7 +379,8 @@ local function view(player, profile)
 			myShares = shares,
 			myValueCents = value,
 			members = members,
-			maxMembers = Companies.MaxMembers,
+			maxMembers = Companies.MaxMembersOf(c, now),
+			projects = projects,
 			orders = orders,
 			weekEndsAt = (week + 1) * Companies.WeekSeconds,
 			dividendReady = c.dividendDay ~= Companies.Day(now),
@@ -500,7 +532,7 @@ function Service.Start()
 	end))
 
 	Net.Handle("CompanyDeliver", onCompany(function(_, profile, payload)
-		local order = Net.Int(payload.order, 1, Companies.OrdersPerWeek)
+		local order = Net.Int(payload.order, 1, Companies.OrdersWithWarehouse)
 		local quantity = Net.Int(payload.quantity, 1, 100000)
 		if order == nil or quantity == nil then
 			return nil, "bad_payload"
@@ -511,6 +543,26 @@ function Service.Start()
 			return nil, "not_enough_items"
 		end
 		return { kind = "deliver", order = order, item = o.item, quantity = quantity }
+	end))
+
+	Net.Handle("CompanyProject", onCompany(function(player, _, payload)
+		if type(payload.project) ~= "string" or Companies.Project(payload.project) == nil then
+			return nil, "bad_payload"
+		end
+		return { kind = "project", owner = me(player), project = payload.project }
+	end))
+
+	Net.Handle("CompanyContribute", onCompany(function(_, profile, payload)
+		local item = Net.Item(payload.item)
+		local quantity = Net.Int(payload.quantity, 1, 100000)
+		if item == nil or quantity == nil then
+			return nil, "bad_payload"
+		end
+		quantity = math.min(quantity, Inventory.Count(profile, item))
+		if quantity <= 0 or not Inventory.TryRemove(profile, item, quantity) then
+			return nil, "not_enough_items"
+		end
+		return { kind = "contribute", item = item, quantity = quantity }
 	end))
 
 	Net.Handle("CompanyDividend", onCompany(function(player)

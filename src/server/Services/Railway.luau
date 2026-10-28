@@ -378,7 +378,7 @@ local function runRoute(player, profile, route)
 		return
 	end
 	local km = route.toPlot and 0 or Rail.DistanceKm(player.UserId, route.to)
-	local fee = Rail.FeeCents(km, count, route.to and Companies.IsMate(player, profile, route.to))
+	local fee = Rail.FeeCents(km, count, route.to and Companies.Discount(player, profile, route.to))
 	if not Wallet.TryDebit(profile, fee, "rail_route") then
 		route.problem = "no_money"
 		return
@@ -463,7 +463,7 @@ local function reply(player, profile, station)
 		if not seen[id] then
 			seen[id] = true
 			local km = Rail.DistanceKm(player.UserId, id)
-			local mate = Companies.IsMate(player, profile, id)
+			local mate = Companies.Discount(player, profile, id)
 			table.insert(partners, { id = id, name = name, km = math.floor(km + 0.5), trip = Rail.TripSeconds(km), mate = mate or nil })
 		end
 	end
@@ -686,7 +686,7 @@ function Railway.Start()
 		if (station.stock[item] or 0) < quantity then
 			return Net.Error("station_empty")
 		end
-		local fee = Rail.FeeCents(Rail.DistanceKm(player.UserId, to), quantity, Companies.IsMate(player, profile, to))
+		local fee = Rail.FeeCents(Rail.DistanceKm(player.UserId, to), quantity, Companies.Discount(player, profile, to))
 		if not Wallet.TryDebit(profile, fee, "rail_send") then
 			return Net.Error("not_enough_money")
 		end

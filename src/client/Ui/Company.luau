@@ -142,10 +142,49 @@ local function inside(body, c, serverTime, call)
 		end)
 	end
 
-	heading(body, "Wspólnicy", 40)
+	heading(body, "Wielkie projekty", 30)
+	muted(body, "Wspólnicy razem znoszą części, a po ich zebraniu spółka buduje projekt przez dzień lub dwa. Projekt pomaga potem wszystkim wspólnikom.", 31, 36)
+	for i, p in ipairs(c.projects) do
+		local states = {
+			built = "zbudowany",
+			building = "budowa, gotowe za " .. (p.readyAt and timeLeft(math.max(0, p.readyAt - serverTime)) or ""),
+			parts = "zbieranie części",
+			locked = "najpierw: " .. tostring(p.requires),
+			waiting = "czeka, aż skończy się inny projekt",
+			ready = "można zacząć (" .. p.hours .. " h budowy)",
+		}
+		local r = Kit.Row(body, 40)
+		r.LayoutOrder = 31 + i * 10
+		Kit.Label(r, "<b>" .. p.name .. "</b>  " .. p.text .. "  <i>" .. states[p.state] .. "</i>", {
+			RichText = true, TextSize = 13, TextWrapped = true, Size = UDim2.new(1, -170, 1, 0),
+			TextColor3 = p.state == "built" and Recipes.Colors.Enough or Kit.Colors.Text,
+		})
+		if p.state == "ready" and c.isOwner then
+			Recipes.Action(r, "Zacznij projekt", true, function()
+				call("CompanyProject", { project = p.id })
+			end)
+		end
+		if p.state == "parts" then
+			for k, part in ipairs(p.parts) do
+				local pr = Kit.Row(body, 40)
+				pr.LayoutOrder = 31 + i * 10 + k
+				ItemGrid.Icon(Kit.New("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(32, 32), Parent = pr }), part.item)
+				local left = part.quantity - part.delivered
+				Kit.Label(pr, Items.Name(part.item) .. "   " .. part.delivered .. " / " .. part.quantity, { TextSize = 14, Size = UDim2.new(1, -220, 1, 0) })
+				local give = math.min(Game.Count(part.item), left)
+				Recipes.Action(pr, left <= 0 and "Zebrane" or (give > 0 and ("Oddaj " .. give) or "Nie masz"), left > 0 and give > 0, function()
+					if give > 0 then
+						call("CompanyContribute", { item = part.item, quantity = give })
+					end
+				end)
+			end
+		end
+	end
+
+	heading(body, "Wspólnicy", 80)
 	for i, m in ipairs(c.members) do
 		local r = Kit.Row(body, 34)
-		r.LayoutOrder = 40 + i
+		r.LayoutOrder = 80 + i
 		local share = c.shares > 0 and math.floor(m.shares / c.shares * 1000 + 0.5) / 10 or 0
 		Kit.Label(r, "<b>" .. m.name .. "</b>" .. (m.owner and "  (założyciel)" or "") .. "   " .. m.shares .. " udziałów, " .. share .. "%", {
 			RichText = true, TextSize = 14, Size = UDim2.new(1, -150, 1, 0),
@@ -158,7 +197,7 @@ local function inside(body, c, serverTime, call)
 	end
 	if c.isOwner then
 		local r = Kit.Row(body, 40)
-		r.LayoutOrder = 60
+		r.LayoutOrder = 105
 		Recipes.Action(r, "Wypłać dywidendę", c.dividendReady and c.dividendCents > 0, function()
 			call("CompanyDividend")
 		end).Size = UDim2.fromOffset(180, 30)
@@ -167,12 +206,12 @@ local function inside(body, c, serverTime, call)
 		})
 	end
 
-	heading(body, "Ostatnio", 70)
+	heading(body, "Ostatnio", 110)
 	for i, entry in ipairs(c.log) do
-		muted(body, entry.text, 70 + i)
+		muted(body, entry.text, 110 + i)
 	end
 	local r = Kit.Row(body, 40)
-	r.LayoutOrder = 100
+	r.LayoutOrder = 200
 	r.BackgroundTransparency = 1
 	careful(r, c.isOwner and #c.members == 1 and "Zamknij spółkę" or "Odejdź ze spółki", function()
 		call("CompanyLeave")
