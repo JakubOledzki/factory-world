@@ -67,10 +67,15 @@ test("A mine runs dry after its loads and fills up again ten minutes after the l
 	eq(again.units, Mining.Units - 1)
 end)
 
-test("A cut tree stands again after it regrows", function()
-	eq(Forestry.Standing(nil, 0), true)
-	eq(Forestry.Standing(100, 100 + Forestry.Regrow - 1), false)
-	eq(Forestry.Standing(100, 100 + Forestry.Regrow), true)
+test("A wild tree can be cut at once, a planted one when it has grown; cutting gives wood and sometimes a sapling", function()
+	eq(Forestry.Grown(Forestry.New(1, 0, 0, nil), 0), true)
+	local planted = Forestry.New(2, 0, 0, 100)
+	eq(Forestry.Grown(planted, 100 + Forestry.Grow - 1), false)
+	eq(Forestry.Grown(planted, 100 + Forestry.Grow), true)
+	eq(#Forestry.Cut(Forestry.SaplingChance), 1)
+	local lucky = Forestry.Cut(0)
+	eq(lucky[1][1], Items.Wood)
+	eq(lucky[2][1], Items.Sapling)
 end)
 
 test("The furnace smelts while the player is away and stops when the coal runs out", function()
@@ -211,6 +216,9 @@ test("Every model is made of parts Roblox can build, with the parts the game loo
 	checkModel("Furnace", Models.Furnace(), { "Body", "Fire" })
 	checkModel("Furnace on the grid", Models.Furnace(true), { "Body", "Fire" })
 	checkModel("Belt", Models.Belt(), { "Body" })
+	checkModel("Belt turning left", Models.Belt(-1), { "Body" })
+	checkModel("Belt turning right", Models.Belt(1), { "Body" })
+	checkModel("Sapling", Models.Sapling(3), { "Trunk" })
 	checkModel("Inserter", Models.Inserter(), { "Body", "Hand" })
 	checkModel("WoodenChest", Models.WoodenChest(), { "Body" })
 	checkModel("BuildMarker", Models.BuildMarker(Items.Inserter, 4))
@@ -222,7 +230,7 @@ test("Every model is made of parts Roblox can build, with the parts the game loo
 	checkModel("Signpost", Models.Signpost(1), { "Board" })
 	local PlotLayout = load_shared("PlotLayout")
 	for index = 1, PlotLayout.Count do
-		checkModel("PlotDecor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index), PlotLayout.FurnaceSlots, PlotLayout.Grid))
+		checkModel("PlotDecor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index)))
 		assert(#PlotLayout.OpenSides(index) >= 1, "plot " .. index .. " has a gate")
 	end
 end)
@@ -256,15 +264,21 @@ local function count(slots)
 end
 
 test("Things go on the grid only inside it and on free tiles; a furnace takes 2 × 2 tiles", function()
+	-- Away from the mines, which take the first rows.
+	local function belt(id, x, z, rot)
+		return Logistics.New(id, Items.Belt, x, z + 8, rot)
+	end
 	local objects = { belt(1, 0, 0, 1) }
-	local furnaces = { { id = 2, tile = { x = 3, z = 1 }, state = Smelting.Empty() } }
-	eq(Logistics.CanPlace(objects, furnaces, Items.Belt, 1, 0), true)
-	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Belt, 0, 0)), "tile_taken")
-	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.WoodenChest, 4, 2)), "tile_taken")
-	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Furnace, 2, 0)), "tile_taken")
-	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Belt, -1, 0)), "outside_grid")
-	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Furnace, GridLayout.Grid.width - 1, 0)), "outside_grid")
-	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Coal, 8, 0)), "not_buildable")
+	local furnaces = { { id = 2, tile = { x = 3, z = 9 }, state = Smelting.Empty() } }
+	eq(Logistics.CanPlace(objects, furnaces, Items.Belt, 1, 8), true)
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Belt, 0, 8)), "tile_taken")
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.WoodenChest, 4, 10)), "tile_taken")
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Furnace, 2, 8)), "tile_taken")
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Belt, -1, 8)), "outside_grid")
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Furnace, GridLayout.Grid.width - 1, 8)), "outside_grid")
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Coal, 8, 8)), "not_buildable")
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Belt, 10, 2)), "tile_blocked")
+	eq(Logistics.CanPlace(objects, furnaces, Items.Sapling, 10, 12), true)
 end)
 
 test("A belt carries an item along to the end of the line and keeps it there", function()
@@ -357,4 +371,44 @@ test("A chest holds 8 slots of 100 pieces, and the grid catches up a long absenc
 	local n = 0
 	for _, b in ipairs(loop) do n = n + count(b.belt) end
 	eq(n, 1, "nothing lost or made")
+end)
+
+test("The grid covers the plot; only the mines' tiles are taken for good, and wild trees stand on free tiles", function()
+	local g = GridLayout.Grid
+	assert(g.x >= -GridLayout.Size / 2 and g.x + g.width * g.tile <= GridLayout.Size / 2, "inside the fence (x)")
+	assert(g.z >= -GridLayout.Size / 2 and g.z + g.depth * g.tile <= GridLayout.Size / 2, "inside the fence (z)")
+	for _, m in ipairs(GridLayout.Mines) do
+		local tx, tz = GridLayout.TileAt(m.x, m.z)
+		eq(GridLayout.Blocked(tx, tz), true, "mine")
+	end
+	for _, t in ipairs(GridLayout.WildTrees) do
+		eq(GridLayout.Blocked(t.x, t.z), false, "tree")
+	end
+	for _, t in ipairs(GridLayout.FurnaceSlotTiles) do
+		eq(Logistics.CanPlace({}, {}, Items.Furnace, t.x, t.z), true, "old furnace slot")
+	end
+	local sx, sz = GridLayout.TileAt(GridLayout.Spawn.x, GridLayout.Spawn.z)
+	eq(GridLayout.Blocked(sx, sz), false, "spawn")
+	-- Old grid objects move by whole tiles.
+	local old = GridLayout.OldGrids[1]
+	eq(((old.x - g.x) / g.tile) % 1, 0)
+	eq(((old.z - g.z) / g.tile) % 1, 0)
+end)
+
+test("A belt fed from one side turns the corner, and items on it ride along the curve", function()
+	-- East along z = 10, then south: the second belt is fed from its left... from its west side.
+	local objects = { belt(1, 0, 10, 1), belt(2, 1, 10, 0), belt(3, 1, 11, 0) }
+	local bends = Logistics.Bends(objects)
+	eq(bends[1], 0)
+	eq(bends[3], 0)
+	-- Going south (rot 0), the belt's left is east (+x): fed from the west it comes in from its right.
+	eq(bends[2], 1)
+	-- On a curve the places run from the side the items come in to the front.
+	local first = Models.BeltSlot(1, 4, 1)
+	local last = Models.BeltSlot(4, 4, 1)
+	assert(first[1] > 1, "comes in on the right (+x) side")
+	assert(last[3] < -1, "leaves at the front (-z)")
+	local back = Models.BeltSlot(2, 4, 1, true)
+	local one = Models.BeltSlot(1, 4, 1)
+	assert(math.abs(back[1] - one[1]) < 1e-9 and math.abs(back[3] - one[3]) < 1e-9, "the place behind is the previous place")
 end)

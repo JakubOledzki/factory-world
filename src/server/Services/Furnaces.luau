@@ -1,9 +1,6 @@
--- Stone furnaces on the player's plot. A furnace is bought as an item (made at the workbench),
--- set on one of the plot's furnace slots or on the build grid (Services/Grid, where inserters can
--- feed it), and taken back when empty. Its state is saved with the
+-- Stone furnaces on the player's plot. A furnace is made at the workbench, put on the build grid
+-- (Services/Grid, where inserters can feed it) and taken back when empty. Its state is saved with the
 -- player and worked out on demand (Smelting.Advance) whenever someone looks at it.
-local ProximityPromptService = game:GetService("ProximityPromptService")
-
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Items = require(Shared.Items)
 local Smelting = require(Shared.Smelting)
@@ -23,15 +20,6 @@ local models = {} -- [Player] = { [id] = Model }
 local function find(profile, id)
 	for _, furnace in ipairs(profile.furnaces) do
 		if furnace.id == id then
-			return furnace
-		end
-	end
-	return nil
-end
-
-local function bySlot(profile, slot)
-	for _, furnace in ipairs(profile.furnaces) do
-		if furnace.slot == slot then
 			return furnace
 		end
 	end
@@ -63,18 +51,9 @@ local function show(player, furnace)
 end
 
 local function place(player, furnace)
-	local model
-	local pad = furnace.slot and Plots.SlotPad(player, furnace.slot)
-	if furnace.tile then
-		model = Build.Furnace(Plots.Of(player).model, Plots.TileCFrame(player, furnace.tile.x, furnace.tile.z, 2, furnace.rot or 0), true)
-		model:SetAttribute("GridId", furnace.id)
-		model:SetAttribute("Owner", player.UserId)
-	elseif pad then
-		model = Build.Furnace(Plots.Of(player).model, Plots.SlotCFrame(player, furnace.slot))
-		pad.Prompt.Enabled = false
-	else
-		return
-	end
+	local model = Build.Furnace(Plots.Of(player).model, Plots.TileCFrame(player, furnace.tile.x, furnace.tile.z, 2, furnace.rot or 0), true)
+	model:SetAttribute("GridId", furnace.id)
+	model:SetAttribute("Owner", player.UserId)
 	model.Name = "Furnace" .. furnace.id
 	Build.Prompt(model.Body, {
 		Name = "Prompt",
@@ -118,7 +97,7 @@ local function handOut(player, profile, items)
 	end
 end
 
--- Puts a new furnace of the player's on their plot (its slot or its tile already set).
+-- Puts a new furnace of the player's on their plot (its tile already set).
 function Furnaces.Add(player, profile, furnace)
 	table.insert(profile.furnaces, furnace)
 	place(player, furnace)
@@ -142,10 +121,6 @@ function Furnaces.Remove(player, profile, furnace)
 		model:Destroy()
 		models[player][furnace.id] = nil
 	end
-	local pad = furnace.slot and Plots.SlotPad(player, furnace.slot)
-	if pad then
-		pad.Prompt.Enabled = true
-	end
 	return true
 end
 
@@ -165,27 +140,6 @@ function Furnaces.Start()
 
 	game:GetService("Players").PlayerRemoving:Connect(function(player)
 		models[player] = nil
-	end)
-
-	-- Setting a furnace on a free slot of the player's own plot.
-	ProximityPromptService.PromptTriggered:Connect(function(prompt, player)
-		if prompt:GetAttribute("Kind") ~= "furnaceSlot" or prompt:GetAttribute("Owner") ~= player.UserId then
-			return
-		end
-		local profile = Data.Get(player)
-		local slot = prompt:GetAttribute("Slot")
-		if profile == nil or Plots.Of(player) == nil or bySlot(profile, slot) ~= nil then
-			return
-		end
-		if not Net.Near(player, prompt.Parent.Position, PlotLayout.Reach) then
-			return
-		end
-		if not Inventory.TryRemove(profile, Items.Furnace, 1) then
-			Net.Toast(player, "Nie masz pieca. Zrób go na stole warsztatowym z 20 kamieni.")
-			return
-		end
-		Furnaces.Add(player, profile, { id = Data.NextId(profile), slot = slot, state = Smelting.Empty() })
-		Net.PushState(player)
 	end)
 
 	Net.Handle("FurnaceGet", function(player, profile, payload)

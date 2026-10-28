@@ -10,6 +10,9 @@ local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Prices = require(Shared.Prices)
 local Items = require(Shared.Items)
 local Mining = require(Shared.Mining)
+local Forestry = require(Shared.Forestry)
+local Logistics = require(Shared.Logistics)
+local PlotLayout = require(Shared.PlotLayout)
 local Clock = require(script.Parent.Clock)
 
 local Data = {}
@@ -43,11 +46,11 @@ local function newProfile()
 		-- A pickaxe and an axe to start with, so the first money comes from the plot.
 		inventory = { [Items.Pickaxe] = 1, [Items.Axe] = 1 },
 		mines = mines,
-		trees = {},
 		furnaces = {},
 		workshop = {},
-		-- The build grid: belts, inserters and chests, and the time it was worked out until.
-		grid = { objects = {} },
+		-- The build grid: trees, belts, inserters and chests (furnaces are in `furnaces`), the time it
+		-- was worked out until and the grid layout it was saved in (PlotLayout.Grid.layout).
+		grid = { objects = {}, layout = PlotLayout.Grid.layout },
 		nextId = 1,
 		lock = nil,
 	}
@@ -129,6 +132,50 @@ function Data.NextId(profile)
 	return id
 end
 
+-- Brings data saved by an older version of the game up to date.
+local function migrate(profile)
+	local g = PlotLayout.Grid
+	local grid = profile.grid
+	if grid == nil then
+		grid = { objects = {}, layout = g.layout }
+		profile.grid = grid
+	end
+	-- What was built on an older, smaller grid stays where it stood on the plot.
+	local old = PlotLayout.OldGrids[grid.layout or 1]
+	if (grid.layout or 1) ~= g.layout and old then
+		local dx, dz = (old.x - g.x) / g.tile, (old.z - g.z) / g.tile
+		for _, o in ipairs(grid.objects) do
+			o.x = o.x + dx
+			o.z = o.z + dz
+		end
+		for _, f in ipairs(profile.furnaces) do
+			if f.tile then
+				f.tile = { x = f.tile.x + dx, z = f.tile.z + dz }
+			end
+		end
+	end
+	grid.layout = g.layout
+	-- Furnaces from the slots of before go onto the grid.
+	for _, f in ipairs(profile.furnaces) do
+		if f.tile == nil then
+			local t = PlotLayout.FurnaceSlotTiles[f.slot or 1]
+			f.tile = { x = t.x, z = t.z }
+			f.rot = 0
+			f.slot = nil
+		end
+	end
+	-- The plot's wild trees, once: before, trees stood in fixed places (`trees`).
+	if not profile.wildTrees then
+		for _, t in ipairs(PlotLayout.WildTrees) do
+			if Logistics.CanPlace(grid.objects, profile.furnaces, Items.Sapling, t.x, t.z) then
+				table.insert(grid.objects, Forestry.New(Data.NextId(profile), t.x, t.z, nil))
+			end
+		end
+		profile.wildTrees = true
+		profile.trees = nil
+	end
+end
+
 local function onPlayerAdded(player)
 	local profile = load(player)
 	if profile == nil then
@@ -141,8 +188,7 @@ local function onPlayerAdded(player)
 		profiles[player] = nil
 		return
 	end
-	-- Fields added after the first version.
-	profile.grid = profile.grid or { objects = {} }
+	migrate(profile)
 	profiles[player] = profile
 	for _, callback in ipairs(loadedCallbacks) do
 		task.spawn(callback, player, profile)

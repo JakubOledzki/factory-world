@@ -11,19 +11,25 @@ PlotLayout.Size = 90
 -- Distance from the middle of the square to the middle of each plot.
 PlotLayout.Ring = 140
 
+-- Everything on a plot stands on its build grid (Grid below). The mines stay where they are, given
+-- by the middle of the 6 × 6 tiles each takes (with its cart), in studs from the plot's centre.
 PlotLayout.Mines = {
-	{ x = -25, z = -30 },
-	{ x = 0, z = -32 },
-	{ x = 25, z = -30 },
+	{ x = -24, z = -30 },
+	{ x = 0, z = -30 },
+	{ x = 24, z = -30 },
+}
+PlotLayout.MineTiles = 6
+
+-- The tiles of the wild trees a new plot starts with; they are cut and planted like any other.
+PlotLayout.WildTrees = {
+	{ x = 1, z = 9 }, { x = 1, z = 12 }, { x = 1, z = 15 }, { x = 1, z = 18 },
+	{ x = 3, z = 10 }, { x = 3, z = 13 }, { x = 3, z = 16 }, { x = 3, z = 19 },
 }
 
-PlotLayout.Trees = {
-	{ x = -38, z = -6 }, { x = -38, z = 7 }, { x = -38, z = 20 }, { x = -38, z = 33 },
-	{ x = -28, z = 0 }, { x = -28, z = 13 }, { x = -28, z = 26 }, { x = -28, z = 39 },
-}
-
-PlotLayout.FurnaceSlots = {
-	{ x = 8, z = 14 }, { x = 18, z = 14 }, { x = 28, z = 14 }, { x = 38, z = 14 },
+-- Furnaces stood on four slots before they went on the grid; a furnace saved on slot i is put on
+-- the grid with its corner on tile FurnaceSlotTiles[i].
+PlotLayout.FurnaceSlotTiles = {
+	{ x = 11, z = 13 }, { x = 14, z = 13 }, { x = 17, z = 13 }, { x = 20, z = 13 },
 }
 
 -- The square: where the merchant's stall, the workbench, the fountain and the spawn stand, and
@@ -58,10 +64,14 @@ end
 -- Studs within which a player can work something on their plot.
 PlotLayout.Reach = 14
 
--- The build grid between the mines and the furnace yard: `width` × `depth` tiles of `tile` studs,
--- with the corner of tile (0, 0) at (x, z) from the plot's centre. Tile x grows to the east and
--- tile z to the south, like the studs.
-PlotLayout.Grid = { x = -20, z = -14, width = 15, depth = 5, tile = 4 }
+-- The build grid over the whole plot: `width` × `depth` tiles of `tile` studs, with the corner of
+-- tile (0, 0) at (x, z) from the plot's centre. Tile x grows to the east and tile z to the south,
+-- like the studs. The tiles of the mines are taken for good (Blocked).
+-- `layout` counts changes of the grid: player data from an older one is moved over (Data).
+PlotLayout.Grid = { x = -44, z = -42, width = 22, depth = 21, tile = 4, layout = 2 }
+
+-- Where tile (0, 0) was in older layouts, to move what players built: [layout] = { x, z }.
+PlotLayout.OldGrids = { [1] = { x = -20, z = -14 } }
 
 -- Studs from which a player can build on their grid.
 PlotLayout.BuildReach = 48
@@ -78,6 +88,33 @@ end
 function PlotLayout.TileAt(x, z)
 	local g = PlotLayout.Grid
 	return math.floor((x - g.x) / g.tile), math.floor((z - g.z) / g.tile)
+end
+
+-- The tiles the mines take, as { x1, z1, x2, z2 } in studs from the plot's centre.
+local function blockedAreas()
+	local areas = {}
+	local half = PlotLayout.MineTiles * PlotLayout.Grid.tile / 2
+	for _, m in ipairs(PlotLayout.Mines) do
+		table.insert(areas, { m.x - half, m.z - half, m.x + half, m.z + half })
+	end
+	return areas
+end
+local blocked = nil
+
+-- Whether tile (tx, tz) is taken by something the plot always has (a mine).
+function PlotLayout.Blocked(tx, tz)
+	if blocked == nil then
+		blocked = blockedAreas()
+	end
+	local g = PlotLayout.Grid
+	local x1, z1 = g.x + tx * g.tile, g.z + tz * g.tile
+	local x2, z2 = x1 + g.tile, z1 + g.tile
+	for _, a in ipairs(blocked) do
+		if x1 < a[3] and x2 > a[1] and z1 < a[4] and z2 > a[2] then
+			return true
+		end
+	end
+	return false
 end
 
 -- The yaw that turns a model's front (-z) the way rotation `rot` faces: 0 south (+z), 1 east (+x),

@@ -1,14 +1,16 @@
--- The build grid on each player's plot: putting belts, inserters, chests and furnaces on it and
--- taking them back, and the chests' contents. What is on the grid is worked out on demand from the
+-- The build grid on each player's plot: putting belts, inserters, chests, furnaces and saplings on
+-- it, turning and taking them back, cutting trees, and the chests' contents. What is on the grid is worked out on demand from the
 -- time it was last looked at (Factory.CatchUp); while the owner is on the server it is looked at
 -- every Logistics.Tick only so that clients can draw what moves. The server puts what a belt or an
 -- inserter holds in attributes of its model ("Items", "Arm") and each client animates the items and
 -- arms smoothly between them (client/GridView).
 local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local RunService = game:GetService("RunService")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Items = require(Shared.Items)
+local Forestry = require(Shared.Forestry)
 local Logistics = require(Shared.Logistics)
 local Models = require(Shared.Models)
 local PlotLayout = require(Shared.PlotLayout)
@@ -26,11 +28,21 @@ local Grid = {}
 
 local views = {} -- [Player] = { [id] = Model }
 
-local ModelOf = {
-	[Items.Belt] = Models.Belt,
-	[Items.Inserter] = Models.Inserter,
-	[Items.WoodenChest] = Models.WoodenChest,
-}
+local random = Random.new()
+
+-- The model of an object as it is now: a belt by the way it turns, a tree by whether it has grown.
+local function specOf(o, bend, now)
+	if o.kind == Items.Belt then
+		return Models.Belt(bend)
+	elseif o.kind == Items.Inserter then
+		return Models.Inserter()
+	elseif o.kind == Items.WoodenChest then
+		return Models.WoodenChest()
+	elseif Forestry.Grown(o, now) then
+		return Models.Tree(o.id)
+	end
+	return Models.Sapling(o.id)
+end
 
 local function find(profile, id)
 	for i, o in ipairs(profile.grid.objects) do
@@ -69,13 +81,34 @@ local function draw(model, o, slid, tick)
 	end
 end
 
-local function show(player, o)
+local show
+
+-- Builds the model of object `o` anew (when it is put down, turned, or a belt next to it changed).
+local function rebuild(player, o, bend)
+	local old = views[player][o.id]
+	if old then
+		old:Destroy()
+	end
+	show(player, o, bend)
+end
+
+function show(player, o, bend)
+	local now = Clock.Now()
 	local cframe = Plots.TileCFrame(player, o.x, o.z, 1, o.rot)
-	local model = Build.FromModel(Plots.Of(player).model, "Grid" .. o.id, ModelOf[o.kind](), cframe)
+	if o.kind == Forestry.Tree then
+		-- Trees face any way, but always the same one.
+		cframe = cframe * CFrame.Angles(0, (o.id % 7) * 0.9, 0)
+	end
+	local model = Build.FromModel(Plots.Of(player).model, "Grid" .. o.id, specOf(o, bend, now), cframe)
+	pcall(function()
+		-- With streaming on, the whole model reaches a client at once, so its arm can be animated.
+		model.ModelStreamingMode = Enum.ModelStreamingMode.Atomic
+	end)
 	model:SetAttribute("GridId", o.id)
 	model:SetAttribute("Owner", player.UserId)
 	model:SetAttribute("Kind", o.kind)
 	model:SetAttribute("Base", cframe)
+	model:SetAttribute("Bend", bend or 0)
 	if o.kind == Items.WoodenChest then
 		Build.Prompt(model.Body, {
 			Name = "Prompt",
@@ -83,9 +116,36 @@ local function show(player, o)
 			ObjectText = Items.Name(Items.WoodenChest),
 			HoldDuration = 0,
 		}, { Kind = "chest", ChestId = o.id, Owner = player.UserId })
+	elseif o.kind == Forestry.Tree then
+		if Forestry.Grown(o, now) then
+			Build.Prompt(model.Trunk, {
+				Name = "Prompt",
+				ActionText = "Zetnij",
+				ObjectText = "Sosna",
+				HoldDuration = Forestry.ChopTime,
+			}, { Kind = "tree", TreeId = o.id, Owner = player.UserId })
+		else
+			-- A sapling turns into a tree when it has grown.
+			task.delay(o.plantedAt + Forestry.Grow - now + 0.2, function()
+				if model.Parent and views[player] and views[player][o.id] == model then
+					rebuild(player, o)
+				end
+			end)
+		end
 	end
 	views[player][o.id] = model
 	draw(model, o, nil, 0)
+end
+
+-- Rebuilds the belts whose turn changed after something was put down, turned or taken away.
+local function restyle(player, profile)
+	local bends = Logistics.Bends(profile.grid.objects)
+	for _, o in ipairs(profile.grid.objects) do
+		local model = views[player][o.id]
+		if o.kind == Items.Belt and model and model:GetAttribute("Bend") ~= bends[o.id] then
+			rebuild(player, o, bends[o.id])
+		end
+	end
 end
 
 local function refresh(player, profile)
@@ -140,8 +200,9 @@ function Grid.Start()
 		views[player] = {}
 		local profile = Data.Get(player)
 		Factory.CatchUp(profile)
+		local bends = Logistics.Bends(profile.grid.objects)
 		for _, o in ipairs(profile.grid.objects) do
-			show(player, o)
+			show(player, o, bends[o.id])
 		end
 	end)
 
@@ -194,9 +255,15 @@ function Grid.Start()
 		if item == Items.Furnace then
 			Furnaces.Add(player, profile, { id = id, tile = { x = x, z = z }, rot = rot, state = Smelting.Empty() })
 		else
-			local o = Logistics.New(id, item, x, z, rot)
+			local o
+			if item == Items.Sapling then
+				o = Forestry.New(id, x, z, Clock.Now())
+			else
+				o = Logistics.New(id, item, x, z, rot)
+			end
 			table.insert(profile.grid.objects, o)
-			show(player, o)
+			show(player, o, Logistics.Bends(profile.grid.objects)[id])
+			restyle(player, profile)
 		end
 		Net.PushState(player)
 		return { ok = true, id = id }
@@ -213,6 +280,9 @@ function Grid.Start()
 		Factory.CatchUp(profile)
 		local o, index = find(profile, id)
 		if o then
+			if o.kind == Forestry.Tree then
+				return Net.Error("cut_tree")
+			end
 			if not Net.Near(player, tilePosition(player, o.x, o.z, 1), PlotLayout.BuildReach) then
 				return Net.Error("too_far")
 			end
@@ -226,6 +296,7 @@ function Grid.Start()
 				model:Destroy()
 				views[player][o.id] = nil
 			end
+			restyle(player, profile)
 			Net.PushState(player)
 			return { ok = true }
 		end
@@ -243,6 +314,59 @@ function Grid.Start()
 			end
 		end
 		return Net.Error("not_owner")
+	end)
+
+	-- Turning a belt or an inserter where it stands, keeping what it holds.
+	Net.Handle("GridRotate", function(player, profile, payload)
+		local id = Net.Int(payload.id, 1, 1e9)
+		local rot = Net.Int(payload.rot, 0, 3)
+		if id == nil or rot == nil then
+			return Net.Error("bad_payload")
+		end
+		if Plots.Of(player) == nil or views[player] == nil then
+			return Net.Error("not_loaded")
+		end
+		Factory.CatchUp(profile)
+		local o = find(profile, id)
+		if o == nil or (o.kind ~= Items.Belt and o.kind ~= Items.Inserter) then
+			return Net.Error("not_owner")
+		end
+		if not Net.Near(player, tilePosition(player, o.x, o.z, 1), PlotLayout.BuildReach) then
+			return Net.Error("too_far")
+		end
+		o.rot = rot
+		rebuild(player, o, Logistics.Bends(profile.grid.objects)[o.id])
+		restyle(player, profile)
+		return { ok = true }
+	end)
+
+	-- Cutting a tree: the server checks the axe, the hold and the distance, and rolls the sapling.
+	ProximityPromptService.PromptTriggered:Connect(function(prompt, player)
+		if prompt:GetAttribute("Kind") ~= "tree" or prompt:GetAttribute("Owner") ~= player.UserId then
+			return
+		end
+		local profile = Data.Get(player)
+		if profile == nil or views[player] == nil or not Plots.HeldLongEnough(player, prompt) then
+			return
+		end
+		if not Net.Near(player, prompt.Parent.Position, PlotLayout.Reach) then
+			return
+		end
+		local o, index = find(profile, prompt:GetAttribute("TreeId"))
+		if o == nil or o.kind ~= Forestry.Tree or not Forestry.Grown(o, Clock.Now()) then
+			return
+		end
+		if Inventory.Count(profile, Items.Axe) < 1 then
+			Net.Toast(player, "Potrzebujesz siekiery. Kupisz ją u handlarza.")
+			return
+		end
+		table.remove(profile.grid.objects, index)
+		local model = views[player][o.id]
+		if model then
+			model:Destroy()
+			views[player][o.id] = nil
+		end
+		Plots.Gather(player, profile, Forestry.Cut(random:NextInteger(0, 99)))
 	end)
 
 	Net.Handle("ChestGet", function(player, profile, payload)

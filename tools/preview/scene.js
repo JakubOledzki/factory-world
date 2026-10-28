@@ -8,7 +8,7 @@ const { luaShared } = require("./shared.js");
 
 const lua = luaShared();
 const L = lua.call("{ Count = PlotLayout.Count, Size = PlotLayout.Size, Ring = PlotLayout.Ring, Mines = PlotLayout.Mines,"
-  + " Trees = PlotLayout.Trees, FurnaceSlots = PlotLayout.FurnaceSlots, Stall = PlotLayout.Stall, Workbench = PlotLayout.Workbench,"
+  + " WildTrees = PlotLayout.WildTrees, FurnaceSlotTiles = PlotLayout.FurnaceSlotTiles, Stall = PlotLayout.Stall, Workbench = PlotLayout.Workbench,"
   + " Fountain = PlotLayout.Fountain, SquareSpawn = PlotLayout.SquareSpawn, Spawn = PlotLayout.Spawn }");
 const center = (i) => lua.call(`{ PlotLayout.Center(${i}) }`);
 
@@ -44,26 +44,31 @@ function square() {
   return objects;
 }
 
-// One plot as Plots.buildPlot puts it together; `opts` says which trees are cut and which slots
-// have a furnace (and whether it is lit).
+// One plot as the server puts it together (Plots.buildPlot, Grid): `opts` says which wild trees
+// were cut (and saplings planted instead) and which furnaces stand at the first tiles the game
+// gives furnaces from the old slots (and whether they are lit).
 function plot(index, opts = {}) {
   const [cx, cz] = center(index);
   const objects = [];
   objects.push({ at: [cx, 0, cz], parts: [block([L.Size, 1, L.Size], [0, -0.45, 0], [116, 158, 78], "Grass")] });
-  objects.push({ at: [cx, 0, cz], parts: lua.call(`Models.PlotDecor(${index * 100}, PlotLayout.Size, PlotLayout.OpenSides(${index}), PlotLayout.FurnaceSlots, PlotLayout.Grid)`) });
+  objects.push({ at: [cx, 0, cz], parts: lua.call(`Models.PlotDecor(${index * 100}, PlotLayout.Size, PlotLayout.OpenSides(${index}))`) });
   const half = L.Size / 2, d = Math.hypot(cx, cz), tx = -cx / d, tz = -cz / d;
   const sign = [cx + tx * (half - 5) + tz * 6, 0, cz + tz * (half - 5) - tx * 6];
   // CFrame.lookAt(at, at + toSquare): the front (-z) faces the square.
   objects.push({ at: sign, yaw: Math.atan2(-tx, -tz), parts: lua.call(`Models.Signpost(${index})`) });
   L.Mines.forEach((m, k) => objects.push({ at: [cx + m.x, 0, cz + m.z], yaw: Math.PI, parts: lua.call(`Models.Mine(${index * 10 + k + 1})`) }));
-  L.Trees.forEach((t, k) => {
-    const seed = index * 20 + k + 1;
-    objects.push({ at: [cx + t.x, 0, cz + t.z], yaw: (seed % 7) * 0.9, parts: lua.call(`Models.Tree(${seed})`), hideGroup: (opts.cut || []).includes(k) ? "crown" : null });
+  L.WildTrees.forEach((t, k) => {
+    const id = index * 20 + k + 1;
+    const [x, z] = lua.call(`{ PlotLayout.TileCenter(${t.x}, ${t.z}, 1) }`);
+    // As Grid.show: the tile's yaw (pi for rotation 0) and a turn of its own.
+    const yaw = Math.PI + (id % 7) * 0.9;
+    const sapling = (opts.cut || []).includes(k);
+    objects.push({ at: [cx + x, 0, cz + z], yaw, parts: lua.call(sapling ? `Models.Sapling(${id})` : `Models.Tree(${id})`) });
   });
-  L.FurnaceSlots.forEach((s, k) => {
-    objects.push({ at: [cx + s.x, 0, cz + s.z], parts: [cyl(0.3, 8, [0, 0.15, 0], [156, 150, 140], "Slate")] });
+  L.FurnaceSlotTiles.forEach((t, k) => {
     const f = (opts.furnaces || [])[k];
-    if (f) objects.push({ at: [cx + s.x, 0, cz + s.z], yaw: Math.PI, parts: lua.call("Models.Furnace()"), lit: f === "lit" });
+    const [x, z] = lua.call(`{ PlotLayout.TileCenter(${t.x}, ${t.z}, 2) }`);
+    if (f) objects.push({ at: [cx + x, 0, cz + z], yaw: Math.PI, parts: lua.call("Models.Furnace(true)"), lit: f === "lit" });
   });
   return { objects, cx, cz, sign };
 }
@@ -147,7 +152,7 @@ function views() {
     const { cx, cz } = p;
     const state = lua.call(`(function()
       local o, n = {}, 0
-      local function add(kind, x, z, rot) n = n + 1; local obj = Logistics.New(n, kind, x, z, rot); table.insert(o, obj); return obj end
+      local function add(kind, x, z, rot) n = n + 1; local obj = Logistics.New(n, kind, x + 5, z + 7, rot); table.insert(o, obj); return obj end
       local a = add(Items.WoodenChest, 1, 1, 1)
       Logistics.Store(a.items, Items.IronOre, 40); Logistics.Store(a.items, Items.Coal, 10)
       add(Items.Inserter, 2, 1, 1)
@@ -163,8 +168,10 @@ function views() {
       for x = 6, 8 do add(Items.Belt, x, 4, 1) end
       add(Items.Inserter, 9, 4, 1)
       add(Items.WoodenChest, 10, 4, 1)
-      local furnace = { id = 99, tile = { x = 9, z = 1 }, rot = 0, state = Smelting.Empty() }
+      local furnace = { id = 99, tile = { x = 14, z = 8 }, rot = 0, state = Smelting.Empty() }
+      local bends = Logistics.Bends(o)
       Logistics.Run(o, { furnace }, 0, 41.4)
+      for _, obj in ipairs(o) do obj.bend = bends[obj.id] end
       return { objects = o, lit = Smelting.Advance(furnace.state, 41.4).startedAt ~= nil, furnace = furnace.tile }
     end)()`);
     const yaws = [Math.PI, -Math.PI / 2, 0, Math.PI / 2];
@@ -179,6 +186,8 @@ function views() {
         objects.push({ at, yaw, parts: models[o.kind].filter((q) => q.group !== "arm") });
         const arm = models[o.kind].filter((q) => q.group === "arm").map((q) => q.name === "Hand" && o.hand ? { ...q, hidden: false, color: colors[o.hand] } : q);
         objects.push({ at, yaw: yaw + angle, parts: arm });
+      } else if (o.kind === "logistics_belt") {
+        objects.push({ at, yaw, parts: lua.call(`Models.Belt(${o.bend})`) });
       } else {
         objects.push({ at, yaw, parts: models[o.kind] });
       }
@@ -186,7 +195,7 @@ function views() {
         const items = [];
         o.belt.forEach((item, i) => {
           if (!item) return;
-          const pos = lua.call(`Models.BeltSlot(${i + 1}, Logistics.BeltSlots)`);
+          const pos = lua.call(`Models.BeltSlot(${i + 1}, Logistics.BeltSlots, ${o.bend})`);
           items.push({ shape: "Ball", size: [0.75, 0.75, 0.75], pos, rot: [0, 0, 0], color: colors[item], material: "SmoothPlastic" });
         });
         objects.push({ at, yaw, parts: items });
@@ -195,14 +204,20 @@ function views() {
     const [fx, fz] = tileAt(state.furnace.x, state.furnace.z, 2);
     objects.push({ at: [cx + fx, 0, cz + fz], yaw: Math.PI, parts: lua.call("Models.Furnace(true)"), lit: state.lit });
     // The see-through ghost of the next belt under the pointer.
-    const [gx, gz] = tileAt(13, 2, 1);
+    const [gx, gz] = tileAt(19, 9, 1);
     const ghost = models.logistics_inserter.map((q) => ({ ...q, transparency: 0.3 })).concat(lua.call("Models.BuildMarker(Items.Inserter, PlotLayout.Grid.tile)"));
     objects.push({ at: [cx + gx, 0, cz + gz], yaw: yaws[1], parts: ghost });
-    const btn = (t, on) => `<span class="btn${on ? "" : " alt"}" style="width:140px;text-align:center;white-space:nowrap">${t}</span>`;
-    out["6-budowanie"] = { objects, camera: { pos: [cx + 10, 34, cz + 18], look: [cx + 8, 0, cz - 6], fov: 55 }, shadowRadius: 60, hud: "1 284,50 $", caption,
-      overlay: `<div class="win" style="left:50%;transform:translateX(-50%);bottom:16px;width:760px"><div class="bd" style="padding-top:10px">
-        <div style="display:flex;gap:6px">${btn("Taśmociąg (6)")}${btn("Podajnik (2)", true)}${btn("Drewniana skrzynia (1)")}${btn("Piec kamienny (0)")}<span class="btn red">Rozbiórka [X]</span><span class="btn alt">Obróć [R]</span></div>
-        <div class="muted" style="margin-top:8px">Kliknij, by postawić (przeciągnij, by ułożyć taśmę). 1–4 wybór, R obrót, X rozbiórka, B koniec.</div>
+    // The grid's lines, which the player sees while building (BuildBar.showLines).
+    const G = lua.call("PlotLayout.Grid"), lines = [];
+    const w = G.width * G.tile, d = G.depth * G.tile;
+    for (let i = 0; i <= G.width; i++) lines.push({ shape: "Block", size: [0.12, 0.05, d], pos: [G.x + i * G.tile, 0.08, G.z + d / 2], rot: [0, 0, 0], color: [255, 255, 255], material: "SmoothPlastic", transparency: 0.55 });
+    for (let i = 0; i <= G.depth; i++) lines.push({ shape: "Block", size: [w, 0.05, 0.12], pos: [G.x + w / 2, 0.08, G.z + i * G.tile], rot: [0, 0, 0], color: [255, 255, 255], material: "SmoothPlastic", transparency: 0.55 });
+    objects.push({ at: [cx, 0, cz], parts: lines });
+    const btn = (t, on) => `<span class="btn${on ? "" : " alt"}" style="width:128px;text-align:center;white-space:nowrap;font-size:12px">${t}</span>`;
+    out["6-budowanie"] = { objects, camera: { pos: [cx + 6, 34, cz + 24], look: [cx + 4, 0, cz - 2], fov: 55 }, shadowRadius: 60, hud: "1 284,50 $", caption,
+      overlay: `<div class="win" style="left:50%;transform:translateX(-50%);bottom:16px;width:960px"><div class="bd" style="padding-top:10px">
+        <div style="display:flex;gap:6px">${btn("Taśmociąg (6)")}${btn("Podajnik (2)", true)}${btn("Drewniana skrzynia (1)")}${btn("Piec kamienny (0)")}${btn("Sadzonka (3)")}<span class="btn red">Rozbiórka [X]</span><span class="btn alt">Obróć [R]</span></div>
+        <div class="muted" style="margin-top:8px">Kliknij, by postawić. Przeciągnij, by ułożyć taśmę (skręca razem z ruchem). 1–5 wybór, R obrót, X rozbiórka, B koniec.</div>
       </div></div>` };
   }
   return out;

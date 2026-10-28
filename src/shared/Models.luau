@@ -462,11 +462,10 @@ function Models.Scatter(seed, x1, z1, x2, z2, count)
 	return parts
 end
 
--- Everything on one plot apart from the mines, trees and furnaces, which have their own models:
--- the fence (open on the sides in `open`, a list of "x+", "x-", "z+", "z-"), the gravel yard under
--- the furnace slots, the concrete floor of the build grid (`grid`, PlotLayout.Grid), a woodpile,
--- and scattered stones and plants. Coordinates from the plot's centre.
-function Models.PlotDecor(seed, size, open, slots, grid)
+-- Everything on one plot that is not on its build grid: the fence (open on the sides in `open`, a
+-- list of "x+", "x-", "z+", "z-") and the bare rocky ground under the mines. Coordinates from the
+-- plot's centre. Everything else on a plot stands on the grid.
+function Models.PlotDecor(seed, size, open)
 	local parts = {}
 	local half = size / 2
 	local isOpen = {}
@@ -488,73 +487,100 @@ function Models.PlotDecor(seed, size, open, slots, grid)
 			place(parts, Models.Fence(size, seed + i), side[2], 0, side[3], side[4])
 		end
 	end
-	-- Bare rocky ground in front of the mines.
-	add(parts, { size = { size - 8, 0.2, 22 }, pos = { 0, 0.04, -31 }, color = { 128, 112, 92 }, material = "Ground", noCollide = true })
-	-- Gravel yard under the furnaces.
-	local first, last = slots[1], slots[#slots]
-	add(parts, {
-		size = { last.x - first.x + 10, 0.2, 11 },
-		pos = { (first.x + last.x) / 2, 0.06, first.z },
-		color = { 150, 140, 124 },
-		material = "Pebble",
-		noCollide = true,
-	})
-	-- The build grid: a concrete floor with a seam between the tiles.
-	local gw, gd = grid.width * grid.tile, grid.depth * grid.tile
-	local gx, gz = grid.x + gw / 2, grid.z + gd / 2
-	add(parts, { size = { gw + 1, 0.2, gd + 1 }, pos = { gx, 0.05, gz }, color = { 158, 156, 150 }, material = "Concrete", noCollide = true })
-	for i = 0, grid.width do
-		add(parts, { size = { 0.15, 0.22, gd }, pos = { grid.x + i * grid.tile, 0.07, gz }, color = { 124, 122, 118 }, material = "Concrete", noCollide = true })
-	end
-	for i = 0, grid.depth do
-		add(parts, { size = { gw, 0.22, 0.15 }, pos = { gx, 0.07, grid.z + i * grid.tile }, color = { 124, 122, 118 }, material = "Concrete", noCollide = true })
-	end
-	-- A woodpile by the trees.
-	local rng = Models.Rng(seed + 99)
-	for row = 0, 2 do
-		for i = 0, 3 - row do
-			log(parts, 3.4, 0.9, { -20, 0.45 + row * 0.8, 30 + (i - (3 - row) / 2) * 0.95 }, 0, vary({ 132, 96, 62 }, rng, 10), "Wood")
-		end
-	end
-	local scatter = {
-		Models.Scatter(seed + 1, 30, -22, 42, -15, 4),
-		Models.Scatter(seed + 2, 8, 24, 40, 40, 8),
-		Models.Scatter(seed + 3, -40, -44, 40, -40, 6),
-		Models.Scatter(seed + 4, -20, 10, -8, 22, 4),
-	}
-	for _, list in ipairs(scatter) do
-		place(parts, list, 0, 0, 0, 0)
+	-- Bare rocky ground under the mines.
+	add(parts, { size = { 74, 0.2, 25 }, pos = { 0, 0.04, -30 }, color = { 128, 112, 92 }, material = "Ground", noCollide = true })
+	return parts
+end
+
+-- A sapling: a thin stem with a few small tufts of needles, in group "crown" like a grown tree.
+function Models.Sapling(seed)
+	local rng = Models.Rng(seed)
+	local parts = {}
+	add(parts, { name = "Trunk", size = { 1.4, 0.3, 1.4 }, pos = { 0, 0.15, 0 }, color = { 104, 82, 58 }, material = "Ground" })
+	post(parts, 1.8, 0.22, { 0, 1, 0 }, vary({ 110, 78, 50 }, rng, 6), "Wood")
+	for i = 0, 2 do
+		local s = 1.3 - i * 0.35
+		add(parts, { shape = "Wedge", size = { s, 0.7, s / 2 }, pos = { 0, 1.2 + i * 0.45, s / 4 }, color = vary({ 64, 128, 58 }, rng, 10), material = "LeafyGrass", noCollide = true })
+		add(parts, { shape = "Wedge", size = { s, 0.7, s / 2 }, pos = { 0, 1.2 + i * 0.45, -s / 4 }, rot = { 0, math.pi, 0 }, color = vary({ 64, 128, 58 }, rng, 10), material = "LeafyGrass", noCollide = true })
 	end
 	return parts
 end
 
 -- A belt tile, 4 × 4 studs: a rubber belt between two rails with rollers at the ends and arrows the
--- way it runs, to its front (-z). Items ride on it at y = 0.95 (Models.BeltItem).
-function Models.Belt()
+-- way it runs, to its front (-z). Items ride on it at y = 0.95 (Models.BeltSlot). A belt fed from
+-- one side only turns the corner (Logistics.Bend): `bend` -1 comes in from its left (-x), 1 from its
+-- right (+x), and the belt is a quarter circle round the front corner on that side.
+function Models.Belt(bend)
 	local parts = {}
 	local rail = { 92, 96, 104 }
-	add(parts, { name = "Body", size = { 3.3, 0.25, 4 }, pos = { 0, 0.6, 0 }, color = { 40, 40, 44 }, material = "Fabric" })
-	for _, x in ipairs({ -1.83, 1.83 }) do
-		add(parts, { size = { 0.36, 0.9, 4 }, pos = { x, 0.45, 0 }, color = rail, material = "Metal" })
-		add(parts, { size = { 0.38, 0.08, 4 }, pos = { x, 0.93, 0 }, color = { 222, 176, 44 }, material = "SmoothPlastic" })
+	local trim = { 222, 176, 44 }
+	local white = { 240, 236, 220 }
+	if bend == nil or bend == 0 then
+		add(parts, { name = "Body", size = { 3.3, 0.25, 4 }, pos = { 0, 0.6, 0 }, color = { 40, 40, 44 }, material = "Fabric" })
+		for _, x in ipairs({ -1.83, 1.83 }) do
+			add(parts, { size = { 0.36, 0.9, 4 }, pos = { x, 0.45, 0 }, color = rail, material = "Metal" })
+			add(parts, { size = { 0.38, 0.08, 4 }, pos = { x, 0.93, 0 }, color = trim, material = "SmoothPlastic" })
+		end
+		for _, z in ipairs({ -1.8, 1.8 }) do
+			log(parts, 3.3, 0.5, { 0, 0.42, z }, 0, { 70, 72, 78 }, "Metal")
+		end
+		-- Bright arrows pointing the way the belt runs, standing a little off the belt.
+		for _, tip in ipairs({ -1.5, 0.5 }) do
+			add(parts, { size = { 0.26, 0.08, 1.15 }, pos = { -0.345, 0.77, tip + 0.46 }, rot = { 0, -0.6435, 0 }, color = white, material = "SmoothPlastic", noCollide = true })
+			add(parts, { size = { 0.26, 0.08, 1.15 }, pos = { 0.345, 0.77, tip + 0.46 }, rot = { 0, 0.6435, 0 }, color = white, material = "SmoothPlastic", noCollide = true })
+		end
+		return parts
 	end
-	for _, z in ipairs({ -1.8, 1.8 }) do
-		log(parts, 3.3, 0.5, { 0, 0.42, z }, 0, { 70, 72, 78 }, "Metal")
+	-- The corner the belt turns round, and a point at radius r and angle a (0 where it comes in,
+	-- pi/2 where it leaves), with the yaw of the way it runs there (local +z along the way).
+	local cx, cz = 2 * bend, -2
+	local function at(r, a)
+		return cx - bend * r * math.sin(a), cz + r * math.cos(a), -bend * (math.pi / 2 + a)
 	end
-	-- Bright arrows pointing the way the belt runs, standing a little off the belt.
-	for _, tip in ipairs({ -1.5, 0.5 }) do
-		add(parts, { size = { 0.26, 0.08, 1.15 }, pos = { -0.345, 0.77, tip + 0.46 }, rot = { 0, -0.6435, 0 }, color = { 240, 236, 220 }, material = "SmoothPlastic", noCollide = true })
-		add(parts, { size = { 0.26, 0.08, 1.15 }, pos = { 0.345, 0.77, tip + 0.46 }, rot = { 0, 0.6435, 0 }, color = { 240, 236, 220 }, material = "SmoothPlastic", noCollide = true })
+	local n = 8
+	for k = 1, n do
+		local a = (k - 0.5) / n * math.pi / 2
+		local x, z, yaw = at(2, a)
+		add(parts, { name = k == 1 and "Body" or nil, size = { 3.3, 0.25, 3.75 * math.pi / 2 / n + 0.05 }, pos = { x, 0.6, z }, rot = { 0, yaw, 0 }, color = { 40, 40, 44 }, material = "Fabric" })
+		local ox, oz, oyaw = at(3.83, a)
+		add(parts, { size = { 0.36, 0.9, 3.83 * math.pi / 2 / n + 0.12 }, pos = { ox, 0.45, oz }, rot = { 0, oyaw, 0 }, color = rail, material = "Metal" })
+		add(parts, { size = { 0.38, 0.08, 3.83 * math.pi / 2 / n + 0.12 }, pos = { ox, 0.93, oz }, rot = { 0, oyaw, 0 }, color = trim, material = "SmoothPlastic" })
+	end
+	post(parts, 0.9, 0.7, { cx, 0.45, cz }, rail, "Metal")
+	post(parts, 0.08, 0.72, { cx, 0.93, cz }, trim, "SmoothPlastic")
+	-- Arrows along the curve, pointing the way it runs.
+	for _, a in ipairs({ math.pi / 8, math.pi * 3 / 8 }) do
+		local tx, tz, yaw = at(2, a + 0.12)
+		-- The arrow's own front (-z) points the way the belt runs.
+		local front = yaw + math.pi
+		local c, sn = math.cos(front), math.sin(front)
+		for _, side in ipairs({ -1, 1 }) do
+			local lx, lz = side * 0.345, 0.46
+			add(parts, {
+				size = { 0.26, 0.08, 1.15 },
+				pos = { tx + lx * c + lz * sn, 0.77, tz - lx * sn + lz * c },
+				rot = { 0, front + side * 0.6435, 0 },
+				color = white,
+				material = "SmoothPlastic",
+				noCollide = true,
+			})
+		end
 	end
 	return parts
 end
 
 -- Where item `slot` (1..8, lane after lane, from where items come on to where they leave) rides on
--- a belt, in the belt's own coordinates: the left lane (as the belt runs to -z) is at -x.
-function Models.BeltSlot(slot, slots)
+-- a belt with `bend` (see Models.Belt), in the belt's own coordinates; `back` is the place one slot
+-- behind it, where it slid from. The left lane (as the belt runs) is the inner one of a left turn.
+function Models.BeltSlot(slot, slots, bend, back)
 	local lane = math.floor((slot - 1) / slots)
-	local i = (slot - 1) % slots
-	return { lane == 0 and -0.8 or 0.8, 0.95, 1.5 - i * (3 / (slots - 1)) }
+	local t = ((slot - 1) % slots + 0.5) / slots - (back and 1 / slots or 0)
+	if bend == nil or bend == 0 then
+		return { lane == 0 and -0.8 or 0.8, 0.95, 2 - 4 * t }
+	end
+	local r = 2 + (lane == 0 and 0.8 or -0.8) * bend
+	local a = t * math.pi / 2
+	return { 2 * bend - bend * r * math.sin(a), 0.95, -2 + r * math.cos(a) }
 end
 
 -- An inserter on a turntable: a yellow arm on a column that swings from behind it (+z), where it
@@ -588,7 +614,7 @@ end
 
 -- What the ghost of a thing about to be built shows besides the thing itself, in its own
 -- coordinates (front -z): a big glowing arrow above it the way it faces and, for an inserter, the
--- tile it picks up from (blue, behind it) and the tile it drops on (green, in front).
+-- tile it picks up from (blue outline, behind it) and the tile it drops on (green, in front).
 function Models.BuildMarker(kind, tile)
 	local parts = {}
 	local glow = { 255, 220, 70 }
@@ -597,8 +623,15 @@ function Models.BuildMarker(kind, tile)
 	add(parts, { size = { 0.5, 0.3, 1.7 }, pos = { -0.5, y, -1 }, rot = { 0, -0.75, 0 }, color = glow, material = "Neon", noCollide = true })
 	add(parts, { size = { 0.5, 0.3, 1.7 }, pos = { 0.5, y, -1 }, rot = { 0, 0.75, 0 }, color = glow, material = "Neon", noCollide = true })
 	if kind == "logistics_inserter" then
-		add(parts, { size = { tile - 0.4, 0.12, tile - 0.4 }, pos = { 0, 0.1, tile }, color = { 80, 150, 255 }, material = "Neon", noCollide = true })
-		add(parts, { size = { tile - 0.4, 0.12, tile - 0.4 }, pos = { 0, 0.1, -tile }, color = { 90, 230, 120 }, material = "Neon", noCollide = true })
+		-- Outlines of the two tiles, so they do not hide what is on them.
+		for _, mark in ipairs({ { tile, { 80, 150, 255 } }, { -tile, { 90, 230, 120 } } }) do
+			local z, color = mark[1], mark[2]
+			local h = tile / 2 - 0.3
+			add(parts, { size = { 2 * h, 0.12, 0.2 }, pos = { 0, 0.15, z - h }, color = color, material = "Neon", noCollide = true })
+			add(parts, { size = { 2 * h, 0.12, 0.2 }, pos = { 0, 0.15, z + h }, color = color, material = "Neon", noCollide = true })
+			add(parts, { size = { 0.2, 0.12, 2 * h }, pos = { -h, 0.15, z }, color = color, material = "Neon", noCollide = true })
+			add(parts, { size = { 0.2, 0.12, 2 * h }, pos = { h, 0.15, z }, color = color, material = "Neon", noCollide = true })
+		end
 	end
 	return parts
 end

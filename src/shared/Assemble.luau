@@ -105,6 +105,13 @@ function Assemble.Model(parent, name, spec, cframe, ghost)
 			model.PrimaryPart = part
 		end
 	end
+	-- The model's pivot is the point it was placed at, so PivotTo moves it like `cframe` (and not
+	-- like its PrimaryPart, which may be turned, e.g. a standing cylinder).
+	if model.PrimaryPart then
+		model.PrimaryPart.PivotOffset = model.PrimaryPart.CFrame:ToObjectSpace(cframe)
+	else
+		model.WorldPivot = cframe
+	end
 	model.Parent = parent
 	return model
 end

@@ -37,10 +37,10 @@ local function colorOf(item)
 	return Color3.fromRGB(c[1], c[2], c[3])
 end
 
-local function slotCFrame(base, slot, back)
-	local p = Models.BeltSlot(slot, Logistics.BeltSlots)
-	-- Items run to the belt's front (-z); the place behind is one stud towards +z.
-	return base * CFrame.new(p[1], p[2], p[3] + (back and 1 or 0))
+-- Where an item rides in `slot` of a belt that turns `bend`, or the place behind it (`back`).
+local function slotCFrame(base, slot, bend, back)
+	local p = Models.BeltSlot(slot, Logistics.BeltSlots, bend, back)
+	return base * CFrame.new(p[1], p[2], p[3])
 end
 
 local function updateBelt(model)
@@ -49,6 +49,7 @@ local function updateBelt(model)
 	if base == nil or text == nil then
 		return
 	end
+	local bend = model:GetAttribute("Bend") or 0
 	local view = belts[model]
 	if view == nil then
 		view = { parts = {}, moving = {} }
@@ -64,7 +65,7 @@ local function updateBelt(model)
 			part.CanTouch = false
 			part.CastShadow = false
 			part.Transparency = 1
-			part.CFrame = slotCFrame(base, slot)
+			part.CFrame = slotCFrame(base, slot, bend)
 			part.Parent = model
 			view.parts[slot] = part
 		end
@@ -83,9 +84,9 @@ local function updateBelt(model)
 			local item = slid and string.sub(entry, 1, -2) or entry
 			part.Color = colorOf(item)
 			part.Transparency = 0
-			local target = slotCFrame(base, slot)
+			local target = slotCFrame(base, slot, bend)
 			if slid then
-				view.moving[part] = { from = slotCFrame(base, slot, true), to = target, t0 = now }
+				view.moving[part] = { from = slotCFrame(base, slot, bend, true), to = target, t0 = now }
 				part.CFrame = view.moving[part].from
 			else
 				view.moving[part] = nil
@@ -103,18 +104,19 @@ local function updateArm(model)
 	end
 	local view = arms[model]
 	if view == nil then
-		-- The server builds the arm pointing to the front and never moves it: remember each part
-		-- against the inserter's base.
-		view = { parts = {}, angle = 0 }
-		for _, part in ipairs(model:GetChildren()) do
-			if part:IsA("BasePart") and part:GetAttribute("Group") == "arm" then
-				table.insert(view.parts, { part, base:ToObjectSpace(part.CFrame) })
-				if part.Name == "Hand" then
-					view.hand = part
-				end
+		view = { parts = {}, known = {}, angle = 0 }
+		arms[model] = view
+	end
+	-- The server builds the arm pointing to the front and never moves it: remember each part against
+	-- the inserter's base when it first shows up (parts can reach the client after the attributes).
+	for _, part in ipairs(model:GetChildren()) do
+		if part:IsA("BasePart") and part:GetAttribute("Group") == "arm" and not view.known[part] then
+			view.known[part] = true
+			table.insert(view.parts, { part, base:ToObjectSpace(part.CFrame) })
+			if part.Name == "Hand" then
+				view.hand = part
 			end
 		end
-		arms[model] = view
 	end
 	local fields = split(text, ",")
 	local swing = tonumber(fields[1]) or 0

@@ -18,6 +18,7 @@ return {
 	WorkshopOrder = "WorkshopOrder", -- { recipe }
 	GridPlace = "GridPlace", -- { item, x, z, rot }
 	GridPickup = "GridPickup", -- { id }
+	GridRotate = "GridRotate", -- { id, rot }
 	ChestGet = "ChestGet", -- { id }
 	ChestPut = "ChestPut", -- { id, item, quantity }
 	ChestTake = "ChestTake", -- { id, item, quantity }

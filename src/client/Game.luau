@@ -33,6 +33,8 @@ Game.Errors = {
 	not_buildable = "Tego nie da się postawić na siatce.",
 	outside_grid = "Stawiaj tylko na betonowej siatce na swojej działce.",
 	tile_taken = "To miejsce jest zajęte.",
+	tile_blocked = "Tu stoi kopalnia.",
+	cut_tree = "Drzewo zetnij siekierą (przytrzymaj E).",
 	chest_full = "Skrzynia jest pełna.",
 	chest_empty = "Tego nie ma w skrzyni.",
 }

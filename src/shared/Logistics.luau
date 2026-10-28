@@ -8,7 +8,7 @@
 -- picks one item from the tile behind it (a belt, a chest or a furnace's ingots), swings round and
 -- drops it on the tile in front when that takes it: on a belt, on the far lane first.
 --
--- An object on the grid is { id, kind, x, z, rot, ... } with the tile of its corner and its
+-- An object on the grid is { id, kind, x, z, rot, ... } (trees too, see Forestry) with the tile of its corner and its
 -- rotation (0 south, 1 east, 2 north, 3 west); a belt keeps `belt` (lane after lane, from where
 -- items come on to where they leave, false when empty), an inserter `hand` and `swing`, a chest
 -- `items` ({ item, quantity } stacks) and `next`. Furnaces live in the player's furnace list and
@@ -36,8 +36,9 @@ Logistics.MaxTicks = 9000
 Logistics.ChestSlots = 8
 Logistics.SlotSize = 100
 
--- What can stand on the grid and how many tiles across it is.
+-- What can be put on the grid and how many tiles across it is. A sapling is planted as a tree.
 Logistics.Sizes = {
+	[Items.Sapling] = 1,
 	[Items.Belt] = 1,
 	[Items.Inserter] = 1,
 	[Items.WoodenChest] = 1,
@@ -101,6 +102,9 @@ function Logistics.CanPlace(objects, furnaces, kind, x, z)
 	local at = Logistics.Occupied(objects, furnaces)
 	for dx = 0, size - 1 do
 		for dz = 0, size - 1 do
+			if PlotLayout.Blocked(x + dx, z + dz) then
+				return false, "tile_blocked"
+			end
 			if at[key(x + dx, z + dz)] then
 				return false, "tile_taken"
 			end
@@ -317,6 +321,21 @@ local function connect(belts, b)
 	local lx, lz = Logistics.Left(nextBelt.rot)
 	local near = (lx == -wx and lz == -wz) and 0 or 1
 	return { to = nextBelt, into = { near, near }, entry = 1 }
+end
+
+-- Which way each belt of the grid turns, [id] = Bend (see above), for drawing the corners.
+function Logistics.Bends(objects)
+	local belts = {}
+	for _, o in ipairs(objects) do
+		if o.kind == Items.Belt then
+			belts[key(o.x, o.z)] = o
+		end
+	end
+	local out = {}
+	for _, o in pairs(belts) do
+		out[o.id] = bend(belts, o)
+	end
+	return out
 end
 
 local function byTile(a, b)

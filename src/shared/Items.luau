@@ -3,6 +3,7 @@
 local Items = {}
 
 Items.Wood = "wood"
+Items.Sapling = "sapling"
 Items.Stone = "stone"
 Items.Coal = "coal"
 Items.IronOre = "iron_ore"
@@ -26,6 +27,7 @@ Items.WoodenChest = "storage_wooden_chest"
 -- What the player sees.
 Items.Names = {
 	[Items.Wood] = "Drewno",
+	[Items.Sapling] = "Sadzonka",
 	[Items.Stone] = "Kamień",
 	[Items.Coal] = "Węgiel",
 	[Items.IronOre] = "Ruda żelaza",
@@ -50,6 +52,7 @@ Items.Names = {
 -- Colour of the item's icon tile and of the ore veins in a mine, as {r, g, b}.
 Items.Colors = {
 	[Items.Wood] = { 133, 94, 66 },
+	[Items.Sapling] = { 96, 160, 70 },
 	[Items.Stone] = { 140, 140, 140 },
 	[Items.Coal] = { 40, 40, 44 },
 	[Items.IronOre] = { 168, 110, 90 },
@@ -74,7 +77,7 @@ Items.Colors = {
 -- Order of items in the inventory and in the merchant's lists.
 Items.Order = {
 	Items.Pickaxe, Items.Axe, Items.Furnace, Items.Belt, Items.Inserter, Items.WoodenChest,
-	Items.Wood, Items.Stone, Items.Coal,
+	Items.Sapling, Items.Wood, Items.Stone, Items.Coal,
 	Items.IronOre, Items.CopperOre, Items.TinOre, Items.SilverOre, Items.GoldOre,
 	Items.IronIngot, Items.CopperIngot, Items.TinIngot, Items.SilverIngot, Items.GoldIngot,
 	Items.Nails,

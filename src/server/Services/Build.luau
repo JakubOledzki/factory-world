@@ -69,20 +69,6 @@ function Build.Mine(parent, at, seed, yaw)
 	return Build.FromModel(parent, "Mine", Models.Mine(seed), yawed(at, yaw))
 end
 
-function Build.Tree(parent, at, seed)
-	return Build.FromModel(parent, "Tree", Models.Tree(seed), yawed(at, (seed % 7) * 0.9))
-end
-
--- Shows a tree standing, or only its stump when it was cut.
-function Build.SetTreeStanding(model, standing)
-	for _, part in ipairs(model:GetDescendants()) do
-		if part:IsA("BasePart") and part:GetAttribute("Group") == "crown" then
-			part.Transparency = standing and 0 or 1
-			part.CanCollide = standing
-		end
-	end
-end
-
 -- A furnace; `compact` for one on the build grid, without the coal box beside it.
 function Build.Furnace(parent, cframe, compact)
 	return Build.FromModel(parent, "Furnace", Models.Furnace(compact), cframe)

@@ -6,6 +6,7 @@ local Prices = {}
 
 -- What the merchant takes from the player.
 Prices.Sells = {
+	[Items.Sapling] = 200,
 	[Items.Nails] = 500,
 	[Items.Axe] = 10000,
 	[Items.Pickaxe] = 10000,
@@ -16,6 +17,7 @@ Prices.Sells = {
 
 -- What the merchant pays the player.
 Prices.Buys = {
+	[Items.Sapling] = 100,
 	[Items.Stone] = 100,
 	[Items.Wood] = 200,
 	[Items.Coal] = 400,
