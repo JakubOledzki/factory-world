@@ -1,0 +1,14 @@
+{
+  "name": "factory-world-roblox-tests",
+  "private": true,
+  "description": "Tests of the Roblox version's rules outside Roblox (Lua 5.3 via fengari).",
+  "scripts": {
+    "test": "node tests/run.js",
+    "preview": "node tools/preview/scene.js"
+  },
+  "devDependencies": {
+    "fengari": "0.1.5",
+    "three": "0.160.0",
+    "playwright": "1.48.2"
+  }
+}

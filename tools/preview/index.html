@@ -1,0 +1,233 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<title>Factory World 3D preview</title>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#87b8e8;font-family:"Montserrat","Segoe UI",Arial,sans-serif}
+canvas{display:block}
+.ui{position:absolute;inset:0;pointer-events:none}
+.money{position:absolute;right:16px;top:16px;width:200px;height:44px;background:rgba(34,38,46,.92);border-radius:10px;color:#ffd65a;font-weight:800;font-size:22px;display:flex;align-items:center;justify-content:center}
+.invbtn{position:absolute;right:16px;top:68px;width:200px;height:36px;background:#506082;border-radius:6px;color:#fff;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center}
+.board{position:absolute;right:16px;top:116px;width:200px;background:rgba(20,22,28,.55);border-radius:6px;color:#fff;font-size:13px;padding:6px 10px}
+.board div{display:flex;justify-content:space-between;padding:2px 0}
+.board .h{font-weight:700;color:#ddd;border-bottom:1px solid rgba(255,255,255,.2);margin-bottom:3px}
+.win{position:absolute;background:#22262e;border:1.5px solid #5a6273;border-radius:10px;color:#ebecf0}
+.win .hd{height:40px;background:#343a46;border-radius:10px 10px 0 0;display:flex;align-items:center;padding:0 14px;font-weight:800;font-size:20px;position:relative}
+.win .x{position:absolute;right:6px;top:5px;width:30px;height:30px;background:#96463c;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.win .bd{padding:10px 12px;display:flex;flex-direction:column;gap:6px}
+.row{background:#2c313b;border-radius:6px;height:36px;display:flex;align-items:center;gap:8px;padding:0 8px;font-size:15px}
+.sw{width:20px;height:20px;border-radius:4px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.4)}
+.btn{background:#46825a;border-radius:6px;color:#fff;font-weight:700;font-size:13px;padding:6px 10px;white-space:nowrap}
+.alt{background:#506082}.red{background:#96463c}.off{background:#2c313b}
+.muted{color:#a0a6b2}.gold{color:#ffd65a}
+.bar{height:12px;background:#2c313b;border-radius:6px;overflow:hidden}.bar i{display:block;height:100%;background:#ff8c32;border-radius:6px}
+.prompt{position:absolute;transform:translate(-50%,-50%);display:flex;align-items:center;gap:8px}
+.prompt .key{width:44px;height:44px;border-radius:50%;background:rgba(20,20,20,.75);color:#fff;font-weight:800;display:flex;align-items:center;justify-content:center;font-size:18px;position:relative}
+.prompt .key svg{position:absolute;inset:-4px}
+.prompt .txt{background:rgba(20,20,20,.6);color:#fff;border-radius:6px;padding:4px 10px;font-size:13px;line-height:1.25}
+.prompt .txt b{font-size:16px;display:block}
+.toast{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);background:rgba(34,38,46,.88);color:#ebecf0;border-radius:8px;padding:6px 12px;font-size:18px;font-weight:600}
+.label{position:absolute;transform:translate(-50%,-50%);color:#fff;font-weight:800;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap}
+.topbar{position:absolute;left:12px;top:12px;display:flex;gap:6px}
+.topbar span{width:32px;height:32px;border-radius:8px;background:rgba(20,20,20,.55)}
+.cap{position:absolute;left:12px;bottom:10px;color:rgba(255,255,255,.9);font-size:12px;text-shadow:0 0 3px #000}
+.tag{position:absolute;transform:translate(-50%,0);color:#fff;font-weight:700;font-size:15px;background:rgba(20,22,28,.6);padding:3px 10px;border-radius:6px;white-space:nowrap}
+</style></head>
+<body>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+<div class="ui" id="ui"></div>
+<script>
+// Draws window.SCENE, made by scene.js from the game's own models (src/shared/Models.luau).
+function draw(S) {
+const W = innerWidth, H = innerHeight;
+const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+renderer.setSize(W, H); renderer.setPixelRatio(1);
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x8cbcec);
+scene.fog = new THREE.Fog(0xa8cdee, S.fog?.[0] ?? 220, S.fog?.[1] ?? 650);
+scene.add(new THREE.HemisphereLight(0xd8ecff, 0x5c7040, 1.0));
+const sun = new THREE.DirectionalLight(0xfff1dc, 2.2);
+const focus = new THREE.Vector3(...S.camera.look);
+sun.position.copy(focus).add(new THREE.Vector3(-90, 160, 110)); sun.target.position.copy(focus);
+sun.castShadow = true; sun.shadow.mapSize.set(4096, 4096); sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03;
+const R = S.shadowRadius ?? 90;
+Object.assign(sun.shadow.camera, { left: -R, right: R, top: R, bottom: -R, near: 1, far: 600 });
+scene.add(sun, sun.target);
+
+// Grey-scale textures standing in for Roblox materials; the part's colour tints them.
+function seeded(seed) { let s = seed; return () => (s = (s * 16807) % 2147483647) / 2147483647; }
+const texCache = {};
+function texture(material) {
+  if (material in texCache) return texCache[material];
+  const N = 128, c = document.createElement("canvas"); c.width = c.height = N;
+  const g = c.getContext("2d"), r = seeded(material.length * 977 + 13);
+  const fill = (v) => `rgb(${v},${v},${v})`;
+  const noise = (base, amp, cell) => { for (let y = 0; y < N; y += cell) for (let x = 0; x < N; x += cell) { g.fillStyle = fill(base + (r() - .5) * amp); g.fillRect(x, y, cell, cell); } };
+  switch (material) {
+    case "WoodPlanks":
+      noise(230, 14, 2);
+      for (let y = 0; y < N; y += 32) { g.fillStyle = fill(150); g.fillRect(0, y, N, 2); const off = r() * N; g.fillRect(off, y, 2, 32); }
+      for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(90,90,90,${.08 + r() * .1})`; g.fillRect(0, r() * N, N, 1); }
+      break;
+    case "Wood":
+      noise(225, 10, 2);
+      for (let i = 0; i < 26; i++) { g.fillStyle = `rgba(80,80,80,${.1 + r() * .15})`; g.fillRect(r() * N, 0, 1 + r() * 2, N); }
+      break;
+    case "Brick":
+      g.fillStyle = fill(200); g.fillRect(0, 0, N, N);
+      for (let y = 0; y < N; y += 16) for (let x = (y / 16) % 2 ? -16 : 0; x < N; x += 32) { g.fillStyle = fill(225 + (r() - .5) * 40); g.fillRect(x + 2, y + 2, 28, 12); }
+      break;
+    case "Cobblestone":
+      g.fillStyle = fill(150); g.fillRect(0, 0, N, N);
+      for (let i = 0; i < 70; i++) { g.fillStyle = fill(205 + (r() - .5) * 60); g.beginPath(); g.ellipse(r() * N, r() * N, 7 + r() * 8, 6 + r() * 6, r() * 3, 0, 7); g.fill(); }
+      break;
+    case "Slate": case "Rock": case "Basalt": case "Limestone":
+      noise(215, 50, 4); noise(215, 0, 128);
+      for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(${r() < .5 ? "40,40,40" : "255,255,255"},${.08 + r() * .12})`; g.fillRect(r() * N, r() * N, 3 + r() * 10, 2 + r() * 6); }
+      if (material === "Slate") for (let i = 0; i < 8; i++) { g.strokeStyle = "rgba(60,60,60,.25)"; g.beginPath(); g.moveTo(0, r() * N); g.lineTo(N, r() * N); g.stroke(); }
+      break;
+    case "Grass": case "LeafyGrass":
+      noise(215, 40, 2);
+      for (let i = 0; i < 500; i++) { g.fillStyle = `rgba(${r() < .5 ? "60,60,60" : "255,255,255"},${.12 + r() * .15})`; g.fillRect(r() * N, r() * N, 1, 3 + r() * 4); }
+      if (material === "LeafyGrass") for (let i = 0; i < 60; i++) { g.fillStyle = `rgba(40,40,40,${.12 + r() * .1})`; g.beginPath(); g.ellipse(r() * N, r() * N, 3 + r() * 4, 2 + r() * 3, r() * 3, 0, 7); g.fill(); }
+      break;
+    case "Ground": case "Pebble": case "Pavement": case "Marble":
+      noise(220, 30, 3);
+      for (let i = 0; i < (material === "Pebble" ? 220 : 60); i++) { g.fillStyle = fill(160 + r() * 90); g.beginPath(); g.arc(r() * N, r() * N, 1 + r() * 3, 0, 7); g.fill(); }
+      if (material === "Pavement") for (let x = 0; x < N; x += 32) { g.fillStyle = fill(170); g.fillRect(x, 0, 1, N); g.fillRect(0, x, N, 1); }
+      break;
+    case "Fabric":
+      noise(235, 12, 1);
+      for (let y = 0; y < N; y += 3) { g.fillStyle = "rgba(80,80,80,.07)"; g.fillRect(0, y, N, 1); }
+      break;
+    case "Metal": case "CorrodedMetal":
+      noise(225, 16, 1);
+      for (let i = 0; i < 90; i++) { g.fillStyle = `rgba(255,255,255,${r() * .12})`; g.fillRect(0, r() * N, N, 1); }
+      if (material === "CorrodedMetal") for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(90,60,40,${.2 + r() * .2})`; g.beginPath(); g.arc(r() * N, r() * N, 2 + r() * 6, 0, 7); g.fill(); }
+      break;
+    default: texCache[material] = null; return null;
+  }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.colorSpace = THREE.SRGBColorSpace;
+  return texCache[material] = t;
+}
+const matCache = {};
+function material(p, scale) {
+  const key = p.material + "|" + p.color.join(",") + "|" + scale + "|" + (p.glowing ? 1 : 0);
+  if (matCache[key]) return matCache[key];
+  const color = new THREE.Color(`rgb(${p.color.join(",")})`);
+  const neon = p.material === "Neon" || p.glowing;
+  let map = texture(p.material);
+  if (map) { map = map.clone(); map.needsUpdate = true; map.repeat.set(scale, scale); }
+  const metal = p.material === "Metal" || p.material === "CorrodedMetal";
+  const m = new THREE.MeshStandardMaterial({
+    color, map, roughness: metal ? .45 : p.material === "Glass" ? .1 : p.material === "SmoothPlastic" ? .6 : .9,
+    metalness: metal ? .55 : 0, emissive: neon ? color : 0x000000, emissiveIntensity: neon ? 1.4 : 0,
+    transparent: p.material === "Glass" || p.transparency > 0, opacity: p.material === "Glass" ? .55 : 1 - (p.transparency || 0),
+  });
+  return matCache[key] = m;
+}
+function wedgeGeometry(w, h, d) {
+  w /= 2; h /= 2; d /= 2;
+  const A = [-w,-h,-d], B = [w,-h,-d], C = [-w,-h,d], D = [w,-h,d], E = [-w,h,d], F = [w,h,d];
+  const tris = [A,B,D, A,D,C, C,D,F, C,F,E, A,E,F, A,F,B, A,C,E, B,F,D];
+  const pos = new Float32Array(tris.flat()), uv = new Float32Array(tris.length * 2);
+  tris.forEach((v, i) => { uv[i * 2] = (v[0] + v[2]) / 8; uv[i * 2 + 1] = v[1] / 4; });
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute("position", new THREE.BufferAttribute(pos, 3)); geo.setAttribute("uv", new THREE.BufferAttribute(uv, 2));
+  geo.computeVertexNormals(); return geo;
+}
+function geometry(p) {
+  const [x, y, z] = p.size;
+  if (p.shape === "Ball") return new THREE.SphereGeometry(x / 2, 28, 18);
+  if (p.shape === "Cylinder") return new THREE.CylinderGeometry(y / 2, y / 2, x, 28).rotateZ(-Math.PI / 2);
+  if (p.shape === "Wedge") return wedgeGeometry(x, y, z);
+  return new THREE.BoxGeometry(x, y, z);
+}
+const effects = [];
+function build(object) {
+  const root = new THREE.Group();
+  root.position.set(...object.at); root.rotation.y = object.yaw || 0;
+  if (object.rot) root.rotation.set(object.rot[0], object.yaw || 0, object.rot[2]);
+  for (const p of object.parts) {
+    if (object.hideGroup && p.group === object.hideGroup) continue;
+    const glowing = object.lit && p.group === "glow";
+    const q = glowing ? { ...p, color: p.name === "Fire" ? [255, 160, 40] : [255, 110, 30], glowing: true } : p;
+    const scale = Math.max(1, Math.round(Math.max(...p.size) / 5));
+    const mesh = new THREE.Mesh(geometry(p), material(q, scale));
+    mesh.rotation.set(p.rot[0], p.rot[1], p.rot[2], "XYZ");
+    mesh.castShadow = p.material !== "Neon" && !glowing && p.material !== "Glass"; mesh.receiveShadow = true;
+    const holder = new THREE.Group(); holder.position.set(...p.pos); holder.rotation.y = p.yaw || 0; holder.add(mesh); root.add(holder);
+    if (p.light && (p.group !== "glow" || object.lit)) {
+      const l = new THREE.PointLight(new THREE.Color(`rgb(${p.light.color.join(",")})`), p.light.brightness * 25, p.light.range * 1.4, 1.6);
+      holder.add(l);
+    }
+    if (p.fire && object.lit) effects.push({ kind: "fire", holder });
+    if (p.smoke && object.lit) effects.push({ kind: "smoke", holder });
+    if (p.sparkle) effects.push({ kind: "spray", holder });
+  }
+  scene.add(root);
+}
+S.objects.forEach(build);
+scene.updateMatrixWorld(true);
+// Fire, smoke and the fountain's spray, drawn simply.
+const rnd = seeded(42);
+for (const e of effects) {
+  const at = new THREE.Vector3(); e.holder.getWorldPosition(at);
+  if (e.kind === "fire") for (let i = 0; i < 6; i++) {
+    const m = new THREE.Mesh(new THREE.ConeGeometry(.35 + rnd() * .25, 1 + rnd() * 1.2, 8), new THREE.MeshBasicMaterial({ color: i % 2 ? 0xffb030 : 0xff6a20, transparent: true, opacity: .85 }));
+    m.position.set(at.x + (rnd() - .5) * 1.2, at.y + .6 + rnd() * .3, at.z + (rnd() - .5) * .5); scene.add(m);
+  }
+  if (e.kind === "smoke") for (let i = 0; i < 6; i++) {
+    const m = new THREE.Mesh(new THREE.SphereGeometry(.6 + i * .25, 14, 10), new THREE.MeshStandardMaterial({ color: 0xbdbdbd, transparent: true, opacity: .35 - i * .045, depthWrite: false }));
+    m.position.set(at.x + i * .35, at.y + 1 + i * 1.1, at.z - i * .2); scene.add(m);
+  }
+  if (e.kind === "spray") for (let i = 0; i < 24; i++) {
+    const a = rnd() * 6.28, t = rnd(); const rr = 0.3 + t * 1.8;
+    const m = new THREE.Mesh(new THREE.SphereGeometry(.08, 6, 4), new THREE.MeshBasicMaterial({ color: 0xd8efff, transparent: true, opacity: .8 }));
+    m.position.set(at.x + Math.cos(a) * rr, at.y + 0.6 + 1.2 * (1 - (t * 2 - .6) ** 2), at.z + Math.sin(a) * rr); scene.add(m);
+  }
+}
+// Roblox-style blocky avatars (the game shows each player's own avatar).
+function avatar(a) {
+  const g = new THREE.Group();
+  const mat = c => new THREE.MeshStandardMaterial({ color: new THREE.Color(`rgb(${c.join(",")})`), roughness: .7 });
+  const box = (s, p, c, parent = g) => { const m = new THREE.Mesh(new THREE.BoxGeometry(...s), mat(c)); m.position.set(...p); m.castShadow = true; parent.add(m); return m; };
+  box([0.95,2,1],[-0.5,1,0],[40,60,120]); box([0.95,2,1],[0.5,1,0],[40,60,120]);
+  box([2,2,1],[0,3,0],a.shirt);
+  box([0.95,2,1],[-1.5,3,0],[245,205,48]);
+  const arm = new THREE.Group(); arm.position.set(1.5,4,0); arm.rotation.x = a.pose || 0; g.add(arm);
+  box([0.95,2,1],[0,-1,0],[245,205,48],arm);
+  if (a.pose) { box([0.3,0.3,3.4],[0,-2,-1.2],[120,84,54],arm); box([2.6,0.5,0.5],[0,-2,-2.8],[110,110,120],arm); }
+  const head = new THREE.Mesh(new THREE.CylinderGeometry(.62,.62,1.2,20), mat([245,205,48])); head.position.set(0,4.62,0); head.castShadow = true; g.add(head);
+  g.position.set(...a.at); g.rotation.y = a.yaw; scene.add(g);
+}
+(S.avatars || []).forEach(avatar);
+
+const camera = new THREE.PerspectiveCamera(S.camera.fov || 65, W / H, 0.5, 2000);
+camera.position.set(...S.camera.pos); camera.lookAt(focus);
+renderer.render(scene, camera);
+
+const ui = document.getElementById("ui");
+const add = html => ui.insertAdjacentHTML("beforeend", html);
+const project = p => { const v = new THREE.Vector3(...p).project(camera); return [(v.x + 1) / 2 * W, (1 - v.y) / 2 * H]; };
+for (const l of S.labels || []) { const [x, y] = project(l.at); add(`<div class="${l.cls || "label"}" style="left:${x}px;top:${y}px;color:${l.color || "#fff"};font-size:${l.size || 16}px">${l.text}</div>`); }
+for (const p of S.prompts || []) {
+  const [x, y] = project(p.at);
+  const ring = p.progress != null ? `<svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="23" fill="none" stroke="#fff" stroke-width="4" stroke-dasharray="${144.5 * p.progress} 200" transform="rotate(-90 26 26)"/></svg>` : "";
+  add(`<div class="prompt" style="left:${x}px;top:${y}px"><div class="key">${ring}E</div><div class="txt">${p.object}<b>${p.action}</b></div></div>`);
+}
+if (S.hud) {
+  add(`<div class="topbar"><span></span><span></span></div>`);
+  add(`<div class="money">${S.hud}</div><div class="invbtn">Ekwipunek [I]</div>`);
+  add(`<div class="board"><div class="h"><span>Gracz</span><span>Pieniądze</span></div><div><span>Jakub</span><span>1 284</span></div><div><span>Ola_Buduje</span><span>412</span></div><div><span>kopacz77</span><span>96</span></div></div>`);
+}
+add(S.overlay || "");
+add(`<div class="cap">${S.caption}</div>`);
+document.title = "ready";
+}
+if (window.SCENE) draw(window.SCENE);
+</script>
+</body></html>

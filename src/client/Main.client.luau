@@ -1,0 +1,80 @@
+-- The client: draws the windows and sends the player's intentions to the server. It decides
+-- nothing; every number on screen comes from the server.
+local Players = game:GetService("Players")
+local ProximityPromptService = game:GetService("ProximityPromptService")
+local UserInputService = game:GetService("UserInputService")
+
+local Ui = script.Parent:WaitForChild("Ui")
+local Kit = require(Ui.Kit)
+local Hud = require(Ui.Hud)
+local InventoryWindow = require(Ui.Inventory)
+local MerchantWindow = require(Ui.Merchant)
+local FurnaceWindow = require(Ui.Furnace)
+local WorkshopWindow = require(Ui.Workshop)
+require(script.Parent:WaitForChild("Game"))
+
+local player = Players.LocalPlayer
+
+local screen = Kit.New("ScreenGui", {
+	Name = "FactoryWorld",
+	ResetOnSpawn = false,
+	IgnoreGuiInset = false,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+	Parent = player:WaitForChild("PlayerGui"),
+})
+
+-- One window open at a time.
+local current = nil
+local function show(open, ...)
+	if current and current.Parent then
+		current:Destroy()
+	end
+	current = open(screen, ...)
+end
+
+Hud.Mount(screen, function()
+	show(InventoryWindow.Open)
+end)
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then
+		return
+	end
+	if input.KeyCode == Enum.KeyCode.I then
+		if current and current.Parent then
+			current:Destroy()
+			current = nil
+		else
+			show(InventoryWindow.Open)
+		end
+	end
+end)
+
+-- Prompts on other players' plots are not for this player: hide them.
+local function hideForeign(prompt)
+	local owner = prompt:GetAttribute("Owner")
+	if owner ~= nil and owner ~= player.UserId then
+		prompt.MaxActivationDistance = 0
+	end
+end
+for _, descendant in ipairs(workspace:GetDescendants()) do
+	if descendant:IsA("ProximityPrompt") then
+		hideForeign(descendant)
+	end
+end
+workspace.DescendantAdded:Connect(function(descendant)
+	if descendant:IsA("ProximityPrompt") then
+		hideForeign(descendant)
+	end
+end)
+
+ProximityPromptService.PromptTriggered:Connect(function(prompt)
+	local kind = prompt:GetAttribute("Kind")
+	if kind == "merchant" then
+		show(MerchantWindow.Open)
+	elseif kind == "workbench" then
+		show(WorkshopWindow.Open)
+	elseif kind == "furnace" then
+		show(FurnaceWindow.Open, prompt:GetAttribute("FurnaceId"))
+	end
+end)

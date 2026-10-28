@@ -1,0 +1,3 @@
+# Tools for the Roblox version, installed with Rokit (https://github.com/rojo-rbx/rokit): `rokit install`.
+[tools]
+rojo = "rojo-rbx/rojo@7.4.4"
