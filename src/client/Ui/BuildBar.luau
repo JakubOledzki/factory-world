@@ -21,6 +21,7 @@ local Pickup = "pickup"
 local Buildable = {
 	Items.Belt, Items.Inserter, Items.WoodenChest, Items.Furnace, Items.Sapling,
 	Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry, Items.Generator, Items.Pole, Items.Workbench,
+	Items.Hoe, Items.Mill, Items.Bakery,
 }
 -- Machines show on the bar only while the player has one to put down.
 local OnlyWhenHeld = {
@@ -31,6 +32,9 @@ local OnlyWhenHeld = {
 	[Items.Generator] = true,
 	[Items.Pole] = true,
 	[Items.Workbench] = true,
+	[Items.Mill] = true,
+	[Items.Bakery] = true,
+	[Items.Hoe] = true,
 }
 local ModelOf = {
 	[Items.Sapling] = function()
@@ -51,6 +55,10 @@ end
 ModelOf[Items.Generator] = Models.Generator
 ModelOf[Items.Pole] = Models.Pole
 ModelOf[Items.Workbench] = Models.Workbench
+-- The hoe's ghost is the field it tills.
+ModelOf[Items.Hoe] = function()
+	return Models.Field(nil, 0, 1)
+end
 
 local player = Players.LocalPlayer
 local active = false

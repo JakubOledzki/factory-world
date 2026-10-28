@@ -24,6 +24,10 @@ Workshop.Recipes = {
 	{ id = Items.Stonemason, quantity = 1, time = 45, ingredients = { { Items.Stone, 30 }, { Items.IronIngot, 10 }, { Items.Wood, 10 } } },
 	{ id = Items.Crusher, quantity = 1, time = 60, ingredients = { { Items.IronIngot, 25 }, { Items.Stone, 30 }, { Items.CopperIngot, 8 } } },
 	{ id = Items.Foundry, quantity = 1, time = 90, ingredients = { { Items.Stone, 40 }, { Items.Sand, 20 }, { Items.IronIngot, 20 }, { Items.CopperIngot, 10 } } },
+	-- Farming (Shared.Farming): the hoe for fields, the mill and the bakery once researched.
+	{ id = Items.Hoe, quantity = 1, time = 20, ingredients = { { Items.IronIngot, 2 }, { Items.Wood, 2 } } },
+	{ id = Items.Mill, quantity = 1, time = 60, ingredients = { { Items.Stone, 30 }, { Items.Wood, 10 }, { Items.IronIngot, 2 } } },
+	{ id = Items.Bakery, quantity = 1, time = 90, ingredients = { { Items.Stone, 40 }, { Items.IronIngot, 3 }, { Items.Sand, 10 } } },
 }
 
 function Workshop.Recipe(id)

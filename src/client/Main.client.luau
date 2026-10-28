@@ -19,6 +19,7 @@ local LandWindow = require(Ui.Land)
 local ResearchWindow = require(Ui.Research)
 local MarketWindow = require(Ui.Market)
 local CompanyWindow = require(Ui.Company)
+local FieldWindow = require(Ui.Field)
 local BuildBar = require(Ui.BuildBar)
 require(script.Parent:WaitForChild("Game"))
 local GridView = require(script.Parent:WaitForChild("GridView"))
@@ -120,5 +121,7 @@ ProximityPromptService.PromptTriggered:Connect(function(prompt)
 		show(StationWindow.Open)
 	elseif kind == "generator" then
 		show(GeneratorWindow.Open, prompt:GetAttribute("GeneratorId"))
+	elseif kind == "field" then
+		show(FieldWindow.Open, prompt:GetAttribute("FieldId"))
 	end
 end)

@@ -11,6 +11,8 @@
 --   fire, smoke, light, sparkle   effects the server adds to the part
 --   noCollide   players walk through it
 --   hidden      built invisible (shown by the game when needed, e.g. an inserter's load)
+local Items = require(script.Parent.Items)
+
 local Models = {}
 
 -- A small random generator of its own, so the same seed gives the same model on the server and in
@@ -956,11 +958,143 @@ local function foundry()
 	return parts
 end
 
+local function mill()
+	local rng = Models.Rng(59)
+	local parts = {}
+	add(parts, { size = { 7.4, 0.5, 7.4 }, pos = { 0, 0.25, 0 }, color = vary(Stone, rng, 8), material = "Cobblestone" })
+	-- A stone plinth with the millstones on it under a little roof on four posts.
+	add(parts, { name = "Body", size = { 4.2, 1.6, 4.2 }, pos = { -0.6, 1.3, 0.4 }, color = vary({ 150, 144, 134 }, rng, 6), material = "Cobblestone" })
+	post(parts, 0.6, 3.6, { -0.6, 2.4, 0.4 }, { 160, 156, 150 }, "Limestone")
+	post(parts, 0.5, 3.4, { -0.6, 2.95, 0.4 }, { 176, 172, 164 }, "Limestone", { group = "spin" })
+	post(parts, 0.55, 0.6, { -0.6, 3.25, 0.4 }, DarkWood, "Wood", { group = "spin" })
+	-- The hopper of grain over the stones.
+	add(parts, { shape = "Wedge", size = { 2, 1, 1 }, pos = { -0.6, 4.3, 0.9 }, rot = { 0, math.pi, 0 }, color = Planks, material = "WoodPlanks" })
+	add(parts, { shape = "Wedge", size = { 2, 1, 1 }, pos = { -0.6, 4.3, -0.1 }, color = Planks, material = "WoodPlanks" })
+	add(parts, { size = { 1.8, 0.2, 0.9 }, pos = { -0.6, 4.65, 0.4 }, color = { 226, 196, 100 }, material = "Sand", noCollide = true })
+	for _, x in ipairs({ -2.9, 1.7 }) do
+		for _, z in ipairs({ -1.9, 2.7 }) do
+			add(parts, { size = { 0.4, 5.2, 0.4 }, pos = { x, 3.1, z }, color = vary(Wood, rng, 6), material = "Wood" })
+		end
+	end
+	add(parts, { shape = "Wedge", size = { 5.4, 1.4, 2.6 }, pos = { -0.6, 6.4, -0.9 }, color = { 150, 70, 52 }, material = "Slate" })
+	add(parts, { shape = "Wedge", size = { 5.4, 1.4, 2.6 }, pos = { -0.6, 6.4, 1.7 }, rot = { 0, math.pi, 0 }, color = { 150, 70, 52 }, material = "Slate" })
+	-- The electric motor with a shaft to the stones, and a lamp that lights while it grinds.
+	add(parts, { size = { 1.4, 1.2, 1.6 }, pos = { 2.6, 1.1, 0.4 }, color = { 50, 90, 140 }, material = "Metal" })
+	log(parts, 1.6, 0.3, { 1.4, 1.5, 0.4 }, 0, Iron, "Metal", { group = "spin" })
+	ball(parts, 0.45, { 2.6, 2, 0.4 }, { 60, 50, 40 }, "SmoothPlastic", { group = "glow", noCollide = true })
+	-- Sacks of flour in front and wheat behind.
+	for i = 0, 2 do
+		ball(parts, 1.1, { 1.2 + i * 0.9, 0.95, -2.7 }, vary({ 236, 230, 214 }, rng, 6), "Fabric")
+	end
+	for _ = 1, 3 do
+		post(parts, 1.2, 0.9, { rng.Num(1.6, 3.2), 1.1, rng.Num(2.2, 3.2) }, vary({ 216, 184, 96 }, rng, 10), "Fabric")
+	end
+	return parts
+end
+
+local function bakery()
+	local rng = Models.Rng(61)
+	local parts = {}
+	local brick = { 172, 86, 60 }
+	add(parts, { size = { 7.4, 0.5, 7.4 }, pos = { 0, 0.25, 0 }, color = vary({ 176, 160, 140 }, rng, 6), material = "Pavement" })
+	-- A brick base with the round oven on it, its mouth to the front and a chimney behind.
+	add(parts, { name = "Body", size = { 5, 2, 4.6 }, pos = { 0, 1.5, 0.8 }, color = vary(brick, rng, 6), material = "Brick" })
+	ball(parts, 4.6, { 0, 2.5, 0.9 }, vary(brick, rng, 6), "Brick")
+	add(parts, { size = { 1.8, 1.4, 0.4 }, pos = { 0, 3, -1.25 }, color = { 30, 24, 20 }, material = "SmoothPlastic", group = "glow", noCollide = true })
+	add(parts, { size = { 2.2, 0.3, 0.6 }, pos = { 0, 3.85, -1.3 }, color = { 210, 196, 170 }, material = "Sandstone" })
+	add(parts, { name = "Fire", size = { 1.2, 0.3, 0.6 }, pos = { 0, 2.45, -1 }, color = { 30, 26, 24 }, material = "SmoothPlastic", group = "glow", noCollide = true, fire = true, light = { color = { 255, 150, 60 }, range = 12, brightness = 2 } })
+	add(parts, { size = { 1, 3.4, 1 }, pos = { 0, 5.2, 2.4 }, color = vary(brick, rng, 6), material = "Brick" })
+	add(parts, { name = "Chimney", size = { 1.3, 0.3, 1.3 }, pos = { 0, 7, 2.4 }, color = { 60, 50, 46 }, material = "Slate", smoke = true })
+	-- A peel leaning on the oven, a rack of loaves and a sack of flour.
+	add(parts, { size = { 0.2, 4, 0.2 }, pos = { 2.2, 2.4, -1.4 }, rot = { 0, 0, -0.3 }, color = vary(Wood, rng, 6), material = "Wood" })
+	add(parts, { size = { 0.9, 0.12, 0.9 }, pos = { 1.6, 0.7, -1.4 }, color = vary(Planks, rng, 6), material = "WoodPlanks" })
+	for _, y in ipairs({ 1, 2.2 }) do
+		add(parts, { size = { 2.4, 0.15, 1 }, pos = { -2.4, y, -2.6 }, color = vary(Planks, rng, 8), material = "WoodPlanks" })
+		for k = 0, 2 do
+			ball(parts, 0.65, { -3.1 + k * 0.7, y + 0.3, -2.6 }, vary({ 196, 130, 70 }, rng, 10), "Sand")
+		end
+	end
+	for _, x in ipairs({ -3.5, -1.3 }) do
+		add(parts, { size = { 0.15, 2.4, 0.15 }, pos = { x, 1.4, -2.6 }, color = DarkWood, material = "Wood" })
+	end
+	ball(parts, 1.3, { 2.9, 1.1, 2.6 }, vary({ 236, 230, 214 }, rng, 6), "Fabric")
+	return parts
+end
+
+local function plant(parts, rng, crop, stage, x, z)
+	local green = vary({ 76, 150, 60 }, rng, 10)
+	if stage == 1 then
+		ball(parts, 0.45, { x, 0.55, z }, green, "Grass", { noCollide = true })
+		return
+	end
+	local grow = stage == 3 and 1 or 0.55
+	if crop == Items.Wheat or crop == Items.Corn then
+		local tall = (crop == Items.Corn and 3.4 or 2.2) * grow
+		local stalk = stage == 3 and crop == Items.Wheat and { 214, 180, 90 } or green
+		for _, d in ipairs({ -0.25, 0.25 }) do
+			add(parts, { size = { 0.12, tall, 0.12 }, pos = { x + d, 0.4 + tall / 2, z + d * 0.6 }, rot = { rng.Num(-0.12, 0.12), 0, rng.Num(-0.12, 0.12) }, color = stalk, material = "Grass", noCollide = true })
+		end
+		if stage == 3 then
+			if crop == Items.Wheat then
+				for _, d in ipairs({ -0.25, 0.25 }) do
+					add(parts, { size = { 0.22, 0.6, 0.22 }, pos = { x + d, 0.4 + tall + 0.2, z + d * 0.6 }, color = vary({ 232, 196, 100 }, rng, 8), material = "Sand", noCollide = true })
+				end
+			else
+				add(parts, { size = { 0.35, 0.9, 0.35 }, pos = { x + 0.25, 0.4 + tall * 0.6, z }, rot = { 0, 0, -0.3 }, color = vary({ 246, 210, 70 }, rng, 8), material = "Sand", noCollide = true })
+				add(parts, { size = { 0.8, 0.12, 0.3 }, pos = { x, 0.4 + tall * 0.75, z }, rot = { 0, 0, 0.5 }, color = green, material = "Grass", noCollide = true })
+			end
+		end
+	elseif crop == Items.Sunflower then
+		local tall = 3.6 * grow
+		post(parts, tall, 0.2, { x, 0.4 + tall / 2, z }, green, "Grass", { noCollide = true })
+		add(parts, { size = { 0.7, 0.1, 0.3 }, pos = { x + 0.3, 0.4 + tall * 0.5, z }, color = green, material = "Grass", noCollide = true })
+		if stage == 3 then
+			add(parts, { shape = "Cylinder", size = { 0.15, 1.3, 1.3 }, pos = { x, 0.4 + tall, z - 0.15 }, rot = { 0, math.pi / 2, 0 }, color = { 250, 200, 40 }, material = "SmoothPlastic", noCollide = true })
+			add(parts, { shape = "Cylinder", size = { 0.2, 0.6, 0.6 }, pos = { x, 0.4 + tall, z - 0.2 }, rot = { 0, math.pi / 2, 0 }, color = { 90, 60, 30 }, material = "Sand", noCollide = true })
+		end
+	elseif crop == Items.Cabbage then
+		ball(parts, 1.2 * grow + 0.2, { x, 0.4 + 0.5 * grow, z }, stage == 3 and vary({ 150, 200, 110 }, rng, 8) or green, "Grass", { noCollide = true })
+	else
+		-- Carrots and potatoes: leafy tufts, with the orange tops of carrots or the flowers of potatoes.
+		for _, d in ipairs({ -0.2, 0.2 }) do
+			add(parts, { size = { 0.2, 0.9 * grow + 0.2, 0.5 }, pos = { x + d, 0.4 + (0.9 * grow + 0.2) / 2, z }, rot = { 0, d * 2, d }, color = green, material = "Grass", noCollide = true })
+		end
+		if stage == 3 then
+			if crop == Items.Carrot then
+				post(parts, 0.3, 0.35, { x, 0.5, z }, { 236, 128, 40 }, "SmoothPlastic", { noCollide = true })
+			else
+				ball(parts, 0.25, { x, 1.2, z }, { 240, 236, 250 }, "SmoothPlastic", { noCollide = true })
+			end
+		end
+	end
+end
+
+-- A field, 2 × 2 tiles: tilled soil in four furrows, and `crop` on it at `stage` (Shared.Farming:
+-- 0 nothing, 1 sprouts, 2 growing, 3 ripe). The soil is named "Body".
+function Models.Field(crop, stage, seed)
+	local rng = Models.Rng(seed or 1)
+	local parts = {}
+	add(parts, { name = "Body", size = { 7.8, 0.3, 7.8 }, pos = { 0, 0.15, 0 }, color = { 96, 66, 44 }, material = "Ground" })
+	for i = 0, 3 do
+		add(parts, { size = { 7.4, 0.25, 0.9 }, pos = { 0, 0.4, -2.85 + i * 1.9 }, color = vary({ 110, 76, 50 }, rng, 6), material = "Ground", noCollide = true })
+	end
+	if crop and stage and stage > 0 then
+		for i = 0, 3 do
+			for j = 0, 3 do
+				plant(parts, rng, crop, stage, -2.85 + j * 1.9, -2.85 + i * 1.9)
+			end
+		end
+	end
+	return parts
+end
+
 local Machines = {
 	furniture_sawmill = sawmill,
 	furniture_stonemason = stonemason,
 	furniture_crusher = crusher,
 	furniture_foundry = foundry,
+	furniture_mill = mill,
+	furniture_bakery = bakery,
 }
 
 -- A steam generator, 2 × 2 tiles: a boiler over a firebox, a chimney, and a steam engine whose

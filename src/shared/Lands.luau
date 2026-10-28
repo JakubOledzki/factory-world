@@ -28,6 +28,7 @@ Lands.Biomes = {
 		ground = { 70, 118, 60 },
 		material = "LeafyGrass",
 		trees = 60,
+		fertile = true,
 		drops = {
 			{ Items.IronOre, 120 },
 			{ Items.Coal, 650 },
@@ -127,6 +128,12 @@ function Lands.Plot(profile, id)
 		return nil
 	end
 	return land
+end
+
+-- Whether the ground of the plot shown can be tilled into fields (Shared.Farming): the meadow and
+-- the forest.
+function Lands.Fertile(profile)
+	return profile.active == nil or Lands.Biomes[profile.active].fertile == true
 end
 
 -- Which plot the player shows: Lands.Home or a biome.

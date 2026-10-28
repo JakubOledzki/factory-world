@@ -20,6 +20,7 @@ local Processing = require(script.Parent.Processing)
 local PlotLayout = require(script.Parent.PlotLayout)
 local Power = require(script.Parent.Power)
 local Rail = require(script.Parent.Rail)
+local Farming = require(script.Parent.Farming)
 
 local Logistics = {}
 
@@ -54,6 +55,11 @@ Logistics.Sizes = {
 	[Items.Generator] = 2,
 	[Items.Pole] = 1,
 	[Items.Workbench] = 2,
+	[Items.Mill] = 2,
+	[Items.Bakery] = 2,
+	-- The hoe tills a field (Shared.Farming); it is not used up.
+	[Items.Hoe] = Farming.Size,
+	[Farming.Field] = Farming.Size,
 	[Rail.StationKind] = PlotLayout.Station.size,
 }
 

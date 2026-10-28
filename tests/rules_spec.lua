@@ -228,7 +228,7 @@ test("Every model is made of parts Roblox can build, with the parts the game loo
 	checkModel("Merchant", Models.Merchant())
 	checkModel("Fountain", Models.Fountain())
 	checkModel("Signpost", Models.Signpost(1), { "Board" })
-	for _, kind in ipairs({ Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry }) do
+	for _, kind in ipairs({ Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry, Items.Mill, Items.Bakery }) do
 		checkModel(kind, Models.Machine(kind), { "Body" })
 		checkModel("BuildMarker", Models.BuildMarker(kind, 4))
 	end
@@ -249,6 +249,13 @@ test("Every model is made of parts Roblox can build, with the parts the game loo
 		checkModel("PlotDecor " .. id, Models.PlotDecor(101, PlotLayout.Size, {}, nil, Lands.Biomes[id]))
 	end
 	checkModel("Tree with snow", Models.Tree(7, true), { "Trunk" })
+	checkModel("Field tilled", Models.Field(nil, 0, 1), { "Body" })
+	for _, crop in ipairs(load_shared("Farming").Crops) do
+		for stage = 1, 3 do
+			checkModel("Field of " .. crop.item, Models.Field(crop.item, stage, 4), { "Body" })
+		end
+	end
+	checkModel("Bakery", Models.Machine(Items.Bakery), { "Body", "Fire", "Chimney" })
 end)
 
 test("The same seed builds the same model", function()
@@ -1133,4 +1140,51 @@ test("Big projects take parts from members, build for a while and then help the 
 	c.built.warehouse = later
 	eq(Companies.OrderCount(c, later), Companies.OrdersWithWarehouse)
 	eq(Companies.Left(c, Companies.OrdersWithWarehouse, later) > 0, true)
+end)
+
+test("A field is sown for free, grows for the crop's time and is reaped once, staying tilled", function()
+	local Farming = load_shared("Farming")
+	local Logistics = load_shared("Logistics")
+	local f = Farming.New(1, 0, 0)
+	eq(Farming.Stage(f, 0), 0)
+	eq(select(2, Farming.Reap(f, 0)), "nothing_here")
+	eq(select(2, Farming.Sow(f, "stone", 0)), "bad_payload")
+	assert(Farming.Sow(f, Items.Wheat, 100))
+	eq(select(2, Farming.Sow(f, Items.Carrot, 100)), "field_sown")
+	local grow = Farming.ById[Items.Wheat].grow
+	eq(Farming.Stage(f, 101), 1)
+	eq(Farming.NextStage(f, 101), 100 + grow / 2)
+	eq(Farming.Stage(f, 100 + grow / 2), 2)
+	eq(select(2, Farming.Reap(f, 100 + grow - 1)), "not_ripe")
+	eq(Farming.Stage(f, 100 + grow), 3)
+	eq(Farming.NextStage(f, 100 + grow), nil)
+	local item, count = Farming.Reap(f, 100 + grow)
+	eq(item, Items.Wheat)
+	eq(count, Farming.ById[Items.Wheat].yield)
+	eq(f.crop, nil)
+	eq(select(2, Farming.Reap(f, 100 + grow)), "nothing_here")
+	eq(Logistics.Sizes[Items.Hoe], Farming.Size)
+	eq(select(2, Logistics.CanPlace({ f }, {}, Items.Hoe, 1, 1)), "tile_taken")
+end)
+
+test("Only home and fertile lands grow crops, and flour and bread pay more than what goes in", function()
+	local Lands = load_shared("Lands")
+	local Processing = load_shared("Processing")
+	assert(Lands.Fertile({ active = nil }), "home land")
+	local barren = 0
+	for _, id in ipairs(Lands.Order) do
+		if not Lands.Fertile({ active = id }) then
+			barren = barren + 1
+		end
+	end
+	assert(barren > 0, "some lands are barren")
+	for _, kind in ipairs({ Items.Mill, Items.Bakery }) do
+		for _, r in ipairs(Processing.Machines[kind].recipes) do
+			local cost = 0
+			for _, input in ipairs(r.ingredients) do
+				cost = cost + Prices.Buys[input[1]] * input[2]
+			end
+			assert(Prices.Buys[r.id] * r.quantity > cost, r.id)
+		end
+	end
 end)

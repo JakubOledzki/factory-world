@@ -1,5 +1,5 @@
 -- Processing machines on the build grid (Crafting Processing.cs on main): a sawmill, a stonemason's
--- workshop, a crusher and a foundry. The player sets a recipe and loads its ingredients (and fuel,
+-- workshop, a crusher, a foundry, and for food a mill and a bakery. The player sets a recipe and loads its ingredients (and fuel,
 -- where the machine burns it); the machine makes one batch after another while the player is away
 -- too, and the products wait in it until taken out, by hand or by an inserter. Nothing runs in a
 -- loop: the state is worked out from `startedAt` whenever someone looks (Processing.Advance).
@@ -62,10 +62,25 @@ Processing.Machines = {
 			recipe(Items.Bricks, 4, 10, { { Items.Sand, 2 }, { Items.Stone, 2 } }),
 		},
 	},
+	-- The mill runs on power, the bakery burns fuel, as on main.
+	[Items.Mill] = {
+		fired = false,
+		recipes = {
+			recipe(Items.Flour, 1, 6, { { Items.Wheat, 2 } }),
+			recipe(Items.CornFlour, 1, 6, { { Items.Corn, 2 } }),
+		},
+	},
+	[Items.Bakery] = {
+		fired = true,
+		recipes = {
+			recipe(Items.Bread, 1, 20, { { Items.Flour, 2 } }),
+			recipe(Items.CornBread, 1, 20, { { Items.CornFlour, 2 } }),
+		},
+	},
 }
 
 -- The order machines are listed in.
-Processing.Kinds = { Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry }
+Processing.Kinds = { Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry, Items.Mill, Items.Bakery }
 
 function Processing.IsMachine(kind)
 	return Processing.Machines[kind] ~= nil

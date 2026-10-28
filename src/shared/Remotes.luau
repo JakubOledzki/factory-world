@@ -19,6 +19,7 @@ return {
 	GridPlace = "GridPlace", -- { item, x, z, rot }
 	GridPickup = "GridPickup", -- { id }
 	GridRotate = "GridRotate", -- { id, rot }
+	FieldSow = "FieldSow", -- { id, crop }
 	LandList = "LandList",
 	LandBuy = "LandBuy", -- { biome }
 	LandSwitch = "LandSwitch", -- { to = "home" | biome }

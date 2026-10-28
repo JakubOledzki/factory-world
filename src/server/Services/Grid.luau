@@ -12,6 +12,7 @@ local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Items = require(Shared.Items)
 local Lands = require(Shared.Lands)
 local Forestry = require(Shared.Forestry)
+local Farming = require(Shared.Farming)
 local Logistics = require(Shared.Logistics)
 local Models = require(Shared.Models)
 local PlotLayout = require(Shared.PlotLayout)
@@ -53,6 +54,8 @@ local function specOf(o, bend, now)
 		return Models.Workbench()
 	elseif o.kind == Rail.StationKind then
 		return Models.Station()
+	elseif o.kind == Farming.Field then
+		return Models.Field(o.crop, Farming.Stage(o, now), o.id)
 	elseif Forestry.Grown(o, now) then
 		return Models.Tree(o.id, o.snow)
 	end
@@ -181,6 +184,34 @@ function show(player, o, bend)
 		else
 			-- A sapling turns into a tree when it has grown.
 			task.delay(o.plantedAt + Forestry.Grow - now + 0.2, function()
+				if model.Parent and views[player] and views[player][o.id] == model then
+					rebuild(player, o)
+				end
+			end)
+		end
+	elseif o.kind == Farming.Field then
+		local stage = Farming.Stage(o, now)
+		if stage == 0 then
+			Build.Prompt(model.Body, {
+				Name = "Prompt",
+				ActionText = "Zasiej",
+				ObjectText = "Pole",
+				HoldDuration = 0,
+			}, { Kind = "field", FieldId = o.id, Owner = player.UserId })
+		elseif stage == 3 then
+			Build.Prompt(model.Body, {
+				Name = "Prompt",
+				ActionText = "Zbierz",
+				ObjectText = Items.Name(o.crop),
+				HoldDuration = TestMode.Hold(1),
+			}, { Kind = "reap", FieldId = o.id, Owner = player.UserId })
+		else
+			Build.Label(model.Body, Items.Name(o.crop), 3, Color3.fromRGB(230, 255, 200))
+		end
+		-- The crop shows its next stage when it reaches it.
+		local at = Farming.NextStage(o, now)
+		if at then
+			task.delay(at - now + 0.2, function()
 				if model.Parent and views[player] and views[player][o.id] == model then
 					rebuild(player, o)
 				end
@@ -344,7 +375,15 @@ function Grid.Start()
 		if not ok then
 			return Net.Error(code)
 		end
-		if not Inventory.TryRemove(profile, item, 1) then
+		if item == Items.Hoe then
+			-- The hoe tills a field and is kept.
+			if not Lands.Fertile(profile) then
+				return Net.Error("not_fertile")
+			end
+			if Inventory.Count(profile, Items.Hoe) < 1 then
+				return Net.Error("not_enough_items")
+			end
+		elseif not Inventory.TryRemove(profile, item, 1) then
 			return Net.Error("not_enough_items")
 		end
 		local id = Data.NextId(profile)
@@ -352,7 +391,9 @@ function Grid.Start()
 			Furnaces.Add(player, profile, { id = id, tile = { x = x, z = z }, rot = rot, state = Smelting.Empty() })
 		else
 			local o
-			if item == Items.Sapling then
+			if item == Items.Hoe then
+				o = Farming.New(id, x, z)
+			elseif item == Items.Sapling then
 				o = Forestry.New(id, x, z, Clock.Now())
 				-- A tree of the tundra grows up snowy.
 				o.snow = profile.active and Lands.Biomes[profile.active].snow or nil
@@ -392,7 +433,15 @@ function Grid.Start()
 				return Net.Error("too_far")
 			end
 			table.remove(profile.grid.objects, index)
-			Inventory.Add(profile, o.kind, 1)
+			if o.kind == Farming.Field then
+				-- The ground goes back to grass; a ripe crop is reaped on the way.
+				local item, count = Farming.Reap(o, Clock.Now())
+				if item then
+					Inventory.Add(profile, item, count)
+				end
+			else
+				Inventory.Add(profile, o.kind, 1)
+			end
 			for _, entry in ipairs(Logistics.Contents(o)) do
 				Inventory.Add(profile, entry[1], entry[2])
 			end
@@ -476,6 +525,56 @@ function Grid.Start()
 			views[player][o.id] = nil
 		end
 		Plots.Gather(player, profile, Forestry.Cut(random:NextInteger(0, 99)))
+	end)
+
+	-- Reaping a ripe field by hand; the field stays tilled for the next crop.
+	ProximityPromptService.PromptTriggered:Connect(function(prompt, player)
+		if prompt:GetAttribute("Kind") ~= "reap" or prompt:GetAttribute("Owner") ~= player.UserId then
+			return
+		end
+		local profile = Data.Get(player)
+		if profile == nil or views[player] == nil or not Plots.HeldLongEnough(player, prompt) then
+			return
+		end
+		if not Net.Near(player, prompt.Parent.Position, PlotLayout.Reach) then
+			return
+		end
+		local o = find(profile, prompt:GetAttribute("FieldId"))
+		if o == nil or o.kind ~= Farming.Field then
+			return
+		end
+		local item, count = Farming.Reap(o, Clock.Now())
+		if item == nil then
+			return
+		end
+		rebuild(player, o)
+		Plots.Gather(player, profile, { { item, count } })
+	end)
+
+	-- Sowing a crop on an empty field; seeds cost nothing, as on main.
+	Net.Handle("FieldSow", function(player, profile, payload)
+		local id = Net.Int(payload.id, 1, 1e9)
+		local crop = Net.Item(payload.crop)
+		if id == nil or crop == nil then
+			return Net.Error("bad_payload")
+		end
+		if views[player] == nil then
+			return Net.Error("not_loaded")
+		end
+		local o = find(profile, id)
+		if o == nil or o.kind ~= Farming.Field then
+			return Net.Error("not_owner")
+		end
+		local model = views[player][o.id]
+		if model == nil or not Net.Near(player, model.Body.Position, PlotLayout.Reach) then
+			return Net.Error("too_far")
+		end
+		local ok, code = Farming.Sow(o, crop, Clock.Now())
+		if not ok then
+			return Net.Error(code)
+		end
+		rebuild(player, o)
+		return { ok = true }
 	end)
 
 	Net.Handle("ChestGet", function(player, profile, payload)

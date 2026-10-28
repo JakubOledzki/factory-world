@@ -246,6 +246,30 @@ function views() {
     }
     out["17-maszyny"] = { objects, camera: { pos: [-1, 15, 33], look: [-1, 3, 0], fov: 60 }, shadowRadius: 70, caption, labels };
   }
+  // 19. Farming: a tilled field, crops at each stage, the mill and the bakery.
+  {
+    const objects = [{ at: [0, 0, 0], parts: [block([140, 1, 70], [0, -0.5, 0], [116, 158, 78], "Grass")] }];
+    const labels = [];
+    const fields = [
+      ["Zaorane", "nil, 0", -36, -8],
+      ["Pszenica", "Items.Wheat, 3", -26, -8],
+      ["Marchew", "Items.Carrot, 3", -16, -8],
+      ["Kapusta", "Items.Cabbage, 3", -6, -8],
+      ["Kukurydza", "Items.Corn, 3", -36, 4],
+      ["Ziemniaki", "Items.Potato, 3", -26, 4],
+      ["Słoneczniki", "Items.Sunflower, 3", -16, 4],
+      ["Kiełki", "Items.Wheat, 1", -6, 4],
+    ];
+    for (const [name, args, x, z] of fields) {
+      objects.push({ at: [x, 0, z], parts: lua.call(`Models.Field(${args}, ${Math.abs(x + z)})`) });
+      labels.push({ at: [x, 0, z + 5.5], text: name, cls: "tag" });
+    }
+    objects.push({ at: [8, 0, -2], yaw: Math.PI - 0.35, parts: lua.call("Models.Machine(Items.Mill)"), lit: true });
+    labels.push({ at: [8, 0, 4], text: "Młyn", cls: "tag" });
+    objects.push({ at: [20, 0, -2], yaw: Math.PI - 0.35, parts: lua.call("Models.Machine(Items.Bakery)"), lit: true });
+    labels.push({ at: [20, 0, 4], text: "Piec piekarski", cls: "tag" });
+    out["19-rolnictwo"] = { objects, camera: { pos: [-8, 24, 40], look: [-8, 1, -2], fov: 58 }, shadowRadius: 70, caption, labels };
+  }
   // 18. The station, a train, a chest and an inserter, close up.
   {
     const objects = [{ at: [0, 0, 0], parts: [block([120, 1, 80], [0, -0.5, 0], [116, 158, 78], "Grass")] }];

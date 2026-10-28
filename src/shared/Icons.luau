@@ -177,7 +177,11 @@ local function tool(head)
 	add(parts, { shape = "Cylinder", size = { 4.2, 0.42, 0.42 }, pos = { 0, 0, 0 }, color = wood, material = "Wood" })
 	add(parts, { shape = "Cylinder", size = { 0.5, 0.5, 0.5 }, pos = { -1.9, 0, 0 }, color = { 60, 40, 30 }, material = "Fabric" })
 	add(parts, { size = { 0.7, 0.75, 0.75 }, pos = { 1.8, 0, 0 }, color = steel, material = "Metal" })
-	if head == "pick" then
+	if head == "hoe" then
+		-- A flat blade bent down from the end of the handle.
+		add(parts, { size = { 0.3, 0.9, 1.4 }, pos = { 1.95, -0.3, -0.5 }, color = steel, material = "Metal" })
+		add(parts, { size = { 0.32, 0.25, 1.4 }, pos = { 1.95, -0.8, -0.5 }, color = edge, material = "Metal" })
+	elseif head == "pick" then
 		-- Two curved points either side, each of a block and a sloping tip.
 		for _, side in ipairs({ -1, 1 }) do
 			add(parts, { size = { 0.5, 0.55, 0.9 }, pos = { 1.75, 0, side * 0.8 }, rot = { 0, side * 0.25, 0 }, color = steel, material = "Metal" })
@@ -205,6 +209,54 @@ end
 
 local function axe()
 	return tool("axe")
+end
+
+local function hoe()
+	return tool("hoe")
+end
+
+-- A few of a crop or a food lying together.
+local function crop(id)
+	local parts = {}
+	local c = Items.Colors[id]
+	local green = { 80, 150, 60 }
+	if id == Items.Wheat then
+		for i = -2, 2 do
+			add(parts, { size = { 0.14, 3, 0.14 }, pos = { i * 0.18, 1.5, 0 }, rot = { 0, 0, i * 0.12 }, color = { 214, 184, 100 }, material = "Grass" })
+			add(parts, { size = { 0.3, 0.9, 0.3 }, pos = { i * 0.36, 3.1, 0 }, rot = { 0, 0, i * 0.12 }, color = c, material = "Sand" })
+		end
+		add(parts, { shape = "Cylinder", size = { 0.3, 0.8, 0.8 }, pos = { 0, 1.2, 0 }, rot = { 0, 0, math.pi / 2 }, color = { 150, 110, 60 }, material = "Fabric" })
+	elseif id == Items.Carrot then
+		for i = -1, 1 do
+			add(parts, { shape = "Cylinder", size = { 2.4, 0.5, 0.5 }, pos = { i * 0.3, 0.4, i * 0.5 }, rot = { 0, 0.4 * i, 0 }, color = c, material = "SmoothPlastic" })
+			add(parts, { size = { 0.6, 0.15, 0.4 }, pos = { 1.4 + i * 0.3, 0.45, i * 0.5 + 0.2 }, color = green, material = "Grass" })
+		end
+	elseif id == Items.Cabbage then
+		add(parts, { shape = "Ball", size = { 2.6, 2.6, 2.6 }, pos = { 0, 1.3, 0 }, color = c, material = "Grass" })
+		add(parts, { shape = "Ball", size = { 1.8, 1.8, 1.8 }, pos = { 0, 1.7, -0.5 }, color = shade(c, 1.1), material = "Grass" })
+	elseif id == Items.Corn then
+		add(parts, { shape = "Cylinder", size = { 2.6, 0.8, 0.8 }, pos = { 0, 0.45, 0 }, rot = { 0, 0.4, 0 }, color = c, material = "Sand" })
+		add(parts, { shape = "Wedge", size = { 0.9, 0.5, 1.6 }, pos = { 0.6, 0.5, 0.4 }, rot = { 0, 1.9, 0 }, color = green, material = "Grass" })
+	elseif id == Items.Potato then
+		for i, p in ipairs({ { -0.6, 0.2 }, { 0.6, 0 }, { 0, -0.5 } }) do
+			add(parts, { shape = "Ball", size = { 1.2, 1.2, 1.2 }, pos = { p[1], 0.55 + (i == 3 and 0.5 or 0), p[2] }, color = shade(c, 0.95 + i * 0.03), material = "Sand" })
+		end
+	elseif id == Items.Sunflower then
+		add(parts, { shape = "Cylinder", size = { 0.25, 2.8, 2.8 }, pos = { 0, 1.6, 0 }, rot = { 0, math.pi / 2, 0 }, color = c, material = "SmoothPlastic" })
+		add(parts, { shape = "Cylinder", size = { 0.3, 1.4, 1.4 }, pos = { 0, 1.6, -0.1 }, rot = { 0, math.pi / 2, 0 }, color = { 90, 60, 30 }, material = "Sand" })
+	elseif id == Items.Flour or id == Items.CornFlour then
+		add(parts, { shape = "Ball", size = { 2.4, 2.4, 2.4 }, pos = { 0, 1.1, 0 }, color = { 236, 230, 214 }, material = "Fabric" })
+		add(parts, { shape = "Cylinder", size = { 0.5, 0.9, 0.9 }, pos = { 0, 2.3, 0 }, rot = { 0, 0, math.pi / 2 }, color = { 220, 214, 196 }, material = "Fabric" })
+		add(parts, { size = { 1.2, 0.8, 0.1 }, pos = { 0, 1.2, -1.15 }, color = c, material = "SmoothPlastic" })
+	else
+		-- A loaf: a long rounded body with a few cuts on top.
+		add(parts, { shape = "Cylinder", size = { 2.8, 1.4, 1.4 }, pos = { 0, 0.7, 0 }, color = c, material = "Sand" })
+		add(parts, { size = { 2.6, 0.7, 1.3 }, pos = { 0, 0.4, 0 }, color = shade(c, 0.95), material = "Sand" })
+		for i = -1, 1 do
+			add(parts, { size = { 0.1, 0.12, 0.9 }, pos = { i * 0.7, 1.4, 0 }, rot = { 0, 0.5, 0 }, color = shade(c, 1.2), material = "SmoothPlastic" })
+		end
+	end
+	return parts
 end
 
 local Makers = {
@@ -242,6 +294,7 @@ local Makers = {
 	[Items.Nails] = nails,
 	[Items.Pickaxe] = pickaxe,
 	[Items.Axe] = axe,
+	[Items.Hoe] = hoe,
 	[Items.Furnace] = function()
 		return Models.Furnace(true)
 	end,
@@ -259,6 +312,8 @@ local Makers = {
 function Icons.Model(id)
 	if Makers[id] then
 		return Makers[id]()
+	elseif Items.Category(id) == "food" then
+		return crop(id)
 	elseif string.sub(id, 1, 8) == "crushed_" then
 		return crushed(id)
 	elseif string.sub(id, -4) == "_ore" then

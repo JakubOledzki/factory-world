@@ -19,6 +19,11 @@ Prices.Sells = {
 	[Items.Workbench] = 50000,
 	[Items.Planks] = 300,
 	[Items.Sand] = 50,
+	[Items.Hoe] = 10000,
+	[Items.Mill] = 40000,
+	[Items.Bakery] = 60000,
+	[Items.Flour] = 400,
+	[Items.Bread] = 1500,
 }
 
 -- What the merchant pays the player.
@@ -61,6 +66,19 @@ Prices.Buys = {
 	[Items.BronzeIngot] = 3100,
 	[Items.SteelIngot] = 3400,
 	[Items.Bricks] = 110,
+	[Items.Hoe] = 3500,
+	[Items.Mill] = 10000,
+	[Items.Bakery] = 11000,
+	[Items.Wheat] = 60,
+	[Items.Carrot] = 90,
+	[Items.Potato] = 150,
+	[Items.Corn] = 220,
+	[Items.Cabbage] = 250,
+	[Items.Sunflower] = 300,
+	[Items.Flour] = 200,
+	[Items.CornFlour] = 600,
+	[Items.Bread] = 700,
+	[Items.CornBread] = 1600,
 }
 
 -- Most pieces bought or sold in one trade.

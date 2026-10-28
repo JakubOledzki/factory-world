@@ -41,6 +41,20 @@ Items.Foundry = "furniture_foundry"
 Items.Generator = "power_generator"
 Items.Pole = "power_pole"
 Items.Workbench = "furniture_workbench"
+-- Farming (Farming.cs and the food machines of Processing.cs on main).
+Items.Hoe = "tool_hoe"
+Items.Wheat = "wheat"
+Items.Carrot = "carrot"
+Items.Cabbage = "cabbage"
+Items.Corn = "corn"
+Items.Potato = "potato"
+Items.Sunflower = "sunflower"
+Items.Flour = "flour"
+Items.CornFlour = "corn_flour"
+Items.Bread = "bread"
+Items.CornBread = "corn_bread"
+Items.Mill = "furniture_mill"
+Items.Bakery = "furniture_bakery"
 
 -- What the player sees.
 Items.Names = {
@@ -83,6 +97,19 @@ Items.Names = {
 	[Items.Stonemason] = "Warsztat kamieniarski",
 	[Items.Crusher] = "Kruszarka",
 	[Items.Foundry] = "Odlewnia",
+	[Items.Hoe] = "Motyka",
+	[Items.Wheat] = "Pszenica",
+	[Items.Carrot] = "Marchew",
+	[Items.Cabbage] = "Kapusta",
+	[Items.Corn] = "Kukurydza",
+	[Items.Potato] = "Ziemniaki",
+	[Items.Sunflower] = "Słonecznik",
+	[Items.Flour] = "Mąka",
+	[Items.CornFlour] = "Mąka kukurydziana",
+	[Items.Bread] = "Chleb",
+	[Items.CornBread] = "Chleb kukurydziany",
+	[Items.Mill] = "Młyn",
+	[Items.Bakery] = "Piec piekarski",
 }
 
 -- Colour of the item's icon tile and of the ore veins in a mine, as {r, g, b}.
@@ -126,12 +153,25 @@ Items.Colors = {
 	[Items.Generator] = { 50, 90, 140 },
 	[Items.Pole] = { 104, 78, 52 },
 	[Items.Workbench] = { 162, 120, 78 },
+	[Items.Hoe] = { 120, 110, 100 },
+	[Items.Wheat] = { 226, 196, 100 },
+	[Items.Carrot] = { 236, 128, 40 },
+	[Items.Cabbage] = { 140, 196, 100 },
+	[Items.Corn] = { 246, 210, 70 },
+	[Items.Potato] = { 180, 140, 90 },
+	[Items.Sunflower] = { 250, 200, 40 },
+	[Items.Flour] = { 244, 240, 228 },
+	[Items.CornFlour] = { 246, 226, 150 },
+	[Items.Bread] = { 196, 130, 70 },
+	[Items.CornBread] = { 220, 170, 70 },
+	[Items.Mill] = { 170, 140, 100 },
+	[Items.Bakery] = { 170, 80, 60 },
 }
 
 -- Order of items in the inventory and in the merchant's lists.
 Items.Order = {
-	Items.Pickaxe, Items.Axe, Items.Workbench, Items.Furnace, Items.Belt, Items.Inserter, Items.WoodenChest,
-	Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry, Items.Generator, Items.Pole,
+	Items.Pickaxe, Items.Axe, Items.Hoe, Items.Workbench, Items.Furnace, Items.Belt, Items.Inserter, Items.WoodenChest,
+	Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry, Items.Mill, Items.Bakery, Items.Generator, Items.Pole,
 	Items.Sapling, Items.Wood, Items.Stone, Items.Coal,
 	Items.IronOre, Items.CopperOre, Items.TinOre, Items.SilverOre, Items.GoldOre,
 	Items.CrushedIronOre, Items.CrushedCopperOre, Items.CrushedTinOre,
@@ -139,9 +179,11 @@ Items.Order = {
 	Items.BronzeIngot, Items.SteelIngot,
 	Items.Planks, Items.Beams, Items.WoodPellets, Items.Sand, Items.StoneBlocks, Items.Bricks,
 	Items.Nails,
+	Items.Wheat, Items.Carrot, Items.Cabbage, Items.Corn, Items.Potato, Items.Sunflower,
+	Items.Flour, Items.CornFlour, Items.Bread, Items.CornBread,
 }
 
-Items.Tools = { [Items.Axe] = true, [Items.Pickaxe] = true }
+Items.Tools = { [Items.Axe] = true, [Items.Pickaxe] = true, [Items.Hoe] = true }
 
 -- Groups for the merchant's and the market's tabs, in the order of the tabs.
 Items.Categories = {
@@ -152,10 +194,14 @@ Items.Categories = {
 	{ id = "ores", name = "Rudy" },
 	{ id = "metals", name = "Sztabki" },
 	{ id = "materials", name = "Materiały" },
+	{ id = "food", name = "Żywność" },
 }
 
 local categories = {
-	[Items.Pickaxe] = "tools", [Items.Axe] = "tools",
+	[Items.Pickaxe] = "tools", [Items.Axe] = "tools", [Items.Hoe] = "tools",
+	[Items.Mill] = "machines", [Items.Bakery] = "machines",
+	[Items.Wheat] = "food", [Items.Carrot] = "food", [Items.Cabbage] = "food", [Items.Corn] = "food", [Items.Potato] = "food",
+	[Items.Sunflower] = "food", [Items.Flour] = "food", [Items.CornFlour] = "food", [Items.Bread] = "food", [Items.CornBread] = "food",
 	[Items.Furnace] = "buildings", [Items.Belt] = "buildings", [Items.Inserter] = "buildings", [Items.WoodenChest] = "buildings",
 	[Items.Sawmill] = "machines", [Items.Stonemason] = "machines", [Items.Crusher] = "machines", [Items.Foundry] = "machines",
 	[Items.Generator] = "machines", [Items.Pole] = "buildings", [Items.Workbench] = "buildings",

@@ -86,7 +86,7 @@ MarketEvents.Events = {
 		pays = {},
 		charges = all({
 			Items.Furnace, Items.Belt, Items.Inserter, Items.WoodenChest,
-			Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry,
+			Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry, Items.Mill, Items.Bakery,
 		}, -25),
 	},
 }

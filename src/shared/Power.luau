@@ -32,6 +32,7 @@ Power.Fuels = {
 -- Machines that run on power, and what they draw (kW).
 Power.Demand = {
 	[Items.Crusher] = 40,
+	[Items.Mill] = 30,
 }
 
 -- Less than this is nothing (what is left after sums of fractions).

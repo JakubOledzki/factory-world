@@ -47,6 +47,24 @@ Research.Technologies = {
 		time = 180,
 		unlocks = { Items.Foundry, Items.BronzeIngot, Items.SteelIngot, Items.Bricks },
 	},
+	{
+		id = "milling",
+		name = "Młynarstwo",
+		description = "Młyn miele pszenicę i kukurydzę na mąkę. Działa na prąd.",
+		requires = {},
+		cost = { { Items.Wheat, 40 }, { Items.Stone, 20 } },
+		time = 60,
+		unlocks = { Items.Mill, Items.Flour, Items.CornFlour },
+	},
+	{
+		id = "baking",
+		name = "Piekarnictwo",
+		description = "Piec piekarski wypieka chleb z mąki.",
+		requires = { "milling" },
+		cost = { { Items.Flour, 20 }, { Items.Stone, 40 }, { Items.Sand, 10 } },
+		time = 120,
+		unlocks = { Items.Bakery, Items.Bread, Items.CornBread },
+	},
 }
 
 Research.ById = {}
