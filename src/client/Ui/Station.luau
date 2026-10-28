@@ -1,6 +1,7 @@
 -- The railway station's window (Shared.Rail): what the station holds and the inventory to load it
--- from, trains on their way; sending goods to another player found by name; routes that send a
--- train by themselves every few minutes. The server checks it all again.
+-- from, trains on their way; sending goods to another of the player's plots or to another player
+-- found by name; routes that send a train by themselves every few minutes. The server checks it all
+-- again.
 local UserInputService = game:GetService("UserInputService")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
@@ -140,7 +141,8 @@ function Station.Open(screen)
 			if p.id == partner then
 				row.BackgroundColor3 = Color3.fromRGB(110, 92, 40)
 			end
-			Kit.Label(row, "<b>" .. p.name .. "</b>   " .. p.km .. " km, pociąg jedzie " .. p.trip .. " s", { RichText = true, Size = UDim2.new(1, -110, 1, 0), TextSize = 14 })
+			local how = p.own and ("pociąg jedzie " .. p.trip .. " s") or (p.km .. " km, pociąg jedzie " .. p.trip .. " s")
+			Kit.Label(row, "<b>" .. p.name .. "</b>   " .. how, { RichText = true, Size = UDim2.new(1, -110, 1, 0), TextSize = 14 })
 			Kit.Button(row, p.id == partner and "Wybrany" or "Wybierz", function()
 				partner = p.id
 				render()
@@ -210,7 +212,7 @@ function Station.Open(screen)
 	end
 
 	local function sendTab()
-		Kit.Label(body, "Komu: znajdź gracza (na dowolnym serwerze) i wybierz go.", { TextColor3 = Kit.Colors.Muted, TextSize = 13 })
+		Kit.Label(body, "Komu: na inną swoją działkę albo do gracza, którego znajdziesz po nazwie (na dowolnym serwerze).", { TextColor3 = Kit.Colors.Muted, TextSize = 13, TextWrapped = true, Size = UDim2.new(1, -8, 0, 32) })
 		findRow()
 		partners()
 		local p = partnerOf(partner)
@@ -267,7 +269,7 @@ function Station.Open(screen)
 				return names
 			end)(), ", ") or "wszystko"
 			local status = route.problem and (" · ⚠ " .. (problems[route.problem] or Game.ErrorText(route.problem))) or (" · następny za " .. until_(route.nextAt))
-			Kit.Label(row, "<b>➡ " .. route.toName .. "</b> co " .. route.every .. " min: " .. what .. status, { RichText = true, TextWrapped = true, TextSize = 13, Size = UDim2.new(1, -90, 1, 0) })
+			Kit.Label(row, "<b>" .. route.fromName .. " ➡ " .. route.toName .. "</b> co " .. route.every .. " min: " .. what .. status, { RichText = true, TextWrapped = true, TextSize = 13, Size = UDim2.new(1, -90, 1, 0) })
 			Kit.Button(row, "Usuń", function()
 				apply(Game.Call("StationUnroute", { id = route.id }))
 				render()

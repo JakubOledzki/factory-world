@@ -82,14 +82,11 @@ local function buildPlot(player, profile, index)
 	local cx, cz = PlotLayout.Center(index)
 
 	model:SetAttribute("Shown", Lands.Shown(profile))
-	Build.FromModel(model, "Decor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index), biome == nil and PlotLayout.FenceGaps() or nil, biome), CFrame.new(cx, 0, cz))
-	-- The railway outside the east fence of the home plot; trains run over it on the clients
-	-- (client/TrainView).
-	if biome == nil then
-		local stationFrom, stationTo = PlotLayout.StationSpan()
-		local railway = Build.FromModel(model, "Railway", Models.Railway(PlotLayout.Rail, stationFrom, stationTo), CFrame.new(cx, 0, cz))
-		railway:SetAttribute("Origin", CFrame.new(cx, 0, cz))
-	end
+	Build.FromModel(model, "Decor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index), PlotLayout.FenceGaps(), biome), CFrame.new(cx, 0, cz))
+	-- The railway outside the east fence; trains run over it on the clients (client/TrainView).
+	local stationFrom, stationTo = PlotLayout.StationSpan()
+	local railway = Build.FromModel(model, "Railway", Models.Railway(PlotLayout.Rail, stationFrom, stationTo), CFrame.new(cx, 0, cz))
+	railway:SetAttribute("Origin", CFrame.new(cx, 0, cz))
 
 	-- A signpost with the owner's name by the gate, facing the square.
 	local half = PlotLayout.Size / 2

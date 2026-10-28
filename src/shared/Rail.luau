@@ -28,6 +28,19 @@ Rail.RouteCapacity = 2000
 Rail.RouteMinutes = { 1, 5, 15, 60 }
 Rail.MaxRoutes = 5
 Rail.MaxRouteItems = 8
+-- Trains between the plots of one player (Shared.Lands): every one takes this long and costs the
+-- fixed part of the fee only. A destination of such a train is "plot:" and the plot's id.
+Rail.OwnTrip = 20
+Rail.PlotPrefix = "plot:"
+
+-- The plot a destination names, or nil when it is another player.
+function Rail.PlotOf(to)
+	if type(to) == "string" and string.sub(to, 1, #Rail.PlotPrefix) == Rail.PlotPrefix then
+		return string.sub(to, #Rail.PlotPrefix + 1)
+	end
+	return nil
+end
+
 -- Inserters stop putting an item into the station when it holds this many of it.
 Rail.InserterStockLimit = 10000
 -- Trains on their way to one station at most, and steps an inbox remembers by transaction id.

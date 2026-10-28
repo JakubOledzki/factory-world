@@ -8,6 +8,7 @@
 -- shown). Pure functions: the server checks and charges.
 local Forestry = require(script.Parent.Forestry)
 local Items = require(script.Parent.Items)
+local Logistics = require(script.Parent.Logistics)
 local Mining = require(script.Parent.Mining)
 local PlotLayout = require(script.Parent.PlotLayout)
 
@@ -81,15 +82,51 @@ Lands.Biomes = {
 Lands.Prices = { 5000000, 50000000, 500000000 }
 Lands.LaterPrice = 100000000000
 
--- The new plot of `biome`, with its wild trees (`nextId()` gives each tree its id).
+-- The new plot of `biome`, with its railway station and wild trees (`nextId()` gives each its id).
 function Lands.New(biome, nextId, layout)
 	local objects = {}
+	Logistics.EnsureStation(objects, nextId())
 	for _, t in ipairs(Lands.WildTrees(biome)) do
 		local tree = Forestry.New(nextId(), t.x, t.z, nil)
 		tree.snow = Lands.Biomes[biome].snow
 		table.insert(objects, tree)
 	end
 	return { grid = { objects = objects, layout = layout }, furnaces = {}, mine = Mining.New() }
+end
+
+-- The name of plot `id` (Lands.Home or a biome) for the player.
+function Lands.Name(id)
+	if id == Lands.Home then
+		return Lands.HomeName
+	end
+	return Lands.Biomes[id] and Lands.Biomes[id].name or tostring(id)
+end
+
+-- The plots the player has: Lands.Home and the biomes they bought, in the windows' order.
+function Lands.Plots(profile)
+	local out = { Lands.Home }
+	for _, biome in ipairs(Lands.Order) do
+		if profile.lands[biome] then
+			table.insert(out, biome)
+		end
+	end
+	return out
+end
+
+-- Plot `id`'s grid and furnaces, shown or not: { grid, furnaces }, or nil when the player does not
+-- have it.
+function Lands.Plot(profile, id)
+	if id == Lands.Shown(profile) then
+		return { grid = profile.grid, furnaces = profile.furnaces }
+	end
+	if id == Lands.Home then
+		return profile.home
+	end
+	local land = type(id) == "string" and profile.lands[id] or nil
+	if land == nil or land.shown then
+		return nil
+	end
+	return land
 end
 
 -- Which plot the player shows: Lands.Home or a biome.
@@ -181,6 +218,11 @@ function Lands.WildTrees(biome)
 		tries = tries + 1
 		local x, z = random(g.width), random(g.depth)
 		local free = not PlotLayout.Blocked(x, z) and (math.abs(x - sx) > 3 or math.abs(z - sz) > 3)
+		-- Off the railway station and the way round it.
+		local st = PlotLayout.Station
+		if x >= st.x - 2 and z >= st.z - 2 and z < st.z + st.size + 2 then
+			free = false
+		end
 		-- A tile apart from the others, so the trees do not stand trunk to trunk.
 		for ax = -1, 1 do
 			for az = -1, 1 do

@@ -141,6 +141,37 @@ function Data.NextId(profile)
 	return id
 end
 
+-- Puts the railway station on a plot's grid if it has none; what stood on its tiles goes back to
+-- the inventory.
+local function ensureStation(profile, grid, furnaces)
+	if Logistics.Station(grid.objects) ~= nil then
+		return
+	end
+	local _, removed = Logistics.EnsureStation(grid.objects, Data.NextId(profile))
+	for _, o in ipairs(removed) do
+		if Items.Names[o.kind] then
+			Inventory.Add(profile, o.kind, 1)
+		end
+		for _, entry in ipairs(Logistics.Contents(o)) do
+			Inventory.Add(profile, entry[1], entry[2])
+		end
+	end
+	local s = PlotLayout.Station
+	for i = #furnaces, 1, -1 do
+		local f = furnaces[i]
+		if f.tile and f.tile.x < s.x + s.size and f.tile.x + 2 > s.x and f.tile.z < s.z + s.size and f.tile.z + 2 > s.z then
+			table.remove(furnaces, i)
+			Inventory.Add(profile, Items.Furnace, 1)
+			local st = f.state
+			for _, entry in ipairs({ { st.input, st.inputQuantity }, { Items.Coal, st.fuel }, { st.output, st.outputQuantity } }) do
+				if entry[1] and (entry[2] or 0) > 0 then
+					Inventory.Add(profile, entry[1], entry[2])
+				end
+			end
+		end
+	end
+end
+
 -- Brings data saved by an older version of the game up to date.
 local function migrate(profile)
 	local g = PlotLayout.Grid
@@ -183,36 +214,19 @@ local function migrate(profile)
 		profile.wildTrees = true
 		profile.trees = nil
 	end
-	-- The railway station, once: what stood on its tiles goes back to the inventory. It stands on
-	-- the home plot, which `grid` is unless a bought plot is shown (Shared.Lands).
-	if not profile.active and Logistics.Station(grid.objects) == nil then
-		local _, removed = Logistics.EnsureStation(grid.objects, Data.NextId(profile))
-		for _, o in ipairs(removed) do
-			if Items.Names[o.kind] then
-				Inventory.Add(profile, o.kind, 1)
-			end
-			for _, entry in ipairs(Logistics.Contents(o)) do
-				Inventory.Add(profile, entry[1], entry[2])
-			end
-		end
-		local s = PlotLayout.Station
-		for i = #profile.furnaces, 1, -1 do
-			local f = profile.furnaces[i]
-			if f.tile and f.tile.x < s.x + s.size and f.tile.x + 2 > s.x and f.tile.z < s.z + s.size and f.tile.z + 2 > s.z then
-				table.remove(profile.furnaces, i)
-				Inventory.Add(profile, Items.Furnace, 1)
-				local st = f.state
-				for _, entry in ipairs({ { st.input, st.inputQuantity }, { Items.Coal, st.fuel }, { st.output, st.outputQuantity } }) do
-					if entry[1] and (entry[2] or 0) > 0 then
-						Inventory.Add(profile, entry[1], entry[2])
-					end
-				end
-			end
+	-- Plots bought besides the home plot (Shared.Lands).
+	profile.lands = profile.lands or {}
+	-- A railway station on every plot, once: what stood on its tiles goes back to the inventory.
+	ensureStation(profile, grid, profile.furnaces)
+	if profile.home then
+		ensureStation(profile, profile.home.grid, profile.home.furnaces)
+	end
+	for _, land in pairs(profile.lands) do
+		if land.grid then
+			ensureStation(profile, land.grid, land.furnaces)
 		end
 	end
 	profile.rail = profile.rail or {}
-	-- Plots bought besides the home plot (Shared.Lands).
-	profile.lands = profile.lands or {}
 	if profile.research == nil then
 		profile.research = {}
 	end

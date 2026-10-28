@@ -10,14 +10,18 @@ local Factory = {}
 
 -- `watch` (optional) is passed to Logistics.Run, for drawing what moved in the last tick.
 function Factory.CatchUp(profile, watch)
-	local grid = profile.grid
+	Factory.CatchUpPlot(profile.grid, profile.furnaces, watch)
+end
+
+-- The same for any of the player's plots, shown or not (Shared.Lands.Plot): `grid`, `furnaces`.
+function Factory.CatchUpPlot(grid, furnaces, watch)
 	local now = Clock.Now()
 	if grid.at == nil or #grid.objects == 0 then
 		grid.at = now
 		grid.powerAt = now
 		return
 	end
-	grid.at, grid.powerAt = Logistics.RunPowered(grid.objects, profile.furnaces, grid.at, grid.powerAt, now, watch)
+	grid.at, grid.powerAt = Logistics.RunPowered(grid.objects, furnaces, grid.at, grid.powerAt, now, watch)
 end
 
 -- Sets the machines' speed again after the grid changed (something put down or taken away, fuel

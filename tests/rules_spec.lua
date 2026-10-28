@@ -929,12 +929,18 @@ test("Plots of biomes: one of each, dearer each time, with their own trees and m
 	eq(select(2, Lands.CanBuy(lands, "forest")), "land_owned", "one of each biome")
 	eq(Lands.Price(lands), Lands.Prices[2])
 	assert(Lands.Prices[2] > Lands.Prices[1], "dearer each time")
-	eq(#lands.forest.grid.objects, Lands.Biomes.forest.trees, "all the forest's trees fit")
+	local trees = 0
+	local station = Logistics.Station(lands.forest.grid.objects)
+	assert(station, "a new plot has its railway station")
 	for _, t in ipairs(lands.forest.grid.objects) do
-		eq(Logistics.CanPlace({}, {}, Items.Sapling, t.x, t.z), true, "tree on a free tile")
+		if t ~= station then
+			trees = trees + 1
+			eq(Logistics.CanPlace({ station }, {}, Items.Sapling, t.x, t.z), true, "tree on a free tile")
+		end
 	end
-	eq(#Lands.New("desert", nextId, 3).grid.objects, 0, "no trees in the desert")
-	eq(Lands.New("tundra", nextId, 3).grid.objects[1].snow, true, "snowy trees in the tundra")
+	eq(trees, Lands.Biomes.forest.trees, "all the forest's trees fit")
+	eq(#Lands.New("desert", nextId, 3).grid.objects, 1, "no trees in the desert, only the station")
+	eq(Lands.New("tundra", nextId, 3).grid.objects[2].snow, true, "snowy trees in the tundra")
 	for _, id2 in ipairs(Lands.Order) do
 		local b = Lands.Biomes[id2]
 		assert(b.name and b.ground and b.material, id2)
@@ -980,4 +986,15 @@ test("Switching plots puts the shown one away and brings the other, the home plo
 	eq(profile.lands.desert.grid, desertGrid, "the desert waits as it was")
 	eq(profile.lands.desert.mine.units, 7, "with its mine")
 	eq(Lands.Count(profile.lands), 1)
+	-- Every plot is found, shown or not, for its station and its trains.
+	eq(Lands.Plot(profile, Lands.Home).grid, home)
+	eq(Lands.Plot(profile, "desert").grid, desertGrid)
+	eq(Lands.Plot(profile, "forest"), nil)
+	Lands.Switch(profile, "desert")
+	eq(Lands.Plot(profile, "desert").grid, desertGrid, "the shown plot")
+	eq(Lands.Plot(profile, Lands.Home).grid, home, "the home plot put away")
+	eq(Lands.Plots(profile)[2], "desert")
+	eq(Rail.PlotOf("plot:desert"), "desert")
+	eq(Rail.PlotOf(12345), nil)
+	eq(Rail.FeeCents(0, 500), Rail.BaseFeeCents, "a train between one's own plots costs the fixed part")
 end)

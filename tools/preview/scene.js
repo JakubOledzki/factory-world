@@ -62,14 +62,11 @@ function plot(index, opts = {}) {
   const [cx, cz] = center(index);
   const objects = [];
   if (!opts.biome) objects.push({ at: [cx, 0, cz], parts: [block([L.Size, 1, L.Size], [0, -0.45, 0], [116, 158, 78], "Grass")] });
-  if (opts.biome) {
-    // A bought plot shown on the player's place (Plots.buildPlot): its ground, no railway.
-    objects.push({ at: [cx, 0, cz], parts: lua.call(`Models.PlotDecor(${index * 100}, PlotLayout.Size, PlotLayout.OpenSides(${index}), nil, Lands.Biomes.${opts.biome})`) });
-  } else {
-    objects.push({ at: [cx, 0, cz], parts: lua.call(`Models.PlotDecor(${index * 100}, PlotLayout.Size, PlotLayout.OpenSides(${index}), PlotLayout.FenceGaps())`) });
-    objects.push({ at: [cx, 0, cz], parts: lua.call(`Models.Railway(PlotLayout.Rail, PlotLayout.StationSpan())`) });
-  }
-  if (!opts.biome) {
+  // A bought plot shown on the player's place (Plots.buildPlot) has its biome's ground.
+  const biome = opts.biome ? `Lands.Biomes.${opts.biome}` : "nil";
+  objects.push({ at: [cx, 0, cz], parts: lua.call(`Models.PlotDecor(${index * 100}, PlotLayout.Size, PlotLayout.OpenSides(${index}), PlotLayout.FenceGaps(), ${biome})`) });
+  objects.push({ at: [cx, 0, cz], parts: lua.call(`Models.Railway(PlotLayout.Rail, PlotLayout.StationSpan())`) });
+  {
     const s = lua.call("PlotLayout.Station");
     const [x, z] = lua.call(`{ PlotLayout.TileCenter(${s.x}, ${s.z}, ${s.size}) }`);
     objects.push({ at: [cx + x, 0, cz + z], yaw: -Math.PI / 2, parts: lua.call("Models.Station()") });
@@ -555,17 +552,18 @@ function views() {
     objects.push({ at: [cx + R.x, 0, cz + R.stop], parts: lua.call(`Models.Train(3, json_decode_cargo)`.replace("json_decode_cargo", `{ ${cargo.map((c) => `{ ${c.join(",")} }`).join(",")} }`)) });
     const stock = [["coal", 340], ["iron_ingot", 120], ["planks", 85], ["stone", 600], ["sand", 45]];
     const stockTiles = stock.map(([id, n]) => slot(id, String(n), { size: 52, stroke: id === "iron_ingot" ? GOLD : null })).join("");
-    const prow = (n, km, s, on) => `<div class="row" style="height:34px;${on ? "background:#6e5c28" : ""}"><span style="flex:1;font-size:14px"><b>${n}</b> &nbsp; ${km} km, pociąg jedzie ${s} s</span><span class="btn ${on ? "alt" : ""}" style="width:90px;text-align:center">${on ? "Wybrany" : "Wybierz"}</span></div>`;
+    const prow = (n, km, s, on) => `<div class="row" style="height:34px;${on ? "background:#6e5c28" : ""}"><span style="flex:1;font-size:14px"><b>${n}</b> &nbsp; ${km ? km + " km, " : ""}pociąg jedzie ${s} s</span><span class="btn ${on ? "alt" : ""}" style="width:90px;text-align:center">${on ? "Wybrany" : "Wybierz"}</span></div>`;
     out["13-kolej"] = { objects, camera: { pos: [cx + 78, 20, cz - 40], look: [cx + 112, 3, cz - 104], fov: 60 }, shadowRadius: 90, hud: "1 284,50 $", caption,
       overlay: `<div class="win" style="width:500px;left:16px;top:60px;bottom:30px;overflow:hidden"><div class="hd">Stacja kolejowa<span class="x">✕</span></div><div class="bd">
         ${tabs(["Magazyn", "Wyślij", "Trasy (1)"], "Wyślij")}
-        <div class="muted" style="font-size:13px">Komu: znajdź gracza (na dowolnym serwerze) i wybierz go.</div>
+        <div class="muted" style="font-size:13px">Komu: na inną swoją działkę albo do gracza, którego znajdziesz po nazwie (na dowolnym serwerze).</div>
         <div style="display:flex;gap:8px"><span style="width:220px;height:30px;border-radius:6px;background:#181b21;border:1px solid #5a6273;padding:6px 8px;box-sizing:border-box;color:#a0a6b2;font-size:15px">Nazwa gracza</span><span class="btn" style="width:90px;text-align:center;padding:6px 0">Szukaj</span></div>
-        ${prow("Ola_Buduje", 640, 32, true)}${prow("kopacz77", 1210, 61, false)}
+        ${prow("Twoja działka: Góry", 0, lua.call("Rail.OwnTrip"), true)}${prow("Ola_Buduje", 640, 32, false)}${prow("kopacz77", 1210, 61, false)}
         <div class="muted" style="font-size:13px">Co: kliknij towar na stacji.</div>
         <div style="display:flex;gap:6px">${stockTiles}</div>
-        <div class="row" style="height:44px"><span style="width:80px;height:30px;border-radius:6px;background:#181b21;border:1px solid #5a6273;display:flex;align-items:center;justify-content:center">120</span><span class="gold" style="flex:1;font-size:14px">Opłata ${lua.call("Money.Format(Rail.FeeCents(640, 120))")}, 32 s</span><span class="btn" style="width:150px;text-align:center;padding:6px 0">Wyślij pociągiem</span></div>
+        <div class="row" style="height:44px"><span style="width:80px;height:30px;border-radius:6px;background:#181b21;border:1px solid #5a6273;display:flex;align-items:center;justify-content:center">120</span><span class="gold" style="flex:1;font-size:14px">Opłata ${lua.call("Money.Format(Rail.FeeCents(0, 120))")}, ${lua.call("Rail.OwnTrip")} s</span><span class="btn" style="width:150px;text-align:center;padding:6px 0">Wyślij pociągiem</span></div>
         <b style="font-size:15px">Pociągi w drodze</b>
+        <div style="font-size:13px;color:${GREEN}">⬅ od działki Góry: 400 × ${name("iron_ore")} (za 12 s)</div>
         <div style="font-size:13px;color:${GREEN}">⬅ od kopacz77: 200 × ${name("coal")} (za 41 s)</div>
         <div style="font-size:13px">➡ do Ola_Buduje: 60 × ${name("planks")} (dojedzie za 12 s)</div>
       </div></div>` };

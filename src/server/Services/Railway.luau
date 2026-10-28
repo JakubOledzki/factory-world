@@ -8,6 +8,10 @@
 -- or the goods and the fee come back if the inbox said no. Trains that have arrived are collected
 -- the same way into the receiver's station. A server that stops in the middle leaves the step
 -- pending in the saved profile, and the inbox's memory of it (Rail.Done) settles it later.
+--
+-- Every plot of a player (Shared.Lands) has a station. Trains from other players arrive at the
+-- home plot's; trains between the player's own plots stay in the profile (rail.own) and need no
+-- DataStore.
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -135,12 +139,28 @@ local function state(profile)
 	r.nextRoute = r.nextRoute or 1
 	r.outgoing = r.outgoing or {} -- { toName, items, arriveAt }: trains sent, until they get there
 	r.log = r.log or {} -- { at, text }, newest last
+	r.own = r.own or {} -- { from, to, items, sentAt, arriveAt }: trains between the player's plots
 	return r
 end
 
--- The station stands on the home plot, whichever of the player's plots is shown (Shared.Lands).
-local function stationOf(profile)
-	return Logistics.Station(Lands.HomeGrid(profile).objects)
+-- The station of the player's plot `plot` (Lands.Home when nil), shown or not; nil when they do
+-- not have that plot.
+local function stationOf(profile, plot)
+	local p = Lands.Plot(profile, plot or Lands.Home)
+	return p and Logistics.Station(p.grid.objects)
+end
+
+-- The station of the plot the player shows, which their station window is about.
+local function shownStation(profile)
+	return stationOf(profile, Lands.Shown(profile))
+end
+
+-- Works plot `plot` (Lands.Home when nil) out up to now, shown or not.
+local function catchUp(profile, plot)
+	local p = Lands.Plot(profile, plot or Lands.Home)
+	if p then
+		Factory.CatchUpPlot(p.grid, p.furnaces)
+	end
 end
 
 local function describe(items)
@@ -159,8 +179,12 @@ local function log(profile, text)
 	end
 end
 
--- A train runs past the player's platform (client/TrainView), carrying `items`.
-local function showTrain(player, items)
+-- A train runs past the platform of plot `at` (Lands.Home when nil) if the player shows it
+-- (client/TrainView), carrying `items`.
+local function showTrain(player, items, at)
+	if (at or Lands.Home) ~= Lands.Shown(Data.Get(player) or {}) then
+		return
+	end
 	local plot = Plots.Of(player)
 	local railway = plot and plot.model:FindFirstChild("Railway")
 	if railway == nil then
@@ -183,10 +207,10 @@ local function finish(player, profile, action, result)
 		table.insert(r.outgoing, { to = action.to, toName = action.toName, items = action.items, sentAt = action.sentAt, arriveAt = action.arriveAt })
 		log(profile, "Wysłano do " .. action.toName .. ": " .. describe(action.items))
 		if player then
-			showTrain(player, action.items)
+			showTrain(player, action.items, action.fromPlot)
 		end
 	elseif action.kind == "collect" then
-		local station = stationOf(profile)
+		local station = stationOf(profile, Lands.Home)
 		for _, s in ipairs(result.shipments) do
 			for _, entry in ipairs(s.items) do
 				Rail.Add(station.stock, entry[1], entry[2])
@@ -203,7 +227,7 @@ end
 -- What the player gets back when the inbox said no.
 local function refund(profile, action)
 	if action.kind == "ship" then
-		local station = stationOf(profile)
+		local station = stationOf(profile, action.fromPlot) or stationOf(profile, Lands.Home)
 		for _, entry in ipairs(action.items) do
 			Rail.Add(station.stock, entry[1], entry[2])
 		end
@@ -254,18 +278,19 @@ end
 
 -- Puts trains that have arrived into the player's station.
 local function collect(player, profile, maxAge)
-	if busy[player] or stationOf(profile) == nil then
+	if busy[player] or stationOf(profile, Lands.Home) == nil then
 		return
 	end
 	local ok, inbox = read(player.UserId, maxAge)
 	if ok and Rail.Arrived(inbox, Clock.Now()) then
-		Factory.CatchUp(profile)
+		catchUp(profile, Lands.Home)
 		run(player, profile, player.UserId, { kind = "collect", now = Clock.Now() })
 	end
 end
 
--- Sends `items` (taken from the station already, with the fee) to `to`; true or false and a code.
-local function ship(player, profile, to, toName, items, feeCents)
+-- Sends `items` (taken from the station of plot `fromPlot` already, with the fee) to player `to`;
+-- true or false and a code.
+local function ship(player, profile, to, toName, items, feeCents, fromPlot)
 	local now = Clock.Now()
 	local km = Rail.DistanceKm(player.UserId, to)
 	return run(player, profile, to, {
@@ -278,7 +303,42 @@ local function ship(player, profile, to, toName, items, feeCents)
 		sentAt = now,
 		arriveAt = now + Rail.TripSeconds(km),
 		feeCents = feeCents,
+		fromPlot = fromPlot,
 	})
+end
+
+-- Sends `items` (taken from the station of plot `from` already) to the player's plot `to`.
+local function sendOwn(player, profile, from, to, items)
+	local now = Clock.Now()
+	table.insert(state(profile).own, { from = from, to = to, items = items, sentAt = now, arriveAt = now + Rail.OwnTrip })
+	log(profile, "Wysłano na działkę " .. Lands.Name(to) .. ": " .. describe(items))
+	showTrain(player, items, from)
+end
+
+-- Puts the player's own trains that have arrived into their plots' stations.
+local function deliverOwn(player, profile)
+	local r = state(profile)
+	local now = Clock.Now()
+	for i = #r.own, 1, -1 do
+		local s = r.own[i]
+		if s.arriveAt <= now then
+			table.remove(r.own, i)
+			catchUp(profile, s.to)
+			local station = stationOf(profile, s.to)
+			for _, entry in ipairs(s.items) do
+				if station then
+					Rail.Add(station.stock, entry[1], entry[2])
+				else
+					Inventory.Add(profile, entry[1], entry[2])
+				end
+			end
+			log(profile, "Przyjechał pociąg z działki " .. Lands.Name(s.from) .. " na " .. Lands.Name(s.to) .. ": " .. describe(s.items))
+			if s.to == Lands.Shown(profile) then
+				Net.Toast(player, "Pociąg z działki " .. Lands.Name(s.from) .. " przywiózł na stację: " .. describe(s.items))
+				showTrain(player, s.items, s.to)
+			end
+		end
+	end
 end
 
 -- The name of a player the sender may send to: found this session, or the end of one of their routes.
@@ -299,15 +359,20 @@ end
 local function runRoute(player, profile, route)
 	local now = Clock.Now()
 	route.nextAt = now + route.every * 60
-	Factory.CatchUp(profile)
-	local station = stationOf(profile)
+	catchUp(profile, route.from)
+	local station = stationOf(profile, route.from)
+	if station == nil or (route.toPlot and stationOf(profile, route.toPlot) == nil) then
+		route.problem = "unknown_partner"
+		return
+	end
 	local cargo = Rail.Cargo(station.stock, route.items)
 	local count = Rail.Count(cargo)
 	if count == 0 then
 		route.problem = "empty"
 		return
 	end
-	local fee = Rail.FeeCents(Rail.DistanceKm(player.UserId, route.to), count)
+	local km = route.toPlot and 0 or Rail.DistanceKm(player.UserId, route.to)
+	local fee = Rail.FeeCents(km, count)
 	if not Wallet.TryDebit(profile, fee, "rail_route") then
 		route.problem = "no_money"
 		return
@@ -315,12 +380,17 @@ local function runRoute(player, profile, route)
 	for _, entry in ipairs(cargo) do
 		Rail.Take(station.stock, entry[1], entry[2])
 	end
-	local ok, code = ship(player, profile, route.to, route.toName, cargo, fee)
+	if route.toPlot then
+		sendOwn(player, profile, route.from or Lands.Home, route.toPlot, cargo)
+		route.problem = nil
+		return
+	end
+	local ok, code = ship(player, profile, route.to, route.toName, cargo, fee, route.from)
 	route.problem = (not ok) and code or nil
 end
 
 local function runRoutes(player, profile)
-	if busy[player] or stationOf(profile) == nil then
+	if busy[player] then
 		return
 	end
 	for _, route in ipairs(state(profile).routes) do
@@ -332,7 +402,7 @@ end
 
 -- The station the player stands at, worked out until now; or nil and an error code.
 local function open(player, profile)
-	local station = stationOf(profile)
+	local station = shownStation(profile)
 	local model = station and Grid.Model(player, station.id)
 	if model == nil then
 		return nil, "not_loaded"
@@ -356,13 +426,33 @@ local function reply(player, profile, station)
 	for _, item in ipairs(Rail.Items(station.stock)) do
 		table.insert(stock, { item = item, quantity = station.stock[item] })
 	end
+	local shown = Lands.Shown(profile)
 	local incoming = {}
-	local _, inbox = read(player.UserId, 30)
-	for _, s in ipairs((inbox and inbox.shipments) or {}) do
-		table.insert(incoming, { fromName = s.fromName, items = s.items, arriveAt = s.arriveAt })
+	local outgoing = {}
+	for _, s in ipairs(r.outgoing) do
+		table.insert(outgoing, s)
+	end
+	if shown == Lands.Home then
+		local _, inbox = read(player.UserId, 30)
+		for _, s in ipairs((inbox and inbox.shipments) or {}) do
+			table.insert(incoming, { fromName = s.fromName, items = s.items, arriveAt = s.arriveAt })
+		end
+	end
+	for _, s in ipairs(r.own) do
+		if s.to == shown then
+			table.insert(incoming, { fromName = "działki " .. Lands.Name(s.from), items = s.items, arriveAt = s.arriveAt })
+		elseif s.from == shown then
+			table.insert(outgoing, { toName = "działkę " .. Lands.Name(s.to), items = s.items, arriveAt = s.arriveAt })
+		end
 	end
 	local partners = {}
 	local seen = {}
+	-- The player's other plots first.
+	for _, plot in ipairs(Lands.Plots(profile)) do
+		if plot ~= shown then
+			table.insert(partners, { id = Rail.PlotPrefix .. plot, name = "Twoja działka: " .. Lands.Name(plot), km = 0, trip = Rail.OwnTrip, own = true })
+		end
+	end
 	local function addPartner(id, name)
 		if not seen[id] then
 			seen[id] = true
@@ -371,20 +461,22 @@ local function reply(player, profile, station)
 		end
 	end
 	for _, route in ipairs(r.routes) do
-		addPartner(route.to, route.toName)
+		if route.to then
+			addPartner(route.to, route.toName)
+		end
 	end
 	for id, name in pairs(found[player] or {}) do
 		addPartner(id, name)
 	end
 	local routes = {}
 	for _, route in ipairs(r.routes) do
-		table.insert(routes, { id = route.id, toName = route.toName, items = route.items, every = route.every, nextAt = route.nextAt, problem = route.problem })
+		table.insert(routes, { id = route.id, toName = route.toName, fromName = Lands.Name(route.from or Lands.Home), items = route.items, every = route.every, nextAt = route.nextAt, problem = route.problem })
 	end
 	return {
 		ok = true,
 		stock = stock,
 		routes = routes,
-		outgoing = r.outgoing,
+		outgoing = outgoing,
 		incoming = incoming,
 		log = r.log,
 		partners = partners,
@@ -455,6 +547,7 @@ function Railway.Start()
 				local profile = Data.Get(player)
 				if profile and Plots.Of(player) then
 					task.spawn(function()
+						deliverOwn(player, profile)
 						runRoutes(player, profile)
 						if collecting then
 							recover(player, profile)
@@ -533,7 +626,7 @@ function Railway.Start()
 		end
 		found[player] = found[player] or {}
 		found[player][id] = real
-		local station = stationOf(profile)
+		local station = shownStation(profile)
 		return reply(player, profile, station)
 	end)
 
@@ -542,9 +635,32 @@ function Railway.Start()
 		if station == nil then
 			return Net.Error(code)
 		end
-		local to = userIdOf(payload.to)
 		local item = Net.Item(payload.item)
 		local quantity = Net.Int(payload.quantity, 1, Rail.MaxQuantity)
+		local shown = Lands.Shown(profile)
+		-- To another of the player's plots.
+		local plot = Rail.PlotOf(payload.to)
+		if plot then
+			if item == nil or quantity == nil then
+				return Net.Error("bad_payload")
+			end
+			if plot == shown or stationOf(profile, plot) == nil then
+				return Net.Error("unknown_partner")
+			end
+			if (station.stock[item] or 0) < quantity then
+				return Net.Error("station_empty")
+			end
+			local fee = Rail.FeeCents(0, quantity)
+			if not Wallet.TryDebit(profile, fee, "rail_send") then
+				return Net.Error("not_enough_money")
+			end
+			Rail.Take(station.stock, item, quantity)
+			sendOwn(player, profile, shown, plot, { { item, quantity } })
+			Net.PushState(player)
+			Net.Toast(player, "Pociąg na działkę " .. Lands.Name(plot) .. " odjechał (" .. Money.Format(fee) .. ").")
+			return reply(player, profile, station)
+		end
+		local to = userIdOf(payload.to)
 		if to == nil or item == nil or quantity == nil then
 			return Net.Error("bad_payload")
 		end
@@ -563,7 +679,7 @@ function Railway.Start()
 			return Net.Error("not_enough_money")
 		end
 		Rail.Take(station.stock, item, quantity)
-		local ok, err = ship(player, profile, to, toName, { { item, quantity } }, fee)
+		local ok, err = ship(player, profile, to, toName, { { item, quantity } }, fee, shown)
 		if not ok then
 			return Net.Error(err)
 		end
@@ -576,9 +692,10 @@ function Railway.Start()
 		if station == nil then
 			return Net.Error(code)
 		end
-		local to = userIdOf(payload.to)
+		local plot = Rail.PlotOf(payload.to)
+		local to = (plot == nil) and userIdOf(payload.to) or nil
 		local every = Net.Int(payload.every, 1, 60)
-		if to == nil or every == nil or type(payload.items) ~= "table" then
+		if (to == nil and plot == nil) or every == nil or type(payload.items) ~= "table" then
 			return Net.Error("bad_payload")
 		end
 		local allowed = false
@@ -593,7 +710,15 @@ function Railway.Start()
 			end
 			table.insert(items, item)
 		end
-		local toName = partnerName(player, profile, to)
+		local shown = Lands.Shown(profile)
+		local toName
+		if plot then
+			if plot ~= shown and stationOf(profile, plot) ~= nil then
+				toName = "działka " .. Lands.Name(plot)
+			end
+		else
+			toName = partnerName(player, profile, to)
+		end
 		if not allowed then
 			return Net.Error("bad_payload")
 		elseif toName == nil or to == player.UserId then
@@ -603,7 +728,7 @@ function Railway.Start()
 		if #r.routes >= Rail.MaxRoutes then
 			return Net.Error("too_many_routes")
 		end
-		table.insert(r.routes, { id = r.nextRoute, to = to, toName = toName, items = items, every = every, nextAt = Clock.Now() })
+		table.insert(r.routes, { id = r.nextRoute, to = to, toPlot = plot, toName = toName, from = shown, items = items, every = every, nextAt = Clock.Now() })
 		r.nextRoute = r.nextRoute + 1
 		return reply(player, profile, station)
 	end)
