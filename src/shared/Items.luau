@@ -40,6 +40,7 @@ Items.Crusher = "furniture_crusher"
 Items.Foundry = "furniture_foundry"
 Items.Generator = "power_generator"
 Items.Pole = "power_pole"
+Items.Workbench = "furniture_workbench"
 
 -- What the player sees.
 Items.Names = {
@@ -62,6 +63,7 @@ Items.Names = {
 	[Items.Pickaxe] = "Kilof",
 	[Items.Generator] = "Generator parowy",
 	[Items.Pole] = "Słup energetyczny",
+	[Items.Workbench] = "Stół warsztatowy",
 	[Items.Furnace] = "Piec kamienny",
 	[Items.Belt] = "Taśmociąg",
 	[Items.Inserter] = "Podajnik",
@@ -123,11 +125,12 @@ Items.Colors = {
 	[Items.Foundry] = { 140, 70, 50 },
 	[Items.Generator] = { 50, 90, 140 },
 	[Items.Pole] = { 104, 78, 52 },
+	[Items.Workbench] = { 162, 120, 78 },
 }
 
 -- Order of items in the inventory and in the merchant's lists.
 Items.Order = {
-	Items.Pickaxe, Items.Axe, Items.Furnace, Items.Belt, Items.Inserter, Items.WoodenChest,
+	Items.Pickaxe, Items.Axe, Items.Workbench, Items.Furnace, Items.Belt, Items.Inserter, Items.WoodenChest,
 	Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry, Items.Generator, Items.Pole,
 	Items.Sapling, Items.Wood, Items.Stone, Items.Coal,
 	Items.IronOre, Items.CopperOre, Items.TinOre, Items.SilverOre, Items.GoldOre,
@@ -155,7 +158,7 @@ local categories = {
 	[Items.Pickaxe] = "tools", [Items.Axe] = "tools",
 	[Items.Furnace] = "buildings", [Items.Belt] = "buildings", [Items.Inserter] = "buildings", [Items.WoodenChest] = "buildings",
 	[Items.Sawmill] = "machines", [Items.Stonemason] = "machines", [Items.Crusher] = "machines", [Items.Foundry] = "machines",
-	[Items.Generator] = "machines", [Items.Pole] = "buildings",
+	[Items.Generator] = "machines", [Items.Pole] = "buildings", [Items.Workbench] = "buildings",
 	[Items.Sapling] = "raw", [Items.Wood] = "raw", [Items.Stone] = "raw", [Items.Coal] = "raw", [Items.Sand] = "raw",
 	[Items.IronOre] = "ores", [Items.CopperOre] = "ores", [Items.TinOre] = "ores", [Items.SilverOre] = "ores", [Items.GoldOre] = "ores",
 	[Items.CrushedIronOre] = "ores", [Items.CrushedCopperOre] = "ores", [Items.CrushedTinOre] = "ores",

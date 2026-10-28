@@ -1,4 +1,5 @@
--- The workbench on the square. Finished orders are handed out whenever the player's data is
+-- The workbench on the square, and the ones players put on their plots: all of them take orders for
+-- the same queue. Finished orders are handed out whenever the player's data is
 -- touched (here, on joining, and each time the workbench is opened); nothing runs in a loop.
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local PlotLayout = require(Shared.PlotLayout)
@@ -7,6 +8,7 @@ local Rules = require(Shared.Workshop)
 local Research = require(Shared.Research)
 local Clock = require(script.Parent.Clock)
 local Data = require(script.Parent.Data)
+local Grid = require(script.Parent.Grid)
 local Inventory = require(script.Parent.Inventory)
 local Net = require(script.Parent.Net)
 
@@ -14,6 +16,22 @@ local Workshop = {}
 
 local Reach = 16
 local BenchPosition = Vector3.new(PlotLayout.Workbench.x, 3, PlotLayout.Workbench.z)
+
+-- Whether the player stands at the square's workbench or one of their own.
+local function atBench(player, profile)
+	if Net.Near(player, BenchPosition, Reach) then
+		return true
+	end
+	for _, o in ipairs(profile.grid.objects) do
+		if o.kind == Items.Workbench then
+			local model = Grid.Model(player, o.id)
+			if model and Net.Near(player, model.Top.Position, Reach) then
+				return true
+			end
+		end
+	end
+	return false
+end
 
 -- Hands the finished orders to the player; true if there were any.
 function Workshop.Deliver(player, profile)
@@ -64,7 +82,7 @@ function Workshop.Start()
 		if not recipe then
 			return Net.Error("unknown_recipe")
 		end
-		if not Net.Near(player, BenchPosition, Reach) then
+		if not atBench(player, profile) then
 			return Net.Error("too_far")
 		end
 		if not Research.Unlocked(profile.research, recipe.id, Clock.Now()) then

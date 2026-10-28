@@ -389,12 +389,15 @@ end
 function Models.Fountain()
 	local rng = Models.Rng(3)
 	local parts = {}
-	post(parts, 1.4, 12, { 0, 0.7, 0 }, vary({ 186, 180, 170 }, rng, 4), "Limestone")
-	post(parts, 0.3, 10.6, { 0, 1.3, 0 }, { 80, 150, 200 }, "Glass", { noCollide = true })
-	post(parts, 3.5, 1.4, { 0, 2.6, 0 }, { 176, 170, 160 }, "Limestone")
-	post(parts, 0.5, 4.4, { 0, 4.3, 0 }, { 176, 170, 160 }, "Limestone")
-	post(parts, 0.25, 3.8, { 0, 4.55, 0 }, { 110, 180, 225 }, "Glass", { noCollide = true, sparkle = true })
-	ball(parts, 1.1, { 0, 5.2, 0 }, { 186, 180, 170 }, "Limestone")
+	-- A low step round it, the basin's wall with a rim, the water, a pillar with a bowl on top.
+	post(parts, 0.6, 14, { 0, 0.3, 0 }, vary({ 160, 154, 144 }, rng, 4), "Cobblestone")
+	post(parts, 2.2, 12, { 0, 1.7, 0 }, vary({ 186, 180, 170 }, rng, 4), "Limestone")
+	post(parts, 0.3, 12.6, { 0, 2.9, 0 }, { 204, 198, 188 }, "Limestone")
+	post(parts, 0.3, 11, { 0, 2.55, 0 }, { 80, 150, 200 }, "Glass", { noCollide = true })
+	post(parts, 3.6, 1.4, { 0, 4.3, 0 }, { 176, 170, 160 }, "Limestone")
+	post(parts, 0.5, 4.4, { 0, 6.1, 0 }, { 176, 170, 160 }, "Limestone")
+	post(parts, 0.25, 3.8, { 0, 6.35, 0 }, { 110, 180, 225 }, "Glass", { noCollide = true, sparkle = true })
+	ball(parts, 1.1, { 0, 7, 0 }, { 186, 180, 170 }, "Limestone")
 	return parts
 end
 
@@ -645,7 +648,7 @@ end
 function Models.BuildMarker(kind, tile)
 	local parts = {}
 	local glow = { 255, 220, 70 }
-	local heights = { furniture_furnace = 12.5, furniture_foundry = 14, furniture_sawmill = 6.5, furniture_stonemason = 6.5, furniture_crusher = 7.5, power_generator = 12, power_pole = 11 }
+	local heights = { furniture_furnace = 12.5, furniture_foundry = 14, furniture_sawmill = 6.5, furniture_stonemason = 6.5, furniture_crusher = 7.5, power_generator = 12, power_pole = 11, furniture_workbench = 7 }
 	local y = heights[kind] or 5
 	add(parts, { size = { 0.5, 0.3, 2.4 }, pos = { 0, y, 0.6 }, color = glow, material = "Neon", noCollide = true })
 	add(parts, { size = { 0.5, 0.3, 1.7 }, pos = { -0.5, y, -1 }, rot = { 0, -0.75, 0 }, color = glow, material = "Neon", noCollide = true })

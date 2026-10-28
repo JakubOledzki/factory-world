@@ -1,4 +1,4 @@
--- The workbench at the merchant's square (Crafting.cs Workshop): the player orders a recipe, the
+-- The workbench at the merchant's square, and any the player put on their plot (Crafting.cs Workshop): the player orders a recipe, the
 -- ingredients are taken at once and the item is made after the recipe's time, one order after
 -- another, and lands in the inventory even when the player has walked away.
 local Items = require(script.Parent.Items)
@@ -14,6 +14,8 @@ Workshop.Recipes = {
 	{ id = Items.Belt, quantity = 4, time = 10, ingredients = { { Items.IronIngot, 2 }, { Items.Wood, 1 } } },
 	{ id = Items.Inserter, quantity = 1, time = 15, ingredients = { { Items.IronIngot, 2 }, { Items.CopperIngot, 1 }, { Items.Nails, 5 } } },
 	{ id = Items.WoodenChest, quantity = 1, time = 10, ingredients = { { Items.Wood, 10 }, { Items.Nails, 5 } } },
+	-- A workbench of the player's own, to put on the plot: it makes the same as this one.
+	{ id = Items.Workbench, quantity = 1, time = 30, ingredients = { { Items.Wood, 20 }, { Items.Nails, 5 } } },
 	-- Power (Shared.Power): a steam generator and poles with wires.
 	{ id = Items.Generator, quantity = 1, time = 60, ingredients = { { Items.Stone, 10 }, { Items.IronIngot, 8 }, { Items.CopperIngot, 4 } } },
 	{ id = Items.Pole, quantity = 2, time = 5, ingredients = { { Items.Wood, 2 }, { Items.CopperIngot, 1 } } },

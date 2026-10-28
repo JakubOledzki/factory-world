@@ -15,21 +15,24 @@ const center = (i) => lua.call(`{ PlotLayout.Center(${i}) }`);
 const cyl = (len, d, pos, color, material) => ({ shape: "Cylinder", size: [len, d, d], pos, rot: [0, 0, Math.PI / 2], color, material });
 const block = (size, pos, color, material, yaw = 0) => ({ shape: "Block", size, pos, rot: [0, yaw, 0], color, material });
 
+// The top of the square's paving (World.luau): what stands on the square stands on it.
+const PAVING = 0.4;
+
 function square() {
   const objects = [];
   const big = 2 * lua.call("PlotLayout.GroundHalf()");
   objects.push({ at: [0, 0, 0], parts: [
     block([big, 2, big], [0, -1.5, 0], [92, 136, 66], "Grass"),
-    cyl(1, 64, [0, -0.45, 0], [168, 160, 148], "Cobblestone"),
-    cyl(1, 22, [0, -0.4, 0], [190, 184, 172], "Pavement"),
-    cyl(0.4, 7, [L.SquareSpawn.x, 0.1, L.SquareSpawn.z], [200, 186, 150], "Marble"),
+    cyl(2, 64, [0, PAVING - 1, 0], [168, 160, 148], "Cobblestone"),
+    cyl(2, 22, [0, PAVING - 0.95, 0], [190, 184, 172], "Pavement"),
+    cyl(0.4, 7, [L.SquareSpawn.x, PAVING + 0.1, L.SquareSpawn.z], [200, 186, 150], "Marble"),
   ] });
-  objects.push({ at: [L.Fountain.x, 0, L.Fountain.z], parts: lua.call("Models.Fountain()") });
-  objects.push({ at: [L.Stall.x, 0, L.Stall.z], yaw: L.Stall.yaw, parts: lua.call("Models.Stall()") });
+  objects.push({ at: [L.Fountain.x, PAVING, L.Fountain.z], parts: lua.call("Models.Fountain()") });
+  objects.push({ at: [L.Stall.x, PAVING, L.Stall.z], yaw: L.Stall.yaw, parts: lua.call("Models.Stall()") });
   // The merchant stands 2.6 studs behind the counter (CFrame.new(0, 0, 2.6) in the stall's frame).
   const s = Math.sin(L.Stall.yaw), c = Math.cos(L.Stall.yaw);
-  objects.push({ at: [L.Stall.x + 2.6 * s, 0, L.Stall.z + 2.6 * c], yaw: L.Stall.yaw, parts: lua.call("Models.Merchant()") });
-  objects.push({ at: [L.Workbench.x, 0, L.Workbench.z], yaw: L.Workbench.yaw, parts: lua.call("Models.Workbench()") });
+  objects.push({ at: [L.Stall.x + 2.6 * s, PAVING, L.Stall.z + 2.6 * c], yaw: L.Stall.yaw, parts: lua.call("Models.Merchant()") });
+  objects.push({ at: [L.Workbench.x, PAVING, L.Workbench.z], yaw: L.Workbench.yaw, parts: lua.call("Models.Workbench()") });
   for (let i = 1; i <= L.Count; i++) {
     const [x, z] = center(i);
     const length = L.Ring - L.Size / 2 - 30;

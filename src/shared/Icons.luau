@@ -252,6 +252,7 @@ local Makers = {
 	[Items.WoodenChest] = Models.WoodenChest,
 	[Items.Generator] = Models.Generator,
 	[Items.Pole] = Models.Pole,
+	[Items.Workbench] = Models.Workbench,
 }
 
 -- The model of item `id`'s picture, as a list of parts like Models'.

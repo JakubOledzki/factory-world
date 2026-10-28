@@ -52,6 +52,7 @@ Logistics.Sizes = {
 	[Items.Foundry] = 3,
 	[Items.Generator] = 2,
 	[Items.Pole] = 1,
+	[Items.Workbench] = 2,
 }
 
 -- An inserter drops on a lane in the middle first, where the item has room to move on.

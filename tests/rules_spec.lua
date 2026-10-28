@@ -820,3 +820,12 @@ test("An inserter brings a generator coal from a chest", function()
 	eq(left[Items.Coal], 20)
 	eq(left[Items.Stone], 5, "stone is no fuel and stays")
 end)
+
+test("A workbench can be bought, made and put on the plot's grid on 2 × 2 tiles", function()
+	assert(Prices.Sells[Items.Workbench] > Prices.Buys[Items.Workbench])
+	eq(Workshop.Recipe(Items.Workbench).ingredients[1][1], Items.Wood)
+	local objects = { Logistics.New(1, Items.Workbench, 10, 10, 0) }
+	eq(select(2, Logistics.CanPlace(objects, {}, Items.Belt, 11, 11)), "tile_taken")
+	eq(Logistics.CanPlace(objects, {}, Items.Belt, 12, 11), true)
+	eq(Items.Category(Items.Workbench), "buildings")
+end)

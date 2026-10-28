@@ -47,6 +47,8 @@ local function specOf(o, bend, now)
 		return Models.Generator()
 	elseif o.kind == Items.Pole then
 		return Models.Pole()
+	elseif o.kind == Items.Workbench then
+		return Models.Workbench()
 	elseif Forestry.Grown(o, now) then
 		return Models.Tree(o.id)
 	end
@@ -147,6 +149,14 @@ function show(player, o, bend)
 			HoldDuration = 0,
 			MaxActivationDistance = 12,
 		}, { Kind = "generator", GeneratorId = o.id, Owner = player.UserId })
+	elseif o.kind == Items.Workbench then
+		-- The same workbench as on the square (Services/Workshop).
+		Build.Prompt(model.Top, {
+			Name = "Prompt",
+			ActionText = "Wytwarzaj",
+			ObjectText = Items.Name(o.kind),
+			HoldDuration = 0,
+		}, { Kind = "workbench", Owner = player.UserId })
 	elseif o.kind == Forestry.Tree then
 		if Forestry.Grown(o, now) then
 			Build.Prompt(model.Trunk, {

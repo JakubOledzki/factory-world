@@ -7,8 +7,11 @@ local Build = require(script.Parent.Build)
 
 local World = {}
 
+-- The top of the square's paving, a little above the grass: what stands on the square stands on it.
+local Paving = 0.4
+
 local function placed(spot, y)
-	return CFrame.new(spot.x, y or 0, spot.z) * CFrame.Angles(0, spot.yaw or 0, 0)
+	return CFrame.new(spot.x, Paving + (y or 0), spot.z) * CFrame.Angles(0, spot.yaw or 0, 0)
 end
 
 function World.Start()
@@ -25,16 +28,16 @@ function World.Start()
 	Build.Part(folder, {
 		Name = "Paving",
 		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(1, 64, 64),
-		CFrame = CFrame.new(0, -0.4, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		Size = Vector3.new(2, 64, 64),
+		CFrame = CFrame.new(0, Paving - 1, 0) * CFrame.Angles(0, 0, math.pi / 2),
 		Color = Color3.fromRGB(168, 160, 148),
 		Material = Enum.Material.Cobblestone,
 	})
 	Build.Part(folder, {
 		Name = "PavingInner",
 		Shape = Enum.PartType.Cylinder,
-		Size = Vector3.new(1, 22, 22),
-		CFrame = CFrame.new(0, -0.35, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		Size = Vector3.new(2, 22, 22),
+		CFrame = CFrame.new(0, Paving - 0.95, 0) * CFrame.Angles(0, 0, math.pi / 2),
 		Color = Color3.fromRGB(190, 184, 172),
 		Material = Enum.Material.Pavement,
 	})

@@ -30,9 +30,10 @@ end
 
 -- The tab a workbench recipe goes under.
 function Recipes.Category(id)
-	if Processing.IsMachine(id) then
+	local category = Items.Category(id)
+	if category == "machines" then
 		return "machines"
-	elseif string.match(id, "^furniture_") or string.match(id, "^logistics_") or string.match(id, "^storage_") then
+	elseif category == "buildings" or category == "tools" then
 		return "buildings"
 	end
 	return "materials"
