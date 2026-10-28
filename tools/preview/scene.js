@@ -50,7 +50,7 @@ function plot(index, opts = {}) {
   const [cx, cz] = center(index);
   const objects = [];
   objects.push({ at: [cx, 0, cz], parts: [block([L.Size, 1, L.Size], [0, -0.45, 0], [116, 158, 78], "Grass")] });
-  objects.push({ at: [cx, 0, cz], parts: lua.call(`Models.PlotDecor(${index * 100}, PlotLayout.Size, PlotLayout.OpenSides(${index}), PlotLayout.FurnaceSlots)`) });
+  objects.push({ at: [cx, 0, cz], parts: lua.call(`Models.PlotDecor(${index * 100}, PlotLayout.Size, PlotLayout.OpenSides(${index}), PlotLayout.FurnaceSlots, PlotLayout.Grid)`) });
   const half = L.Size / 2, d = Math.hypot(cx, cz), tx = -cx / d, tz = -cz / d;
   const sign = [cx + tx * (half - 5) + tz * 6, 0, cz + tz * (half - 5) - tx * 6];
   // CFrame.lookAt(at, at + toSquare): the front (-z) faces the square.
@@ -139,6 +139,70 @@ function views() {
     objects.push({ at: [46, 0, 0], parts: lua.call("Models.Fountain()") });
     labels.push({ at: [46, 0, 9], text: "Fontanna", cls: "tag" });
     out["5-modele"] = { objects, camera: { pos: [8, 22, 52], look: [8, 3, 0], fov: 55 }, shadowRadius: 70, caption, labels };
+  }
+  // 6. A little factory on the build grid, worked out by the game's own rules (Logistics.Run).
+  {
+    const p = plot(1, { furnaces: ["lit", "cold"], cut: [5] });
+    const objects = square().concat(p.objects);
+    const { cx, cz } = p;
+    const state = lua.call(`(function()
+      local o, n = {}, 0
+      local function add(kind, x, z, rot) n = n + 1; local obj = Logistics.New(n, kind, x, z, rot); table.insert(o, obj); return obj end
+      local a = add(Items.WoodenChest, 1, 1, 1)
+      Logistics.Store(a.items, Items.IronOre, 40); Logistics.Store(a.items, Items.Coal, 10)
+      add(Items.Inserter, 2, 1, 1)
+      for x = 3, 7 do add(Items.Belt, x, 1, 1) end
+      add(Items.Inserter, 8, 1, 1)
+      add(Items.Inserter, 11, 1, 1)
+      add(Items.WoodenChest, 12, 1, 1)
+      local c = add(Items.WoodenChest, 1, 3, 1)
+      Logistics.Store(c.items, Items.CopperOre, 60)
+      add(Items.Inserter, 2, 3, 1)
+      for x = 3, 5 do add(Items.Belt, x, 3, 1) end
+      add(Items.Belt, 6, 3, 0)
+      for x = 6, 8 do add(Items.Belt, x, 4, 1) end
+      add(Items.Inserter, 9, 4, 1)
+      add(Items.WoodenChest, 10, 4, 1)
+      local furnace = { id = 99, tile = { x = 9, z = 1 }, rot = 0, state = Smelting.Empty() }
+      Logistics.Run(o, { furnace }, 0, 41.4)
+      return { objects = o, lit = Smelting.Advance(furnace.state, 41.4).startedAt ~= nil, furnace = furnace.tile }
+    end)()`);
+    const yaws = [Math.PI, -Math.PI / 2, 0, Math.PI / 2];
+    const tileAt = (x, z, size) => lua.call(`{ PlotLayout.TileCenter(${x}, ${z}, ${size}) }`);
+    const models = { logistics_belt: lua.call("Models.Belt()"), logistics_inserter: lua.call("Models.Inserter()"), storage_wooden_chest: lua.call("Models.WoodenChest()") };
+    const colors = lua.call("Items.Colors");
+    for (const o of state.objects) {
+      const [ox, oz] = tileAt(o.x, o.z, 1);
+      const at = [cx + ox, 0, cz + oz], yaw = yaws[o.rot];
+      if (o.kind === "logistics_inserter") {
+        const angle = Math.PI * (1 - o.swing / 4);
+        objects.push({ at, yaw, parts: models[o.kind].filter((q) => q.group !== "arm") });
+        const arm = models[o.kind].filter((q) => q.group === "arm").map((q) => q.name === "Hand" && o.hand ? { ...q, hidden: false, color: colors[o.hand] } : q);
+        objects.push({ at, yaw: yaw + angle, parts: arm });
+      } else {
+        objects.push({ at, yaw, parts: models[o.kind] });
+      }
+      if (o.belt) {
+        const items = [];
+        o.belt.forEach((item, i) => {
+          if (!item) return;
+          const pos = lua.call(`Models.BeltSlot(${i + 1}, Logistics.BeltSlots)`);
+          items.push({ shape: "Ball", size: [0.75, 0.75, 0.75], pos, rot: [0, 0, 0], color: colors[item], material: "SmoothPlastic" });
+        });
+        objects.push({ at, yaw, parts: items });
+      }
+    }
+    const [fx, fz] = tileAt(state.furnace.x, state.furnace.z, 2);
+    objects.push({ at: [cx + fx, 0, cz + fz], yaw: Math.PI, parts: lua.call("Models.Furnace(true)"), lit: state.lit });
+    // The see-through ghost of the next belt under the pointer.
+    const [gx, gz] = tileAt(13, 3, 1);
+    objects.push({ at: [cx + gx, 0, cz + gz], yaw: yaws[1], parts: models.logistics_belt.map((q) => ({ ...q, transparency: 0.55, color: [90, 220, 120] })) });
+    const btn = (t, on) => `<span class="btn${on ? "" : " alt"}" style="width:140px;text-align:center;white-space:nowrap">${t}</span>`;
+    out["6-budowanie"] = { objects, camera: { pos: [cx + 10, 34, cz + 18], look: [cx + 8, 0, cz - 6], fov: 55 }, shadowRadius: 60, hud: "1 284,50 $", caption,
+      overlay: `<div class="win" style="left:50%;transform:translateX(-50%);bottom:16px;width:760px"><div class="bd" style="padding-top:10px">
+        <div style="display:flex;gap:6px">${btn("Taśmociąg (6)", true)}${btn("Podajnik (2)")}${btn("Drewniana skrzynia (1)")}${btn("Piec kamienny (0)")}<span class="btn red">Rozbiórka [X]</span><span class="btn alt">Obróć [R]</span></div>
+        <div class="muted" style="margin-top:8px">Kliknij, by postawić (przeciągnij, by ułożyć taśmę). 1–4 wybór, R obrót, X rozbiórka, B koniec.</div>
+      </div></div>` };
   }
   return out;
 }

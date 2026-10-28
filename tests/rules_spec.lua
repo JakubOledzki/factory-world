@@ -173,7 +173,7 @@ local Models = load_shared("Models")
 
 local Materials = {}
 for _, m in ipairs({ "SmoothPlastic", "Plastic", "Wood", "WoodPlanks", "Slate", "Rock", "Basalt", "Cobblestone", "Brick",
-	"Metal", "CorrodedMetal", "Neon", "Fabric", "Grass", "LeafyGrass", "Ground", "Pebble", "Limestone", "Glass", "Pavement", "Marble" }) do
+	"Metal", "CorrodedMetal", "Neon", "Fabric", "Grass", "LeafyGrass", "Ground", "Pebble", "Limestone", "Glass", "Pavement", "Marble", "Concrete", "DiamondPlate" }) do
 	Materials[m] = true
 end
 local Shapes = { Block = true, Ball = true, Cylinder = true, Wedge = true }
@@ -193,7 +193,7 @@ local function checkModel(name, parts, required)
 		if p.shape == "Ball" then
 			assert(p.size[1] == p.size[2] and p.size[2] == p.size[3], where .. ": a ball is round")
 		end
-		assert(p.group == nil or p.group == "crown" or p.group == "glow", where .. ": group")
+		assert(p.group == nil or p.group == "crown" or p.group == "glow" or p.group == "arm", where .. ": group")
 		if p.name then
 			named[p.name] = true
 		end
@@ -209,6 +209,10 @@ test("Every model is made of parts Roblox can build, with the parts the game loo
 		checkModel("Tree", Models.Tree(seed), { "Trunk", "Stump" })
 	end
 	checkModel("Furnace", Models.Furnace(), { "Body", "Fire" })
+	checkModel("Furnace on the grid", Models.Furnace(true), { "Body", "Fire" })
+	checkModel("Belt", Models.Belt(), { "Body" })
+	checkModel("Inserter", Models.Inserter(), { "Body", "Hand" })
+	checkModel("WoodenChest", Models.WoodenChest(), { "Body" })
 	checkModel("Workbench", Models.Workbench(), { "Top" })
 	checkModel("Stall", Models.Stall(), { "Counter", "Sign" })
 	checkModel("Merchant", Models.Merchant())
@@ -216,7 +220,7 @@ test("Every model is made of parts Roblox can build, with the parts the game loo
 	checkModel("Signpost", Models.Signpost(1), { "Board" })
 	local PlotLayout = load_shared("PlotLayout")
 	for index = 1, PlotLayout.Count do
-		checkModel("PlotDecor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index), PlotLayout.FurnaceSlots))
+		checkModel("PlotDecor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index), PlotLayout.FurnaceSlots, PlotLayout.Grid))
 		assert(#PlotLayout.OpenSides(index) >= 1, "plot " .. index .. " has a gate")
 	end
 end)
@@ -232,4 +236,113 @@ test("The same seed builds the same model", function()
 	end
 	local c = Models.Tree(6)
 	assert(c[2].size[1] ~= a[2].size[1], "another seed, another tree")
+end)
+
+local Logistics = load_shared("Logistics")
+local GridLayout = load_shared("PlotLayout")
+
+local function belt(id, x, z, rot)
+	return Logistics.New(id, Items.Belt, x, z, rot)
+end
+
+local function count(slots)
+	local n = 0
+	for _, item in ipairs(slots) do
+		if item then n = n + 1 end
+	end
+	return n
+end
+
+test("Things go on the grid only inside it and on free tiles; a furnace takes 2 × 2 tiles", function()
+	local objects = { belt(1, 0, 0, 1) }
+	local furnaces = { { id = 2, tile = { x = 3, z = 1 }, state = Smelting.Empty() } }
+	eq(Logistics.CanPlace(objects, furnaces, Items.Belt, 1, 0), true)
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Belt, 0, 0)), "tile_taken")
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.WoodenChest, 4, 2)), "tile_taken")
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Furnace, 2, 0)), "tile_taken")
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Belt, -1, 0)), "outside_grid")
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Furnace, GridLayout.Grid.width - 1, 0)), "outside_grid")
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Coal, 8, 0)), "not_buildable")
+end)
+
+test("A belt carries an item along to the end of the line and keeps it there", function()
+	local objects = { belt(1, 0, 0, 1), belt(2, 1, 0, 1), belt(3, 2, 0, 1) }
+	objects[1].belt[1] = Items.Stone
+	local last = Logistics.Run(objects, {}, 1000, 1000 + 60)
+	eq(last, 1000 + 60)
+	eq(count(objects[1].belt) + count(objects[2].belt), 0)
+	eq(objects[3].belt[4], Items.Stone, "at the end of the left lane")
+end)
+
+test("Belts turn corners keeping their lanes, and join from the side onto the near lane", function()
+	-- East along z = 0, then south at x = 1.
+	local corner = { belt(1, 0, 0, 1), belt(2, 1, 0, 0), belt(3, 1, 1, 0) }
+	corner[1].belt[1] = Items.Coal -- left lane
+	corner[1].belt[5] = Items.Stone -- right lane
+	Logistics.Run(corner, {}, 0, 10)
+	eq(corner[3].belt[4], Items.Coal)
+	eq(corner[3].belt[8], Items.Stone)
+	-- A belt joining a straight line from its east side: east is the left of a belt going south.
+	local join = { belt(1, 1, 0, 0), belt(2, 1, 1, 0), belt(3, 1, 2, 0), belt(4, 2, 1, 3) }
+	join[4].belt[1] = Items.Coal
+	join[4].belt[5] = Items.Stone
+	Logistics.Run(join, {}, 0, 10)
+	eq(count(join[4].belt), 0)
+	eq(join[3].belt[4], Items.Coal, "near lane is the left one")
+	eq(join[3].belt[3], Items.Stone)
+	eq(count({ join[3].belt[5], join[3].belt[6], join[3].belt[7], join[3].belt[8] }), 0)
+end)
+
+test("Inserters move items from a chest over belts into another chest", function()
+	local from = Logistics.New(1, Items.WoodenChest, 0, 0, 0)
+	Logistics.Store(from.items, Items.Stone, 10)
+	local objects = {
+		from,
+		Logistics.New(2, Items.Inserter, 1, 0, 1),
+		belt(3, 2, 0, 1), belt(4, 3, 0, 1),
+		Logistics.New(5, Items.Inserter, 4, 0, 1),
+		Logistics.New(6, Items.WoodenChest, 5, 0, 0),
+	}
+	Logistics.Run(objects, {}, 0, 600)
+	eq(#from.items, 0)
+	eq(objects[6].items[1].item, Items.Stone)
+	eq(objects[6].items[1].quantity, 10)
+	eq(objects[2].hand, nil)
+	eq(objects[5].hand, nil)
+end)
+
+test("Inserters feed a furnace ore and coal from one chest and take the ingots to another", function()
+	local supply = Logistics.New(1, Items.WoodenChest, 0, 0, 0)
+	Logistics.Store(supply.items, Items.IronOre, 10)
+	Logistics.Store(supply.items, Items.Coal, 2)
+	local furnace = { id = 9, tile = { x = 2, z = 0 }, state = Smelting.Empty() }
+	local objects = {
+		supply,
+		Logistics.New(2, Items.Inserter, 1, 0, 1),
+		Logistics.New(3, Items.Inserter, 4, 0, 1),
+		Logistics.New(4, Items.WoodenChest, 5, 0, 0),
+	}
+	local at = Logistics.Run(objects, { furnace }, 0, 3600)
+	eq(at, 3600)
+	eq(#supply.items, 0)
+	eq(objects[4].items[1].item, Items.IronIngot)
+	eq(objects[4].items[1].quantity, 10)
+	eq(furnace.state.outputQuantity, 0)
+end)
+
+test("A chest holds 8 slots of 100 pieces, and the grid catches up a long absence quickly", function()
+	local stacks = {}
+	Logistics.Store(stacks, Items.Stone, 750)
+	eq(Logistics.Room(stacks, Items.Stone), 50)
+	eq(Logistics.Room(stacks, Items.Coal), 0)
+	eq(Logistics.Unstore(stacks, Items.Stone, 1000), 750)
+	eq(#stacks, 0)
+	-- A loop of belts keeps busy forever: it rests after MaxTicks.
+	local loop = { belt(1, 0, 0, 1), belt(2, 1, 0, 0), belt(3, 1, 1, 3), belt(4, 0, 1, 2) }
+	loop[1].belt[1] = Items.Coal
+	local at = Logistics.Run(loop, {}, 0, 7 * 24 * 3600)
+	eq(at, 7 * 24 * 3600)
+	local n = 0
+	for _, b in ipairs(loop) do n = n + count(b.belt) end
+	eq(n, 1, "nothing lost or made")
 end)

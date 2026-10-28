@@ -1,5 +1,6 @@
 -- Stone furnaces on the player's plot. A furnace is bought as an item (made at the workbench),
--- set on one of the plot's furnace slots and taken back when empty. Its state is saved with the
+-- set on one of the plot's furnace slots or on the build grid (Services/Grid, where inserters can
+-- feed it), and taken back when empty. Its state is saved with the
 -- player and worked out on demand (Smelting.Advance) whenever someone looks at it.
 local ProximityPromptService = game:GetService("ProximityPromptService")
 
@@ -10,6 +11,7 @@ local PlotLayout = require(Shared.PlotLayout)
 local Build = require(script.Parent.Build)
 local Clock = require(script.Parent.Clock)
 local Data = require(script.Parent.Data)
+local Factory = require(script.Parent.Factory)
 local Inventory = require(script.Parent.Inventory)
 local Net = require(script.Parent.Net)
 local Plots = require(script.Parent.Plots)
@@ -45,6 +47,7 @@ local function show(player, furnace)
 	local now = Clock.Now()
 	local state = Smelting.Advance(furnace.state, now)
 	Build.SetFurnaceLit(model, state.startedAt ~= nil)
+	model:SetAttribute("Lit", state.startedAt ~= nil)
 	if state.startedAt ~= nil then
 		local recipe = Smelting.Recipes[state.input]
 		local pieces = math.min(state.inputQuantity, state.heat + state.fuel * Smelting.SmeltsPerCoal)
@@ -60,11 +63,18 @@ local function show(player, furnace)
 end
 
 local function place(player, furnace)
-	local pad = Plots.SlotPad(player, furnace.slot)
-	if pad == nil then
+	local model
+	local pad = furnace.slot and Plots.SlotPad(player, furnace.slot)
+	if furnace.tile then
+		model = Build.Furnace(Plots.Of(player).model, Plots.TileCFrame(player, furnace.tile.x, furnace.tile.z, 2, furnace.rot or 0), true)
+		model:SetAttribute("GridId", furnace.id)
+		model:SetAttribute("Owner", player.UserId)
+	elseif pad then
+		model = Build.Furnace(Plots.Of(player).model, Plots.SlotCFrame(player, furnace.slot))
+		pad.Prompt.Enabled = false
+	else
 		return
 	end
-	local model = Build.Furnace(Plots.Of(player).model, Plots.SlotCFrame(player, furnace.slot))
 	model.Name = "Furnace" .. furnace.id
 	Build.Prompt(model.Body, {
 		Name = "Prompt",
@@ -72,7 +82,6 @@ local function place(player, furnace)
 		ObjectText = "Piec kamienny",
 		HoldDuration = 0,
 	}, { Kind = "furnace", FurnaceId = furnace.id, Owner = player.UserId })
-	pad.Prompt.Enabled = false
 	models[player][furnace.id] = model
 	show(player, furnace)
 end
@@ -96,6 +105,7 @@ local function open(player, profile, payload)
 	if model == nil or not Net.Near(player, model.Body.Position, PlotLayout.Reach) then
 		return nil, "too_far"
 	end
+	Factory.CatchUp(profile)
 	furnace.state = Smelting.Advance(furnace.state, Clock.Now())
 	return furnace
 end
@@ -106,6 +116,42 @@ local function handOut(player, profile, items)
 			Inventory.Add(profile, entry[1], entry[2])
 		end
 	end
+end
+
+-- Puts a new furnace of the player's on their plot (its slot or its tile already set).
+function Furnaces.Add(player, profile, furnace)
+	table.insert(profile.furnaces, furnace)
+	place(player, furnace)
+end
+
+-- Takes an empty furnace back into the player's inventory; or false and an error code.
+function Furnaces.Remove(player, profile, furnace)
+	local s = Smelting.Advance(furnace.state, Clock.Now())
+	if s.inputQuantity > 0 or s.fuel > 0 or s.outputQuantity > 0 then
+		return false, "furnace_not_empty"
+	end
+	for i, other in ipairs(profile.furnaces) do
+		if other.id == furnace.id then
+			table.remove(profile.furnaces, i)
+			break
+		end
+	end
+	Inventory.Add(profile, Items.Furnace, 1)
+	local model = models[player] and models[player][furnace.id]
+	if model then
+		model:Destroy()
+		models[player][furnace.id] = nil
+	end
+	local pad = furnace.slot and Plots.SlotPad(player, furnace.slot)
+	if pad then
+		pad.Prompt.Enabled = true
+	end
+	return true
+end
+
+-- The model of the player's furnace `id`, if it stands.
+function Furnaces.Model(player, id)
+	return models[player] and models[player][id]
 end
 
 function Furnaces.Start()
@@ -138,9 +184,7 @@ function Furnaces.Start()
 			Net.Toast(player, "Nie masz pieca. Zrób go na stole warsztatowym z 20 kamieni.")
 			return
 		end
-		local furnace = { id = Data.NextId(profile), slot = slot, state = Smelting.Empty() }
-		table.insert(profile.furnaces, furnace)
-		place(player, furnace)
+		Furnaces.Add(player, profile, { id = Data.NextId(profile), slot = slot, state = Smelting.Empty() })
 		Net.PushState(player)
 	end)
 
@@ -198,22 +242,9 @@ function Furnaces.Start()
 		if furnace == nil then
 			return Net.Error(code)
 		end
-		local s = furnace.state
-		if s.inputQuantity > 0 or s.fuel > 0 or s.outputQuantity > 0 then
-			return Net.Error("furnace_not_empty")
-		end
-		for i, other in ipairs(profile.furnaces) do
-			if other.id == furnace.id then
-				table.remove(profile.furnaces, i)
-				break
-			end
-		end
-		Inventory.Add(profile, Items.Furnace, 1)
-		models[player][furnace.id]:Destroy()
-		models[player][furnace.id] = nil
-		local pad = Plots.SlotPad(player, furnace.slot)
-		if pad then
-			pad.Prompt.Enabled = true
+		local removed, removeCode = Furnaces.Remove(player, profile, furnace)
+		if not removed then
+			return Net.Error(removeCode)
 		end
 		Net.PushState(player)
 		return { ok = true }

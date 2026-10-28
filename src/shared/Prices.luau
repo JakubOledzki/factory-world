@@ -9,6 +9,9 @@ Prices.Sells = {
 	[Items.Nails] = 500,
 	[Items.Axe] = 10000,
 	[Items.Pickaxe] = 10000,
+	[Items.Belt] = 1000,
+	[Items.Inserter] = 9000,
+	[Items.WoodenChest] = 7000,
 }
 
 -- What the merchant pays the player.
@@ -30,6 +33,9 @@ Prices.Buys = {
 	[Items.Axe] = 5000,
 	[Items.Pickaxe] = 5000,
 	[Items.Furnace] = 3000,
+	[Items.Belt] = 700,
+	[Items.Inserter] = 6500,
+	[Items.WoodenChest] = 5000,
 }
 
 -- Most pieces bought or sold in one trade.

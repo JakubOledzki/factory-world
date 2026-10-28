@@ -46,6 +46,8 @@ local function newProfile()
 		trees = {},
 		furnaces = {},
 		workshop = {},
+		-- The build grid: belts, inserters and chests, and the time it was worked out until.
+		grid = { objects = {} },
 		nextId = 1,
 		lock = nil,
 	}
@@ -120,7 +122,7 @@ function Data.OnLoaded(callback)
 	end
 end
 
--- A fresh id for an object the player owns (furnaces).
+-- A fresh id for an object the player owns (furnaces and everything on the build grid).
 function Data.NextId(profile)
 	local id = profile.nextId
 	profile.nextId = id + 1
@@ -139,6 +141,8 @@ local function onPlayerAdded(player)
 		profiles[player] = nil
 		return
 	end
+	-- Fields added after the first version.
+	profile.grid = profile.grid or { objects = {} }
 	profiles[player] = profile
 	for _, callback in ipairs(loadedCallbacks) do
 		task.spawn(callback, player, profile)

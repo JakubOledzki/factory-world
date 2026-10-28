@@ -19,6 +19,9 @@ Items.Nails = "nails"
 Items.Axe = "tool_axe"
 Items.Pickaxe = "tool_pickaxe"
 Items.Furnace = "furniture_furnace"
+Items.Belt = "logistics_belt"
+Items.Inserter = "logistics_inserter"
+Items.WoodenChest = "storage_wooden_chest"
 
 -- What the player sees.
 Items.Names = {
@@ -39,6 +42,9 @@ Items.Names = {
 	[Items.Axe] = "Siekiera",
 	[Items.Pickaxe] = "Kilof",
 	[Items.Furnace] = "Piec kamienny",
+	[Items.Belt] = "Taśmociąg",
+	[Items.Inserter] = "Podajnik",
+	[Items.WoodenChest] = "Drewniana skrzynia",
 }
 
 -- Colour of the item's icon tile and of the ore veins in a mine, as {r, g, b}.
@@ -60,11 +66,14 @@ Items.Colors = {
 	[Items.Axe] = { 150, 100, 60 },
 	[Items.Pickaxe] = { 110, 110, 120 },
 	[Items.Furnace] = { 110, 105, 100 },
+	[Items.Belt] = { 74, 76, 82 },
+	[Items.Inserter] = { 222, 176, 44 },
+	[Items.WoodenChest] = { 156, 112, 68 },
 }
 
 -- Order of items in the inventory and in the merchant's lists.
 Items.Order = {
-	Items.Pickaxe, Items.Axe, Items.Furnace,
+	Items.Pickaxe, Items.Axe, Items.Furnace, Items.Belt, Items.Inserter, Items.WoodenChest,
 	Items.Wood, Items.Stone, Items.Coal,
 	Items.IronOre, Items.CopperOre, Items.TinOre, Items.SilverOre, Items.GoldOre,
 	Items.IronIngot, Items.CopperIngot, Items.TinIngot, Items.SilverIngot, Items.GoldIngot,

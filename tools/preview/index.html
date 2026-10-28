@@ -153,6 +153,7 @@ function build(object) {
   if (object.rot) root.rotation.set(object.rot[0], object.yaw || 0, object.rot[2]);
   for (const p of object.parts) {
     if (object.hideGroup && p.group === object.hideGroup) continue;
+    if (p.hidden) continue;
     const glowing = object.lit && p.group === "glow";
     const q = glowing ? { ...p, color: p.name === "Fire" ? [255, 160, 40] : [255, 110, 30], glowing: true } : p;
     const scale = Math.max(1, Math.round(Math.max(...p.size) / 5));

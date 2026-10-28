@@ -102,7 +102,7 @@ local function buildPlot(player, index)
 		Color = Color3.fromRGB(116, 158, 78),
 		Material = Enum.Material.Grass,
 	})
-	Build.FromModel(model, "Decor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index), PlotLayout.FurnaceSlots), CFrame.new(cx, 0, cz))
+	Build.FromModel(model, "Decor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index), PlotLayout.FurnaceSlots, PlotLayout.Grid), CFrame.new(cx, 0, cz))
 
 	-- A signpost with the owner's name by the gate, facing the square.
 	local half = PlotLayout.Size / 2
@@ -175,6 +175,14 @@ function Plots.SlotCFrame(player, slot)
 	local plot = plotOf[player]
 	-- The fire mouth faces the plot's spawn side (+z).
 	return CFrame.new(at(plot.index, PlotLayout.FurnaceSlots[slot], 0)) * CFrame.Angles(0, math.pi, 0)
+end
+
+-- The ground point under something `size` tiles across with its corner on tile (tx, tz) of the
+-- player's build grid, turned to face rotation `rot`.
+function Plots.TileCFrame(player, tx, tz, size, rot)
+	local plot = plotOf[player]
+	local x, z = PlotLayout.TileCenter(tx, tz, size)
+	return CFrame.new(at(plot.index, { x = x, z = z }, 0)) * CFrame.Angles(0, PlotLayout.Yaw(rot), 0)
 end
 
 function Plots.SlotPad(player, slot)

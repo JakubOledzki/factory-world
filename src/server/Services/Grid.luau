@@ -1,0 +1,325 @@
+-- The build grid on each player's plot: putting belts, inserters, chests and furnaces on it and
+-- taking them back, the chests' contents, and drawing what moves. What is on the grid is worked out
+-- on demand from the time it was last looked at (Factory.CatchUp); while the owner is on the server
+-- it is looked at every Logistics.Tick only to draw the items on the belts and the inserters' arms.
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+
+local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
+local Items = require(Shared.Items)
+local Logistics = require(Shared.Logistics)
+local Models = require(Shared.Models)
+local PlotLayout = require(Shared.PlotLayout)
+local Smelting = require(Shared.Smelting)
+local Build = require(script.Parent.Build)
+local Clock = require(script.Parent.Clock)
+local Data = require(script.Parent.Data)
+local Factory = require(script.Parent.Factory)
+local Furnaces = require(script.Parent.Furnaces)
+local Inventory = require(script.Parent.Inventory)
+local Net = require(script.Parent.Net)
+local Plots = require(script.Parent.Plots)
+
+local Grid = {}
+
+local views = {} -- [Player] = { [id] = { model, items = { Part }, arm = { { Part, CFrame } }, base, hand, angle } }
+
+local ModelOf = {
+	[Items.Belt] = Models.Belt,
+	[Items.Inserter] = Models.Inserter,
+	[Items.WoodenChest] = Models.WoodenChest,
+}
+
+local function find(profile, id)
+	for i, o in ipairs(profile.grid.objects) do
+		if o.id == id then
+			return o, i
+		end
+	end
+	return nil
+end
+
+-- The middle of a tile of the player's grid in the world, for checking how near the player is.
+local function tilePosition(player, x, z, size)
+	local cx, cz = PlotLayout.Center(Plots.Of(player).index)
+	local ox, oz = PlotLayout.TileCenter(x, z, size)
+	return Vector3.new(cx + ox, 2, cz + oz)
+end
+
+local function paint(part, item)
+	part.Transparency = item and 0 or 1
+	if item then
+		part.Color = Build.Rgb(Items.Colors[item] or { 200, 200, 200 })
+	end
+end
+
+-- Shows what an object holds now: the items on a belt, the arm and load of an inserter.
+local function draw(view, o)
+	if view.items then
+		for slot, part in ipairs(view.items) do
+			paint(part, o.belt[slot] or nil)
+		end
+	elseif view.arm then
+		-- Pointing to the front (where it drops) at the end of its swing, to the back at the start.
+		local angle = math.pi * (1 - o.swing / Logistics.SwingTicks)
+		if angle ~= view.angle then
+			view.angle = angle
+			local turn = view.base * CFrame.Angles(0, angle, 0)
+			for _, entry in ipairs(view.arm) do
+				entry[1].CFrame = turn * entry[2]
+			end
+		end
+		paint(view.hand, o.hand)
+	end
+end
+
+local function show(player, o)
+	local cframe = Plots.TileCFrame(player, o.x, o.z, 1, o.rot)
+	local model = Build.FromModel(Plots.Of(player).model, "Grid" .. o.id, ModelOf[o.kind](), cframe)
+	model:SetAttribute("GridId", o.id)
+	model:SetAttribute("Owner", player.UserId)
+	local view = { model = model }
+	if o.kind == Items.Belt then
+		view.items = {}
+		for slot = 1, #o.belt do
+			local p = Models.BeltSlot(slot, Logistics.BeltSlots)
+			view.items[slot] = Build.Part(model, {
+				Name = "Item",
+				Shape = Enum.PartType.Ball,
+				Size = Vector3.new(0.75, 0.75, 0.75),
+				CFrame = cframe * CFrame.new(p[1], p[2], p[3]),
+				Material = Enum.Material.SmoothPlastic,
+				CanCollide = false,
+				CanQuery = false,
+				CastShadow = false,
+				Transparency = 1,
+			})
+		end
+	elseif o.kind == Items.Inserter then
+		view.base = cframe
+		view.arm = {}
+		for _, part in ipairs(model:GetChildren()) do
+			if part:IsA("BasePart") and part:GetAttribute("Group") == "arm" then
+				table.insert(view.arm, { part, cframe:ToObjectSpace(part.CFrame) })
+			end
+		end
+		view.hand = model:FindFirstChild("Hand")
+	elseif o.kind == Items.WoodenChest then
+		Build.Prompt(model.Body, {
+			Name = "Prompt",
+			ActionText = "Otwórz",
+			ObjectText = Items.Name(Items.WoodenChest),
+			HoldDuration = 0,
+		}, { Kind = "chest", ChestId = o.id, Owner = player.UserId })
+	end
+	views[player][o.id] = view
+	draw(view, o)
+end
+
+local function refresh(player, profile)
+	local mine = views[player]
+	if mine == nil or #profile.grid.objects == 0 then
+		return
+	end
+	Factory.CatchUp(profile)
+	for _, o in ipairs(profile.grid.objects) do
+		local view = mine[o.id]
+		if view then
+			draw(view, o)
+		end
+	end
+	-- Furnaces that inserters feed light up and go out with what they bring.
+	local now = Clock.Now()
+	for _, furnace in ipairs(profile.furnaces) do
+		local model = furnace.tile and Furnaces.Model(player, furnace.id)
+		if model then
+			local lit = Smelting.Advance(furnace.state, now).startedAt ~= nil
+			if model:GetAttribute("Lit") ~= lit then
+				model:SetAttribute("Lit", lit)
+				Build.SetFurnaceLit(model, lit)
+			end
+		end
+	end
+end
+
+-- The player's chest `id` worked out until now, if they stand at it.
+local function openChest(player, profile, payload)
+	local id = Net.Int(payload.id, 1, 1e9)
+	local o = id and find(profile, id)
+	if o == nil or o.kind ~= Items.WoodenChest then
+		return nil, "not_owner"
+	end
+	local view = views[player] and views[player][o.id]
+	if view == nil or not Net.Near(player, view.model.Body.Position, PlotLayout.Reach) then
+		return nil, "too_far"
+	end
+	Factory.CatchUp(profile)
+	return o
+end
+
+local function chestReply(o)
+	return { ok = true, id = o.id, items = o.items, slots = Logistics.ChestSlots, slotSize = Logistics.SlotSize }
+end
+
+function Grid.Start()
+	Plots.OnPlaced(function(player)
+		views[player] = {}
+		local profile = Data.Get(player)
+		Factory.CatchUp(profile)
+		for _, o in ipairs(profile.grid.objects) do
+			show(player, o)
+		end
+	end)
+
+	Players.PlayerRemoving:Connect(function(player)
+		views[player] = nil
+	end)
+
+	local since = 0
+	RunService.Heartbeat:Connect(function(dt)
+		since = since + dt
+		if since < Logistics.Tick then
+			return
+		end
+		since = 0
+		for player in pairs(views) do
+			local profile = Data.Get(player)
+			if profile then
+				refresh(player, profile)
+			end
+		end
+	end)
+
+	Net.Handle("GridPlace", function(player, profile, payload)
+		local item = Net.Item(payload.item)
+		local x = Net.Int(payload.x, 0, PlotLayout.Grid.width - 1)
+		local z = Net.Int(payload.z, 0, PlotLayout.Grid.depth - 1)
+		local rot = Net.Int(payload.rot, 0, 3)
+		if item == nil or x == nil or z == nil or rot == nil then
+			return Net.Error("bad_payload")
+		end
+		local size = Logistics.Sizes[item]
+		if size == nil then
+			return Net.Error("not_buildable")
+		end
+		if Plots.Of(player) == nil or views[player] == nil then
+			return Net.Error("not_loaded")
+		end
+		if not Net.Near(player, tilePosition(player, x, z, size), PlotLayout.BuildReach) then
+			return Net.Error("too_far")
+		end
+		Factory.CatchUp(profile)
+		local ok, code = Logistics.CanPlace(profile.grid.objects, profile.furnaces, item, x, z)
+		if not ok then
+			return Net.Error(code)
+		end
+		if not Inventory.TryRemove(profile, item, 1) then
+			return Net.Error("not_enough_items")
+		end
+		local id = Data.NextId(profile)
+		if item == Items.Furnace then
+			Furnaces.Add(player, profile, { id = id, tile = { x = x, z = z }, rot = rot, state = Smelting.Empty() })
+		else
+			local o = Logistics.New(id, item, x, z, rot)
+			table.insert(profile.grid.objects, o)
+			show(player, o)
+		end
+		Net.PushState(player)
+		return { ok = true, id = id }
+	end)
+
+	Net.Handle("GridPickup", function(player, profile, payload)
+		local id = Net.Int(payload.id, 1, 1e9)
+		if id == nil then
+			return Net.Error("bad_payload")
+		end
+		if Plots.Of(player) == nil or views[player] == nil then
+			return Net.Error("not_loaded")
+		end
+		Factory.CatchUp(profile)
+		local o, index = find(profile, id)
+		if o then
+			if not Net.Near(player, tilePosition(player, o.x, o.z, 1), PlotLayout.BuildReach) then
+				return Net.Error("too_far")
+			end
+			table.remove(profile.grid.objects, index)
+			Inventory.Add(profile, o.kind, 1)
+			for _, entry in ipairs(Logistics.Contents(o)) do
+				Inventory.Add(profile, entry[1], entry[2])
+			end
+			local view = views[player][o.id]
+			if view then
+				view.model:Destroy()
+				views[player][o.id] = nil
+			end
+			Net.PushState(player)
+			return { ok = true }
+		end
+		for _, furnace in ipairs(profile.furnaces) do
+			if furnace.id == id and furnace.tile then
+				if not Net.Near(player, tilePosition(player, furnace.tile.x, furnace.tile.z, 2), PlotLayout.BuildReach) then
+					return Net.Error("too_far")
+				end
+				local removed, code = Furnaces.Remove(player, profile, furnace)
+				if not removed then
+					return Net.Error(code)
+				end
+				Net.PushState(player)
+				return { ok = true }
+			end
+		end
+		return Net.Error("not_owner")
+	end)
+
+	Net.Handle("ChestGet", function(player, profile, payload)
+		local o, code = openChest(player, profile, payload)
+		if o == nil then
+			return Net.Error(code)
+		end
+		return chestReply(o)
+	end)
+
+	Net.Handle("ChestPut", function(player, profile, payload)
+		local o, code = openChest(player, profile, payload)
+		if o == nil then
+			return Net.Error(code)
+		end
+		local item = Net.Item(payload.item)
+		local quantity = Net.Int(payload.quantity, 1, Logistics.ChestSlots * Logistics.SlotSize)
+		if item == nil or quantity == nil then
+			return Net.Error("bad_payload")
+		end
+		if Inventory.Count(profile, item) < quantity then
+			return Net.Error("not_enough_items")
+		end
+		local moved = math.min(quantity, Logistics.Room(o.items, item))
+		if moved <= 0 then
+			return Net.Error("chest_full")
+		end
+		Inventory.TryRemove(profile, item, moved)
+		Logistics.Store(o.items, item, moved)
+		Net.PushState(player)
+		return chestReply(o)
+	end)
+
+	Net.Handle("ChestTake", function(player, profile, payload)
+		local o, code = openChest(player, profile, payload)
+		if o == nil then
+			return Net.Error(code)
+		end
+		local item = Net.Item(payload.item)
+		local quantity = Net.Int(payload.quantity, 1, Logistics.ChestSlots * Logistics.SlotSize)
+		if item == nil or quantity == nil then
+			return Net.Error("bad_payload")
+		end
+		local taken = Logistics.Unstore(o.items, item, quantity)
+		if taken <= 0 then
+			return Net.Error("chest_empty")
+		end
+		Inventory.Add(profile, item, taken)
+		Net.PushState(player)
+		return chestReply(o)
+	end)
+end
+
+return Grid

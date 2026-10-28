@@ -27,7 +27,7 @@ function load_shared(name)
   cache[name] = assert(load(SOURCES[name], "@src/shared/" .. name .. ".luau", "t", env))()
   return cache[name]
 end
-for _, n in ipairs({ "Models", "PlotLayout", "Items", "Smelting" }) do _G[n] = load_shared(n) end
+for _, n in ipairs({ "Models", "PlotLayout", "Items", "Smelting", "Logistics" }) do _G[n] = load_shared(n) end
 local function encode(v)
   local t = type(v)
   if t == "table" then

@@ -16,4 +16,9 @@ return {
 	FurnacePickup = "FurnacePickup", -- { id }
 	WorkshopGet = "WorkshopGet",
 	WorkshopOrder = "WorkshopOrder", -- { recipe }
+	GridPlace = "GridPlace", -- { item, x, z, rot }
+	GridPickup = "GridPickup", -- { id }
+	ChestGet = "ChestGet", -- { id }
+	ChestPut = "ChestPut", -- { id, item, quantity }
+	ChestTake = "ChestTake", -- { id, item, quantity }
 }

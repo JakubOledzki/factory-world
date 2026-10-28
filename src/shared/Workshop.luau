@@ -11,6 +11,9 @@ Workshop.MaxQueue = 5
 Workshop.Recipes = {
 	{ id = Items.Furnace, quantity = 1, time = 45, ingredients = { { Items.Stone, 20 } } },
 	{ id = Items.Nails, quantity = 5, time = 10, ingredients = { { Items.IronIngot, 1 } } },
+	{ id = Items.Belt, quantity = 4, time = 10, ingredients = { { Items.IronIngot, 2 }, { Items.Wood, 1 } } },
+	{ id = Items.Inserter, quantity = 1, time = 15, ingredients = { { Items.IronIngot, 2 }, { Items.CopperIngot, 1 }, { Items.Nails, 5 } } },
+	{ id = Items.WoodenChest, quantity = 1, time = 10, ingredients = { { Items.Wood, 10 }, { Items.Nails, 5 } } },
 }
 
 function Workshop.Recipe(id)

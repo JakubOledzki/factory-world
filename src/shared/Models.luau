@@ -10,6 +10,7 @@
 --            "glow" (lit while a furnace smelts)
 --   fire, smoke, light, sparkle   effects the server adds to the part
 --   noCollide   players walk through it
+--   hidden      built invisible (shown by the game when needed, e.g. an inserter's load)
 local Models = {}
 
 -- A small random generator of its own, so the same seed gives the same model on the server and in
@@ -219,7 +220,8 @@ end
 
 -- A round stone furnace with a domed top, a chimney and a fire mouth facing -z. The body is named
 -- "Body"; the coal bed and the mouth are in group "glow".
-function Models.Furnace()
+-- `compact` leaves out the coal box beside it, for a furnace on the build grid.
+function Models.Furnace(compact)
 	local rng = Models.Rng(7)
 	local parts = {}
 	post(parts, 0.6, 7.2, { 0, 0.3, 0 }, { 96, 92, 88 }, "Slate")
@@ -247,6 +249,9 @@ function Models.Furnace()
 		ball(parts, rng.Num(0.5, 0.8), { rng.Num(-0.9, 0.9), 1.1, -2.6 + rng.Num(-0.2, 0.2) }, { 40, 34, 30 }, "Basalt", { group = "glow", noCollide = true })
 	end
 	add(parts, { name = "Fire", size = { 1.6, 0.4, 0.8 }, pos = { 0, 1.2, -2.4 }, color = { 30, 26, 24 }, material = "SmoothPlastic", group = "glow", noCollide = true, fire = true, light = { color = { 255, 140, 50 }, range = 16, brightness = 3 } })
+	if compact then
+		return parts
+	end
 	-- A coal box and a little heap of ore beside it.
 	add(parts, { size = { 2, 1.2, 1.6 }, pos = { -4.3, 0.6, -1.2 }, color = vary(Planks, rng, 8), material = "WoodPlanks" })
 	for i = 1, 5 do
@@ -459,8 +464,9 @@ end
 
 -- Everything on one plot apart from the mines, trees and furnaces, which have their own models:
 -- the fence (open on the sides in `open`, a list of "x+", "x-", "z+", "z-"), the gravel yard under
--- the furnace slots, a woodpile, and scattered stones and plants. Coordinates from the plot's centre.
-function Models.PlotDecor(seed, size, open, slots)
+-- the furnace slots, the concrete floor of the build grid (`grid`, PlotLayout.Grid), a woodpile,
+-- and scattered stones and plants. Coordinates from the plot's centre.
+function Models.PlotDecor(seed, size, open, slots, grid)
 	local parts = {}
 	local half = size / 2
 	local isOpen = {}
@@ -493,6 +499,16 @@ function Models.PlotDecor(seed, size, open, slots)
 		material = "Pebble",
 		noCollide = true,
 	})
+	-- The build grid: a concrete floor with a seam between the tiles.
+	local gw, gd = grid.width * grid.tile, grid.depth * grid.tile
+	local gx, gz = grid.x + gw / 2, grid.z + gd / 2
+	add(parts, { size = { gw + 1, 0.2, gd + 1 }, pos = { gx, 0.05, gz }, color = { 158, 156, 150 }, material = "Concrete", noCollide = true })
+	for i = 0, grid.width do
+		add(parts, { size = { 0.15, 0.22, gd }, pos = { grid.x + i * grid.tile, 0.07, gz }, color = { 124, 122, 118 }, material = "Concrete", noCollide = true })
+	end
+	for i = 0, grid.depth do
+		add(parts, { size = { gw, 0.22, 0.15 }, pos = { gx, 0.07, grid.z + i * grid.tile }, color = { 124, 122, 118 }, material = "Concrete", noCollide = true })
+	end
 	-- A woodpile by the trees.
 	local rng = Models.Rng(seed + 99)
 	for row = 0, 2 do
@@ -501,14 +517,92 @@ function Models.PlotDecor(seed, size, open, slots)
 		end
 	end
 	local scatter = {
-		Models.Scatter(seed + 1, 4, -14, 40, 4, 10),
+		Models.Scatter(seed + 1, 30, -22, 42, -15, 4),
 		Models.Scatter(seed + 2, 8, 24, 40, 40, 8),
 		Models.Scatter(seed + 3, -40, -44, 40, -40, 6),
-		Models.Scatter(seed + 4, -18, 0, -6, 20, 4),
+		Models.Scatter(seed + 4, -20, 10, -8, 22, 4),
 	}
 	for _, list in ipairs(scatter) do
 		place(parts, list, 0, 0, 0, 0)
 	end
+	return parts
+end
+
+-- A belt tile, 4 × 4 studs: a rubber belt between two rails with rollers at the ends and arrows the
+-- way it runs, to its front (-z). Items ride on it at y = 0.95 (Models.BeltItem).
+function Models.Belt()
+	local parts = {}
+	local rail = { 92, 96, 104 }
+	add(parts, { name = "Body", size = { 3.3, 0.25, 4 }, pos = { 0, 0.6, 0 }, color = { 40, 40, 44 }, material = "Fabric" })
+	for _, x in ipairs({ -1.83, 1.83 }) do
+		add(parts, { size = { 0.36, 0.9, 4 }, pos = { x, 0.45, 0 }, color = rail, material = "Metal" })
+		add(parts, { size = { 0.38, 0.08, 4 }, pos = { x, 0.93, 0 }, color = { 222, 176, 44 }, material = "SmoothPlastic" })
+	end
+	for _, z in ipairs({ -1.8, 1.8 }) do
+		log(parts, 3.3, 0.5, { 0, 0.42, z }, 0, { 70, 72, 78 }, "Metal")
+	end
+	-- Arrows pointing the way the belt runs.
+	for _, tip in ipairs({ -1.4, 0.6 }) do
+		add(parts, { size = { 0.14, 0.04, 1 }, pos = { -0.3, 0.74, tip + 0.4 }, rot = { 0, -0.6435, 0 }, color = { 128, 128, 134 }, material = "SmoothPlastic", noCollide = true })
+		add(parts, { size = { 0.14, 0.04, 1 }, pos = { 0.3, 0.74, tip + 0.4 }, rot = { 0, 0.6435, 0 }, color = { 128, 128, 134 }, material = "SmoothPlastic", noCollide = true })
+	end
+	return parts
+end
+
+-- Where item `slot` (1..8, lane after lane, from where items come on to where they leave) rides on
+-- a belt, in the belt's own coordinates: the left lane (as the belt runs to -z) is at -x.
+function Models.BeltSlot(slot, slots)
+	local lane = math.floor((slot - 1) / slots)
+	local i = (slot - 1) % slots
+	return { lane == 0 and -0.8 or 0.8, 0.95, 1.5 - i * (3 / (slots - 1)) }
+end
+
+-- An inserter on a turntable: a yellow arm on a column that swings from behind it (+z), where it
+-- picks up, round to its front (-z), where it drops. The arm's parts are in group "arm" and drawn
+-- pointing to the front; its load is the hidden ball named "Hand".
+function Models.Inserter()
+	local parts = {}
+	local yellow = { 222, 176, 44 }
+	local steel = { 92, 96, 104 }
+	post(parts, 0.5, 2.8, { 0, 0.25, 0 }, { 66, 68, 74 }, "DiamondPlate", { name = "Body" })
+	post(parts, 0.6, 1.9, { 0, 0.8, 0 }, yellow, "SmoothPlastic")
+	post(parts, 1.4, 0.8, { 0, 1.8, 0 }, steel, "Metal")
+	ball(parts, 1, { 0, 2.6, 0 }, yellow, "SmoothPlastic", { group = "arm" })
+	add(parts, { size = { 0.45, 0.45, 1.9 }, pos = { 0, 2.6, -0.95 }, color = yellow, material = "SmoothPlastic", group = "arm" })
+	add(parts, { size = { 0.32, 0.9, 0.32 }, pos = { 0, 2.15, -1.8 }, color = steel, material = "Metal", group = "arm" })
+	for _, x in ipairs({ -0.3, 0.3 }) do
+		add(parts, { size = { 0.12, 0.5, 0.45 }, pos = { x, 1.5, -1.8 }, color = { 50, 50, 54 }, material = "Metal", group = "arm" })
+	end
+	ball(parts, 0.7, { 0, 1.35, -1.8 }, { 200, 200, 200 }, "SmoothPlastic", { name = "Hand", group = "arm", hidden = true, noCollide = true })
+	-- Hazard stripes round the turntable.
+	for i = 0, 7 do
+		local a = i / 8 * 2 * math.pi
+		add(parts, { size = { 0.5, 0.52, 0.18 }, pos = { math.cos(a) * 1.3, 0.25, math.sin(a) * 1.3 }, rot = { 0, -a + math.pi / 2, 0 }, color = i % 2 == 0 and yellow or { 30, 30, 32 }, material = "SmoothPlastic" })
+	end
+	return parts
+end
+
+-- A wooden chest bound with iron, its lock on the front (-z). The box is named "Body".
+function Models.WoodenChest()
+	local rng = Models.Rng(31)
+	local parts = {}
+	for i = 0, 2 do
+		add(parts, {
+			name = i == 0 and "Body" or nil,
+			size = { 3, 0.56, 2.2 },
+			pos = { 0, 0.3 + i * 0.56, 0 },
+			color = vary(Planks, rng, 10),
+			material = "WoodPlanks",
+		})
+	end
+	add(parts, { size = { 3.12, 0.5, 2.32 }, pos = { 0, 1.98, 0 }, color = vary(Wood, rng, 6), material = "WoodPlanks" })
+	log(parts, 3.12, 0.9, { 0, 2.2, 0 }, 0, vary(Wood, rng, 6), "WoodPlanks")
+	for _, x in ipairs({ -1.15, 1.15 }) do
+		add(parts, { size = { 0.22, 2.1, 2.34 }, pos = { x, 1.08, 0 }, color = Iron, material = "Metal" })
+		log(parts, 0.24, 0.96, { x, 2.2, 0 }, 0, Iron, "Metal")
+	end
+	add(parts, { size = { 0.55, 0.65, 0.16 }, pos = { 0, 1.75, -1.2 }, color = { 196, 164, 80 }, material = "Metal" })
+	add(parts, { size = { 0.16, 0.2, 0.06 }, pos = { 0, 1.68, -1.29 }, color = { 30, 26, 22 }, material = "SmoothPlastic" })
 	return parts
 end
 

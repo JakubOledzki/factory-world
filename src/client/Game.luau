@@ -30,6 +30,11 @@ Game.Errors = {
 	furnace_not_empty = "Najpierw opróżnij piec.",
 	queue_full = "Kolejka stołu jest pełna.",
 	unknown_recipe = "Nieznany przepis.",
+	not_buildable = "Tego nie da się postawić na siatce.",
+	outside_grid = "Stawiaj tylko na betonowej siatce na swojej działce.",
+	tile_taken = "To miejsce jest zajęte.",
+	chest_full = "Skrzynia jest pełna.",
+	chest_empty = "Tego nie ma w skrzyni.",
 }
 
 function Game.ErrorText(code)

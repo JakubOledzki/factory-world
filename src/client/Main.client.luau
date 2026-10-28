@@ -11,6 +11,8 @@ local InventoryWindow = require(Ui.Inventory)
 local MerchantWindow = require(Ui.Merchant)
 local FurnaceWindow = require(Ui.Furnace)
 local WorkshopWindow = require(Ui.Workshop)
+local ChestWindow = require(Ui.Chest)
+local BuildBar = require(Ui.BuildBar)
 require(script.Parent:WaitForChild("Game"))
 
 local player = Players.LocalPlayer
@@ -34,7 +36,8 @@ end
 
 Hud.Mount(screen, function()
 	show(InventoryWindow.Open)
-end)
+end, BuildBar.Toggle)
+BuildBar.Mount(screen)
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then
@@ -76,5 +79,7 @@ ProximityPromptService.PromptTriggered:Connect(function(prompt)
 		show(WorkshopWindow.Open)
 	elseif kind == "furnace" then
 		show(FurnaceWindow.Open, prompt:GetAttribute("FurnaceId"))
+	elseif kind == "chest" then
+		show(ChestWindow.Open, prompt:GetAttribute("ChestId"))
 	end
 end)
