@@ -227,6 +227,25 @@ function views() {
     labels.push({ at: [46, 0, 9], text: "Fontanna", cls: "tag" });
     out["5-modele"] = { objects, camera: { pos: [8, 22, 52], look: [8, 3, 0], fov: 55 }, shadowRadius: 70, caption, labels };
   }
+  // 17. The machines side by side, close up.
+  {
+    const objects = [{ at: [0, 0, 0], parts: [block([140, 1, 60], [0, -0.5, 0], [116, 158, 78], "Grass")] }];
+    const row = [
+      ["Tartak", "Models.Machine('furniture_sawmill')", -29],
+      ["Kamieniarz", "Models.Machine('furniture_stonemason')", -19.5],
+      ["Kruszarka", "Models.Machine('furniture_crusher')", -10],
+      ["Odlewnia", "Models.Machine('furniture_foundry')", 2.5],
+      ["Generator", "Models.Generator()", 15],
+      ["Skrzynia", "Models.WoodenChest()", 23],
+      ["Podajnik", "Models.Inserter()", 28.5],
+    ];
+    const labels = [];
+    for (const [name, expr, x] of row) {
+      objects.push({ at: [x, 0, 0], yaw: Math.PI - 0.35, parts: lua.call(expr), lit: true });
+      labels.push({ at: [x, 0, 5.5], text: name, cls: "tag" });
+    }
+    out["17-maszyny"] = { objects, camera: { pos: [-1, 15, 33], look: [-1, 3, 0], fov: 60 }, shadowRadius: 70, caption, labels };
+  }
   // 6. A little factory on the build grid, worked out by the game's own rules (Logistics.Run).
   {
     const p = plot(1, { furnaces: ["lit", "cold"], cut: [5] });
