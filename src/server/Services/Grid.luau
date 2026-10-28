@@ -10,6 +10,7 @@ local RunService = game:GetService("RunService")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Items = require(Shared.Items)
+local Lands = require(Shared.Lands)
 local Forestry = require(Shared.Forestry)
 local Logistics = require(Shared.Logistics)
 local Models = require(Shared.Models)
@@ -53,7 +54,7 @@ local function specOf(o, bend, now)
 	elseif o.kind == Rail.StationKind then
 		return Models.Station()
 	elseif Forestry.Grown(o, now) then
-		return Models.Tree(o.id)
+		return Models.Tree(o.id, o.snow)
 	end
 	return Models.Sapling(o.id)
 end
@@ -353,6 +354,8 @@ function Grid.Start()
 			local o
 			if item == Items.Sapling then
 				o = Forestry.New(id, x, z, Clock.Now())
+				-- A tree of the tundra grows up snowy.
+				o.snow = profile.active and Lands.Biomes[profile.active].snow or nil
 			else
 				o = Logistics.New(id, item, x, z, rot)
 			end

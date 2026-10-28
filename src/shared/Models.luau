@@ -171,8 +171,8 @@ function Models.Mine(seed)
 end
 
 -- A spruce: a trunk with roots and a crown of three tiers. Everything but the stump is in group
--- "crown". The trunk is named "Trunk".
-function Models.Tree(seed)
+-- "crown". The trunk is named "Trunk". `snow`: snow lies on its tiers (a tree of the tundra).
+function Models.Tree(seed, snow)
 	local rng = Models.Rng(seed)
 	local parts = {}
 	local height = rng.Num(10, 14)
@@ -213,8 +213,25 @@ function Models.Tree(seed)
 				group = "crown",
 			})
 		end
+		if snow then
+			-- A cap of snow on the upper part of the tier.
+			for side = 0, 7 do
+				local yaw = spin + side * math.pi / 4
+				local r = radius * 0.62
+				add(parts, {
+					shape = "Wedge",
+					size = { r * 0.86, tall * 0.4, r },
+					pos = { -math.sin(yaw) * r / 2, y + tall * 0.32, -math.cos(yaw) * r / 2 },
+					rot = { 0, yaw, 0 },
+					color = { 240, 244, 248 },
+					material = "Snow",
+					group = "crown",
+					noCollide = true,
+				})
+			end
+		end
 	end
-	ball(parts, 1.4, { 0, base + 2 * 2.9 + 3.6, 0 }, vary(green, rng, 6), "LeafyGrass", { group = "crown" })
+	ball(parts, 1.4, { 0, base + 2 * 2.9 + 3.6, 0 }, snow and { 240, 244, 248 } or vary(green, rng, 6), snow and "Snow" or "LeafyGrass", { group = "crown" })
 	return parts
 end
 
@@ -470,9 +487,13 @@ end
 -- plot's centre. Everything else on a plot stands on the grid.
 -- `gaps` (optional): more openings in the fence, { side, from, to } along the side (x for the
 -- z sides, z for the x sides), like the one to the railway platform.
-function Models.PlotDecor(seed, size, open, gaps)
+-- `biome` (optional, from Shared.Lands): the plot's ground.
+function Models.PlotDecor(seed, size, open, gaps, biome)
 	local parts = {}
 	local half = size / 2
+	if biome then
+		add(parts, { size = { size, 0.2, size }, pos = { 0, -0.06, 0 }, color = biome.ground, material = biome.material, noCollide = true })
+	end
 	local sides = {
 		{ "z-", 0, -half, 0 },
 		{ "z+", 0, half, 0 },

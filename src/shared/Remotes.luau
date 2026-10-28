@@ -19,6 +19,9 @@ return {
 	GridPlace = "GridPlace", -- { item, x, z, rot }
 	GridPickup = "GridPickup", -- { id }
 	GridRotate = "GridRotate", -- { id, rot }
+	LandList = "LandList",
+	LandBuy = "LandBuy", -- { biome }
+	LandSwitch = "LandSwitch", -- { to = "home" | biome }
 	ChestGet = "ChestGet", -- { id }
 	ChestPut = "ChestPut", -- { id, item, quantity }
 	ChestTake = "ChestTake", -- { id, item, quantity }
@@ -29,7 +32,6 @@ return {
 	GeneratorGet = "GeneratorGet", -- { id }
 	GeneratorLoad = "GeneratorLoad", -- { id, item, quantity }
 	GeneratorTake = "GeneratorTake", -- { id }
-	WorldMapGet = "WorldMapGet",
 	StationGet = "StationGet",
 	StationLoad = "StationLoad", -- { item, quantity }
 	StationUnload = "StationUnload", -- { item, quantity }

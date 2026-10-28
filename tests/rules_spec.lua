@@ -178,7 +178,7 @@ local Models = load_shared("Models")
 
 local Materials = {}
 for _, m in ipairs({ "SmoothPlastic", "Plastic", "Wood", "WoodPlanks", "Slate", "Rock", "Basalt", "Cobblestone", "Brick",
-	"Metal", "CorrodedMetal", "Neon", "Fabric", "Grass", "LeafyGrass", "Ground", "Pebble", "Limestone", "Glass", "Pavement", "Marble", "Concrete", "DiamondPlate", "Sandstone", "Sand", "Rubber", "Foil" }) do
+	"Metal", "CorrodedMetal", "Neon", "Fabric", "Grass", "LeafyGrass", "Ground", "Pebble", "Limestone", "Glass", "Pavement", "Marble", "Concrete", "DiamondPlate", "Sandstone", "Sand", "Rubber", "Foil", "Snow" }) do
 	Materials[m] = true
 end
 local Shapes = { Block = true, Ball = true, Cylinder = true, Wedge = true }
@@ -241,6 +241,11 @@ test("Every model is made of parts Roblox can build, with the parts the game loo
 		checkModel("PlotDecor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index)))
 		assert(#PlotLayout.OpenSides(index) >= 1, "plot " .. index .. " has a gate")
 	end
+	local Lands = load_shared("Lands")
+	for _, id in ipairs(Lands.Order) do
+		checkModel("PlotDecor " .. id, Models.PlotDecor(101, PlotLayout.Size, {}, nil, Lands.Biomes[id]))
+	end
+	checkModel("Tree with snow", Models.Tree(7, true), { "Trunk" })
 end)
 
 test("The same seed builds the same model", function()
@@ -899,23 +904,80 @@ end)
 
 local WorldMap = load_shared("WorldMap")
 
-test("The world map: every station stands on land, the map's rows cover it whole, and the poles are ice", function()
+test("The trains' world: every station stands on land, and the poles are ice", function()
 	for id = 1, 200 do
 		local x, y = Rail.Location(id * 104729)
 		assert(not WorldMap.IsWater(WorldMap.Biome(x, y)), "station " .. id .. " in water")
 	end
-	local water, cells = 0, 0
-	for _, runs in ipairs(WorldMap.Runs()) do
-		eq(runs[1].from, 1)
-		eq(runs[#runs].to, WorldMap.Columns)
-		for _, run in ipairs(runs) do
-			assert(WorldMap.Biomes[run.biome], run.biome)
-			cells = cells + run.to - run.from + 1
-			if WorldMap.IsWater(run.biome) then water = water + run.to - run.from + 1 end
-		end
-	end
-	eq(cells, WorldMap.Columns * WorldMap.Rows)
-	assert(water > cells * 0.1 and water < cells * 0.5, "water " .. water .. " of " .. cells)
 	eq(WorldMap.Biome(100, 5), "snow")
 	eq(WorldMap.Biome(700, 400), WorldMap.Biome(700 + WorldMap.Km.width, 400), "east-west wraps round")
+end)
+
+local Lands = load_shared("Lands")
+
+test("Plots of biomes: one of each, dearer each time, with their own trees and mines", function()
+	local lands = {}
+	eq(Lands.Price(lands), Lands.Prices[1])
+	eq(Lands.CanBuy(lands, "forest"), true)
+	eq(select(2, Lands.CanBuy(lands, "ocean")), "bad_payload")
+	local id = 100
+	local function nextId()
+		id = id + 1
+		return id
+	end
+	lands.forest = Lands.New("forest", nextId, GridLayout.Grid.layout)
+	eq(select(2, Lands.CanBuy(lands, "forest")), "land_owned", "one of each biome")
+	eq(Lands.Price(lands), Lands.Prices[2])
+	assert(Lands.Prices[2] > Lands.Prices[1], "dearer each time")
+	eq(#lands.forest.grid.objects, Lands.Biomes.forest.trees, "all the forest's trees fit")
+	for _, t in ipairs(lands.forest.grid.objects) do
+		eq(Logistics.CanPlace({}, {}, Items.Sapling, t.x, t.z), true, "tree on a free tile")
+	end
+	eq(#Lands.New("desert", nextId, 3).grid.objects, 0, "no trees in the desert")
+	eq(Lands.New("tundra", nextId, 3).grid.objects[1].snow, true, "snowy trees in the tundra")
+	for _, id2 in ipairs(Lands.Order) do
+		local b = Lands.Biomes[id2]
+		assert(b.name and b.ground and b.material, id2)
+		local last = 0
+		for _, drop in ipairs(b.drops) do
+			assert(Items.Names[drop[1]], id2 .. " drops a known item")
+			assert(drop[2] >= 1 and drop[2] < 1000, id2 .. " chance")
+			assert(drop[2] >= last, id2 .. ": rarest first")
+			last = drop[2]
+		end
+		local all = {}
+		for i = 1, #b.drops do all[i] = 0 end
+		eq(#Mining.Load(all, b.drops), math.min(Mining.MaxOres, #b.drops))
+	end
+	eq(Lands.Price({ a = 1, b = 1, c = 1 }), Lands.LaterPrice, "a billion after the third")
+	-- Every biome can be bought, then no more.
+	for _, biome in ipairs(Lands.Order) do
+		if lands[biome] == nil then
+			lands[biome] = Lands.New(biome, nextId, 3)
+		end
+	end
+	eq(Lands.Price(lands), nil)
+end)
+
+test("Switching plots puts the shown one away and brings the other, the home plot's station stays on it", function()
+	local home = { objects = { { id = 1, kind = "rail_station" } } }
+	local profile = { grid = home, furnaces = { { id = 2 } }, mines = { Mining.New() }, lands = {} }
+	profile.lands.desert = Lands.New("desert", function() return 50 end, 3)
+	local desertGrid = profile.lands.desert.grid
+	eq(Lands.Shown(profile), Lands.Home)
+	eq(select(2, Lands.Switch(profile, Lands.Home)), "land_shown")
+	eq(select(2, Lands.Switch(profile, "forest")), "not_owner")
+	eq(Lands.Switch(profile, "desert"), true)
+	eq(profile.active, "desert")
+	eq(profile.grid, desertGrid)
+	eq(#profile.furnaces, 0)
+	eq(Lands.HomeGrid(profile), home, "the station is found on the home plot")
+	profile.mines[1].units = 7
+	eq(Lands.Switch(profile, Lands.Home), true)
+	eq(profile.grid, home)
+	eq(profile.furnaces[1].id, 2)
+	eq(profile.home, nil)
+	eq(profile.lands.desert.grid, desertGrid, "the desert waits as it was")
+	eq(profile.lands.desert.mine.units, 7, "with its mine")
+	eq(Lands.Count(profile.lands), 1)
 end)

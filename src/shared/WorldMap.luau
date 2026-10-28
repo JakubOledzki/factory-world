@@ -1,15 +1,11 @@
--- The world map (WorldMap.cs on main draws the real Earth; here the world is made up): a world
--- of Km, every player's railway station somewhere on its land (Rail.Location), and the land.
+-- The made-up world the trains run through (WorldMap.cs on main uses the real Earth): a world of
+-- Km, every player's railway station somewhere on its land (Rail.Location), and the land.
 -- Land is worked out from the place alone, the same everywhere: snow at the poles, then tundra and taiga, then forest, plains and steppe, and desert about the middle, with
 -- mountains, lakes and seas where the noise says. Pure functions.
 local WorldMap = {}
 
 -- The world, km across (east-west wraps round) and from north to south.
 WorldMap.Km = { width = 2400, height = 1200 }
-
--- The map is drawn as Columns × Rows cells.
-WorldMap.Columns = 60
-WorldMap.Rows = 30
 
 WorldMap.Biomes = {
 	sea = { name = "Morze", color = { 58, 104, 160 } },
@@ -94,27 +90,6 @@ function WorldMap.Land(x, y)
 		end
 	end
 	return x, y
-end
-
--- The cells of the map: rows of runs { biome, from, to } (columns, from 1) of the same land, so a
--- row is drawn with few pieces.
-function WorldMap.Runs()
-	local w, h = WorldMap.Km.width / WorldMap.Columns, WorldMap.Km.height / WorldMap.Rows
-	local rows = {}
-	for r = 1, WorldMap.Rows do
-		local runs = {}
-		for c = 1, WorldMap.Columns do
-			local biome = WorldMap.Biome((c - 0.5) * w, (r - 0.5) * h)
-			local last = runs[#runs]
-			if last and last.biome == biome then
-				last.to = c
-			else
-				table.insert(runs, { biome = biome, from = c, to = c })
-			end
-		end
-		rows[r] = runs
-	end
-	return rows
 end
 
 return WorldMap

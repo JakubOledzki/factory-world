@@ -61,10 +61,15 @@ function forest(near) {
 function plot(index, opts = {}) {
   const [cx, cz] = center(index);
   const objects = [];
-  objects.push({ at: [cx, 0, cz], parts: [block([L.Size, 1, L.Size], [0, -0.45, 0], [116, 158, 78], "Grass")] });
-  objects.push({ at: [cx, 0, cz], parts: lua.call(`Models.PlotDecor(${index * 100}, PlotLayout.Size, PlotLayout.OpenSides(${index}), PlotLayout.FenceGaps())`) });
-  objects.push({ at: [cx, 0, cz], parts: lua.call(`Models.Railway(PlotLayout.Rail, PlotLayout.StationSpan())`) });
-  {
+  if (!opts.biome) objects.push({ at: [cx, 0, cz], parts: [block([L.Size, 1, L.Size], [0, -0.45, 0], [116, 158, 78], "Grass")] });
+  if (opts.biome) {
+    // A bought plot shown on the player's place (Plots.buildPlot): its ground, no railway.
+    objects.push({ at: [cx, 0, cz], parts: lua.call(`Models.PlotDecor(${index * 100}, PlotLayout.Size, PlotLayout.OpenSides(${index}), nil, Lands.Biomes.${opts.biome})`) });
+  } else {
+    objects.push({ at: [cx, 0, cz], parts: lua.call(`Models.PlotDecor(${index * 100}, PlotLayout.Size, PlotLayout.OpenSides(${index}), PlotLayout.FenceGaps())`) });
+    objects.push({ at: [cx, 0, cz], parts: lua.call(`Models.Railway(PlotLayout.Rail, PlotLayout.StationSpan())`) });
+  }
+  if (!opts.biome) {
     const s = lua.call("PlotLayout.Station");
     const [x, z] = lua.call(`{ PlotLayout.TileCenter(${s.x}, ${s.z}, ${s.size}) }`);
     objects.push({ at: [cx + x, 0, cz + z], yaw: -Math.PI / 2, parts: lua.call("Models.Station()") });
@@ -74,13 +79,15 @@ function plot(index, opts = {}) {
   // CFrame.lookAt(at, at + toSquare): the front (-z) faces the square.
   objects.push({ at: sign, yaw: Math.atan2(-tx, -tz), parts: lua.call(`Models.Signpost(${index})`) });
   L.Mines.forEach((m, k) => objects.push({ at: [cx + m.x, 0, cz + m.z], yaw: Math.PI, parts: lua.call(`Models.Mine(${index * 10 + k + 1})`) }));
-  L.WildTrees.forEach((t, k) => {
+  const wild = opts.biome ? lua.call(`Lands.WildTrees("${opts.biome}")`) : L.WildTrees;
+  const snow = opts.biome ? !!lua.call(`Lands.Biomes.${opts.biome}.snow`) : false;
+  wild.forEach((t, k) => {
     const id = index * 20 + k + 1;
     const [x, z] = lua.call(`{ PlotLayout.TileCenter(${t.x}, ${t.z}, 1) }`);
     // As Grid.show: the tile's yaw (pi for rotation 0) and a turn of its own.
     const yaw = Math.PI + (id % 7) * 0.9;
     const sapling = (opts.cut || []).includes(k);
-    objects.push({ at: [cx + x, 0, cz + z], yaw, parts: lua.call(sapling ? `Models.Sapling(${id})` : `Models.Tree(${id})`) });
+    objects.push({ at: [cx + x, 0, cz + z], yaw, parts: lua.call(sapling ? `Models.Sapling(${id})` : `Models.Tree(${id}, ${snow})`) });
   });
   L.FurnaceSlotTiles.forEach((t, k) => {
     const f = (opts.furnaces || [])[k];
@@ -563,40 +570,33 @@ function views() {
         <div style="font-size:13px">➡ do Ola_Buduje: 60 × ${name("planks")} (dojedzie za 12 s)</div>
       </div></div>` };
   }
-  // 14. The world map: the land, the player's station, others' stations, a route and trains.
+  // 14. A plot of the tundra shown on the player's place, with the window of their plots.
   {
-    const scene = out["13-kolej"];
-    const W = 840, H = 420;
-    const km = lua.call("WorldMap.Km");
-    const biomes = lua.call("WorldMap.Biomes");
+    const p = plot(1, { biome: "tundra" });
+    const { cx, cz } = p;
+    const objects = square().concat(p.objects, forest([cx, cz, 260]));
+    const biomes = lua.call("Lands.Biomes");
     const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
-    const cols = lua.call("WorldMap.Columns"), rowsN = lua.call("WorldMap.Rows");
-    const cw = W / cols, ch = H / rowsN;
-    let land = "";
-    lua.call("WorldMap.Runs()").forEach((runs, r) => runs.forEach((run) => {
-      if (run.biome !== "sea") land += `<div style="position:absolute;left:${Math.floor((run.from - 1) * cw)}px;top:${Math.floor(r * ch)}px;width:${Math.ceil((run.to - run.from + 1) * cw)}px;height:${Math.ceil(ch)}px;background:${rgb(biomes[run.biome].color)}"></div>`;
-    }));
-    const people = [[1001, "Jakub", "me"], [2002, "Ola_Buduje", "partner"], [3003, "kopacz77", "partner"], [4004, "Tartak_Bartka", "server"], [5005, "Gosia_K", "server"]];
-    const at = {};
-    for (const [id] of people) { const [x, y] = lua.call(`{ Rail.Location(${id}) }`); at[id] = [x / km.width * W, y / km.height * H]; }
-    const colors = { me: "#ffd65a", partner: "#8cd77d", server: "#82b4ff" };
-    const seg = (a, b, color, t, op) => { let [ax, ay] = at[a], [bx, by] = at[b]; if (bx - ax > W / 2) bx -= W; else if (ax - bx > W / 2) bx += W;
-      const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy); return { html: `<div style="position:absolute;left:${(ax + bx) / 2 - len / 2}px;top:${(ay + by) / 2 - t / 2}px;width:${len}px;height:${t}px;background:${color};opacity:${op};transform:rotate(${Math.atan2(dy, dx)}rad)"></div>`, ax, ay, bx, by }; };
-    let lines = seg(1001, 2002, "#ffd65a", 2, 0.65).html;
-    const t1 = seg(1001, 3003, "#28282e", 2, 0.6), t2 = seg(4004, 1001, "#28282e", 2, 0.6);
-    lines += t1.html + t2.html;
-    const dot = (t, u, c) => `<div style="position:absolute;left:${t.ax + (t.bx - t.ax) * u - 5}px;top:${t.ay + (t.by - t.ay) * u - 5}px;width:10px;height:10px;border-radius:2px;background:${c};border:1.5px solid #000"></div>`;
-    lines += dot(t1, 0.4, "#ffd65a") + dot(t2, 0.7, "#8cd77d");
-    const marks = people.map(([id, n, kind]) => { const [x, y] = at[id], s = kind === "me" ? 16 : 12;
-      return `<div style="position:absolute;left:${x - s / 2}px;top:${y - s / 2}px;width:${s}px;height:${s}px;border-radius:50%;background:${colors[kind]};border:2px solid ${id === 2002 ? "#fff" : "#000"};box-sizing:border-box"></div><b style="position:absolute;left:${x + 9}px;top:${y - 10}px;font-size:13px;text-shadow:0 0 3px #000">${kind === "me" ? "Ty" : n}</b>`; }).join("");
-    const [ox, oy] = lua.call("{ Rail.Location(2002) }");
-    const kmTo = Math.round(lua.call("Rail.DistanceKm(1001, 2002)"));
-    out["14-mapa-swiata"] = { ...scene, overlay: `<div class="win" style="width:880px;left:50%;transform:translateX(-50%);top:30px;bottom:20px;overflow:hidden"><div class="hd">Mapa świata<span class="x">✕</span></div><div class="bd">
-        <div style="position:relative;width:${W}px;height:${H}px;border-radius:8px;overflow:hidden;background:${rgb(biomes.sea.color)}">${land}${lines}${marks}</div>
-        <div class="card" style="height:70px;padding:8px 10px;box-sizing:border-box;font-size:14px"><b>Ola_Buduje</b> &nbsp;·&nbsp; ${biomes[lua.call(`WorldMap.Biome(${ox}, ${oy})`)].name} &nbsp;·&nbsp; ${kmTo} km, pociąg jedzie ${lua.call(`Rail.TripSeconds(${kmTo})`)} s, 100 szt. za ${lua.call(`Money.Format(Rail.FeeCents(${kmTo}, 100))`)}
-          <div class="muted" style="font-size:13px;margin-top:8px">Na liście odbiorców: wyślesz mu towar ze swojej stacji (zakładka Wyślij).</div></div>
-        <div class="muted" style="font-size:13px"><span style="color:#ffd65a">●</span> Ty &nbsp; <span style="color:#8cd77d">●</span> komu wysyłasz &nbsp; <span style="color:#82b4ff">●</span> gracze na tym serwerze &nbsp; ■ pociągi w drodze</div>
+    const drops = (list) => list.slice().reverse().map(([id, n]) => `<span style="display:inline-flex;align-items:center;gap:3px;margin-right:8px">${slot(id, "", { size: 30 })}<span style="font-size:13px">${Math.max(1, Math.round(n / 10))}%</span></span>`).join("");
+    const card = (b, right) => `<div class="card" style="height:112px;padding:0"><div style="position:absolute;left:10px;top:10px;width:92px;height:92px;border-radius:8px;background:${rgb(b.ground)}"></div>
+      <b style="position:absolute;left:114px;top:10px;font-size:18px">${b.name}</b><div class="muted" style="position:absolute;left:114px;top:36px;width:300px;font-size:13px;line-height:1.3">${b.text}${b.trees ? ` Drzew na start: ${b.trees}.` : ""}</div>
+      <div style="position:absolute;left:114px;top:72px;display:flex">${drops(b.drops)}</div><div style="position:absolute;right:10px;top:10px">${right}</div></div>`;
+    const meadow = { name: "Łąka", ground: [96, 140, 64], text: "Twoja pierwsza działka, ze stacją kolejową.", drops: lua.call("Mining.Drops") };
+    out["14-dzialki"] = { objects, camera: { pos: [cx - 70, 46, cz + 60], look: [cx + 10, 0, cz - 30], fov: 60 }, shadowRadius: 140, hud: "61 284,50 $", caption,
+      overlay: `<div class="win" style="width:640px;right:16px;top:20px;bottom:20px;overflow:hidden"><div class="hd">Moje działki<span class="x">✕</span></div><div class="bd">
+        <div class="muted" style="font-size:14px">Na serwerze stoi jedna twoja działka naraz. Te, których nie widać, dalej pracują i po powrocie wszystko jest przeliczone.</div>
+        ${card(meadow, `<span class="btn" style="width:150px;display:inline-block;text-align:center;padding:7px 0">Pokaż tutaj</span>`)}
+        ${card(biomes.tundra, `<b style="color:${GREEN};font-size:15px">Tu stoi</b>`)}
+        <div style="font-size:16px"><b>Kup nową działkę</b> za <span class="gold">${lua.call("Money.Format(Lands.Prices[2])")}</span> <span class="muted">(masz 61 284,50 $)</span></div>
+        ${card(biomes.desert, `<span class="btn" style="width:150px;display:inline-block;text-align:center;padding:7px 0;background:#4e5460">Kup: Pustynia</span>`)}
       </div></div>` };
+  }
+  // 15. A plot of the desert and one of the mountains, from above.
+  {
+    const a = plot(1, { biome: "desert" });
+    const objects = square().concat(a.objects, plot(2, { biome: "mountains" }).objects, plot(8, { biome: "forest" }).objects, forest());
+    out["15-biomy"] = { objects, camera: { pos: [a.cx - 360, 300, a.cz + 40], look: [a.cx - 20, 0, a.cz], fov: 60 }, shadowRadius: 500, fog: [900, 2000], hud: "1 284,50 $", caption,
+      labels: [{ at: [a.cx, 20, a.cz], text: "Pustynia", size: 18 }] };
   }
   // The windows' item pictures: every item's parts, drawn by index.html.
   const icons = {};

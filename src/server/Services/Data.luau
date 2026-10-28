@@ -52,6 +52,9 @@ local function newProfile()
 		-- The build grid: trees, belts, inserters and chests (furnaces are in `furnaces`), the time it
 		-- was worked out until and the grid layout it was saved in (PlotLayout.Grid.layout).
 		grid = { objects = {}, layout = PlotLayout.Grid.layout },
+		-- Plots bought besides the home plot, by biome (Shared.Lands). `grid`, `furnaces` and
+		-- `mines` are those of the plot shown; `active` (nil: home) says which it is.
+		lands = {},
 		-- Technologies started: [id] = { startsAt, finishesAt } (Shared.Research).
 		research = {},
 		-- The market between players (Services/PlayerMarket): books with the player's offers or
@@ -171,7 +174,7 @@ local function migrate(profile)
 		end
 	end
 	-- The plot's wild trees, once: before, trees stood in fixed places (`trees`).
-	if not profile.wildTrees then
+	if not profile.wildTrees and not profile.active then
 		for _, t in ipairs(PlotLayout.WildTrees) do
 			if Logistics.CanPlace(grid.objects, profile.furnaces, Items.Sapling, t.x, t.z) then
 				table.insert(grid.objects, Forestry.New(Data.NextId(profile), t.x, t.z, nil))
@@ -180,8 +183,9 @@ local function migrate(profile)
 		profile.wildTrees = true
 		profile.trees = nil
 	end
-	-- The railway station, once: what stood on its tiles goes back to the inventory.
-	if Logistics.Station(grid.objects) == nil then
+	-- The railway station, once: what stood on its tiles goes back to the inventory. It stands on
+	-- the home plot, which `grid` is unless a bought plot is shown (Shared.Lands).
+	if not profile.active and Logistics.Station(grid.objects) == nil then
 		local _, removed = Logistics.EnsureStation(grid.objects, Data.NextId(profile))
 		for _, o in ipairs(removed) do
 			if Items.Names[o.kind] then
@@ -207,6 +211,8 @@ local function migrate(profile)
 		end
 	end
 	profile.rail = profile.rail or {}
+	-- Plots bought besides the home plot (Shared.Lands).
+	profile.lands = profile.lands or {}
 	if profile.research == nil then
 		profile.research = {}
 	end

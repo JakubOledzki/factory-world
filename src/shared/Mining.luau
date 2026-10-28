@@ -1,4 +1,5 @@
--- Mines on a plot (WorldModule Mining.cs, level 1): a player with a pickaxe works a mine for
+-- Mines on a plot (WorldModule Mining.cs, level 1; a bought plot's mine gives what its biome has,
+-- Shared.Lands): a player with a pickaxe works a mine for
 -- 5 s and gets up to two ores. A mine gives 50 loads in a row; 10 minutes after the last one
 -- it is full again. Pure functions: the server passes the time and the random rolls in.
 local Items = require(script.Parent.Items)
@@ -28,10 +29,11 @@ Mining.Drops = {
 	{ Items.Stone, 990 },
 }
 
--- What one load gives for one roll per entry of Mining.Drops: a list of { item, quantity }.
-function Mining.Load(rolls)
+-- What one load gives for one roll per entry of `drops` (Mining.Drops, or a biome's from
+-- Shared.Lands): a list of { item, quantity }.
+function Mining.Load(rolls, drops)
 	local items = {}
-	for i, drop in ipairs(Mining.Drops) do
+	for i, drop in ipairs(drops or Mining.Drops) do
 		if #items < Mining.MaxOres and rolls[i] < drop[2] then
 			table.insert(items, { drop[1], 1 })
 		end
@@ -40,9 +42,9 @@ function Mining.Load(rolls)
 end
 
 -- Rolls for Mining.Load from a Random object (the server's own).
-function Mining.Roll(random)
+function Mining.Roll(random, drops)
 	local rolls = {}
-	for i = 1, #Mining.Drops do
+	for i = 1, #(drops or Mining.Drops) do
 		rolls[i] = random:NextInteger(0, 999)
 	end
 	return rolls

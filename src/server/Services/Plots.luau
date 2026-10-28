@@ -1,5 +1,7 @@
 -- Each player gets one of the plots around the square while they are on this server, with their
--- mines; everything else on it stands on its build grid (Services/Grid). Mining is worked here: the
+-- mines; everything else on it stands on its build grid (Services/Grid). There it shows one of the
+-- player's plots: the home plot or one they bought (Shared.Lands), with that plot's ground and
+-- mine; buying plots and switching between them is done here too. Mining is worked here: the
 -- server checks that the plot is the player's, that they stand close, that they held the prompt
 -- long enough and that they have the pickaxe, then rolls the drops itself.
 local Players = game:GetService("Players")
@@ -7,15 +9,18 @@ local ProximityPromptService = game:GetService("ProximityPromptService")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Items = require(Shared.Items)
+local Lands = require(Shared.Lands)
 local Mining = require(Shared.Mining)
 local PlotLayout = require(Shared.PlotLayout)
 local Models = require(Shared.Models)
 local Build = require(script.Parent.Build)
 local Clock = require(script.Parent.Clock)
 local Data = require(script.Parent.Data)
+local Factory = require(script.Parent.Factory)
 local Inventory = require(script.Parent.Inventory)
 local Net = require(script.Parent.Net)
 local TestMode = require(script.Parent.TestMode)
+local Wallet = require(script.Parent.Wallet)
 
 local Plots = {}
 
@@ -67,7 +72,8 @@ local function showMine(player, i)
 	end
 end
 
-local function buildPlot(player, index)
+local function buildPlot(player, profile, index)
+	local biome = profile.active and Lands.Biomes[profile.active] or nil
 	local model = Instance.new("Model")
 	model.Name = "Plot" .. index
 	model:SetAttribute("Owner", player.UserId)
@@ -75,18 +81,22 @@ local function buildPlot(player, index)
 	model.Parent = folder
 	local cx, cz = PlotLayout.Center(index)
 
-	Build.FromModel(model, "Decor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index), PlotLayout.FenceGaps()), CFrame.new(cx, 0, cz))
-	-- The railway outside the east fence; trains run over it on the clients (client/TrainView).
-	local stationFrom, stationTo = PlotLayout.StationSpan()
-	local railway = Build.FromModel(model, "Railway", Models.Railway(PlotLayout.Rail, stationFrom, stationTo), CFrame.new(cx, 0, cz))
-	railway:SetAttribute("Origin", CFrame.new(cx, 0, cz))
+	model:SetAttribute("Shown", Lands.Shown(profile))
+	Build.FromModel(model, "Decor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index), biome == nil and PlotLayout.FenceGaps() or nil, biome), CFrame.new(cx, 0, cz))
+	-- The railway outside the east fence of the home plot; trains run over it on the clients
+	-- (client/TrainView).
+	if biome == nil then
+		local stationFrom, stationTo = PlotLayout.StationSpan()
+		local railway = Build.FromModel(model, "Railway", Models.Railway(PlotLayout.Rail, stationFrom, stationTo), CFrame.new(cx, 0, cz))
+		railway:SetAttribute("Origin", CFrame.new(cx, 0, cz))
+	end
 
 	-- A signpost with the owner's name by the gate, facing the square.
 	local half = PlotLayout.Size / 2
 	local toSquare = Vector3.new(-cx, 0, -cz).Unit
 	local signAt = at(index, { x = toSquare.X * (half - 5) + toSquare.Z * 6, z = toSquare.Z * (half - 5) - toSquare.X * 6 })
 	local sign = Build.FromModel(model, "Sign", Models.Signpost(index), CFrame.lookAt(signAt, signAt + toSquare))
-	Build.Label(sign.Board, "Działka gracza " .. player.DisplayName, 3, Color3.fromRGB(255, 240, 200))
+	Build.Label(sign.Board, "Działka gracza " .. player.DisplayName .. " · " .. (biome and biome.name or Lands.HomeName), 3, Color3.fromRGB(255, 240, 200))
 
 	local plot = { index = index, model = model, mines = {} }
 	for i, offset in ipairs(PlotLayout.Mines) do
@@ -104,6 +114,8 @@ local function buildPlot(player, index)
 	end
 	return plot
 end
+
+local place
 
 local function spawnOnPlot(player, character)
 	local plot = plotOf[player]
@@ -173,11 +185,83 @@ local function workMine(player, profile, prompt)
 		mine = Mining.New()
 	end
 	profile.mines[i] = mine
-	Plots.Gather(player, profile, Mining.Load(Mining.Roll(random)))
+	local drops = profile.active and Lands.Biomes[profile.active].drops or Mining.Drops
+	Plots.Gather(player, profile, Mining.Load(Mining.Roll(random, drops), drops))
 	showMine(player, i)
 end
 
+-- Builds the plot the player shows, at `index`, and everything on its grid.
+function place(player, profile, index)
+	plotOf[player] = buildPlot(player, profile, index)
+	for i in ipairs(PlotLayout.Mines) do
+		if profile.mines[i] == nil then
+			profile.mines[i] = Mining.New()
+		end
+		showMine(player, i)
+	end
+	for _, callback in ipairs(placedCallbacks) do
+		callback(player, plotOf[player])
+	end
+end
+
+-- The player's plots for the window: which is shown, which they have and what the next costs.
+local function landList(profile)
+	local owned = { Lands.Home }
+	for _, biome in ipairs(Lands.Order) do
+		if profile.lands[biome] then
+			table.insert(owned, biome)
+		end
+	end
+	return { ok = true, shown = Lands.Shown(profile), owned = owned, priceCents = Lands.Price(profile.lands) }
+end
+
+-- Buying a plot of `biome`: it comes with its wild trees and waits until the player shows it.
+local function buyLand(player, profile, payload)
+	local biome = payload.biome
+	local ok, code = Lands.CanBuy(profile.lands, biome)
+	if not ok then
+		return Net.Error(code)
+	end
+	if not Wallet.TryDebit(profile, Lands.Price(profile.lands), "land_purchase") then
+		return Net.Error("not_enough_money")
+	end
+	profile.lands[biome] = Lands.New(biome, function()
+		return Data.NextId(profile)
+	end, PlotLayout.Grid.layout)
+	Net.PushState(player)
+	return landList(profile)
+end
+
+-- Showing another of the player's plots in place of this one; the player goes to its spawn.
+local function switchLand(player, profile, payload)
+	local plot = plotOf[player]
+	if plot == nil then
+		return Net.Error("not_loaded")
+	end
+	-- What was shown is worked out up to now before it is put away.
+	Factory.CatchUp(profile)
+	local ok, code = Lands.Switch(profile, payload.to)
+	if not ok then
+		return Net.Error(code)
+	end
+	Factory.CatchUp(profile)
+	Factory.Changed(profile)
+	plot.model:Destroy()
+	place(player, profile, plot.index)
+	if player.Character then
+		task.spawn(spawnOnPlot, player, player.Character)
+	end
+	Net.PushState(player)
+	return landList(profile)
+end
+
 function Plots.Start()
+	Net.Handle("LandList", function(_, profile)
+		return landList(profile)
+	end)
+	Net.Handle("LandBuy", buyLand)
+	Net.Handle("LandSwitch", switchLand)
+
 	Data.OnLoaded(function(player, profile)
 		local index = nil
 		for i = 1, PlotLayout.Count do
@@ -192,16 +276,7 @@ function Plots.Start()
 		end
 		owners[index] = player
 		holds[player] = {}
-		plotOf[player] = buildPlot(player, index)
-		for i in ipairs(PlotLayout.Mines) do
-			if profile.mines[i] == nil then
-				profile.mines[i] = Mining.New()
-			end
-			showMine(player, i)
-		end
-		for _, callback in ipairs(placedCallbacks) do
-			callback(player, plotOf[player])
-		end
+		place(player, profile, index)
 		player.CharacterAdded:Connect(function(character)
 			spawnOnPlot(player, character)
 		end)

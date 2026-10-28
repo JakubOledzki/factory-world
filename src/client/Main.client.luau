@@ -15,7 +15,7 @@ local ChestWindow = require(Ui.Chest)
 local MachineWindow = require(Ui.Machine)
 local GeneratorWindow = require(Ui.Generator)
 local StationWindow = require(Ui.Station)
-local MapWindow = require(Ui.WorldMap)
+local LandWindow = require(Ui.Land)
 local ResearchWindow = require(Ui.Research)
 local MarketWindow = require(Ui.Market)
 local BuildBar = require(Ui.BuildBar)
@@ -49,7 +49,7 @@ end, BuildBar.Toggle, function()
 end, function()
 	show(MarketWindow.Open)
 end, function()
-	show(MapWindow.Open)
+	show(LandWindow.Open)
 end)
 BuildBar.Mount(screen)
 task.spawn(GridView.Start)
@@ -76,8 +76,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		show(ResearchWindow.Open)
 	elseif input.KeyCode == Enum.KeyCode.M then
 		show(MarketWindow.Open)
-	elseif input.KeyCode == Enum.KeyCode.N then
-		show(MapWindow.Open)
+	elseif input.KeyCode == Enum.KeyCode.L then
+		show(LandWindow.Open)
 	end
 end)
 
