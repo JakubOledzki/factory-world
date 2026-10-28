@@ -60,6 +60,9 @@ local function newProfile()
 		-- The market between players (Services/PlayerMarket): books with the player's offers or
 		-- earnings, their open offers and steps on their way.
 		market = { items = {}, offers = {}, pending = {} },
+		-- The player's company (Services/Companies): { id, name } or nil, and steps on their way.
+		company = nil,
+		companyPending = {},
 		nextId = 1,
 		lock = nil,
 	}

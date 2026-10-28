@@ -998,3 +998,104 @@ test("Switching plots puts the shown one away and brings the other, the home plo
 	eq(Rail.PlotOf(12345), nil)
 	eq(Rail.FeeCents(0, 500), Rail.BaseFeeCents, "a train between one's own plots costs the fixed part")
 end)
+
+local Companies = load_shared("Companies")
+
+local function step(company, action)
+	action.tx = action.tx or tostring(math.random(1, 1e9))
+	action.at = action.at or 1000000
+	local c, result = Companies.Apply(company, action)
+	assert(c, "step " .. action.kind .. " failed: " .. tostring(result))
+	return c, result
+end
+
+test("A company sells shares at its cash per share and buys them back for a little less", function()
+	local c = step(nil, { kind = "create", id = "c1", name = "Huta", owner = "1", ownerName = "Ala", cents = Companies.FoundingCents })
+	eq(c.members["1"].shares, Companies.FounderShares)
+	eq(Companies.SharePrice(c), Companies.FoundingCents / Companies.FounderShares)
+	eq(select(2, Companies.Apply(c, { tx = "x", kind = "deposit", member = "2", cents = 5000, at = 1 })), "not_member")
+	c = step(c, { kind = "join", member = "2", name = "Bob" })
+	eq(select(2, Companies.Apply(c, { tx = "y", kind = "join", member = "2", name = "Bob", at = 1 })), "already_member")
+	local result
+	c, result = step(c, { kind = "deposit", member = "2", cents = 25050 })
+	eq(result.shares, 25)
+	eq(result.cents, 25000)
+	eq(result.change, 50, "what does not buy a whole share goes back")
+	eq(Companies.SharePrice(c), 1000, "buying shares keeps their price")
+	c, result = step(c, { kind = "sell", member = "2", shares = 10 })
+	eq(result.cents, 9500, "sold back at " .. Companies.BuybackPercent .. "%")
+	eq(c.members["2"].shares, 15)
+	eq(select(2, Companies.Apply(c, { tx = "z", kind = "sell", member = "2", shares = 16, at = 1 })), "not_enough_shares")
+	eq(select(2, Companies.Apply(c, { tx = "z", kind = "sell", member = "1", shares = 1000, at = 1 })), "owner_keeps_share")
+	eq(select(2, Companies.Apply(c, { tx = c.done[#c.done].tx, kind = "sell", member = "2", shares = 1, at = 1 })), "duplicate")
+	-- The owner leaves last.
+	eq(select(2, Companies.Apply(c, { tx = "o", kind = "leave", member = "1", at = 1 })), "owner_cannot_leave")
+	local cash = c.cashCents
+	c, result = step(c, { kind = "leave", member = "2" })
+	eq(result.cents, math.floor(cash * 15 / 1015 * 0.95))
+	c, result = step(c, { kind = "leave", member = "1" })
+	eq(c.closed, true)
+	eq(c.cashCents, 0)
+	eq(select(2, Companies.Apply(c, { tx = "j", kind = "join", member = "3", name = "Cyd", at = 1 })), "company_closed")
+end)
+
+test("Weekly orders pay the company more than the merchant and the one who delivers gets shares", function()
+	local now = 1000000
+	local orders = Companies.Orders("c1", Companies.Week(now))
+	eq(#orders, Companies.OrdersPerWeek)
+	eq(Companies.Orders("c1", Companies.Week(now))[2].item, orders[2].item, "always the same")
+	for _, o in ipairs(orders) do
+		assert(o.rewardCents > Prices.Buys[o.item], "an order pays more than the merchant")
+		assert(o.quantity >= 5 and o.quantity <= 2000)
+	end
+	local c = step(nil, { kind = "create", id = "c1", name = "Huta", owner = "1", ownerName = "Ala", cents = Companies.FoundingCents, at = now })
+	c = step(c, { kind = "join", member = "2", name = "Bob", at = now })
+	local before = Companies.SharePrice(c)
+	local o = orders[1]
+	local result
+	c, result = step(c, { kind = "deliver", member = "2", order = 1, quantity = o.quantity + 7, at = now })
+	eq(result.quantity, o.quantity, "only what the order still wants is taken")
+	eq(result.shares, math.floor(o.quantity * Prices.Buys[o.item] / before))
+	assert(Companies.SharePrice(c) > before, "the extra pay raises everyone's shares")
+	eq(Companies.Left(c, 1, now), 0)
+	eq(select(2, Companies.Apply(c, { tx = "d", kind = "deliver", member = "2", order = 1, quantity = 1, at = now })), "order_done")
+	-- A new week brings new orders.
+	local later = now + Companies.WeekSeconds
+	eq(Companies.Left(c, 1, later), Companies.Orders("c1", Companies.Week(later))[1].quantity)
+end)
+
+test("The owner pays dividends once a day by shares; members collect them, also after being removed", function()
+	local now = 1000000
+	local c = step(nil, { kind = "create", id = "c1", name = "Huta", owner = "1", ownerName = "Ala", cents = Companies.FoundingCents, at = now })
+	c = step(c, { kind = "join", member = "2", name = "Bob", at = now })
+	c = step(c, { kind = "deposit", member = "2", cents = 1000000, at = now })
+	eq(select(2, Companies.Apply(c, { tx = "d", kind = "dividend", owner = "2", at = now })), "not_owner")
+	local result
+	c, result = step(c, { kind = "dividend", owner = "1", at = now })
+	eq(result.cents, 400000)
+	eq(c.owed["1"], 200000)
+	eq(c.owed["2"], 200000)
+	eq(select(2, Companies.Apply(c, { tx = "e", kind = "dividend", owner = "1", at = now + 60 })), "dividend_today")
+	c, result = step(c, { kind = "collect", member = "1", at = now })
+	eq(result.cents, 200000)
+	eq(select(2, Companies.Apply(c, { tx = "f", kind = "collect", member = "1", at = now })), "nothing_owed")
+	c = step(c, { kind = "kick", owner = "1", target = "2", at = now })
+	eq(c.members["2"], nil)
+	assert(c.owed["2"] > 200000, "the removed member's shares are paid into what they are owed")
+	c, result = step(c, { kind = "collect", member = "2", at = now })
+	eq(c.owed["2"], nil)
+	c = step(c, { kind = "join", member = "2", name = "Bob", at = now })
+	eq(c.members["2"].shares, 0, "a member removed can join again, with no shares")
+end)
+
+test("Company names are unique in the directory and trimmed; members' trains cost less", function()
+	eq(Companies.CleanName("  Huta   Ali "), "Huta Ali")
+	eq(Companies.CleanName("ab"), nil)
+	eq(Companies.CleanName(string.rep("x", Companies.NameMax + 1)), nil)
+	local d = Companies.ApplyDirectory(nil, { tx = "1", kind = "add", id = "a", name = "Huta", ownerName = "Ala" })
+	eq(select(2, Companies.ApplyDirectory(d, { tx = "2", kind = "add", id = "b", name = "HUTA", ownerName = "Bob" })), "name_taken")
+	d = Companies.ApplyDirectory(d, { tx = "3", kind = "remove", id = "a" })
+	eq(#d.list, 0)
+	assert(Rail.FeeCents(1000, 500, true) < Rail.FeeCents(1000, 500), "a member's train is cheaper")
+	eq(Rail.FeeCents(1000, 500, true), Rail.BaseFeeCents + 3500)
+end)

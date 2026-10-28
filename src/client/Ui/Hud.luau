@@ -6,7 +6,7 @@ local Game = require(script.Parent.Parent.Game)
 
 local Hud = {}
 
-function Hud.Mount(screen, openInventory, toggleBuild, openResearch, openMarket, openLands)
+function Hud.Mount(screen, openInventory, toggleBuild, openResearch, openMarket, openLands, openCompany)
 	local money = Kit.New("Frame", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -16, 0, 16),
@@ -53,6 +53,12 @@ function Hud.Mount(screen, openInventory, toggleBuild, openResearch, openMarket,
 	Kit.Button(screen, "Moje działki [L]", openLands, {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -16, 0, 236),
+		Size = UDim2.fromOffset(200, 36),
+		BackgroundColor3 = Kit.Colors.ButtonAlt,
+	})
+	Kit.Button(screen, "Spółka [K]", openCompany, {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -16, 0, 278),
 		Size = UDim2.fromOffset(200, 36),
 		BackgroundColor3 = Kit.Colors.ButtonAlt,
 	})

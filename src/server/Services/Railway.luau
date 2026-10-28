@@ -11,7 +11,7 @@
 --
 -- Every plot of a player (Shared.Lands) has a station. Trains from other players arrive at the
 -- home plot's; trains between the player's own plots stay in the profile (rail.own) and need no
--- DataStore.
+-- DataStore. Trains to members of the player's company (Services/Companies) cost less.
 local DataStoreService = game:GetService("DataStoreService")
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -25,6 +25,7 @@ local Money = require(Shared.Money)
 local PlotLayout = require(Shared.PlotLayout)
 local Rail = require(Shared.Rail)
 local Clock = require(script.Parent.Clock)
+local Companies = require(script.Parent.Companies)
 local Data = require(script.Parent.Data)
 local Factory = require(script.Parent.Factory)
 local Grid = require(script.Parent.Grid)
@@ -351,6 +352,11 @@ local function partnerName(player, profile, to)
 			return route.toName
 		end
 	end
+	for _, mate in ipairs(Companies.Mates(player, profile)) do
+		if mate.id == to then
+			return mate.name
+		end
+	end
 	return nil
 end
 
@@ -372,7 +378,7 @@ local function runRoute(player, profile, route)
 		return
 	end
 	local km = route.toPlot and 0 or Rail.DistanceKm(player.UserId, route.to)
-	local fee = Rail.FeeCents(km, count)
+	local fee = Rail.FeeCents(km, count, route.to and Companies.IsMate(player, profile, route.to))
 	if not Wallet.TryDebit(profile, fee, "rail_route") then
 		route.problem = "no_money"
 		return
@@ -457,8 +463,13 @@ local function reply(player, profile, station)
 		if not seen[id] then
 			seen[id] = true
 			local km = Rail.DistanceKm(player.UserId, id)
-			table.insert(partners, { id = id, name = name, km = math.floor(km + 0.5), trip = Rail.TripSeconds(km) })
+			local mate = Companies.IsMate(player, profile, id)
+			table.insert(partners, { id = id, name = name, km = math.floor(km + 0.5), trip = Rail.TripSeconds(km), mate = mate or nil })
 		end
+	end
+	-- Members of the player's company next, for less.
+	for _, mate in ipairs(Companies.Mates(player, profile)) do
+		addPartner(mate.id, mate.name)
 	end
 	for _, route in ipairs(r.routes) do
 		if route.to then
@@ -485,6 +496,7 @@ local function reply(player, profile, station)
 		maxRouteItems = Rail.MaxRouteItems,
 		baseFeeCents = Rail.BaseFeeCents,
 		centsPerItemPer100Km = Rail.CentsPerItemPer100Km,
+		matePercent = Rail.MatePercent,
 		serverTime = now,
 	}
 end
@@ -674,7 +686,7 @@ function Railway.Start()
 		if (station.stock[item] or 0) < quantity then
 			return Net.Error("station_empty")
 		end
-		local fee = Rail.FeeCents(Rail.DistanceKm(player.UserId, to), quantity)
+		local fee = Rail.FeeCents(Rail.DistanceKm(player.UserId, to), quantity, Companies.IsMate(player, profile, to))
 		if not Wallet.TryDebit(profile, fee, "rail_send") then
 			return Net.Error("not_enough_money")
 		end

@@ -596,6 +596,59 @@ function views() {
     out["15-biomy"] = { objects, camera: { pos: [a.cx - 360, 300, a.cz + 40], look: [a.cx - 20, 0, a.cz], fov: 60 }, shadowRadius: 500, fog: [900, 2000], hud: "1 284,50 $", caption,
       labels: [{ at: [a.cx, 20, a.cz], text: "Pustynia", size: 18 }] };
   }
+  // 16. The company window of a member, over their plot.
+  {
+    const p = plot(1);
+    const { cx, cz } = p;
+    const objects = square().concat(p.objects, forest([cx, cz, 260]));
+    const now = 1700000000 + 3 * 86400;
+    const c = lua.call(`(function()
+      local now = ${now}
+      local n = 0
+      local function step(c, a) n = n + 1; a.tx = "t" .. n; a.at = a.at or now - 3600 * (20 - n); return (Companies.Apply(c, a)) end
+      local c = step(nil, { kind = "create", id = "huta", name = "Huta Pod Lasem", owner = "1", ownerName = "Ola_Buduje", cents = Companies.FoundingCents })
+      c = step(c, { kind = "join", member = "2", name = "kopacz77" })
+      c = step(c, { kind = "join", member = "3", name = "Ty" })
+      c = step(c, { kind = "deposit", member = "2", cents = 600000 })
+      c = step(c, { kind = "deposit", member = "3", cents = 250000 })
+      local o = Companies.Orders("huta", Companies.Week(now))
+      c = step(c, { kind = "deliver", member = "2", order = 1, quantity = math.floor(o[1].quantity / 2) })
+      c = step(c, { kind = "deliver", member = "3", order = 2, quantity = o[2].quantity })
+      local orders = {}
+      for i, x in ipairs(o) do orders[i] = { item = x.item, quantity = x.quantity, left = Companies.Left(c, i, now), rewardCents = x.rewardCents } end
+      local members = {}
+      for id, m in pairs(c.members) do members[#members + 1] = { name = m.name, shares = m.shares, owner = id == c.owner } end
+      table.sort(members, function(a, b) return a.shares > b.shares end)
+      local log = {}
+      for i = #c.log, 1, -1 do log[#log + 1] = c.log[i].text end
+      local mine, value = Companies.Stake(c, "3")
+      return { name = c.name, cash = Money.Format(c.cashCents), price = Money.Format(Companies.SharePrice(c)), shares = c.shares, mine = mine, value = Money.Format(value),
+        orders = orders, members = members, log = log, weekLeft = (Companies.Week(now) + 1) * Companies.WeekSeconds - now }
+    end)()`);
+    const pct = (n) => Math.round(n / c.shares * 1000) / 10;
+    const days = Math.floor(c.weekLeft / 86400), hours = Math.floor((c.weekLeft % 86400) / 3600);
+    const input = (text, w) => `<span style="width:${w}px;height:30px;border-radius:6px;background:#181b21;border:1px solid #5a6273;padding:6px 8px;box-sizing:border-box;color:#a0a6b2;font-size:15px">${text}</span>`;
+    const order = (o) => {
+      const give = Math.min(have[o.item] || 0, o.left);
+      const label = o.left <= 0 ? "Wykonane" : give > 0 ? "Oddaj " + give : "Nie masz";
+      return `<div class="row" style="height:46px">${slot(o.item, "", { size: 36 })}<span style="flex:1;font-size:14px"><b>${name(o.item)}</b> &nbsp; ${o.quantity - o.left} / ${o.quantity} &nbsp; płaci ${lua.call(`Money.Format(${o.rewardCents})`)} za sztukę</span><span class="btn" style="width:150px;text-align:center;padding:8px 0;${o.left > 0 && give > 0 ? "" : "background:#4e5460"}">${label}</span></div>`;
+    };
+    out["16-spolka"] = { objects, camera: { pos: [cx - 60, 40, cz + 70], look: [cx + 10, 0, cz - 20], fov: 60 }, shadowRadius: 140, hud: "8 421,00 $", caption,
+      overlay: `<div class="win" style="width:720px;right:16px;top:14px;bottom:14px;overflow:hidden"><div class="hd">Spółka<span class="x">✕</span></div><div class="bd">
+        <div class="card" style="height:96px;padding:0;position:relative"><b style="position:absolute;left:12px;top:8px;font-size:22px">${c.name}</b>
+          <div class="muted" style="position:absolute;left:12px;top:38px;font-size:14px">Założyciel: Ola_Buduje &nbsp; Wspólników: ${c.members.length}/${lua.call("Companies.MaxMembers")}</div>
+          <div class="gold" style="position:absolute;left:12px;top:60px;font-size:14px">Kasa: <b>${c.cash}</b> &nbsp; Cena udziału: <b>${c.price}</b> &nbsp; Twoje udziały: <b>${c.mine}</b> (${pct(c.mine)}%), warte ${c.value}</div></div>
+        <b style="font-size:17px">Udziały</b>
+        <div class="row" style="height:40px">${input("Kwota w $", 120)}<span class="btn" style="width:130px;text-align:center">Kup udziały</span>${input("Ile udziałów", 120)}<span class="btn alt" style="width:110px;text-align:center">Sprzedaj</span></div>
+        <b style="font-size:17px">Zlecenia tygodnia (zostało ${days} d ${hours} h)</b>
+        <div class="muted" style="font-size:13px">Spółka dostaje za towar więcej niż u handlarza. Ty dostajesz udziały warte tyle, ile dałby handlarz, a reszta podnosi cenę udziałów wszystkich.</div>
+        ${c.orders.map(order).join("")}
+        <b style="font-size:17px">Wspólnicy</b>
+        ${c.members.map((m) => `<div class="row" style="height:34px;font-size:14px"><span><b>${m.name}</b>${m.owner ? " (założyciel)" : ""} &nbsp; ${m.shares} udziałów, ${pct(m.shares)}%</span></div>`).join("")}
+        <b style="font-size:17px">Ostatnio</b>
+        ${c.log.slice(0, 4).map((t) => `<div class="muted" style="font-size:13px">${t}</div>`).join("")}
+      </div></div>` };
+  }
   // The windows' item pictures: every item's parts, drawn by index.html.
   const icons = {};
   for (const id of lua.call("Items.Order")) icons[id] = lua.call(`Icons.Model("${id}")`);

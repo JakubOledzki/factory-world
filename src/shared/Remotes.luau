@@ -50,4 +50,13 @@ return {
 	MarketBuy = "MarketBuy", -- { item, id, quantity, priceCents }
 	MarketFill = "MarketFill", -- { item, id, quantity, priceCents }
 	MarketCancel = "MarketCancel", -- { item, offerKind, id }
+	CompanyGet = "CompanyGet",
+	CompanyCreate = "CompanyCreate", -- { name }
+	CompanyJoin = "CompanyJoin", -- { id }
+	CompanyLeave = "CompanyLeave",
+	CompanyKick = "CompanyKick", -- { member }
+	CompanyDeposit = "CompanyDeposit", -- { cents }
+	CompanySell = "CompanySell", -- { shares }
+	CompanyDeliver = "CompanyDeliver", -- { order, quantity }
+	CompanyDividend = "CompanyDividend",
 }

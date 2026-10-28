@@ -142,6 +142,9 @@ function Station.Open(screen)
 				row.BackgroundColor3 = Color3.fromRGB(110, 92, 40)
 			end
 			local how = p.own and ("pociąg jedzie " .. p.trip .. " s") or (p.km .. " km, pociąg jedzie " .. p.trip .. " s")
+			if p.mate then
+				how = how .. "   <font color=\"#8fd18f\">wspólnik: taniej</font>"
+			end
 			Kit.Label(row, "<b>" .. p.name .. "</b>   " .. how, { RichText = true, Size = UDim2.new(1, -110, 1, 0), TextSize = 14 })
 			Kit.Button(row, p.id == partner and "Wybrany" or "Wybierz", function()
 				partner = p.id
@@ -239,7 +242,7 @@ function Station.Open(screen)
 		local function update()
 			typed.quantity = amount.Text
 			local q = quantity()
-			fee.Text = q > 0 and ("Opłata " .. Money.Format(Rail.FeeCents(p.km, q)) .. ", " .. p.trip .. " s") or "Wpisz ilość"
+			fee.Text = q > 0 and ("Opłata " .. Money.Format(Rail.FeeCents(p.km, q, p.mate)) .. ", " .. p.trip .. " s") or "Wpisz ilość"
 		end
 		amount:GetPropertyChangedSignal("Text"):Connect(update)
 		update()

@@ -78,8 +78,13 @@ function Rail.TripSeconds(km)
 	return math.max(Rail.MinTrip, math.floor(km / 100 * Rail.SecondsPer100Km + 0.5))
 end
 
-function Rail.FeeCents(km, quantity)
-	return Rail.BaseFeeCents + math.ceil(km / 100 * quantity * Rail.CentsPerItemPer100Km - 1e-9)
+-- Trains between members of one company (Shared.Companies) pay this percent of the part by distance.
+Rail.MatePercent = 70
+
+-- `mate`: the train goes to a member of the sender's company.
+function Rail.FeeCents(km, quantity, mate)
+	local percent = mate and Rail.MatePercent or 100
+	return Rail.BaseFeeCents + math.ceil(km / 100 * quantity * Rail.CentsPerItemPer100Km * percent / 100 - 1e-9)
 end
 
 -- Items of a station's stock (a table [item] = quantity) in a steady order: by id.
