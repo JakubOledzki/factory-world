@@ -1,7 +1,9 @@
 -- The build grid on each player's plot: putting belts, inserters, chests and furnaces on it and
--- taking them back, the chests' contents, and drawing what moves. What is on the grid is worked out
--- on demand from the time it was last looked at (Factory.CatchUp); while the owner is on the server
--- it is looked at every Logistics.Tick only to draw the items on the belts and the inserters' arms.
+-- taking them back, and the chests' contents. What is on the grid is worked out on demand from the
+-- time it was last looked at (Factory.CatchUp); while the owner is on the server it is looked at
+-- every Logistics.Tick only so that clients can draw what moves. The server puts what a belt or an
+-- inserter holds in attributes of its model ("Items", "Arm") and each client animates the items and
+-- arms smoothly between them (client/GridView).
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
@@ -22,7 +24,7 @@ local Plots = require(script.Parent.Plots)
 
 local Grid = {}
 
-local views = {} -- [Player] = { [id] = { model, items = { Part }, arm = { { Part, CFrame } }, base, hand, angle } }
+local views = {} -- [Player] = { [id] = Model }
 
 local ModelOf = {
 	[Items.Belt] = Models.Belt,
@@ -46,30 +48,24 @@ local function tilePosition(player, x, z, size)
 	return Vector3.new(cx + ox, 2, cz + oz)
 end
 
-local function paint(part, item)
-	part.Transparency = item and 0 or 1
-	if item then
-		part.Color = Build.Rgb(Items.Colors[item] or { 200, 200, 200 })
-	end
-end
-
--- Shows what an object holds now: the items on a belt, the arm and load of an inserter.
-local function draw(view, o)
-	if view.items then
-		for slot, part in ipairs(view.items) do
-			paint(part, o.belt[slot] or nil)
+-- Puts what an object holds now in its model's attributes: a belt's items, with ">" after each
+-- that slid into its place in the last tick (`slid`), and an inserter's swing and load. `tick`
+-- makes the items change each tick even when the pattern repeats, so clients see every step.
+local function draw(model, o, slid, tick)
+	if o.belt then
+		local entries = {}
+		for slot, item in ipairs(o.belt) do
+			entries[slot] = item and (item .. ((slid and slid[slot]) and ">" or "")) or ""
 		end
-	elseif view.arm then
-		-- Pointing to the front (where it drops) at the end of its swing, to the back at the start.
-		local angle = math.pi * (1 - o.swing / Logistics.SwingTicks)
-		if angle ~= view.angle then
-			view.angle = angle
-			local turn = view.base * CFrame.Angles(0, angle, 0)
-			for _, entry in ipairs(view.arm) do
-				entry[1].CFrame = turn * entry[2]
-			end
+		local text = tick .. "|" .. table.concat(entries, ",")
+		if model:GetAttribute("Items") ~= text then
+			model:SetAttribute("Items", text)
 		end
-		paint(view.hand, o.hand)
+	elseif o.kind == Items.Inserter then
+		local text = o.swing .. "," .. (o.hand or "")
+		if model:GetAttribute("Arm") ~= text then
+			model:SetAttribute("Arm", text)
+		end
 	end
 end
 
@@ -78,33 +74,9 @@ local function show(player, o)
 	local model = Build.FromModel(Plots.Of(player).model, "Grid" .. o.id, ModelOf[o.kind](), cframe)
 	model:SetAttribute("GridId", o.id)
 	model:SetAttribute("Owner", player.UserId)
-	local view = { model = model }
-	if o.kind == Items.Belt then
-		view.items = {}
-		for slot = 1, #o.belt do
-			local p = Models.BeltSlot(slot, Logistics.BeltSlots)
-			view.items[slot] = Build.Part(model, {
-				Name = "Item",
-				Shape = Enum.PartType.Ball,
-				Size = Vector3.new(0.75, 0.75, 0.75),
-				CFrame = cframe * CFrame.new(p[1], p[2], p[3]),
-				Material = Enum.Material.SmoothPlastic,
-				CanCollide = false,
-				CanQuery = false,
-				CastShadow = false,
-				Transparency = 1,
-			})
-		end
-	elseif o.kind == Items.Inserter then
-		view.base = cframe
-		view.arm = {}
-		for _, part in ipairs(model:GetChildren()) do
-			if part:IsA("BasePart") and part:GetAttribute("Group") == "arm" then
-				table.insert(view.arm, { part, cframe:ToObjectSpace(part.CFrame) })
-			end
-		end
-		view.hand = model:FindFirstChild("Hand")
-	elseif o.kind == Items.WoodenChest then
+	model:SetAttribute("Kind", o.kind)
+	model:SetAttribute("Base", cframe)
+	if o.kind == Items.WoodenChest then
 		Build.Prompt(model.Body, {
 			Name = "Prompt",
 			ActionText = "Otwórz",
@@ -112,8 +84,8 @@ local function show(player, o)
 			HoldDuration = 0,
 		}, { Kind = "chest", ChestId = o.id, Owner = player.UserId })
 	end
-	views[player][o.id] = view
-	draw(view, o)
+	views[player][o.id] = model
+	draw(model, o, nil, 0)
 end
 
 local function refresh(player, profile)
@@ -121,11 +93,13 @@ local function refresh(player, profile)
 	if mine == nil or #profile.grid.objects == 0 then
 		return
 	end
-	Factory.CatchUp(profile)
+	local watch = { slid = {} }
+	Factory.CatchUp(profile, watch)
+	local tick = math.floor(profile.grid.at / Logistics.Tick + 0.5) % 1000
 	for _, o in ipairs(profile.grid.objects) do
-		local view = mine[o.id]
-		if view then
-			draw(view, o)
+		local model = mine[o.id]
+		if model then
+			draw(model, o, watch.slid[o.id], tick)
 		end
 	end
 	-- Furnaces that inserters feed light up and go out with what they bring.
@@ -149,8 +123,8 @@ local function openChest(player, profile, payload)
 	if o == nil or o.kind ~= Items.WoodenChest then
 		return nil, "not_owner"
 	end
-	local view = views[player] and views[player][o.id]
-	if view == nil or not Net.Near(player, view.model.Body.Position, PlotLayout.Reach) then
+	local model = views[player] and views[player][o.id]
+	if model == nil or not Net.Near(player, model.Body.Position, PlotLayout.Reach) then
 		return nil, "too_far"
 	end
 	Factory.CatchUp(profile)
@@ -247,9 +221,9 @@ function Grid.Start()
 			for _, entry in ipairs(Logistics.Contents(o)) do
 				Inventory.Add(profile, entry[1], entry[2])
 			end
-			local view = views[player][o.id]
-			if view then
-				view.model:Destroy()
+			local model = views[player][o.id]
+			if model then
+				model:Destroy()
 				views[player][o.id] = nil
 			end
 			Net.PushState(player)

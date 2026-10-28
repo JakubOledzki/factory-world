@@ -84,7 +84,7 @@ function Assemble.Model(parent, name, spec, cframe, ghost)
 		if p.hidden then
 			part.Transparency = 1
 		elseif ghost then
-			part.Transparency = 0.55
+			part.Transparency = p.material == "Neon" and 0.1 or 0.3
 		end
 		if ghost then
 			part.CanQuery = false

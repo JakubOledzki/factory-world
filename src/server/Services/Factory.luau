@@ -7,14 +7,15 @@ local Clock = require(script.Parent.Clock)
 
 local Factory = {}
 
-function Factory.CatchUp(profile)
+-- `watch` (optional) is passed to Logistics.Run, for drawing what moved in the last tick.
+function Factory.CatchUp(profile, watch)
 	local grid = profile.grid
 	local now = Clock.Now()
 	if grid.at == nil or #grid.objects == 0 then
 		grid.at = now
 		return
 	end
-	grid.at = Logistics.Run(grid.objects, profile.furnaces, grid.at, now)
+	grid.at = Logistics.Run(grid.objects, profile.furnaces, grid.at, now, watch)
 end
 
 return Factory

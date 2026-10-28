@@ -195,12 +195,13 @@ function views() {
     const [fx, fz] = tileAt(state.furnace.x, state.furnace.z, 2);
     objects.push({ at: [cx + fx, 0, cz + fz], yaw: Math.PI, parts: lua.call("Models.Furnace(true)"), lit: state.lit });
     // The see-through ghost of the next belt under the pointer.
-    const [gx, gz] = tileAt(13, 3, 1);
-    objects.push({ at: [cx + gx, 0, cz + gz], yaw: yaws[1], parts: models.logistics_belt.map((q) => ({ ...q, transparency: 0.55, color: [90, 220, 120] })) });
+    const [gx, gz] = tileAt(13, 2, 1);
+    const ghost = models.logistics_inserter.map((q) => ({ ...q, transparency: 0.3 })).concat(lua.call("Models.BuildMarker(Items.Inserter, PlotLayout.Grid.tile)"));
+    objects.push({ at: [cx + gx, 0, cz + gz], yaw: yaws[1], parts: ghost });
     const btn = (t, on) => `<span class="btn${on ? "" : " alt"}" style="width:140px;text-align:center;white-space:nowrap">${t}</span>`;
     out["6-budowanie"] = { objects, camera: { pos: [cx + 10, 34, cz + 18], look: [cx + 8, 0, cz - 6], fov: 55 }, shadowRadius: 60, hud: "1 284,50 $", caption,
       overlay: `<div class="win" style="left:50%;transform:translateX(-50%);bottom:16px;width:760px"><div class="bd" style="padding-top:10px">
-        <div style="display:flex;gap:6px">${btn("Taśmociąg (6)", true)}${btn("Podajnik (2)")}${btn("Drewniana skrzynia (1)")}${btn("Piec kamienny (0)")}<span class="btn red">Rozbiórka [X]</span><span class="btn alt">Obróć [R]</span></div>
+        <div style="display:flex;gap:6px">${btn("Taśmociąg (6)")}${btn("Podajnik (2)", true)}${btn("Drewniana skrzynia (1)")}${btn("Piec kamienny (0)")}<span class="btn red">Rozbiórka [X]</span><span class="btn alt">Obróć [R]</span></div>
         <div class="muted" style="margin-top:8px">Kliknij, by postawić (przeciągnij, by ułożyć taśmę). 1–4 wybór, R obrót, X rozbiórka, B koniec.</div>
       </div></div>` };
   }

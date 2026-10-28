@@ -541,10 +541,10 @@ function Models.Belt()
 	for _, z in ipairs({ -1.8, 1.8 }) do
 		log(parts, 3.3, 0.5, { 0, 0.42, z }, 0, { 70, 72, 78 }, "Metal")
 	end
-	-- Arrows pointing the way the belt runs.
-	for _, tip in ipairs({ -1.4, 0.6 }) do
-		add(parts, { size = { 0.14, 0.04, 1 }, pos = { -0.3, 0.74, tip + 0.4 }, rot = { 0, -0.6435, 0 }, color = { 128, 128, 134 }, material = "SmoothPlastic", noCollide = true })
-		add(parts, { size = { 0.14, 0.04, 1 }, pos = { 0.3, 0.74, tip + 0.4 }, rot = { 0, 0.6435, 0 }, color = { 128, 128, 134 }, material = "SmoothPlastic", noCollide = true })
+	-- Bright arrows pointing the way the belt runs, standing a little off the belt.
+	for _, tip in ipairs({ -1.5, 0.5 }) do
+		add(parts, { size = { 0.26, 0.08, 1.15 }, pos = { -0.345, 0.77, tip + 0.46 }, rot = { 0, -0.6435, 0 }, color = { 240, 236, 220 }, material = "SmoothPlastic", noCollide = true })
+		add(parts, { size = { 0.26, 0.08, 1.15 }, pos = { 0.345, 0.77, tip + 0.46 }, rot = { 0, 0.6435, 0 }, color = { 240, 236, 220 }, material = "SmoothPlastic", noCollide = true })
 	end
 	return parts
 end
@@ -574,10 +574,31 @@ function Models.Inserter()
 		add(parts, { size = { 0.12, 0.5, 0.45 }, pos = { x, 1.5, -1.8 }, color = { 50, 50, 54 }, material = "Metal", group = "arm" })
 	end
 	ball(parts, 0.7, { 0, 1.35, -1.8 }, { 200, 200, 200 }, "SmoothPlastic", { name = "Hand", group = "arm", hidden = true, noCollide = true })
+	-- An arrow on the base plate pointing where it drops (-z), and a dark notch where it picks up.
+	add(parts, { size = { 0.3, 0.08, 0.9 }, pos = { 0, 0.54, -0.95 }, color = { 240, 236, 220 }, material = "SmoothPlastic", noCollide = true })
+	add(parts, { size = { 0.22, 0.08, 0.7 }, pos = { -0.2, 0.54, -1.1 }, rot = { 0, -0.7, 0 }, color = { 240, 236, 220 }, material = "SmoothPlastic", noCollide = true })
+	add(parts, { size = { 0.22, 0.08, 0.7 }, pos = { 0.2, 0.54, -1.1 }, rot = { 0, 0.7, 0 }, color = { 240, 236, 220 }, material = "SmoothPlastic", noCollide = true })
 	-- Hazard stripes round the turntable.
 	for i = 0, 7 do
 		local a = i / 8 * 2 * math.pi
 		add(parts, { size = { 0.5, 0.52, 0.18 }, pos = { math.cos(a) * 1.3, 0.25, math.sin(a) * 1.3 }, rot = { 0, -a + math.pi / 2, 0 }, color = i % 2 == 0 and yellow or { 30, 30, 32 }, material = "SmoothPlastic" })
+	end
+	return parts
+end
+
+-- What the ghost of a thing about to be built shows besides the thing itself, in its own
+-- coordinates (front -z): a big glowing arrow above it the way it faces and, for an inserter, the
+-- tile it picks up from (blue, behind it) and the tile it drops on (green, in front).
+function Models.BuildMarker(kind, tile)
+	local parts = {}
+	local glow = { 255, 220, 70 }
+	local y = kind == "furniture_furnace" and 12.5 or 5
+	add(parts, { size = { 0.5, 0.3, 2.4 }, pos = { 0, y, 0.6 }, color = glow, material = "Neon", noCollide = true })
+	add(parts, { size = { 0.5, 0.3, 1.7 }, pos = { -0.5, y, -1 }, rot = { 0, -0.75, 0 }, color = glow, material = "Neon", noCollide = true })
+	add(parts, { size = { 0.5, 0.3, 1.7 }, pos = { 0.5, y, -1 }, rot = { 0, 0.75, 0 }, color = glow, material = "Neon", noCollide = true })
+	if kind == "logistics_inserter" then
+		add(parts, { size = { tile - 0.4, 0.12, tile - 0.4 }, pos = { 0, 0.1, tile }, color = { 80, 150, 255 }, material = "Neon", noCollide = true })
+		add(parts, { size = { tile - 0.4, 0.12, tile - 0.4 }, pos = { 0, 0.1, -tile }, color = { 90, 230, 120 }, material = "Neon", noCollide = true })
 	end
 	return parts
 end

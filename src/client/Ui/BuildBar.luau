@@ -102,13 +102,13 @@ local function clearGhost()
 	ghost, ghostKey = nil, nil
 end
 
-local function setHighlight(target, color)
+local function setHighlight(target, color, fill)
 	if highlight == nil then
 		highlight = Instance.new("Highlight")
-		highlight.FillTransparency = 0.6
-		highlight.OutlineTransparency = 0.2
+		highlight.OutlineTransparency = 0.1
 		highlight.DepthMode = Enum.HighlightDepthMode.Occluded
 	end
+	highlight.FillTransparency = fill or 0.6
 	highlight.Adornee = target
 	highlight.FillColor = color
 	highlight.OutlineColor = color
@@ -265,11 +265,16 @@ function BuildBar.Mount(screen)
 		end
 		if ghostKey ~= selected then
 			clearGhost()
-			ghost = Assemble.Model(workspace, "BuildGhost", ModelOf[selected](), cframe, true)
+			local spec = ModelOf[selected]()
+			for _, part in ipairs(Models.BuildMarker(selected, PlotLayout.Grid.tile)) do
+				table.insert(spec, part)
+			end
+			ghost = Assemble.Model(workspace, "BuildGhost", spec, cframe, true)
 			ghostKey = selected
 		end
 		ghost:PivotTo(cframe)
-		setHighlight(ghost, inside and Color3.fromRGB(90, 220, 120) or Color3.fromRGB(230, 80, 60))
+		-- Mostly an outline, so the model and its arrow stay readable.
+		setHighlight(ghost, inside and Color3.fromRGB(90, 220, 120) or Color3.fromRGB(230, 80, 60), 0.9)
 		-- A drag lays a line of belts.
 		if holding and selected == Items.Belt then
 			place()

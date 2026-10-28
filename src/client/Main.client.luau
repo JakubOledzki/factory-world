@@ -14,6 +14,7 @@ local WorkshopWindow = require(Ui.Workshop)
 local ChestWindow = require(Ui.Chest)
 local BuildBar = require(Ui.BuildBar)
 require(script.Parent:WaitForChild("Game"))
+local GridView = require(script.Parent:WaitForChild("GridView"))
 
 local player = Players.LocalPlayer
 
@@ -38,6 +39,7 @@ Hud.Mount(screen, function()
 	show(InventoryWindow.Open)
 end, BuildBar.Toggle)
 BuildBar.Mount(screen)
+task.spawn(GridView.Start)
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then

@@ -213,6 +213,8 @@ test("Every model is made of parts Roblox can build, with the parts the game loo
 	checkModel("Belt", Models.Belt(), { "Body" })
 	checkModel("Inserter", Models.Inserter(), { "Body", "Hand" })
 	checkModel("WoodenChest", Models.WoodenChest(), { "Body" })
+	checkModel("BuildMarker", Models.BuildMarker(Items.Inserter, 4))
+	checkModel("BuildMarker", Models.BuildMarker(Items.Furnace, 4))
 	checkModel("Workbench", Models.Workbench(), { "Top" })
 	checkModel("Stall", Models.Stall(), { "Counter", "Sign" })
 	checkModel("Merchant", Models.Merchant())
@@ -272,6 +274,16 @@ test("A belt carries an item along to the end of the line and keeps it there", f
 	eq(last, 1000 + 60)
 	eq(count(objects[1].belt) + count(objects[2].belt), 0)
 	eq(objects[3].belt[4], Items.Stone, "at the end of the left lane")
+	-- What slid in the last tick is reported for drawing.
+	local line = { belt(1, 0, 0, 1), belt(2, 1, 0, 1) }
+	line[1].belt[4] = Items.Coal
+	line[1].belt[2] = Items.Stone
+	local watch = { slid = {} }
+	Logistics.Run(line, {}, 0, 0.2, watch)
+	eq(line[2].belt[1], Items.Coal)
+	eq(watch.slid[2][1], true, "slid onto the next belt")
+	eq(watch.slid[1][3], true, "slid along the belt")
+	eq(watch.slid[1][2], nil)
 end)
 
 test("Belts turn corners keeping their lanes, and join from the side onto the near lane", function()

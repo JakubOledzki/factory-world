@@ -340,7 +340,7 @@ local function build(objects, furnaces)
 	local beltList = {}
 	for _, o in ipairs(sorted) do
 		if o.kind == Items.Belt then
-			local b = { x = o.x, z = o.z, rot = o.rot, slots = o.belt }
+			local b = { id = o.id, x = o.x, z = o.z, rot = o.rot, slots = o.belt }
 			belts[key(o.x, o.z)] = b
 			table.insert(beltList, b)
 		end
@@ -409,10 +409,22 @@ local function build(objects, furnaces)
 	return { belts = order, inserters = inserters, ports = portList }
 end
 
+-- Notes that the item now in `slot` of belt `b` slid there from the place behind it, for drawing.
+local function slid(net, b, slot)
+	if net.watch then
+		local marks = net.watch.slid[b.id]
+		if marks == nil then
+			marks = {}
+			net.watch.slid[b.id] = marks
+		end
+		marks[slot] = true
+	end
+end
+
 local size = Logistics.BeltSlots
 
 -- Puts the item at the end of a lane on the belt it goes on to, when there is room there.
-local function pass(b, lane, item)
+local function pass(net, b, lane, item)
 	local link = b.out
 	if link == nil then
 		return false
@@ -422,6 +434,7 @@ local function pass(b, lane, item)
 		return false
 	end
 	link.to.slots[at] = item
+	slid(net, link.to, at)
 	return true
 end
 
@@ -433,7 +446,7 @@ local function moveBelts(net)
 			local first = lane * size + 1
 			local last = first + size - 1
 			local leaving = slots[last]
-			if leaving and pass(b, lane, leaving) then
+			if leaving and pass(net, b, lane, leaving) then
 				slots[last] = false
 				moved = true
 			end
@@ -441,6 +454,7 @@ local function moveBelts(net)
 				if slots[i] and not slots[i + 1] then
 					slots[i + 1] = slots[i]
 					slots[i] = false
+					slid(net, b, i + 1)
 					moved = true
 				end
 			end
@@ -512,6 +526,9 @@ end
 
 -- One tick at time `t`; true when anything moved.
 local function step(net, t)
+	if net.watch then
+		net.watch.slid = {}
+	end
 	local moved = moveBelts(net)
 	for _, ins in ipairs(net.inserters) do
 		local o = ins.object
@@ -538,8 +555,10 @@ local function step(net, t)
 end
 
 -- Runs the grid from `from` (on the grid of ticks) up to `now`, changing the objects and furnaces in
--- place; returns the last tick worked out, the start of the next run.
-function Logistics.Run(objects, furnaces, from, now)
+-- place; returns the last tick worked out, the start of the next run. A `watch` table, if given,
+-- gets `slid`: for the last tick worked out, [belt id] = { [slot] = true } for each item that slid
+-- into its place from the one behind it (the rest were dropped there or did not move).
+function Logistics.Run(objects, furnaces, from, now, watch)
 	local tick = Logistics.Tick
 	local steps = math.floor((now - from) / tick + 1e-6)
 	if steps <= 0 then
@@ -547,6 +566,7 @@ function Logistics.Run(objects, furnaces, from, now)
 	end
 	local last = from + steps * tick
 	local net = build(objects, furnaces)
+	net.watch = watch
 	if #net.belts == 0 and #net.inserters == 0 then
 		return last
 	end
