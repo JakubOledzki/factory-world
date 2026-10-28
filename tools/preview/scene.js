@@ -129,6 +129,9 @@ function card(r, subtitle, actions) {
     <div style="position:absolute;left:110px;top:116px;display:flex;gap:8px;align-items:center;font-size:13px">${actions}</div></div>`;
 }
 const tabs = (list, current) => `<div class="tabs">${list.map((t) => `<span class="btn ${t === current ? "alt" : "off"}">${t}</span>`).join("")}</div>`;
+const catTabs = (current, ids) => { const cs = lua.call("Items.Categories"); const present = new Set(ids.map((id) => lua.call(`Items.Category("${id}")`)));
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px">${[{ id: "all", name: "Wszystko" }, ...cs.filter((c) => present.has(c.id))].map((c) =>
+    `<span class="btn" style="width:98px;box-sizing:border-box;text-align:center;padding:6px 0;background:${c.id === current ? "#6e5c28" : "#2c313b"}">${c.name}</span>`).join("")}</div>`; };
 // What is in a machine or furnace: tiles, an arrow with the progress, what is ready (Machine.Contents).
 const contents = (inputs, progress, output) => `<div style="display:flex;gap:8px;align-items:flex-start">${inputs.join("")}
   <div style="width:90px;flex:none;text-align:center"><div class="muted" style="font-size:26px;line-height:34px">➜</div><div class="bar" style="height:10px;margin:4px 4px 0;background:#181b21"><i style="width:${progress * 100}%"></i></div></div>${output}</div>`;
@@ -179,14 +182,15 @@ function views() {
     out["4-handlarz"] = { objects, camera: { pos: [17, 6.5, 1], look: [2, 4.5, -17] }, shadowRadius: 60, hud: "1 284,50 $", caption,
       avatars: [{ at: [4, 0, -10], yaw: Math.PI + 0.4, shirt: [200, 60, 60] }],
       labels: [{ at: [L.Stall.x, 13.5, L.Stall.z], text: "Handlarz", color: "#ffe678", size: 20 }, { at: [L.Workbench.x, 7.5, L.Workbench.z], text: "Stół warsztatowy", color: "#dce6ff", size: 15 }],
-      overlay: `<div class="win" style="width:560px;right:16px;bottom:40px"><div class="hd">Handlarz<span class="x">✕</span></div><div class="bd">
+      overlay: `<div class="win" style="width:580px;right:16px;bottom:16px"><div class="hd">Handlarz<span class="x">✕</span></div><div class="bd">
         <div class="card" style="background:#5c481e;padding:7px 10px;font-size:13px;line-height:1.35"><b>Boom na stal</b> (jeszcze 3 h 12 min): Huty nie nadążają z zamówieniami. Ruda żelaza, sztabki, stal i gwoździe są w cenie.</div>
         ${tabs(["Sprzedaj", "Kup"], "Sprzedaj")}
+        ${catTabs("ores", sellable.map(([id]) => id))}
         <div class="card" style="height:112px"><div style="position:absolute;left:10px;top:12px">${slot("iron_ore", "14", { size: 88 })}</div>
           <div style="position:absolute;left:110px;top:10px;font-weight:800;font-size:18px">Ruda żelaza</div>
           <div class="gold" style="position:absolute;left:110px;top:36px;font-size:15px">Płaci: 9,30 $ za sztukę &nbsp;(+55%, zwykle 6 $) &nbsp;·&nbsp; masz 14</div>
           <div style="position:absolute;left:110px;top:66px;display:flex;gap:8px"><span class="btn" style="width:100px;text-align:center">Sprzedaj 1</span><span class="btn" style="width:100px;text-align:center">Sprzedaj 10</span><span class="btn alt" style="width:100px;text-align:center">Wszystko</span></div></div>
-        <div style="display:flex;flex-wrap:wrap;gap:4px 8px">${sellable.map(([id, cents]) => slot(id, have[id], { size: 56, caption: lua.call(`Money.Format(${boom[id] ? Math.round(cents * (100 + boom[id]) / 100) : cents})`), captionColor: boom[id] ? GREEN : GOLD, stroke: id === "iron_ore" ? GOLD : null })).join("")}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px 8px">${sellable.filter(([id]) => lua.call(`Items.Category("${id}")`) === "ores").map(([id, cents]) => slot(id, have[id], { size: 56, caption: lua.call(`Money.Format(${boom[id] ? Math.round(cents * (100 + boom[id]) / 100) : cents})`), captionColor: boom[id] ? GREEN : GOLD, stroke: id === "iron_ore" ? GOLD : null })).join("")}</div>
       </div></div>` };
   }
   // 5. The models side by side.
@@ -428,7 +432,7 @@ function views() {
     const offers = { planks: [250, 105], wood: [220, 340], iron_ingot: [1150, 48], stone: [95, 900], coal: [450, 120], nails: [320, 60], logistics_belt: [900, 12] };
     const locked = ["furniture_stonemason", "furniture_crusher", "furniture_foundry", "crushed_iron_ore", "crushed_copper_ore", "crushed_tin_ore", "sand", "bronze_ingot", "steel_ingot", "bricks", "stone_blocks"];
     const money = (c) => lua.call(`Money.Format(${c})`);
-    const tiles = lua.call("Items.Order").map((id) => {
+    const tiles = lua.call("Items.Order").filter((id) => lua.call(`Items.Category("${id}")`) === "materials").map((id) => {
       const o = offers[id];
       return slot(id, o ? o[1] : "", { size: 52, dim: locked.includes(id), badge: locked.includes(id) ? "🔒" : null, caption: o ? money(o[0]) : "—", captionColor: o ? GOLD : null, stroke: id === "planks" ? GOLD : null });
     });
@@ -436,8 +440,9 @@ function views() {
     out["11-rynek"] = { objects, camera: { pos: [17, 6.5, 1], look: [2, 4.5, -17] }, shadowRadius: 60, hud: "1 284,50 $", caption,
       overlay: `<div class="win" style="width:900px;left:50%;transform:translateX(-50%);top:40px;bottom:30px;overflow:hidden"><div class="hd">Rynek graczy<span class="x">✕</span></div><div class="bd">
         ${tabs(["Rynek", "Moje oferty"], "Rynek")}
+        ${catTabs("materials", lua.call("Items.Order"))}
         <div style="display:flex;gap:12px">
-          <div style="width:300px;flex:none"><div class="muted" style="font-size:13px;margin-bottom:4px">Towary (najniższa cena)</div>
+          <div style="width:300px;flex:none"><div style="width:284px;height:32px;box-sizing:border-box;border-radius:6px;background:#181b21;border:1px solid #5a6273;padding:7px 8px;font-size:15px;color:#a0a6b2">Szukaj, np. deski</div><div class="muted" style="font-size:13px;margin:6px 0 4px">Towary (najniższa cena)</div>
             <div style="display:grid;grid-template-columns:repeat(5,52px);gap:2px 6px">${tiles.join("")}</div></div>
           <div style="flex:1;display:flex;flex-direction:column;gap:6px">
             <div class="card" style="height:100px"><div style="position:absolute;left:10px;top:12px">${slot("planks", "12", { size: 76 })}</div>

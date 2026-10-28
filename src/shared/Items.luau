@@ -134,6 +134,35 @@ Items.Order = {
 
 Items.Tools = { [Items.Axe] = true, [Items.Pickaxe] = true }
 
+-- Groups for the merchant's and the market's tabs, in the order of the tabs.
+Items.Categories = {
+	{ id = "tools", name = "Narzędzia" },
+	{ id = "buildings", name = "Budowle" },
+	{ id = "machines", name = "Maszyny" },
+	{ id = "raw", name = "Surowce" },
+	{ id = "ores", name = "Rudy" },
+	{ id = "metals", name = "Sztabki" },
+	{ id = "materials", name = "Materiały" },
+}
+
+local categories = {
+	[Items.Pickaxe] = "tools", [Items.Axe] = "tools",
+	[Items.Furnace] = "buildings", [Items.Belt] = "buildings", [Items.Inserter] = "buildings", [Items.WoodenChest] = "buildings",
+	[Items.Sawmill] = "machines", [Items.Stonemason] = "machines", [Items.Crusher] = "machines", [Items.Foundry] = "machines",
+	[Items.Sapling] = "raw", [Items.Wood] = "raw", [Items.Stone] = "raw", [Items.Coal] = "raw", [Items.Sand] = "raw",
+	[Items.IronOre] = "ores", [Items.CopperOre] = "ores", [Items.TinOre] = "ores", [Items.SilverOre] = "ores", [Items.GoldOre] = "ores",
+	[Items.CrushedIronOre] = "ores", [Items.CrushedCopperOre] = "ores", [Items.CrushedTinOre] = "ores",
+	[Items.IronIngot] = "metals", [Items.CopperIngot] = "metals", [Items.TinIngot] = "metals", [Items.SilverIngot] = "metals",
+	[Items.GoldIngot] = "metals", [Items.BronzeIngot] = "metals", [Items.SteelIngot] = "metals",
+	[Items.Planks] = "materials", [Items.Beams] = "materials", [Items.WoodPellets] = "materials",
+	[Items.StoneBlocks] = "materials", [Items.Bricks] = "materials", [Items.Nails] = "materials",
+}
+
+-- The id of the item's group in Items.Categories.
+function Items.Category(id)
+	return categories[id] or "materials"
+end
+
 function Items.IsKnown(id)
 	return type(id) == "string" and Items.Names[id] ~= nil
 end

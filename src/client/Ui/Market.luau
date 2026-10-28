@@ -78,6 +78,7 @@ function Market.Open(screen)
 	local board -- the chosen item's offers from the server
 	local mine -- the player's offers
 	local quantityText, priceText = "10", ""
+	local category, searchText = "all", ""
 	local render
 
 	local function summaryOf(item)
@@ -113,8 +114,11 @@ function Market.Open(screen)
 	end
 
 	local function marketTab(holder)
-		-- Left: the items.
+		-- Left: the items of the chosen group, narrowed by what the player typed.
 		local left = pane(holder, 0, 300)
+		local search = box(left, searchText, "Szukaj, np. deski", 284)
+		search.TextXAlignment = Enum.TextXAlignment.Left
+		Kit.New("UIPadding", { PaddingLeft = UDim.new(0, 8), Parent = search })
 		Kit.Label(left, "Towary (najniższa cena)", { TextColor3 = Kit.Colors.Muted, TextSize = 13 })
 		local grid = Kit.New("Frame", {
 			BackgroundTransparency = 1,
@@ -128,27 +132,49 @@ function Market.Open(screen)
 				SortOrder = Enum.SortOrder.LayoutOrder,
 			}),
 		})
-		for index, s in ipairs(summary) do
-			local slot = ItemGrid.Slot(grid, {
-				size = 52,
-				layoutOrder = index,
-				caption = s.lowestCents and Money.Format(s.lowestCents) or (s.highestCents and "zam." or "—"),
-				captionColor = s.lowestCents and Kit.Colors.Money or Kit.Colors.Muted,
-				onClick = function()
-					selected = s.item
-					board = nil
-					render()
-				end,
-			})
-			slot.Set(s.item, s.listed > 0 and tostring(s.listed) or "", s.locked)
-			if s.item == selected then
-				slot.stroke.Color = Recipes.Colors.Selected
-				slot.stroke.Thickness = 2.5
+		local function fill()
+			for _, child in ipairs(grid:GetChildren()) do
+				if child:IsA("GuiObject") then
+					child:Destroy()
+				end
 			end
-			if s.locked then
-				Kit.Label(slot.button, "🔒", { Position = UDim2.fromOffset(3, 1), Size = UDim2.fromOffset(18, 18), TextSize = 12, ZIndex = 6 })
+			local wanted = string.lower(searchText)
+			local index = 0
+			for _, s in ipairs(summary) do
+				local fits = (category == "all" or Items.Category(s.item) == category)
+					and (wanted == "" or string.find(string.lower(Items.Name(s.item)), wanted, 1, true) ~= nil)
+				if fits then
+					index = index + 1
+					local slot = ItemGrid.Slot(grid, {
+						size = 52,
+						layoutOrder = index,
+						caption = s.lowestCents and Money.Format(s.lowestCents) or (s.highestCents and "zam." or "—"),
+						captionColor = s.lowestCents and Kit.Colors.Money or Kit.Colors.Muted,
+						onClick = function()
+							selected = s.item
+							board = nil
+							render()
+						end,
+					})
+					slot.Set(s.item, s.listed > 0 and tostring(s.listed) or "", s.locked)
+					if s.item == selected then
+						slot.stroke.Color = Recipes.Colors.Selected
+						slot.stroke.Thickness = 2.5
+					end
+					if s.locked then
+						Kit.Label(slot.button, "🔒", { Position = UDim2.fromOffset(3, 1), Size = UDim2.fromOffset(18, 18), TextSize = 12, ZIndex = 6 })
+					end
+				end
+			end
+			if index == 0 then
+				Kit.Label(grid, "Nic nie pasuje.", { TextColor3 = Kit.Colors.Muted, TextSize = 13 })
 			end
 		end
+		search:GetPropertyChangedSignal("Text"):Connect(function()
+			searchText = search.Text
+			fill()
+		end)
+		fill()
 
 		-- Right: the chosen item.
 		local right = pane(holder, 312, 552)
@@ -303,7 +329,17 @@ function Market.Open(screen)
 			mine = nil
 			render()
 		end)
-		local holder = Kit.New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, 480), Parent = body })
+		if tab == "market" then
+			local ids = {}
+			for _, s in ipairs(summary) do
+				table.insert(ids, s.item)
+			end
+			Recipes.CategoryTabs(body, ids, category, function(id)
+				category = id
+				render()
+			end)
+		end
+		local holder = Kit.New("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, -8, 0, tab == "market" and 440 or 480), Parent = body })
 		if tab == "market" then
 			marketTab(holder)
 		else

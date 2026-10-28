@@ -698,3 +698,16 @@ test("Player market: no money or items appear or vanish, whatever the order of s
 		eq(items, items0, "items after step " .. i)
 	end
 end)
+
+test("Every item belongs to one of the merchant's and the market's groups", function()
+	local groups = {}
+	for _, c in ipairs(Items.Categories) do groups[c.id] = 0 end
+	for _, id in ipairs(Items.Order) do
+		local c = Items.Category(id)
+		assert(groups[c], id .. " in " .. tostring(c))
+		groups[c] = groups[c] + 1
+	end
+	for id, n in pairs(groups) do assert(n > 0, "group " .. id .. " is empty") end
+	eq(Items.Category(Items.Planks), "materials")
+	eq(Items.Category(Items.CrushedIronOre), "ores")
+end)

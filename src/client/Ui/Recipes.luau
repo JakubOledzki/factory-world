@@ -60,6 +60,43 @@ function Recipes.Tabs(parent, tabs, current, onPick)
 	return row
 end
 
+-- Small tab buttons that wrap onto more rows: "Wszystko" and the item groups (Items.Categories)
+-- that have something in `ids`. `onPick(id)` when one is clicked; returns the frame.
+function Recipes.CategoryTabs(parent, ids, current, onPick)
+	local present = {}
+	for _, id in ipairs(ids) do
+		present[Items.Category(id)] = true
+	end
+	local holder = Kit.New("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.new(1, -8, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		Parent = parent,
+	}, {
+		Kit.New("UIGridLayout", {
+			CellSize = UDim2.fromOffset(98, 28),
+			CellPadding = UDim2.fromOffset(6, 6),
+			SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
+	})
+	local tabs = { { id = "all", name = "Wszystko" } }
+	for _, c in ipairs(Items.Categories) do
+		if present[c.id] then
+			table.insert(tabs, c)
+		end
+	end
+	for i, tab in ipairs(tabs) do
+		Kit.Button(holder, tab.name, function()
+			onPick(tab.id)
+		end, {
+			LayoutOrder = i,
+			TextSize = 13,
+			BackgroundColor3 = tab.id == current and Color3.fromRGB(110, 92, 40) or Kit.Colors.Row,
+		})
+	end
+	return holder
+end
+
 -- A grid of recipe tiles. `opts`: selected (recipe id), marked (recipe id shown with ▶, the one a
 -- machine is set to), columns, tile, onSelect(recipe). A tile's frame is gold when chosen, green
 -- when the player has the ingredients; a recipe that needs research is faded with a lock.

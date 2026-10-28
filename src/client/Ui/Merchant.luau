@@ -18,12 +18,13 @@ function Merchant.Open(screen)
 		return nil
 	end
 	local connection
-	local window, body = Kit.Window(screen, "Handlarz", 560, 640, function()
+	local window, body = Kit.Window(screen, "Handlarz", 580, 680, function()
 		connection:Disconnect()
 	end)
 	Game.SyncTime(reply.serverTime)
 	local tab = "sell"
 	local selected = { sell = nil, buy = nil }
+	local category = { sell = "all", buy = "all" }
 
 	-- "3 h 12 min" until `at`.
 	local function until_(at)
@@ -74,13 +75,29 @@ function Merchant.Open(screen)
 			render()
 		end)
 
-		local shown = {}
+		local offered, ids = {}, {}
 		for _, entry in ipairs(reply.items) do
-			if tab == "buy" and entry.buyCents then
-				table.insert(shown, entry)
-			elseif tab == "sell" and entry.sellCents and Game.Count(entry.id) > 0 then
+			if (tab == "buy" and entry.buyCents) or (tab == "sell" and entry.sellCents and Game.Count(entry.id) > 0) then
+				table.insert(offered, entry)
+				table.insert(ids, entry.id)
+			end
+		end
+		-- The group tabs: a group with nothing in it here falls back to all.
+		local shown = {}
+		for _, entry in ipairs(offered) do
+			if category[tab] == "all" or Items.Category(entry.id) == category[tab] then
 				table.insert(shown, entry)
 			end
+		end
+		if #shown == 0 and category[tab] ~= "all" then
+			category[tab] = "all"
+			shown = offered
+		end
+		if #offered > 0 then
+			Recipes.CategoryTabs(body, ids, category[tab], function(id)
+				category[tab] = id
+				render()
+			end)
 		end
 		if #shown == 0 then
 			Kit.Label(body, "Nie masz nic, co handlarz kupi. Wykop rudę albo zetnij drzewo.", { TextColor3 = Kit.Colors.Muted, TextSize = 14 })
