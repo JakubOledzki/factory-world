@@ -673,6 +673,11 @@ function Models.Inserter()
 		add(parts, { size = { 0.12, 0.5, 0.45 }, pos = { x, 1.5, -1.8 }, color = { 50, 50, 54 }, material = "Metal", group = "arm" })
 	end
 	ball(parts, 0.7, { 0, 1.35, -1.8 }, { 200, 200, 200 }, "SmoothPlastic", { name = "Hand", group = "arm", hidden = true, noCollide = true })
+	-- A piston under the arm, a joint at its elbow and a cable down the column.
+	add(parts, { shape = "Cylinder", size = { 1.1, 0.22, 0.22 }, pos = { 0, 2.15, -0.5 }, rot = { 0, math.pi / 2, 0.55 }, color = { 200, 204, 210 }, material = "Metal", group = "arm" })
+	add(parts, { shape = "Cylinder", size = { 0.55, 0.36, 0.36 }, pos = { 0.27, 2.6, -1.8 }, color = steel, material = "Metal", group = "arm" })
+	add(parts, { size = { 0.14, 1.3, 0.14 }, pos = { 0.42, 1.55, 0.25 }, color = { 30, 30, 32 }, material = "Rubber" })
+	ball(parts, 0.3, { -0.42, 2.1, 0.3 }, { 80, 200, 90 }, "Neon", { noCollide = true })
 	-- An arrow on the base plate pointing where it drops (-z), and a dark notch where it picks up.
 	add(parts, { size = { 0.3, 0.08, 0.9 }, pos = { 0, 0.54, -0.95 }, color = { 240, 236, 220 }, material = "SmoothPlastic", noCollide = true })
 	add(parts, { size = { 0.22, 0.08, 0.7 }, pos = { -0.2, 0.54, -1.1 }, rot = { 0, -0.7, 0 }, color = { 240, 236, 220 }, material = "SmoothPlastic", noCollide = true })
@@ -731,6 +736,17 @@ function Models.WoodenChest()
 	end
 	add(parts, { size = { 0.55, 0.65, 0.16 }, pos = { 0, 1.75, -1.2 }, color = { 196, 164, 80 }, material = "Metal" })
 	add(parts, { size = { 0.16, 0.2, 0.06 }, pos = { 0, 1.68, -1.29 }, color = { 30, 26, 22 }, material = "SmoothPlastic" })
+	-- Iron corners, feet and a handle on each end.
+	for _, x in ipairs({ -1.45, 1.45 }) do
+		for _, z in ipairs({ -1.05, 1.05 }) do
+			add(parts, { size = { 0.26, 0.5, 0.26 }, pos = { x, 0.35, z }, color = Iron, material = "Metal" })
+			add(parts, { size = { 0.26, 0.4, 0.26 }, pos = { x, 1.55, z }, color = Iron, material = "Metal" })
+		end
+		add(parts, { size = { 0.12, 0.14, 0.9 }, pos = { x * 1.12, 1.15, 0 }, color = { 50, 50, 54 }, material = "Metal" })
+	end
+	for _, x in ipairs({ -0.75, 0.75 }) do
+		add(parts, { size = { 0.22, 1.25, 0.08 }, pos = { x, 0.9, -1.12 }, color = Iron, material = "Metal" })
+	end
 	return parts
 end
 
@@ -1011,6 +1027,23 @@ function Models.Station()
 	for _, x in ipairs({ -5, 5 }) do
 		post(parts, 6, 0.3, { x, 3.1, -5.4 }, { 60, 90, 70 }, "Metal")
 	end
+	-- A chimney on the roof, flower boxes under the windows and a bench under the canopy.
+	add(parts, { size = { 1, 2.4, 1 }, pos = { 3, 10.2, 2.6 }, color = vary(brick, rng, 6), material = "Brick" })
+	add(parts, { size = { 1.3, 0.3, 1.3 }, pos = { 3, 11.5, 2.6 }, color = trim, material = "Sandstone" })
+	for _, x in ipairs({ -3.4, 3.4 }) do
+		add(parts, { size = { 2.2, 0.5, 0.6 }, pos = { x, 2.1, -2.3 }, color = { 92, 60, 40 }, material = "WoodPlanks" })
+		for k = 0, 3 do
+			ball(parts, 0.45, { x - 0.75 + k * 0.5, 2.45, -2.3 }, k % 2 == 0 and { 210, 60, 70 } or { 240, 200, 70 }, "SmoothPlastic", { noCollide = true })
+		end
+	end
+	add(parts, { size = { 2.8, 0.25, 0.9 }, pos = { 2.2, 1.3, -3 }, color = Planks, material = "WoodPlanks" })
+	add(parts, { size = { 2.8, 0.8, 0.2 }, pos = { 2.2, 1.85, -2.6 }, color = Planks, material = "WoodPlanks" })
+	for _, x in ipairs({ 1, 3.4 }) do
+		add(parts, { size = { 0.2, 0.9, 0.8 }, pos = { x, 0.85, -3 }, color = { 40, 40, 44 }, material = "Metal" })
+	end
+	-- A board with the station's colours over the canopy.
+	add(parts, { size = { 5, 1, 0.25 }, pos = { 0, 6.9, -5.4 }, color = { 30, 60, 110 }, material = "SmoothPlastic" })
+	add(parts, { size = { 4.6, 0.12, 0.27 }, pos = { 0, 6.9, -5.4 }, color = { 240, 236, 220 }, material = "SmoothPlastic", noCollide = true })
 	-- Crates waiting to go, and a lamp.
 	add(parts, { size = { 1.6, 1.4, 1.6 }, pos = { -3.5, 1.1, -4 }, color = Planks, material = "WoodPlanks" })
 	add(parts, { size = { 1.2, 1, 1.2 }, pos = { -3.3, 2.3, -4.1 }, rot = { 0, 0.4, 0 }, color = { 140, 100, 64 }, material = "WoodPlanks" })
@@ -1069,40 +1102,98 @@ function Models.Train(wagons, cargo)
 	local parts = {}
 	local black = { 34, 34, 38 }
 	local red = { 160, 40, 36 }
+	local green = { 40, 92, 62 }
+	local brass = { 200, 160, 60 }
+	local y0 = 0.9
 	local function part(p)
 		p.group = "train"
 		p.noCollide = true
 		return add(parts, p)
 	end
-	local y = 0.9
-	-- The locomotive: frame, boiler, chimney, cab, wheels.
-	part({ size = { 3.2, 0.6, 10 }, pos = { 0, y + 0.6, 5 }, color = black, material = "Metal" })
-	part({ shape = "Cylinder", size = { 6.4, 2.6, 2.6 }, pos = { 0, y + 2.3, 3.6 }, rot = { 0, math.pi / 2, 0 }, color = { 30, 32, 36 }, material = "Metal" })
-	part({ shape = "Cylinder", size = { 0.3, 2.7, 2.7 }, pos = { 0, y + 2.3, 0.4 }, rot = { 0, math.pi / 2, 0 }, color = { 200, 160, 60 }, material = "Metal" })
-	part({ shape = "Cylinder", size = { 1.8, 0.9, 0.9 }, pos = { 0, y + 4.2, 1.6 }, rot = { 0, 0, math.pi / 2 }, color = black, material = "Metal", smoke = true })
-	part({ size = { 3.2, 3.6, 3 }, pos = { 0, y + 2.9, 8.2 }, color = red, material = "Metal" })
-	part({ size = { 3.6, 0.3, 3.4 }, pos = { 0, y + 4.85, 8.2 }, color = black, material = "Metal" })
-	part({ size = { 3.3, 1.2, 1.4 }, pos = { 0, y + 3.3, 7.4 }, color = { 150, 190, 210 }, material = "Glass" })
-	ball(parts, 0.7, { 0, y + 2.4, -0.1 }, { 255, 236, 170 }, "Neon", { group = "train", noCollide = true })
-	for _, z in ipairs({ 1.6, 4, 6.4 }) do
+	local function wheel(x, z, d, color)
+		part({ shape = "Cylinder", size = { 0.4, d, d }, pos = { x, y0 + d / 2 - 0.65, z }, color = color, material = "Metal" })
+		part({ shape = "Cylinder", size = { 0.45, d * 0.35, d * 0.35 }, pos = { x * 1.02, y0 + d / 2 - 0.65, z }, color = brass, material = "Metal" })
+	end
+	-- The locomotive: frame with buffers and a cowcatcher, boiler with bands and domes, chimney,
+	-- cab with windows and roof, big driving wheels joined by rods.
+	part({ size = { 3.2, 0.6, 10 }, pos = { 0, y0 + 0.6, 5 }, color = black, material = "Metal" })
+	part({ size = { 3.4, 0.5, 0.4 }, pos = { 0, y0 + 0.8, -0.1 }, color = red, material = "Metal" })
+	for _, x in ipairs({ -1.1, 1.1 }) do
+		part({ shape = "Cylinder", size = { 0.6, 0.5, 0.5 }, pos = { x, y0 + 0.8, -0.5 }, rot = { 0, math.pi / 2, 0 }, color = black, material = "Metal" })
+	end
+	part({ shape = "Wedge", size = { 3, 0.9, 1.2 }, pos = { 0, y0 + 0.1, -0.4 }, color = { 60, 62, 68 }, material = "Metal" })
+	part({ shape = "Cylinder", size = { 6.4, 2.6, 2.6 }, pos = { 0, y0 + 2.3, 3.6 }, rot = { 0, math.pi / 2, 0 }, color = green, material = "Metal" })
+	for _, z in ipairs({ 1.6, 3.6, 5.6 }) do
+		part({ shape = "Cylinder", size = { 0.18, 2.7, 2.7 }, pos = { 0, y0 + 2.3, z }, rot = { 0, math.pi / 2, 0 }, color = brass, material = "Metal" })
+	end
+	part({ shape = "Cylinder", size = { 0.3, 2.7, 2.7 }, pos = { 0, y0 + 2.3, 0.4 }, rot = { 0, math.pi / 2, 0 }, color = black, material = "Metal" })
+	part({ shape = "Cylinder", size = { 1.8, 0.9, 0.9 }, pos = { 0, y0 + 4.2, 1.4 }, rot = { 0, 0, math.pi / 2 }, color = black, material = "Metal", smoke = true })
+	part({ shape = "Cylinder", size = { 0.3, 1.25, 1.25 }, pos = { 0, y0 + 5.1, 1.4 }, rot = { 0, 0, math.pi / 2 }, color = black, material = "Metal" })
+	part({ shape = "Ball", size = { 1.1, 1.1, 1.1 }, pos = { 0, y0 + 3.7, 3.4 }, color = brass, material = "Metal" })
+	part({ shape = "Ball", size = { 0.9, 0.9, 0.9 }, pos = { 0, y0 + 3.6, 5 }, color = green, material = "Metal" })
+	-- Cylinders by the front wheels.
+	for _, x in ipairs({ -1.55, 1.55 }) do
+		part({ shape = "Cylinder", size = { 1.6, 0.8, 0.8 }, pos = { x, y0 + 1.1, 1.3 }, rot = { 0, math.pi / 2, 0 }, color = black, material = "Metal" })
+	end
+	-- The cab.
+	part({ size = { 3.2, 3.6, 3 }, pos = { 0, y0 + 2.9, 8.2 }, color = red, material = "Metal" })
+	part({ size = { 3.7, 0.3, 3.6 }, pos = { 0, y0 + 4.85, 8.2 }, color = black, material = "Metal" })
+	part({ size = { 3.3, 1.2, 1.2 }, pos = { 0, y0 + 3.4, 7.2 }, color = { 150, 190, 210 }, material = "Glass" })
+	for _, x in ipairs({ -1.62, 1.62 }) do
+		part({ size = { 0.1, 1.1, 1.4 }, pos = { x, y0 + 3.5, 8.6 }, color = { 150, 190, 210 }, material = "Glass" })
+		part({ size = { 0.12, 0.25, 9 }, pos = { x, y0 + 1.2, 4.6 }, color = brass, material = "Metal" })
+	end
+	part({ size = { 3.3, 0.2, 0.2 }, pos = { 0, y0 + 1.95, 6.65 }, color = brass, material = "Metal" })
+	ball(parts, 0.7, { 0, y0 + 2.4, -0.1 }, { 255, 236, 170 }, "Neon", { group = "train", noCollide = true })
+	for _, z in ipairs({ 1.6 }) do
 		for _, x in ipairs({ -1.5, 1.5 }) do
-			part({ shape = "Cylinder", size = { 0.4, 1.7, 1.7 }, pos = { x, y + 0.2, z }, color = red, material = "Metal" })
+			wheel(x, z, 1.3, red)
+		end
+	end
+	for _, z in ipairs({ 4.2, 6.8 }) do
+		for _, x in ipairs({ -1.5, 1.5 }) do
+			wheel(x, z, 2.1, red)
+		end
+	end
+	-- The tender behind the cab, heaped with coal.
+	local t0 = 10.2
+	part({ size = { 3.2, 0.5, 4.2 }, pos = { 0, y0 + 0.6, t0 + 2.1 }, color = black, material = "Metal" })
+	part({ size = { 3.3, 1.9, 4 }, pos = { 0, y0 + 1.8, t0 + 2.1 }, color = green, material = "Metal" })
+	part({ size = { 3.4, 0.2, 4.1 }, pos = { 0, y0 + 2.8, t0 + 2.1 }, color = brass, material = "Metal" })
+	for k = 0, 2 do
+		ball(parts, 1.5, { (k - 1) * 0.8, y0 + 2.8, t0 + 1.1 + k * 0.9 }, { 32, 32, 36 }, "Basalt", { group = "train", noCollide = true })
+	end
+	for _, z in ipairs({ t0 + 1, t0 + 3.2 }) do
+		for _, x in ipairs({ -1.5, 1.5 }) do
+			wheel(x, z, 1.3, black)
 		end
 	end
 	-- The wagons, coupled 1 stud apart.
 	for w = 1, wagons do
-		local z0 = 10 + (w - 1) * 9 + 1
-		part({ size = { 3.2, 0.5, 8 }, pos = { 0, y + 0.6, z0 + 4 }, color = black, material = "Metal" })
-		part({ size = { 3.4, 1.6, 8 }, pos = { 0, y + 1.6, z0 + 4 }, color = { 116, 76, 50 }, material = "WoodPlanks" })
+		local z0 = t0 + 4.2 + (w - 1) * 9 + 1
+		part({ size = { 3.2, 0.5, 8 }, pos = { 0, y0 + 0.6, z0 + 4 }, color = black, material = "Metal" })
+		part({ size = { 3.4, 0.3, 8 }, pos = { 0, y0 + 0.95, z0 + 4 }, color = { 116, 76, 50 }, material = "WoodPlanks" })
+		for _, x in ipairs({ -1.6, 1.6 }) do
+			for k = 0, 2 do
+				part({ size = { 0.2, 0.42, 8 }, pos = { x, y0 + 1.35 + k * 0.46, z0 + 4 }, color = k == 1 and { 128, 86, 56 } or { 108, 70, 46 }, material = "WoodPlanks" })
+			end
+			for k = 0, 3 do
+				part({ size = { 0.26, 1.7, 0.26 }, pos = { x * 1.04, y0 + 1.75, z0 + 0.4 + k * 2.4 }, color = black, material = "Metal" })
+			end
+		end
+		for _, z in ipairs({ z0 + 0.1, z0 + 7.9 }) do
+			part({ size = { 3.4, 1.4, 0.2 }, pos = { 0, y0 + 1.8, z }, color = { 108, 70, 46 }, material = "WoodPlanks" })
+		end
+		part({ size = { 0.4, 0.3, 1.2 }, pos = { 0, y0 + 0.7, z0 - 0.5 }, color = black, material = "Metal" })
 		local color = cargo and #cargo > 0 and cargo[(w - 1) % #cargo + 1]
 		if color then
 			for k = 0, 2 do
-				part({ size = { 2.6, 1.2, 2.2 }, pos = { 0, y + 2.9, z0 + 1.4 + k * 2.6 }, color = color, material = "SmoothPlastic" })
+				part({ size = { 2.6, 1.2, 2.2 }, pos = { 0, y0 + 2.9, z0 + 1.4 + k * 2.6 }, color = color, material = "SmoothPlastic" })
 			end
 		end
 		for _, z in ipairs({ z0 + 1.5, z0 + 6.5 }) do
 			for _, x in ipairs({ -1.5, 1.5 }) do
-				part({ shape = "Cylinder", size = { 0.4, 1.3, 1.3 }, pos = { x, y + 0.05, z }, color = black, material = "Metal" })
+				wheel(x, z, 1.3, black)
 			end
 		end
 	end

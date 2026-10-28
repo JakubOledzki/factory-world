@@ -234,6 +234,9 @@ test("Every model is made of parts Roblox can build, with the parts the game loo
 	end
 	checkModel("Generator", Models.Generator(), { "Body", "Fire", "Chimney" })
 	checkModel("Pole", Models.Pole(), { "Body" })
+	checkModel("Station", Models.Station(), { "Body", "Clock" })
+	checkModel("Train", Models.Train(3, { { 200, 60, 40 } }))
+	checkModel("Train without cargo", Models.Train(2))
 	checkModel("Wire", Models.Wire({ 0, 9, 0 }, { 12, 9, 20 }))
 	checkModel("BuildMarker", Models.BuildMarker(Items.Generator, 4))
 	local PlotLayout = load_shared("PlotLayout")

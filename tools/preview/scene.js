@@ -246,6 +246,16 @@ function views() {
     }
     out["17-maszyny"] = { objects, camera: { pos: [-1, 15, 33], look: [-1, 3, 0], fov: 60 }, shadowRadius: 70, caption, labels };
   }
+  // 18. The station, a train, a chest and an inserter, close up.
+  {
+    const objects = [{ at: [0, 0, 0], parts: [block([120, 1, 80], [0, -0.5, 0], [116, 158, 78], "Grass")] }];
+    const cargo = lua.call("{ Items.Colors[Items.IronIngot], Items.Colors[Items.Planks] }");
+    objects.push({ at: [-10, 0, -10], yaw: Math.PI - 0.3, parts: lua.call("Models.Station()"), lit: true });
+    objects.push({ at: [20, 0, 8], yaw: -Math.PI / 2 + 0.15, parts: lua.call(`Models.Train(2, { ${cargo.map((c) => `{ ${c.join(",")} }`).join(",")} })`), lit: true });
+    objects.push({ at: [8, 0, -6], yaw: Math.PI - 0.4, parts: lua.call("Models.WoodenChest()"), lit: true });
+    objects.push({ at: [14, 0, -6], yaw: Math.PI - 0.4, parts: lua.call("Models.Inserter()"), lit: true });
+    out["18-kolej-z-bliska"] = { objects, camera: { pos: [4, 15, 38], look: [4, 3, 0], fov: 60 }, shadowRadius: 60, caption };
+  }
   // 6. A little factory on the build grid, worked out by the game's own rules (Logistics.Run).
   {
     const p = plot(1, { furnaces: ["lit", "cold"], cut: [5] });
