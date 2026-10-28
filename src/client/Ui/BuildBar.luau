@@ -20,10 +20,17 @@ local BuildBar = {}
 local Pickup = "pickup"
 local Buildable = {
 	Items.Belt, Items.Inserter, Items.WoodenChest, Items.Furnace, Items.Sapling,
-	Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry,
+	Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry, Items.Generator, Items.Pole,
 }
 -- Machines show on the bar only while the player has one to put down.
-local OnlyWhenHeld = { [Items.Sawmill] = true, [Items.Stonemason] = true, [Items.Crusher] = true, [Items.Foundry] = true }
+local OnlyWhenHeld = {
+	[Items.Sawmill] = true,
+	[Items.Stonemason] = true,
+	[Items.Crusher] = true,
+	[Items.Foundry] = true,
+	[Items.Generator] = true,
+	[Items.Pole] = true,
+}
 local ModelOf = {
 	[Items.Sapling] = function()
 		return Models.Sapling(1)
@@ -40,6 +47,8 @@ for kind in pairs(OnlyWhenHeld) do
 		return Models.Machine(kind)
 	end
 end
+ModelOf[Items.Generator] = Models.Generator
+ModelOf[Items.Pole] = Models.Pole
 
 local player = Players.LocalPlayer
 local active = false
@@ -346,7 +355,7 @@ function BuildBar.Mount(screen)
 		end
 		local number = {
 			[Enum.KeyCode.One] = 1, [Enum.KeyCode.Two] = 2, [Enum.KeyCode.Three] = 3, [Enum.KeyCode.Four] = 4, [Enum.KeyCode.Five] = 5,
-			[Enum.KeyCode.Six] = 6, [Enum.KeyCode.Seven] = 7, [Enum.KeyCode.Eight] = 8, [Enum.KeyCode.Nine] = 9,
+			[Enum.KeyCode.Six] = 6, [Enum.KeyCode.Seven] = 7, [Enum.KeyCode.Eight] = 8, [Enum.KeyCode.Nine] = 9, [Enum.KeyCode.Zero] = 10,
 		}
 		if number[input.KeyCode] then
 			choose(Buildable[number[input.KeyCode]])

@@ -29,7 +29,7 @@ local function recipe(id, quantity, time, ingredients)
 end
 
 -- [kind] = { fired, recipes }. A recipe's id is the item it makes.
--- On main the crusher runs on power; there is no power here yet (stage 5), so it runs without.
+-- The crusher runs on power, as on main (Shared.Power sets its speed).
 Processing.Machines = {
 	[Items.Sawmill] = {
 		fired = false,
@@ -101,7 +101,16 @@ local function copy(s)
 		heat = s.heat,
 		output = s.output,
 		startedAt = s.startedAt,
+		speed = s.speed,
+		frozen = s.frozen,
 	}
+end
+
+-- How fast the machine works: 1 normally, less on a network short of power, 0 without power
+-- (Shared.Power). A batch takes the recipe's time divided by it; while it is 0 the batch keeps how
+-- far it got in `frozen` (0 to 1) and `startedAt` means nothing.
+local function speedOf(s)
+	return s.speed or 1
 end
 
 local function input(s, i)
@@ -134,9 +143,14 @@ function Processing.Advance(kind, s, now)
 	local after = copy(s)
 	if s.startedAt == nil or r == nil then
 		after.startedAt = nil
+		after.frozen = nil
 		return after
 	end
-	local possible = math.max(0, math.floor((now - s.startedAt) / r.time + 1e-9))
+	if speedOf(s) <= 0 then
+		return after
+	end
+	local span = r.time / speedOf(s)
+	local possible = math.max(0, math.floor((now - s.startedAt) / span + 1e-9))
 	local n = math.min(possible, Processing.Batches(kind, s))
 	for i, ingredient in ipairs(r.ingredients) do
 		after.inputs[i] = input(s, i) - n * ingredient[2]
@@ -155,11 +169,48 @@ function Processing.Advance(kind, s, now)
 		end
 	end
 	if Processing.Batches(kind, after) > 0 then
-		after.startedAt = s.startedAt + r.time * n
+		after.startedAt = s.startedAt + span * n
 	else
 		after.startedAt = nil
 	end
 	return after
+end
+
+-- The machine working at `speed` from `now` on, the batch keeping how far it got.
+function Processing.SetSpeed(kind, s, speed, now)
+	if speedOf(s) == speed then
+		return s
+	end
+	local r = Processing.Recipe(kind, s.recipe)
+	local after = Processing.Advance(kind, s, now)
+	if after.startedAt and r then
+		local progress = Processing.Progress(kind, after, now)
+		if speed <= 0 then
+			after.frozen = progress
+		else
+			after.startedAt = now - progress * r.time / speed
+			after.frozen = nil
+		end
+	end
+	after.speed = speed
+	return after
+end
+
+-- How far the batch being made has got at `now`, from 0 to 1 (0 when none is).
+function Processing.Progress(kind, s, now)
+	local r = Processing.Recipe(kind, s.recipe)
+	if s.startedAt == nil or r == nil then
+		return 0
+	end
+	if speedOf(s) <= 0 then
+		return s.frozen or 0
+	end
+	return math.max(0, math.min(1, (now - s.startedAt) * speedOf(s) / r.time))
+end
+
+-- Whether the machine is making something at `now` (not idle, not stopped for lack of power).
+function Processing.Working(kind, s, now)
+	return Processing.Advance(kind, s, now).startedAt ~= nil and speedOf(s) > 0
 end
 
 -- Starts an idle machine that has everything for a batch.
@@ -167,6 +218,9 @@ function Processing.Start(kind, s, now)
 	if s.startedAt == nil and Processing.Batches(kind, s) > 0 then
 		local after = copy(s)
 		after.startedAt = now
+		if speedOf(s) <= 0 then
+			after.frozen = 0
+		end
 		return after
 	end
 	return s
@@ -175,8 +229,8 @@ end
 -- When the batch being made now is done, if one is.
 function Processing.NextChange(kind, s)
 	local r = Processing.Recipe(kind, s.recipe)
-	if s.startedAt and r then
-		return s.startedAt + r.time
+	if s.startedAt and r and speedOf(s) > 0 then
+		return s.startedAt + r.time / speedOf(s)
 	end
 	return nil
 end

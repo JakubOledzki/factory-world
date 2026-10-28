@@ -14,6 +14,9 @@ Workshop.Recipes = {
 	{ id = Items.Belt, quantity = 4, time = 10, ingredients = { { Items.IronIngot, 2 }, { Items.Wood, 1 } } },
 	{ id = Items.Inserter, quantity = 1, time = 15, ingredients = { { Items.IronIngot, 2 }, { Items.CopperIngot, 1 }, { Items.Nails, 5 } } },
 	{ id = Items.WoodenChest, quantity = 1, time = 10, ingredients = { { Items.Wood, 10 }, { Items.Nails, 5 } } },
+	-- Power (Shared.Power): a steam generator and poles with wires.
+	{ id = Items.Generator, quantity = 1, time = 60, ingredients = { { Items.Stone, 10 }, { Items.IronIngot, 8 }, { Items.CopperIngot, 4 } } },
+	{ id = Items.Pole, quantity = 2, time = 5, ingredients = { { Items.Wood, 2 }, { Items.CopperIngot, 1 } } },
 	-- Machines, once researched (Research).
 	{ id = Items.Sawmill, quantity = 1, time = 60, ingredients = { { Items.Wood, 30 }, { Items.IronIngot, 6 }, { Items.Nails, 10 } } },
 	{ id = Items.Stonemason, quantity = 1, time = 45, ingredients = { { Items.Stone, 30 }, { Items.IronIngot, 10 }, { Items.Wood, 10 } } },

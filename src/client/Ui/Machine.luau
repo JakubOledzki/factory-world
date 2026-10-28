@@ -1,7 +1,7 @@
 -- A processing machine's window: a grid of what it can make and a card for the chosen recipe, what
 -- is in it as tiles (ingredients, fuel, the batch's progress and what is ready), and the inventory
 -- to load it from. The progress is worked out here from the state the server sent (the same
--- Processing.Advance).
+-- Processing.Advance). A machine that runs on power says how its network is doing.
 local RunService = game:GetService("RunService")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
@@ -48,6 +48,26 @@ function Machine.Contents(parent)
 		return Kit.New("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.fromRGB(255, 140, 50), Parent = track }, { Kit.Corner(5) })
 	end
 	return row, slot, arrow
+end
+
+-- A line on how a machine's power is: full, too little (slower) or none.
+function Machine.PowerLine(parent, power)
+	local net = power.network
+	local text, color
+	if net == nil then
+		text = "⚡ Brak prądu: postaw obok słup energetyczny połączony z generatorem."
+		color = Recipes.Colors.Short
+	elseif net.supply <= 0 then
+		text = "⚡ Brak prądu: generator w tej sieci nie ma paliwa."
+		color = Recipes.Colors.Short
+	elseif net.speed < 1 then
+		text = "⚡ Za mało prądu (" .. net.supply .. " z " .. net.demand .. " kW): pracuje na " .. math.floor(net.speed * 100) .. "%."
+		color = Color3.fromRGB(240, 190, 80)
+	else
+		text = "⚡ Zasilana: pobiera " .. power.kw .. " kW (sieć " .. net.demand .. " / " .. net.supply .. " kW)."
+		color = Recipes.Colors.Enough
+	end
+	return Kit.Label(parent, text, { TextColor3 = color, TextSize = 14, Font = Enum.Font.GothamBold })
 end
 
 function Machine.Open(screen, id)
@@ -118,6 +138,10 @@ function Machine.Open(screen, id)
 					})
 				end
 			end
+		end
+
+		if reply.power then
+			Machine.PowerLine(body, reply.power)
 		end
 
 		local recipe = find(reply.state.recipe)
@@ -191,11 +215,7 @@ function Machine.Open(screen, id)
 			live.fuel.caption.Text = s.heat > 0 and ("Paliwo (żar " .. s.heat .. ")") or "Paliwo"
 		end
 		live.output.Set(recipe.id, s.output .. "/" .. Processing.MaxOutput, s.output == 0)
-		local progress = 0
-		if s.startedAt then
-			progress = math.clamp((now - s.startedAt) / recipe.time, 0, 1)
-		end
-		live.bar.Size = UDim2.fromScale(progress, 1)
+		live.bar.Size = UDim2.fromScale(Processing.Progress(kind, s, now), 1)
 	end))
 	render()
 	return window

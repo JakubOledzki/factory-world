@@ -232,6 +232,10 @@ test("Every model is made of parts Roblox can build, with the parts the game loo
 		checkModel(kind, Models.Machine(kind), { "Body" })
 		checkModel("BuildMarker", Models.BuildMarker(kind, 4))
 	end
+	checkModel("Generator", Models.Generator(), { "Body", "Fire", "Chimney" })
+	checkModel("Pole", Models.Pole(), { "Body" })
+	checkModel("Wire", Models.Wire({ 0, 9, 0 }, { 12, 9, 20 }))
+	checkModel("BuildMarker", Models.BuildMarker(Items.Generator, 4))
 	local PlotLayout = load_shared("PlotLayout")
 	for index = 1, PlotLayout.Count do
 		checkModel("PlotDecor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index)))
@@ -710,4 +714,109 @@ test("Every item belongs to one of the merchant's and the market's groups", func
 	for id, n in pairs(groups) do assert(n > 0, "group " .. id .. " is empty") end
 	eq(Items.Category(Items.Planks), "materials")
 	eq(Items.Category(Items.CrushedIronOre), "ores")
+end)
+
+local Power = load_shared("Power")
+
+-- A generator, a pole by it and a crusher crushing tin ore, all on one network.
+local function powerPlant()
+	local generator = Logistics.New(1, Items.Generator, 0, 8, 0)
+	local pole = Logistics.New(2, Items.Pole, 3, 8, 0)
+	local crusher = Logistics.New(3, Items.Crusher, 4, 9, 0)
+	crusher.machine = Processing.SetRecipe(Items.Crusher, crusher.machine, Items.CrushedTinOre, 0)
+	crusher.machine = Processing.Load(Items.Crusher, crusher.machine, Items.TinOre, 50, 0)
+	return { generator, pole, crusher }, generator, crusher
+end
+
+test("A crusher works only on a network with a fuelled generator, and stops where it got to when the fuel runs out", function()
+	local objects, generator, crusher = powerPlant()
+	local nets = Power.Networks(objects, Logistics.Sizes)
+	eq(#nets, 1)
+	eq(#nets[1].generators, 1)
+	eq(nets[1].demand, Power.Demand[Items.Crusher])
+	local at, powerAt = Logistics.RunPowered(objects, {}, 0, 0, 100)
+	eq(crusher.machine.output, 0, "no fuel, no work")
+	eq(Processing.Working(Items.Crusher, crusher.machine, 100), false)
+	-- One piece of wood: 5000 kJ at 40 kW lasts 125 s, enough for 20 batches of 6 s and 5 s more.
+	generator.generator = Power.Load(generator.generator, Items.Wood, 1)
+	Power.Apply(objects, Logistics.Sizes, powerAt)
+	at, powerAt = Logistics.RunPowered(objects, {}, at, powerAt, 400)
+	local s = Processing.Advance(Items.Crusher, crusher.machine, 400)
+	eq(s.output, 60)
+	eq(s.inputs[1], 10)
+	assert(math.abs(Processing.Progress(Items.Crusher, s, 400) - 5 / 6) < 1e-6, "keeps 5 s of the batch")
+	eq(Power.Running(generator.generator), false)
+	-- Coal: the batch goes on from where it stopped and the last five are done 25 s later.
+	generator.generator = Power.Load(generator.generator, Items.Coal, 1)
+	Power.Apply(objects, Logistics.Sizes, powerAt)
+	at, powerAt = Logistics.RunPowered(objects, {}, at, powerAt, 424)
+	eq(Processing.Advance(Items.Crusher, crusher.machine, 424).output, 72, "4 batches in 24 s")
+	at, powerAt = Logistics.RunPowered(objects, {}, at, powerAt, 1000)
+	eq(Processing.Advance(Items.Crusher, crusher.machine, 1000).output, 75)
+	-- An idle machine on the network still draws: the coal (500 s at 40 kW) is gone by 900 s.
+	eq(Power.Running(generator.generator), false)
+	eq(powerAt, 1000)
+end)
+
+test("Too little power slows every machine on the network; poles too far apart make two networks", function()
+	local objects = { Logistics.New(1, Items.Generator, 0, 8, 0), Logistics.New(2, Items.Pole, 3, 8, 0) }
+	for i = 1, 3 do
+		table.insert(objects, Logistics.New(10 + i, Items.Crusher, 2 * i - 1, 10, 0))
+	end
+	objects[1].generator = Power.Load(objects[1].generator, Items.Coal, 10)
+	local net = Power.Networks(objects, Logistics.Sizes)[1]
+	eq(net.demand, 120)
+	eq(Power.Speed(net), 100 / 120)
+	local second = Logistics.New(4, Items.Generator, 0, 6, 0)
+	second.generator = Power.Load(second.generator, Items.Coal, 1)
+	table.insert(objects, second)
+	eq(Power.Speed(Power.Networks(objects, Logistics.Sizes)[1]), 1, "two generators are enough")
+	-- A pole 7 tiles away is wired in, one 8 tiles away is not.
+	table.insert(objects, Logistics.New(5, Items.Pole, 10, 8, 0))
+	eq(#Power.Networks(objects, Logistics.Sizes), 1)
+	table.insert(objects, Logistics.New(6, Items.Pole, 18, 8, 0))
+	eq(#Power.Networks(objects, Logistics.Sizes), 2)
+	eq(#Power.Wires(objects), 1, "the far pole has no wire")
+	-- A crusher no pole reaches stops.
+	local far = Logistics.New(7, Items.Crusher, 40, 40, 0)
+	far.machine = Processing.SetRecipe(Items.Crusher, far.machine, Items.Sand, 0)
+	far.machine = Processing.Load(Items.Crusher, far.machine, Items.Stone, 5, 0)
+	table.insert(objects, far)
+	Power.Apply(objects, Logistics.Sizes, 0)
+	eq(Processing.Advance(Items.Crusher, far.machine, 100).output, 0)
+end)
+
+test("Burning in steps gives the same generator as burning at once, and nothing is burnt twice", function()
+	local g = Power.Load(Power.EmptyGenerator(), Items.Coal, 5)
+	local once = Power.Burn(g, 73000)
+	local steps = g
+	for _ = 1, 73 do
+		steps = Power.Burn(steps, 1000)
+	end
+	eq(steps.fuel, once.fuel)
+	assert(math.abs(steps.energy - once.energy) < 1e-6)
+	eq(Power.Total(once), 100000 - 73000)
+	eq(Power.Running(Power.Burn(g, 100000)), false)
+	eq(select(2, Power.Load(g, Items.Wood, 1)), "generator_busy")
+	eq(select(2, Power.Load(g, Items.Stone, 1)), "not_fuel")
+	eq(select(2, Power.Load(g, Items.Coal, Power.MaxFuel)), "generator_full")
+	-- Picked up, a generator hands back the fuel not burning yet.
+	local o = Logistics.New(1, Items.Generator, 0, 8, 0)
+	o.generator = once
+	eq(Logistics.Contents(o)[1][2], once.fuel)
+end)
+
+test("An inserter brings a generator coal from a chest", function()
+	local chest = Logistics.New(1, Items.WoodenChest, 0, 8, 1)
+	Logistics.Store(chest.items, Items.Coal, 70)
+	Logistics.Store(chest.items, Items.Stone, 5)
+	local generator = Logistics.New(3, Items.Generator, 2, 8, 0)
+	local objects = { chest, Logistics.New(2, Items.Inserter, 1, 8, 1), generator }
+	Logistics.Run(objects, {}, 0, 600)
+	eq(generator.generator.fuelItem, Items.Coal)
+	eq(generator.generator.fuel, Power.MaxFuel)
+	local left = {}
+	for _, stack in ipairs(chest.items) do left[stack.item] = stack.quantity end
+	eq(left[Items.Coal], 20)
+	eq(left[Items.Stone], 5, "stone is no fuel and stays")
 end)

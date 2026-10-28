@@ -16,6 +16,7 @@ local Models = require(Shared.Models)
 local PlotLayout = require(Shared.PlotLayout)
 local Smelting = require(Shared.Smelting)
 local Processing = require(Shared.Processing)
+local Power = require(Shared.Power)
 local Build = require(script.Parent.Build)
 local Clock = require(script.Parent.Clock)
 local Data = require(script.Parent.Data)
@@ -42,6 +43,10 @@ local function specOf(o, bend, now)
 		return Models.WoodenChest()
 	elseif Processing.IsMachine(o.kind) then
 		return Models.Machine(o.kind)
+	elseif o.kind == Items.Generator then
+		return Models.Generator()
+	elseif o.kind == Items.Pole then
+		return Models.Pole()
 	elseif Forestry.Grown(o, now) then
 		return Models.Tree(o.id)
 	end
@@ -134,6 +139,14 @@ function show(player, o, bend)
 			HoldDuration = 0,
 			MaxActivationDistance = 12,
 		}, { Kind = "machine", MachineId = o.id, Owner = player.UserId })
+	elseif o.kind == Items.Generator then
+		Build.Prompt(model.Body, {
+			Name = "Prompt",
+			ActionText = "Obsługuj",
+			ObjectText = Items.Name(o.kind),
+			HoldDuration = 0,
+			MaxActivationDistance = 12,
+		}, { Kind = "generator", GeneratorId = o.id, Owner = player.UserId })
 	elseif o.kind == Forestry.Tree then
 		if Forestry.Grown(o, now) then
 			Build.Prompt(model.Trunk, {
@@ -153,6 +166,30 @@ function show(player, o, bend)
 	end
 	views[player][o.id] = model
 	draw(model, o, nil, 0)
+end
+
+-- Hangs the wires between the player's poles anew (Power.Wires).
+local function rewire(player, profile)
+	local plot = Plots.Of(player)
+	if plot == nil then
+		return
+	end
+	local old = plot.model:FindFirstChild("Wires")
+	if old then
+		old:Destroy()
+	end
+	local spec = {}
+	for _, pair in ipairs(Power.Wires(profile.grid.objects)) do
+		local a = Plots.TileCFrame(player, pair[1].x, pair[1].z, 1, 0).Position
+		local b = Plots.TileCFrame(player, pair[2].x, pair[2].z, 1, 0).Position
+		local top = Models.PoleTop
+		for _, part in ipairs(Models.Wire({ a.X, a.Y + top, a.Z }, { b.X, b.Y + top, b.Z })) do
+			table.insert(spec, part)
+		end
+	end
+	if #spec > 0 then
+		Build.FromModel(plot.model, "Wires", spec, CFrame.new())
+	end
 end
 
 -- Rebuilds the belts whose turn changed after something was put down, turned or taken away.
@@ -175,13 +212,22 @@ local function refresh(player, profile)
 	Factory.CatchUp(profile, watch)
 	local tick = math.floor(profile.grid.at / Logistics.Tick + 0.5) % 1000
 	local now = Clock.Now()
+	local nets = nil
 	for _, o in ipairs(profile.grid.objects) do
 		local model = mine[o.id]
 		if model then
 			draw(model, o, watch.slid[o.id], tick)
-			-- A machine at work glows and turns its saw or rollers (client/GridView).
+			-- A machine at work glows and turns its saw or rollers (client/GridView); so does a
+			-- generator that gives power.
+			local working = nil
 			if o.machine then
-				local working = Processing.Advance(o.kind, o.machine, now).startedAt ~= nil
+				working = Processing.Working(o.kind, o.machine, now)
+			elseif o.generator then
+				nets = nets or Factory.Networks(profile)
+				local net = Power.NetworkOf(nets, o)
+				working = Power.Running(o.generator) and net ~= nil and net.demand > 0
+			end
+			if working ~= nil then
 				if model:GetAttribute("Working") ~= working then
 					model:SetAttribute("Working", working)
 					Build.SetFurnaceLit(model, working)
@@ -230,6 +276,7 @@ function Grid.Start()
 		for _, o in ipairs(profile.grid.objects) do
 			show(player, o, bends[o.id])
 		end
+		rewire(player, profile)
 	end)
 
 	Players.PlayerRemoving:Connect(function(player)
@@ -290,6 +337,10 @@ function Grid.Start()
 			table.insert(profile.grid.objects, o)
 			show(player, o, Logistics.Bends(profile.grid.objects)[id])
 			restyle(player, profile)
+			Factory.Changed(profile)
+			if item == Items.Pole then
+				rewire(player, profile)
+			end
 		end
 		Net.PushState(player)
 		return { ok = true, id = id }
@@ -323,6 +374,10 @@ function Grid.Start()
 				views[player][o.id] = nil
 			end
 			restyle(player, profile)
+			Factory.Changed(profile)
+			if o.kind == Items.Pole then
+				rewire(player, profile)
+			end
 			Net.PushState(player)
 			return { ok = true }
 		end

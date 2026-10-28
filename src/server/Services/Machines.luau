@@ -5,6 +5,7 @@
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local PlotLayout = require(Shared.PlotLayout)
 local Processing = require(Shared.Processing)
+local Power = require(Shared.Power)
 local Research = require(Shared.Research)
 local Clock = require(script.Parent.Clock)
 local Factory = require(script.Parent.Factory)
@@ -50,6 +51,12 @@ local function reply(profile, o)
 		state = o.machine,
 		recipes = recipes,
 		fired = machine.fired,
+		-- For a machine that runs on power: { kw it draws, and its network's supply, demand and speed
+		-- (nil when no pole reaches it) }.
+		power = Power.Demand[o.kind] and {
+			kw = Power.Demand[o.kind],
+			network = Factory.NetworkInfo(profile, o),
+		} or nil,
 		serverTime = now,
 	}
 end

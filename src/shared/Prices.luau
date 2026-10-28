@@ -14,6 +14,8 @@ Prices.Sells = {
 	[Items.Inserter] = 9000,
 	[Items.WoodenChest] = 7000,
 	[Items.Sawmill] = 40000,
+	[Items.Generator] = 60000,
+	[Items.Pole] = 2000,
 	[Items.Planks] = 300,
 	[Items.Sand] = 50,
 }
@@ -42,6 +44,8 @@ Prices.Buys = {
 	[Items.Inserter] = 6500,
 	[Items.WoodenChest] = 5000,
 	[Items.Sawmill] = 22000,
+	[Items.Generator] = 23000,
+	[Items.Pole] = 1500,
 	[Items.Stonemason] = 21500,
 	[Items.Crusher] = 60000,
 	[Items.Foundry] = 61000,

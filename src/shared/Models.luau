@@ -645,7 +645,7 @@ end
 function Models.BuildMarker(kind, tile)
 	local parts = {}
 	local glow = { 255, 220, 70 }
-	local heights = { furniture_furnace = 12.5, furniture_foundry = 14, furniture_sawmill = 6.5, furniture_stonemason = 6.5, furniture_crusher = 7.5 }
+	local heights = { furniture_furnace = 12.5, furniture_foundry = 14, furniture_sawmill = 6.5, furniture_stonemason = 6.5, furniture_crusher = 7.5, power_generator = 12, power_pole = 11 }
 	local y = heights[kind] or 5
 	add(parts, { size = { 0.5, 0.3, 2.4 }, pos = { 0, y, 0.6 }, color = glow, material = "Neon", noCollide = true })
 	add(parts, { size = { 0.5, 0.3, 1.7 }, pos = { -0.5, y, -1 }, rot = { 0, -0.75, 0 }, color = glow, material = "Neon", noCollide = true })
@@ -804,6 +804,88 @@ local Machines = {
 	furniture_crusher = crusher,
 	furniture_foundry = foundry,
 }
+
+-- A steam generator, 2 × 2 tiles: a boiler over a firebox, a chimney and a dynamo whose rotor
+-- turns while it runs ("spin"); the fire and a lamp glow ("glow"). The boiler is named "Body".
+function Models.Generator()
+	local rng = Models.Rng(53)
+	local parts = {}
+	local copper = { 196, 112, 60 }
+	add(parts, { size = { 7.4, 0.5, 7.4 }, pos = { 0, 0.25, 0 }, color = { 74, 76, 82 }, material = "DiamondPlate" })
+	-- The firebox of bricks and the boiler lying on it.
+	add(parts, { size = { 3.6, 2, 5.6 }, pos = { -1.6, 1.5, 0.4 }, color = vary({ 150, 70, 52 }, rng, 6), material = "Brick" })
+	add(parts, { name = "Body", shape = "Cylinder", size = { 5.4, 3, 3 }, pos = { -1.6, 3.9, 0.4 }, rot = { 0, math.pi / 2, 0 }, color = { 60, 64, 72 }, material = "Metal" })
+	for _, z in ipairs({ -1.6, 0.4, 2.4 }) do
+		add(parts, { shape = "Cylinder", size = { 0.25, 3.15, 3.15 }, pos = { -1.6, 3.9, z }, rot = { 0, math.pi / 2, 0 }, color = Iron, material = "Metal" })
+	end
+	add(parts, { size = { 1.6, 1.1, 0.3 }, pos = { -1.6, 1.3, -2.4 }, color = { 30, 24, 20 }, material = "SmoothPlastic", group = "glow", noCollide = true })
+	add(parts, { name = "Fire", size = { 1.2, 0.3, 0.8 }, pos = { -1.6, 0.9, -2 }, color = { 30, 26, 24 }, material = "SmoothPlastic", group = "glow", noCollide = true, fire = true, light = { color = { 255, 150, 60 }, range = 14, brightness = 2 } })
+	-- The chimney at the back.
+	post(parts, 5.5, 0.9, { -1.6, 7.6, 2.4 }, { 50, 52, 58 }, "Metal")
+	add(parts, { name = "Chimney", shape = "Cylinder", size = { 0.3, 1.2, 1.2 }, pos = { -1.6, 10.4, 2.4 }, rot = { 0, 0, math.pi / 2 }, color = { 40, 40, 44 }, material = "Metal", smoke = true })
+	-- The steam pipe to the dynamo: a housing, its copper coil and a rotor that turns.
+	log(parts, 2.2, 0.4, { 0.3, 4.6, 0.4 }, 0, Iron, "Metal")
+	add(parts, { size = { 2.4, 2.4, 3.2 }, pos = { 2.3, 1.7, 0.4 }, color = { 50, 90, 140 }, material = "Metal" })
+	add(parts, { shape = "Cylinder", size = { 2.2, 2.2, 2.2 }, pos = { 2.3, 3.6, 0.4 }, rot = { 0, math.pi / 2, 0 }, color = copper, material = "Metal" })
+	add(parts, { shape = "Cylinder", size = { 0.5, 1.6, 1.6 }, pos = { 2.3, 3.6, -0.9 }, rot = { 0, math.pi / 2, 0 }, color = Hazard, material = "Metal", group = "spin", noCollide = true })
+	-- Insulators on top where the wires leave, and a lamp that lights while it runs.
+	for _, x in ipairs({ 1.6, 3 }) do
+		post(parts, 0.6, 0.35, { x, 5, 0.9 }, { 236, 236, 228 }, "Glass")
+	end
+	ball(parts, 0.5, { 3.3, 3, -1.2 }, { 60, 50, 40 }, "SmoothPlastic", { group = "glow", noCollide = true })
+	-- Coal by the firebox.
+	for _ = 1, 3 do
+		ball(parts, rng.Num(0.6, 0.9), { rng.Num(-3.2, -2.6), 0.75, rng.Num(-3.2, -2.4) }, { 40, 40, 44 }, "Basalt")
+	end
+	return parts
+end
+
+-- Where a pole's wires hang from, above the middle of its tile.
+Models.PoleTop = 9.1
+
+-- A wooden power pole, 1 tile: a post, a cross-arm and three insulators. The post is named "Body".
+function Models.Pole()
+	local parts = {}
+	post(parts, 0.5, 1.4, { 0, 0.25, 0 }, { 120, 116, 108 }, "Concrete")
+	post(parts, 9.4, 0.55, { 0, 4.9, 0 }, { 104, 78, 52 }, "Wood", { name = "Body" })
+	add(parts, { size = { 3.2, 0.3, 0.35 }, pos = { 0, 8.6, 0 }, color = { 90, 66, 44 }, material = "Wood" })
+	for _, x in ipairs({ -1.3, 0, 1.3 }) do
+		post(parts, 0.45, 0.3, { x, 8.95, 0 }, { 236, 236, 228 }, "Glass")
+	end
+	return parts
+end
+
+-- Luau has atan2; plain Lua 5.3 (the tests) has the two-argument atan.
+local atan2 = math.atan2 or math.atan
+
+-- A wire hanging between two pole tops `a` and `b` ({ x, y, z } in the same frame), sagging in
+-- the middle: a few straight pieces.
+function Models.Wire(a, b)
+	local parts = {}
+	local pieces = 6
+	local dx, dz = b[1] - a[1], b[3] - a[3]
+	local span = math.sqrt(dx * dx + dz * dz)
+	local sag = math.min(1.2, 0.08 * span)
+	local function at(f)
+		return { a[1] + dx * f, a[2] + (b[2] - a[2]) * f - sag * 4 * f * (1 - f), a[3] + dz * f }
+	end
+	local yaw = atan2(dx, dz)
+	for i = 1, pieces do
+		local p, q = at((i - 1) / pieces), at(i / pieces)
+		local h = span / pieces
+		local dy = q[2] - p[2]
+		add(parts, {
+			size = { 0.1, 0.1, math.sqrt(h * h + dy * dy) + 0.05 },
+			pos = { (p[1] + q[1]) / 2, (p[2] + q[2]) / 2, (p[3] + q[3]) / 2 },
+			yaw = yaw,
+			rot = { atan2(-dy, h), 0, 0 },
+			color = { 30, 30, 32 },
+			material = "SmoothPlastic",
+			noCollide = true,
+		})
+	end
+	return parts
+end
 
 -- The model of processing machine `kind` (an item id).
 function Models.Machine(kind)

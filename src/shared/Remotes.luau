@@ -26,6 +26,9 @@ return {
 	MachineRecipe = "MachineRecipe", -- { id, recipe }
 	MachineLoad = "MachineLoad", -- { id, item, quantity }
 	MachineTake = "MachineTake", -- { id, what }
+	GeneratorGet = "GeneratorGet", -- { id }
+	GeneratorLoad = "GeneratorLoad", -- { id, item, quantity }
+	GeneratorTake = "GeneratorTake", -- { id }
 	ResearchGet = "ResearchGet",
 	ResearchStart = "ResearchStart", -- { id }
 	InventoryMove = "InventoryMove", -- { item, slot }

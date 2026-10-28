@@ -18,6 +18,7 @@ local Items = require(script.Parent.Items)
 local Smelting = require(script.Parent.Smelting)
 local Processing = require(script.Parent.Processing)
 local PlotLayout = require(script.Parent.PlotLayout)
+local Power = require(script.Parent.Power)
 
 local Logistics = {}
 
@@ -49,6 +50,8 @@ Logistics.Sizes = {
 	[Items.Stonemason] = 2,
 	[Items.Crusher] = 2,
 	[Items.Foundry] = 3,
+	[Items.Generator] = 2,
+	[Items.Pole] = 1,
 }
 
 -- An inserter drops on a lane in the middle first, where the item has room to move on.
@@ -139,6 +142,8 @@ function Logistics.New(id, kind, x, z, rot)
 		o.next = 0
 	elseif Processing.IsMachine(kind) then
 		o.machine = Processing.Empty()
+	elseif kind == Items.Generator then
+		o.generator = Power.EmptyGenerator()
 	end
 	return o
 end
@@ -161,6 +166,9 @@ function Logistics.Contents(o)
 		for _, entry in ipairs(Processing.Contents(o.kind, o.machine)) do
 			table.insert(out, entry)
 		end
+	end
+	if o.generator and o.generator.fuelItem and o.generator.fuel > 0 then
+		table.insert(out, { o.generator.fuelItem, o.generator.fuel })
 	end
 	return out
 end
@@ -334,6 +342,29 @@ local function machinePort(o)
 	return port
 end
 
+-- A generator as inserters see it: fuel goes in, nothing comes out. Fuel brought to one that has
+-- run dry counts from the next stretch of power (server Factory.CatchUp).
+local function generatorPort(o)
+	local port = {}
+	function port.Output()
+		return nil
+	end
+	function port.Take() end
+	function port.Accepts(item)
+		return Power.Room(o.generator, item) > 0
+	end
+	function port.Put(item)
+		local after = Power.Load(o.generator, item, 1)
+		if after then
+			o.generator = after
+		end
+	end
+	function port.NextChange()
+		return nil
+	end
+	return port
+end
+
 -- Which side a belt turns in from: -1 when the only belt feeding it comes from its left, 1 from its
 -- right, 0 when it runs straight (fed from behind, from both sides or not at all).
 local function bend(belts, b)
@@ -450,6 +481,8 @@ local function build(objects, furnaces)
 				ports[thing] = chestPort(thing)
 			elseif thing.machine then
 				ports[thing] = machinePort(thing)
+			elseif thing.generator then
+				ports[thing] = generatorPort(thing)
 			else
 				return nil
 			end
@@ -671,6 +704,32 @@ function Logistics.Run(objects, furnaces, from, now, watch)
 		end
 	end
 	return last
+end
+
+-- Runs the grid as Logistics.Run does, with power (Shared.Power): power stays the same between two
+-- moments until a generator runs dry, so the time is cut in stretches; in each, machines work at the
+-- speed their network gives them and the generators burn what it takes. `powerAt` is when power was
+-- worked out until. Returns the new `at` (the last tick) and `powerAt`; a very long absence with
+-- many generators running dry one after another may stop short of `now` (the next run goes on).
+Logistics.MaxStretches = 100
+
+function Logistics.RunPowered(objects, furnaces, at, powerAt, now, watch)
+	local t = math.max(powerAt or at, at)
+	for _ = 1, Logistics.MaxStretches do
+		local nets = Power.Apply(objects, Logistics.Sizes, t)
+		local dry = Power.Next(nets)
+		local stop = now
+		if dry and t + dry < now then
+			stop = t + dry
+		end
+		at = Logistics.Run(objects, furnaces, at, stop, watch)
+		Power.Run(nets, stop - t)
+		t = stop
+		if stop >= now then
+			break
+		end
+	end
+	return at, t
 end
 
 return Logistics

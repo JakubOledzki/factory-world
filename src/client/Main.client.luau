@@ -13,6 +13,7 @@ local FurnaceWindow = require(Ui.Furnace)
 local WorkshopWindow = require(Ui.Workshop)
 local ChestWindow = require(Ui.Chest)
 local MachineWindow = require(Ui.Machine)
+local GeneratorWindow = require(Ui.Generator)
 local ResearchWindow = require(Ui.Research)
 local MarketWindow = require(Ui.Market)
 local BuildBar = require(Ui.BuildBar)
@@ -102,5 +103,7 @@ ProximityPromptService.PromptTriggered:Connect(function(prompt)
 		show(ChestWindow.Open, prompt:GetAttribute("ChestId"))
 	elseif kind == "machine" then
 		show(MachineWindow.Open, prompt:GetAttribute("MachineId"))
+	elseif kind == "generator" then
+		show(GeneratorWindow.Open, prompt:GetAttribute("GeneratorId"))
 	end
 end)

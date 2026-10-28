@@ -459,6 +459,76 @@ function views() {
           </div></div>
       </div></div>` };
   }
+  // 12. Power: a generator fed coal by an inserter, poles wired together and crushers on them, and
+  // the generator's window.
+  {
+    const p = plot(1, { cut: [5] });
+    const objects = square().concat(p.objects);
+    const { cx, cz } = p;
+    const state = lua.call(`(function()
+      local o, n = {}, 0
+      local function add(kind, x, z, rot) n = n + 1; local obj = Logistics.New(n, kind, x + 20, z + 10, rot); table.insert(o, obj); return obj end
+      local coal = add(Items.WoodenChest, 0, 1, 1); Logistics.Store(coal.items, Items.Coal, 60)
+      add(Items.Inserter, 1, 1, 1)
+      add(Items.Generator, 2, 0, 1)
+      for _, x in ipairs({ 5, 11, 16 }) do add(Items.Pole, x, 1, 0) end
+      for _, x in ipairs({ 6, 10, 15 }) do
+        local c = add(Items.Crusher, x, 2, 0)
+        c.machine = Processing.SetRecipe(Items.Crusher, c.machine, Items.CrushedIronOre, 0)
+        c.machine = Processing.Load(Items.Crusher, c.machine, Items.IronOre, 40, 0)
+      end
+      Logistics.RunPowered(o, {}, 0, 0, 23.4)
+      local nets = Power.Networks(o, Logistics.Sizes)
+      local net = nets[1]
+      local wires = {}
+      for _, w in ipairs(Power.Wires(o)) do table.insert(wires, { { w[1].x, w[1].z }, { w[2].x, w[2].z } }) end
+      for _, obj in ipairs(o) do
+        if obj.machine then obj.working = Processing.Working(obj.kind, obj.machine, 23.4) end
+        if obj.generator then obj.working = Power.Running(obj.generator) end
+      end
+      return { objects = o, wires = wires, net = { supply = Power.Supply(net), demand = net.demand, speed = Power.Speed(net), poles = #net.poles, generators = #net.generators, machines = #net.consumers } }
+    end)()`);
+    const yaws = [Math.PI, -Math.PI / 2, 0, Math.PI / 2];
+    const tileAt = (x, z, size) => lua.call(`{ PlotLayout.TileCenter(${x}, ${z}, ${size}) }`);
+    const sizes = lua.call("Logistics.Sizes");
+    let gen = null;
+    for (const o of state.objects) {
+      const [ox, oz] = tileAt(o.x, o.z, sizes[o.kind] || 1);
+      const at = [cx + ox, 0, cz + oz], yaw = yaws[o.rot];
+      if (o.kind === "logistics_inserter") {
+        const parts = lua.call("Models.Inserter()");
+        objects.push({ at, yaw, parts: parts.filter((q) => q.group !== "arm") });
+        objects.push({ at, yaw: yaw + Math.PI * (1 - o.swing / 4), parts: parts.filter((q) => q.group === "arm") });
+      } else if (o.machine) {
+        objects.push({ at, yaw, parts: lua.call(`Models.Machine("${o.kind}")`), lit: o.working });
+      } else if (o.kind === "power_generator") {
+        gen = at;
+        objects.push({ at, yaw, parts: lua.call("Models.Generator()"), lit: o.working });
+      } else if (o.kind === "power_pole") {
+        objects.push({ at, yaw, parts: lua.call("Models.Pole()") });
+      } else {
+        objects.push({ at, yaw, parts: lua.call("Models.WoodenChest()") });
+      }
+    }
+    const top = lua.call("Models.PoleTop");
+    for (const [a, b] of state.wires) {
+      const [ax, az] = tileAt(a[0], a[1], 1), [bx, bz] = tileAt(b[0], b[1], 1);
+      objects.push({ at: [0, 0, 0], parts: lua.call(`Models.Wire({ ${cx + ax}, ${top}, ${cz + az} }, { ${cx + bx}, ${top}, ${cz + bz} })`) });
+    }
+    const n = state.net;
+    const fuel = slot("coal", "37/50", { size: 56, caption: "Paliwo" });
+    const power = `<div style="width:200px;height:56px;display:flex;align-items:center;font-size:22px;font-weight:800;color:${GOLD}">${Math.round(n.supply)} / 100 kW</div>`;
+    out["12-prad"] = { objects, camera: { pos: [gen[0] + 4, 30, gen[2] + 44], look: [gen[0] + 26, 3, gen[2] - 2], fov: 50 }, shadowRadius: 80, hud: "1 284,50 $", caption,
+      overlay: `<div class="win" style="width:520px;right:16px;bottom:16px"><div class="hd">${name("power_generator")}<span class="x">✕</span></div><div class="bd">
+        <b style="color:${GREEN};font-size:14px">⚡ Pracuje i zasila sieć.</b>
+        <div class="muted" style="font-size:14px">W generatorze (kliknij paliwo, aby wyjąć):</div>
+        ${contents([fuel], 0.62, power)}
+        <div style="font-size:14px">Sieć: ${n.poles} słup(y), ${n.generators} generator(y), ${n.machines} maszyn(y). Pobór ${n.demand} kW, moc ${n.supply} kW.</div>
+        <div class="muted" style="font-size:13px">Przy pełnej mocy (100 kW) jedna sztuka starcza: Węgiel 200 s, Drewno 50 s, Pellet drzewny 40 s.</div>
+        <div class="muted" style="font-size:14px">Ekwipunek: kliknij paliwo, aby włożyć (Shift: połowę)</div>
+        ${haveGrid(7, 14)}
+      </div></div>` };
+  }
   // The windows' item pictures: every item's parts, drawn by index.html.
   const icons = {};
   for (const id of lua.call("Items.Order")) icons[id] = lua.call(`Icons.Model("${id}")`);
