@@ -314,6 +314,22 @@ function Models.Workbench()
 	end
 	add(parts, { size = { 1.8, 0.9, 0.9 }, pos = { -1.6, 0.45, -2.6 }, color = { 176, 48, 40 }, material = "SmoothPlastic" })
 	add(parts, { size = { 1, 0.15, 0.15 }, pos = { -1.6, 1.05, -2.6 }, color = Iron, material = "Metal" })
+	-- A board at the back with tools hanging on it, a shelf with jars and a lamp over the top.
+	for _, x in ipairs({ -3.6, 3.6 }) do
+		add(parts, { size = { 0.4, 3.6, 0.4 }, pos = { x, 5.4, 1.55 }, color = vary(Wood, rng, 6), material = "Wood" })
+	end
+	add(parts, { size = { 7.6, 2.8, 0.2 }, pos = { 0, 5.3, 1.6 }, color = vary({ 196, 170, 130 }, rng, 6), material = "WoodPlanks" })
+	add(parts, { size = { 0.15, 1.6, 0.12 }, pos = { -2.4, 5.4, 1.45 }, rot = { 0, 0, 0.1 }, color = vary(Wood, rng, 6), material = "Wood" })
+	add(parts, { size = { 0.5, 0.35, 0.14 }, pos = { -2.3, 6.15, 1.44 }, color = Iron, material = "Metal" })
+	add(parts, { size = { 1.6, 0.6, 0.06 }, pos = { -0.6, 5.5, 1.46 }, color = { 190, 194, 200 }, material = "Metal" })
+	add(parts, { size = { 0.5, 0.3, 0.14 }, pos = { 0.3, 5.55, 1.44 }, color = { 150, 60, 44 }, material = "SmoothPlastic" })
+	add(parts, { shape = "Cylinder", size = { 0.12, 1, 1 }, pos = { 1.6, 5.5, 1.45 }, rot = { 0, math.pi / 2, 0 }, color = { 60, 62, 68 }, material = "Metal" })
+	add(parts, { size = { 2.6, 0.18, 0.7 }, pos = { 2.4, 6.75, 1.25 }, color = vary(Planks, rng, 8), material = "WoodPlanks" })
+	for k = 0, 2 do
+		post(parts, 0.55, 0.45, { 1.6 + k * 0.7, 7.1, 1.25 }, k == 1 and { 120, 160, 90 } or { 190, 150, 90 }, "Glass")
+	end
+	add(parts, { size = { 0.15, 0.15, 1.6 }, pos = { 0, 6.9, 0.85 }, color = { 40, 40, 44 }, material = "Metal" })
+	ball(parts, 0.55, { 0, 6.7, 0.1 }, { 255, 226, 150 }, "Neon", { noCollide = true, light = { color = { 255, 214, 150 }, range = 10, brightness = 0.8 } })
 	return parts
 end
 
@@ -414,7 +430,28 @@ function Models.Fountain()
 	post(parts, 3.6, 1.4, { 0, 4.3, 0 }, { 176, 170, 160 }, "Limestone")
 	post(parts, 0.5, 4.4, { 0, 6.1, 0 }, { 176, 170, 160 }, "Limestone")
 	post(parts, 0.25, 3.8, { 0, 6.35, 0 }, { 110, 180, 225 }, "Glass", { noCollide = true, sparkle = true })
-	ball(parts, 1.1, { 0, 7, 0 }, { 186, 180, 170 }, "Limestone")
+	-- A second, smaller bowl over the first, water running down from both.
+	post(parts, 1.6, 0.8, { 0, 7.3, 0 }, { 176, 170, 160 }, "Limestone")
+	post(parts, 0.4, 2.4, { 0, 8.25, 0 }, { 176, 170, 160 }, "Limestone")
+	post(parts, 0.2, 2, { 0, 8.45, 0 }, { 110, 180, 225 }, "Glass", { noCollide = true })
+	ball(parts, 1.1, { 0, 9.1, 0 }, { 186, 180, 170 }, "Limestone")
+	for i = 0, 7 do
+		local a = i / 8 * 2 * math.pi
+		add(parts, { size = { 0.08, 1.9, 0.25 }, pos = { math.cos(a) * 2.3, 5.3, math.sin(a) * 2.3 }, rot = { 0, -a, 0 }, color = { 140, 200, 235 }, material = "Glass", noCollide = true })
+		if i % 2 == 0 then
+			add(parts, { size = { 0.08, 1.3, 0.2 }, pos = { math.cos(a) * 1.25, 7.4, math.sin(a) * 1.25 }, rot = { 0, -a, 0 }, color = { 140, 200, 235 }, material = "Glass", noCollide = true })
+		end
+	end
+	-- Lily pads on the water, and four stone fish spouting into it from the wall.
+	for _ = 1, 5 do
+		local a, r = rng.Num(0, 2 * math.pi), rng.Num(3, 5)
+		post(parts, 0.08, rng.Num(0.8, 1.2), { math.cos(a) * r, 2.72, math.sin(a) * r }, { 70, 140, 70 }, "Grass", { noCollide = true })
+	end
+	for i = 0, 3 do
+		local a = i / 4 * 2 * math.pi + math.pi / 4
+		ball(parts, 0.9, { math.cos(a) * 5.9, 3.3, math.sin(a) * 5.9 }, { 176, 170, 160 }, "Limestone")
+		add(parts, { size = { 0.15, 0.15, 1.6 }, pos = { math.cos(a) * 5.2, 3.15, math.sin(a) * 5.2 }, yaw = math.pi / 2 - a, rot = { 0.35, 0, 0 }, color = { 140, 200, 235 }, material = "Glass", noCollide = true })
+	end
 	return parts
 end
 
