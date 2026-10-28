@@ -23,6 +23,7 @@ local Furnaces = require(script.Parent.Furnaces)
 local Inventory = require(script.Parent.Inventory)
 local Net = require(script.Parent.Net)
 local Plots = require(script.Parent.Plots)
+local TestMode = require(script.Parent.TestMode)
 
 local Grid = {}
 
@@ -122,7 +123,7 @@ function show(player, o, bend)
 				Name = "Prompt",
 				ActionText = "Zetnij",
 				ObjectText = "Sosna",
-				HoldDuration = Forestry.ChopTime,
+				HoldDuration = TestMode.Hold(Forestry.ChopTime),
 			}, { Kind = "tree", TreeId = o.id, Owner = player.UserId })
 		else
 			-- A sapling turns into a tree when it has grown.

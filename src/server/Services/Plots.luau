@@ -15,6 +15,7 @@ local Clock = require(script.Parent.Clock)
 local Data = require(script.Parent.Data)
 local Inventory = require(script.Parent.Inventory)
 local Net = require(script.Parent.Net)
+local TestMode = require(script.Parent.TestMode)
 
 local Plots = {}
 
@@ -99,7 +100,7 @@ local function buildPlot(player, index)
 			Name = "Prompt",
 			ActionText = "Kop",
 			ObjectText = "Kopalnia",
-			HoldDuration = Mining.Time,
+			HoldDuration = TestMode.Hold(Mining.Time),
 			MaxActivationDistance = 13,
 		}, { Kind = "mine", Index = i, Owner = player.UserId })
 		plot.mines[i] = mine
@@ -169,6 +170,10 @@ local function workMine(player, profile, prompt)
 	if mine == nil then
 		Net.Toast(player, code == "mine_empty" and "Kopalnia jest pusta." or code)
 		return
+	end
+	if TestMode.On then
+		-- Never runs dry while testing in Studio.
+		mine = Mining.New()
 	end
 	profile.mines[i] = mine
 	Plots.Gather(player, profile, Mining.Load(Mining.Roll(random)))
