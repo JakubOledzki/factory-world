@@ -92,6 +92,11 @@ function Research.Status(research, id, now)
 	return "available"
 end
 
+-- The technology that unlocks `item`, or nil when research does not lock it.
+function Research.LockedBy(item)
+	return lockedBy[item] and Research.ById[lockedBy[item]]
+end
+
 -- Whether the player may make or buy `item`.
 function Research.Unlocked(research, item, now)
 	local id = lockedBy[item]

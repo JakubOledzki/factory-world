@@ -34,7 +34,15 @@ local function template(item)
 			end
 		end
 		local cframe, size = model:GetBoundingBox()
-		templates[item] = { model = model, center = cframe.Position, radius = size.Magnitude / 2 }
+		local corners = {}
+		for _, sx in ipairs({ -0.5, 0.5 }) do
+			for _, sy in ipairs({ -0.5, 0.5 }) do
+				for _, sz in ipairs({ -0.5, 0.5 }) do
+					table.insert(corners, cframe * Vector3.new(size.X * sx, size.Y * sy, size.Z * sz))
+				end
+			end
+		end
+		templates[item] = { model = model, center = cframe.Position, corners = corners }
 	end
 	return templates[item]
 end
@@ -56,11 +64,105 @@ function ItemGrid.Icon(parent, item)
 	camera.FieldOfView = 30
 	local d = Icons.ViewDirection
 	local direction = Vector3.new(d[1], d[2], d[3]).Unit
-	local distance = t.radius / math.sin(math.rad(camera.FieldOfView / 2)) * 0.92
+	-- Near enough that the box around the picture just fills the tile as the camera sees it.
+	local right = direction:Cross(Vector3.new(0, 1, 0)).Unit
+	local up = right:Cross(direction).Unit
+	local slope = math.tan(math.rad(camera.FieldOfView / 2)) * 0.94
+	local distance = 0
+	for _, corner in ipairs(t.corners) do
+		local offset = corner - t.center
+		local side = math.max(math.abs(offset:Dot(right)), math.abs(offset:Dot(up)))
+		distance = math.max(distance, offset:Dot(direction) + side / slope)
+	end
 	camera.CFrame = CFrame.lookAt(t.center + direction * distance, t.center)
 	camera.Parent = view
 	view.CurrentCamera = camera
 	return view
+end
+
+-- One tile like the grid's, for windows that show single items (a recipe, what is in a machine).
+-- `opts`: size (pixels), caption (text under the tile, or nil), captionColor, layoutOrder, onClick.
+-- Returns { frame, button, caption, Set(item, text, dim) }: Set shows `item`'s picture (false or nil
+-- for an empty tile) with `text` in the corner, faded when `dim`; the picture is only rebuilt when
+-- the item changes, so Set can run every frame.
+function ItemGrid.Slot(parent, opts)
+	opts = opts or {}
+	local size = opts.size or 54
+	local frame = Kit.New("Frame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromOffset(size, size + (opts.caption and 18 or 0)),
+		LayoutOrder = opts.layoutOrder or 0,
+		Parent = parent,
+	})
+	local button = Kit.New("TextButton", {
+		Text = "",
+		AutoButtonColor = opts.onClick ~= nil,
+		BackgroundColor3 = Color3.fromRGB(64, 70, 84),
+		Size = UDim2.fromOffset(size, size),
+		Parent = frame,
+	}, {
+		Kit.Corner(6),
+		Kit.New("UIStroke", { Color = Color3.fromRGB(96, 104, 122), Thickness = 1 }),
+		-- Lighter at the top, like a recessed slot lit from above.
+		Kit.New("UIGradient", {
+			Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(150, 150, 160)),
+			Rotation = 90,
+		}),
+	})
+	local art = Kit.New("Frame", {
+		BackgroundTransparency = 1,
+		Position = UDim2.fromScale(0.08, 0.06),
+		Size = UDim2.fromScale(0.84, 0.84),
+		Parent = button,
+	})
+	local count = Kit.New("TextLabel", {
+		BackgroundTransparency = 1,
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -3, 1, -1),
+		Size = UDim2.fromOffset(size - 6, 16),
+		Font = Enum.Font.GothamBold,
+		TextSize = 13,
+		TextColor3 = Color3.new(1, 1, 1),
+		TextStrokeTransparency = 0.2,
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Text = "",
+		ZIndex = 5,
+		Parent = button,
+	})
+	local caption
+	if opts.caption then
+		caption = Kit.Label(frame, opts.caption, {
+			Position = UDim2.fromOffset(-8, size + 1),
+			Size = UDim2.fromOffset(size + 16, 16),
+			TextSize = 12,
+			Font = Enum.Font.GothamMedium,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextColor3 = opts.captionColor or Kit.Colors.Muted,
+		})
+	end
+	if opts.onClick then
+		button.Activated:Connect(opts.onClick)
+	end
+	local slot = { frame = frame, button = button, caption = caption, stroke = button:FindFirstChildOfClass("UIStroke") }
+	local shown, view
+	function slot.Set(item, text, dim)
+		item = item or false
+		if item ~= shown then
+			if view then
+				view:Destroy()
+				view = nil
+			end
+			if item then
+				view = ItemGrid.Icon(art, item)
+			end
+			shown = item
+		end
+		if view then
+			view.ImageTransparency = dim and 0.55 or 0
+		end
+		count.Text = text or ""
+	end
+	return slot
 end
 
 -- A grid in `parent`. `opts`: columns, tile (pixels), onClick(index, entry, half),
@@ -109,44 +211,12 @@ function ItemGrid.New(parent, opts)
 			end
 		end
 		for index, entry in ipairs(entries) do
-			local tile = Kit.New("TextButton", {
-				Text = "",
-				AutoButtonColor = entry ~= false,
-				BackgroundColor3 = Color3.fromRGB(64, 70, 84),
-				LayoutOrder = index,
-				Parent = tiles,
-			}, {
-				Kit.Corner(6),
-				Kit.New("UIStroke", { Color = Color3.fromRGB(96, 104, 122), Thickness = 1 }),
-				-- Lighter at the top, like a recessed slot lit from above.
-				Kit.New("UIGradient", {
-					Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(150, 150, 160)),
-					Rotation = 90,
-				}),
-			})
+			local slot = ItemGrid.Slot(tiles, { size = size, layoutOrder = index })
+			local tile = slot.button
+			tile.AutoButtonColor = entry ~= false
 			tile:SetAttribute("GridTile", index)
 			if entry then
-				local art = Kit.New("Frame", {
-					BackgroundTransparency = 1,
-					Position = UDim2.fromScale(0.08, 0.06),
-					Size = UDim2.fromScale(0.84, 0.84),
-					Parent = tile,
-				})
-				ItemGrid.Icon(art, entry.item)
-				Kit.New("TextLabel", {
-					BackgroundTransparency = 1,
-					AnchorPoint = Vector2.new(1, 1),
-					Position = UDim2.new(1, -3, 1, -1),
-					Size = UDim2.fromOffset(size - 6, 16),
-					Font = Enum.Font.GothamBold,
-					TextSize = 13,
-					TextColor3 = Color3.new(1, 1, 1),
-					TextStrokeTransparency = 0.2,
-					TextXAlignment = Enum.TextXAlignment.Right,
-					Text = tostring(entry.quantity),
-					ZIndex = 5,
-					Parent = tile,
-				})
+				slot.Set(entry.item, tostring(entry.quantity))
 				tile.MouseEnter:Connect(function()
 					info.Text = describe(entry)
 				end)

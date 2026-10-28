@@ -8,6 +8,8 @@ Branch `roblox-3d` ma własną historię i zawiera tylko wersję Roblox: nie dzi
 ![Kopanie na działce](docs/screenshots/2-kopanie-na-dzialce.png)
 ![Budowanie na siatce](docs/screenshots/6-budowanie.png)
 ![Maszyny i badania](docs/screenshots/7-przetworstwo.png)
+![Stół warsztatowy](docs/screenshots/9-stol-warsztatowy.png)
+![Okno maszyny](docs/screenshots/10-maszyna.png)
 ![Modele](docs/screenshots/5-modele.png)
 
 Zrzuty pochodzą z podglądu w przeglądarce (`tools/preview/`), który rysuje dokładnie te modele, które buduje serwer
@@ -40,7 +42,7 @@ Zbudowanie pliku miejsca bez Studio: `rojo build -o FactoryWorld3D.rbxl`.
 ## Sterowanie
 
 Chodzenie jak w każdej grze Roblox. **E** (przytrzymaj) przy kopalni kopie, przy drzewie ścina, przy handlarzu, stole i piecu otwiera okno.
-**I** otwiera ekwipunek: kratka 20 pól jak w grze 2D (przeciągnij, aby przenieść). W oknach skrzyni, pieca i maszyny kliknięcie pola w kratce ekwipunku wkłada cały stos (Shift: połowę), a kliknięcie pola skrzyni go wyjmuje. Nowy gracz dostaje kilof, siekierę i 50 $. Ceny skupu i sprzedaży są takie jak w grze 2D.
+**I** otwiera ekwipunek: kratka 20 pól jak w grze 2D (przeciągnij, aby przenieść). W oknach skrzyni, pieca i maszyny kliknięcie pola w kratce ekwipunku wkłada cały stos (Shift: połowę), a kliknięcie pola skrzyni go wyjmuje. Stół warsztatowy i maszyny pokazują przepisy jako kafelki z ikonami 3D (zakładki na stole, złota ramka = wybrany, zielona = masz składniki, kłódka = wymaga badań). Karta przepisu pokazuje składniki z liczbą „masz/potrzeba” (brakujące na czerwono) i przycisk „Wytwórz” albo „Ustaw przepis”. To, co jest w piecu i maszynie, widać jako kafelki z paskiem postępu; kliknięcie kafelka wyjmuje zawartość. Handlarz pokazuje towary jako kafelki z ceną. **Esc** zamyka okno. Nowy gracz dostaje kilof, siekierę i 50 $. Ceny skupu i sprzedaży są takie jak w grze 2D.
 
 **B** (albo przycisk *Budowanie*) włącza tryb budowania na siatce działki: **1–9** wybiera taśmociąg, podajnik,
 skrzynię, piec, sadzonkę albo maszynę (maszyny widać na pasku, gdy ma się którąś w ekwipunku), **R** obraca, kliknięcie stawia (przeciągnięcie układa taśmę, która skręca razem z ruchem),
@@ -54,7 +56,7 @@ pole przed sobą. Skrzynię, piec i maszynę otwiera **E**; w oknie maszyny wybi
 | --- | --- |
 | `src/shared/` (`ReplicatedStorage.Shared`) | Czyste zasady gry bez API Robloxa: `Items` (id jak w `Contracts/Items.cs`, nazwy, kolory), `Prices`, `Mining`, `Forestry`, `Smelting`, `Processing` (maszyny przetwórcze, jak `Processing.cs`), `Research` (drzewko badań, jak `Research.cs`), `Workshop`, `Logistics` (siatka, taśmy, podajniki, skrzynie, porty maszyn, jak `Simulation.cs`), `PlotLayout`, `Money`, `Remotes`, `Assemble` (składa model z części, dla serwera i ducha budowania u klienta), a także `Models`: każdy obiekt (kopalnia, sosna, piec, maszyny, stół, stragan, handlarz, fontanna, płot, ozdoby działki) jako lista części z kształtem (kula, walec, klin, prostopadłościan), materiałem, kolorem i efektami (ogień, dym, światło) |
 | `src/server/` (`ServerScriptService.Server`) | `Main` uruchamia usługi z `Services/`: `Data` (DataStore z blokadą sesji i autozapisem), `Wallet`, `Inventory`, `Net` (zdalne wywołania, limit 20 na sekundę, sprawdzanie danych), `World` (plac i las), `Plots` (działki, kopanie), `Furnaces`, `Factory` (liczy siatkę do teraz), `Grid` (budowanie, ścinanie i sadzenie drzew, skrzynie, stan taśm i ramion dla klienta), `Machines` (okno maszyny), `Lab` (badania), `Merchant`, `Workshop`, `Build` (zamienia `Models` w części Robloxa) |
-| `src/client/` (`StarterPlayerScripts.Client`) | `Main`, `Game` (stan gracza, wywołania serwera, polskie teksty błędów), `GridView` (płynny ruch taśm i ramion podajników, kręcące się piły i walce maszyn), `Ui/` (HUD, `ItemGrid` (kratka przedmiotów z obrazkami z kształtów), ekwipunek, handlarz, piec, stół, skrzynia, maszyna, badania, pasek budowania) |
+| `src/client/` (`StarterPlayerScripts.Client`) | `Main`, `Game` (stan gracza, wywołania serwera, polskie teksty błędów), `GridView` (płynny ruch taśm i ramion podajników, kręcące się piły i walce maszyn), `Ui/` (HUD, `ItemGrid` (kratka przedmiotów z ikonami 3D), `Recipes` (zakładki, kafelki przepisów, karta przepisu), ekwipunek, handlarz, piec, stół, skrzynia, maszyna, badania, pasek budowania) |
 | `tests/` | Testy zasad z `src/shared` i sprawdzenie składni wszystkich plików: `npm install`, potem `npm test` (Lua 5.3 w Node, bez Robloxa) |
 | `tools/preview/` | Podgląd 3D w przeglądarce (three.js): `scene.js` uruchamia `Models.luau` i `PlotLayout.luau` w Node i składa z nich plac i działki tak jak serwer, a potem robi zrzuty do `docs/screenshots` (`npm run preview`, wymaga Chromium z Playwright) |
 

@@ -82,31 +82,56 @@ function plot(index, opts = {}) {
 }
 
 const caption = "Podgląd Factory World 3D: modele wprost z kodu gry (src/shared/Models.luau). W Robloxie oświetlenie, materiały i postacie wyglądają nieco inaczej.";
-const sw = (c) => `<span class="sw" style="background:rgb(${c})"></span>`;
 
-// Tiles of an item grid as the game draws them (client/Ui/ItemGrid.luau): a picture made of shapes
-// in the item's colour and the count in the corner; `entries` are [id, quantity], padded to `count`.
+// A tile as the game draws one (client/Ui/ItemGrid.luau, ItemGrid.Slot): the item's picture
+// (drawn by index.html from Shared.Icons), `text` in the corner and an optional caption under it.
+function slot(id, text = "", o = {}) {
+  const size = o.size || 54;
+  const border = o.stroke ? `border:${o.strokeWidth || 2.5}px solid ${o.stroke};` : "";
+  const tile = `<div class="slot" style="width:${size}px;height:${size}px;${border}">`
+    + (id ? `<i class="ic" data-icon="${id}"${o.dim ? ' style="opacity:.45"' : ""}></i>` : "")
+    + (o.badge ? `<span class="badge">${o.badge}</span>` : "") + (o.bar != null ? `<i style="position:absolute;left:3px;bottom:2px;height:3px;width:${o.bar * (size - 8)}px;background:#ff8c32"></i>` : "")
+    + (text ? `<b>${text}</b>` : "") + `</div>`;
+  if (o.caption == null) return tile;
+  return `<div style="width:${size}px;flex:none">${tile}<div class="scap" style="color:${o.captionColor || "#a0a6b2"}">${o.caption}</div></div>`;
+}
+
+// The inventory grid: `entries` are [id, quantity], padded to `count` tiles.
 function itemGrid(entries, columns, count) {
-  const colors = lua.call("Items.Colors");
-  const c = (id, k = 1) => `rgb(${colors[id].map((v) => Math.min(255, Math.round(v * k))).join(",")})`;
-  const icon = (id) => {
-    if (id.endsWith("_ore") || id === "coal" || id === "stone") {
-      const base = id === "coal" ? c(id) : "rgb(128,124,118)";
-      const dots = id.endsWith("_ore") ? [[30, 35], [62, 55], [42, 72]].map(([x, y]) => `<i style="position:absolute;left:${x - 12}%;top:${y - 14}%;width:24%;height:28%;border-radius:50%;background:${c(id, 1.1)}"></i>`).join("") : "";
-      return `<i style="position:absolute;left:11%;top:22%;width:78%;height:66%;border-radius:40%;background:${base}">${dots}</i>`;
-    }
-    if (id.endsWith("_ingot")) return `<i style="position:absolute;left:9%;top:38%;width:82%;height:40%;border-radius:15%;background:${c(id, 0.8)}"><i style="position:absolute;left:10%;top:0;width:80%;height:45%;border-radius:20%;background:${c(id, 1.15)}"></i></i>`;
-    if (id.startsWith("tool_")) return `<i style="position:absolute;left:43%;top:15%;width:14%;height:80%;border-radius:30%;background:#8c603c;transform:rotate(35deg)"></i><i style="position:absolute;left:32%;top:23%;width:60%;height:18%;border-radius:30%;background:${id === "tool_axe" ? "#aab0ba" : c(id)};transform:rotate(35deg)"></i>`;
-    if (/^(furniture|logistics|storage)_/.test(id)) return `<i style="position:absolute;left:10%;top:20%;width:80%;height:70%;border-radius:12%;background:${c(id)}"><i style="position:absolute;left:25%;top:38%;width:50%;height:40%;border-radius:15%;background:${c(id, 0.6)}"></i></i><i style="position:absolute;left:5%;top:14%;width:90%;height:12%;border-radius:30%;background:${c(id, 0.75)}"></i>`;
-    return `<i style="position:absolute;left:14%;top:16%;width:72%;height:72%;border-radius:18%;background:linear-gradient(150deg,${c(id, 1.2)},${c(id, 0.75)})"></i>`;
-  };
   const tiles = [];
-  for (let i = 0; i < count; i++) {
-    const e = entries[i];
-    tiles.push(`<div style="position:relative;width:54px;height:54px;border-radius:6px;background:#1a1d24;border:1px solid #464e5e">${e ? `<div style="position:absolute;left:8%;top:6%;width:84%;height:84%">${icon(e[0])}</div><b style="position:absolute;right:4px;bottom:2px;font-size:13px;color:#fff;text-shadow:0 0 3px #000">${e[1]}</b>` : ""}</div>`);
-  }
+  for (let i = 0; i < count; i++) tiles.push(entries[i] ? slot(entries[i][0], entries[i][1]) : slot(null));
   return `<div style="display:grid;grid-template-columns:repeat(${columns},54px);gap:4px;margin:4px 0">${tiles.join("")}</div>`;
 }
+
+// What a player in the screenshots has, for the counts in the windows.
+const have = { tool_pickaxe: 1, tool_axe: 1, coal: 31, copper_ore: 8, iron_ingot: 12, stone: 126, wood: 22, sapling: 3,
+  logistics_belt: 6, logistics_inserter: 2, storage_wooden_chest: 1, tin_ore: 4, nails: 15, iron_ore: 14, copper_ingot: 4, planks: 12 };
+const haveGrid = (columns, count) => itemGrid(Object.entries(have), columns, count);
+const name = (id) => lua.call(`Items.Name("${id}")`);
+const GOLD = "#ffd65a", GREEN = "#8cd77d", RED = "#f0695f";
+const ready = (r) => r.ingredients.every(([id, n]) => (have[id] || 0) >= n);
+
+// Ingredient tiles with have/need under each, red when short (client/Ui/Recipes.luau).
+const ingredients = (list, size = 40) => `<div style="display:flex;gap:14px">${list.map(([id, n]) =>
+  slot(id, n, { size, caption: `${have[id] || 0}/${n}`, captionColor: (have[id] || 0) >= n ? GREEN : RED })).join("")}</div>`;
+
+// The recipe grid and the card of the chosen recipe (Recipes.Picker, Recipes.Card).
+function picker(recipes, selected, marked) {
+  return `<div style="display:flex;flex-wrap:wrap;gap:6px">${recipes.map((r) => slot(r.id, r.quantity > 1 ? "×" + r.quantity : "", {
+    size: 56, dim: r.locked, badge: r.locked ? "🔒" : r.id === marked ? "▶" : null,
+    stroke: r.id === selected ? GOLD : !r.locked && ready(r) ? GREEN : null, strokeWidth: r.id === selected ? 2.5 : 1.5 })).join("")}</div>`;
+}
+function card(r, subtitle, actions) {
+  return `<div class="card" style="height:156px"><div style="position:absolute;left:10px;top:10px">${slot(r.id, r.quantity > 1 ? "×" + r.quantity : "", { size: 88 })}</div>
+    <div style="position:absolute;left:110px;top:8px;font-weight:800;font-size:18px">${name(r.id)}${r.quantity > 1 ? " × " + r.quantity : ""}</div>
+    <div class="muted" style="position:absolute;left:110px;top:32px;font-size:13px">Czas: ${r.time} s${subtitle ? "&nbsp;&nbsp; " + subtitle : ""}</div>
+    <div style="position:absolute;left:110px;top:52px">${ingredients(r.ingredients)}</div>
+    <div style="position:absolute;left:110px;top:116px;display:flex;gap:8px;align-items:center;font-size:13px">${actions}</div></div>`;
+}
+const tabs = (list, current) => `<div class="tabs">${list.map((t) => `<span class="btn ${t === current ? "alt" : "off"}">${t}</span>`).join("")}</div>`;
+// What is in a machine or furnace: tiles, an arrow with the progress, what is ready (Machine.Contents).
+const contents = (inputs, progress, output) => `<div style="display:flex;gap:8px;align-items:flex-start">${inputs.join("")}
+  <div style="width:90px;flex:none;text-align:center"><div class="muted" style="font-size:26px;line-height:34px">➜</div><div class="bar" style="height:10px;margin:4px 4px 0;background:#181b21"><i style="width:${progress * 100}%"></i></div></div>${output}</div>`;
 
 function views() {
   const out = {};
@@ -136,23 +161,30 @@ function views() {
     out["3-piec"] = { objects, camera: { pos: [cx + 6, 9, cz - 39], look: [cx + 17, 3, cz - 56] }, shadowRadius: 50, hud: "1 284,50 $", caption,
       avatars: [{ at: [cx + 13, 0, cz - 48], yaw: Math.PI + 0.3, shirt: [200, 60, 60] }],
       overlay: `<div class="win" style="width:460px;right:16px;bottom:24px"><div class="hd">Piec kamienny<span class="x">✕</span></div><div class="bd">
-        <div>Ruda: Ruda żelaza × 23 / 50</div><div>Węgiel: 4 / 50 &nbsp; (żar na 3 szt.)</div><div><b>Gotowe: Sztabka żelaza × 12</b></div>
-        <div class="bar"><i style="width:64%"></i></div><div class="muted">Ekwipunek: kliknij rudę albo węgiel, aby włożyć (Shift: połowę)</div>
-        ${itemGrid([["tool_pickaxe", 1], ["tool_axe", 1], ["coal", 31], ["copper_ore", 8], ["iron_ingot", 12], ["stone", 126], ["wood", 22], ["sapling", 3], ["logistics_belt", 6], ["logistics_inserter", 2], ["storage_wooden_chest", 1], ["tin_ore", 4], ["nails", 15]], 7, 14)}
-        <div style="display:flex;gap:8px;margin-top:4px"><span class="btn">Weź sztabki</span><span class="btn alt">Weź rudę</span><span class="btn alt">Weź węgiel</span><span class="btn red">Schowaj</span></div>
+        <div class="muted" style="font-size:14px">W piecu (kliknij kafelek, aby wyjąć):</div>
+        ${contents([slot("iron_ore", "23/50", { size: 56, caption: "Ruda" }), slot("coal", "4/50", { size: 56, caption: "Węgiel (żar 3)" })], 0.64,
+          slot("iron_ingot", "12", { size: 56, caption: "Gotowe", captionColor: "#ebecf0" }))}
+        <div class="muted" style="font-size:14px">Ekwipunek: kliknij rudę albo węgiel, aby włożyć (Shift: połowę)</div>
+        ${haveGrid(7, 21)}
+        <div style="display:flex;gap:8px;margin-top:4px"><span class="btn red">Schowaj piec</span></div>
       </div></div>` };
   }
   // 4. The merchant's square.
   {
     let objects = square().concat(forest([0, 0, 160]));
     for (let i = 1; i <= L.Count; i++) objects = objects.concat(plot(i, { furnaces: ["lit"] }).objects);
-    const rows = [["168,110,90", "Ruda żelaza (14)", "6 $"], ["40,40,44", "Węgiel (31)", "4 $"], ["140,140,140", "Kamień (126)", "1 $"], ["160,164,170", "Sztabka żelaza (12)", "10 $"], ["133,94,66", "Drewno (22)", "2 $"]];
+    const buys = lua.call("Prices.Buys");
+    const sellable = lua.call("Items.Order").filter((id) => have[id] && buys[id]).map((id) => [id, buys[id]]);
     out["4-handlarz"] = { objects, camera: { pos: [17, 6.5, 1], look: [2, 4.5, -17] }, shadowRadius: 60, hud: "1 284,50 $", caption,
       avatars: [{ at: [4, 0, -10], yaw: Math.PI + 0.4, shirt: [200, 60, 60] }],
       labels: [{ at: [L.Stall.x, 13.5, L.Stall.z], text: "Handlarz", color: "#ffe678", size: 20 }, { at: [L.Workbench.x, 7.5, L.Workbench.z], text: "Stół warsztatowy", color: "#dce6ff", size: 15 }],
-      overlay: `<div class="win" style="width:500px;right:16px;bottom:40px"><div class="hd">Handlarz<span class="x">✕</span></div><div class="bd">
-        <div style="display:flex;gap:8px"><span class="btn" style="width:100px;text-align:center">Sprzedaj</span><span class="btn off" style="width:100px;text-align:center">Kup</span></div>
-        ${rows.map(([c, n, p]) => `<div class="row">${sw(c)}<span style="width:160px">${n}</span><span class="gold" style="width:50px">${p}</span><span class="btn">Sprzedaj 1</span><span class="btn alt">Wszystko</span></div>`).join("")}
+      overlay: `<div class="win" style="width:560px;right:16px;bottom:40px"><div class="hd">Handlarz<span class="x">✕</span></div><div class="bd">
+        ${tabs(["Sprzedaj", "Kup"], "Sprzedaj")}
+        <div class="card" style="height:112px"><div style="position:absolute;left:10px;top:12px">${slot("iron_ore", "14", { size: 88 })}</div>
+          <div style="position:absolute;left:110px;top:10px;font-weight:800;font-size:18px">Ruda żelaza</div>
+          <div class="gold" style="position:absolute;left:110px;top:36px;font-size:15px">Płaci: 6 $ za sztukę &nbsp;·&nbsp; masz 14</div>
+          <div style="position:absolute;left:110px;top:66px;display:flex;gap:8px"><span class="btn" style="width:100px;text-align:center">Sprzedaj 1</span><span class="btn" style="width:100px;text-align:center">Sprzedaj 10</span><span class="btn alt" style="width:100px;text-align:center">Wszystko</span></div></div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px 8px">${sellable.map(([id, cents]) => slot(id, have[id], { size: 56, caption: lua.call(`Money.Format(${cents})`), captionColor: GOLD, stroke: id === "iron_ore" ? GOLD : null })).join("")}</div>
       </div></div>` };
   }
   // 5. The models side by side.
@@ -312,13 +344,17 @@ function views() {
       }
     }
     const techs = lua.call("Research.Technologies");
-    const status = ["Zbadane", "Bada się: 1 min 12 s", null, null];
-    const tech = (t, i) => `<div class="row" style="align-items:flex-start;padding:6px 8px;height:auto">${sw(colors[t.unlocks[0]].join(","))}
-      <span style="width:390px;font-size:13px;line-height:1.35"><b>${t.name}</b> (${t.time >= 60 ? t.time / 60 + " min" : t.time + " s"})<br>${t.description}<br>
-      <span class="muted">Koszt: ${t.cost.map((c) => c[1] + " × " + lua.call(`Items.Name("${c[0]}")`)).join(", ")}</span></span>
-      ${status[i] ? `<b style="width:110px;font-size:13px">${status[i]}</b>` : `<span class="btn" style="width:70px;text-align:center">Badaj</span>`}</div>`;
+    const status = ["✓ Zbadane", "Bada się: 1 min 12 s", null, null];
+    const tech = (t, i) => `<div class="card" style="height:174px">
+      <div style="position:absolute;left:10px;top:10px">${slot(t.unlocks[0], "", { size: 64 })}</div>
+      <div style="position:absolute;left:86px;top:6px;right:134px;font-size:14px;line-height:1.3"><b>${t.name}</b> (${t.time >= 60 ? Math.floor(t.time / 60) + " min " + (t.time % 60) + " s" : t.time + " s"})<br>${t.description}</div>
+      <div class="muted" style="position:absolute;left:86px;top:62px;font-size:12px">Koszt:</div>
+      <div style="position:absolute;left:86px;top:80px">${ingredients(t.cost, 36)}</div>
+      <div class="muted" style="position:absolute;left:86px;top:140px;right:10px;font-size:12px">Odblokowuje: ${t.unlocks.map(name).join(", ")}</div>
+      <div style="position:absolute;right:10px;top:12px;width:120px">${status[i] ? `<b style="font-size:14px;color:${i ? "#ebecf0" : GREEN}">${status[i]}</b>`
+        : `<span class="btn" style="display:block;text-align:center;padding:9px 0;font-size:15px;background:${t.cost.every(([id, n]) => (have[id] || 0) >= n) ? "#46825a" : "#4e5460"}">Badaj</span>`}</div></div>`;
     out["7-przetworstwo"] = { objects, camera: { pos: [cx - 6, 30, cz - 28], look: [cx + 2, 0, cz - 62], fov: 55 }, shadowRadius: 60, hud: "1 284,50 $", caption,
-      overlay: `<div class="win" style="width:560px;right:16px;bottom:40px"><div class="hd">Badania<span class="x">✕</span></div><div class="bd">
+      overlay: `<div class="win" style="width:560px;right:16px;top:12px;bottom:40px;overflow:hidden"><div class="hd">Badania<span class="x">✕</span></div><div class="bd">
         ${techs.map(tech).join("")}</div></div>` };
   }
   // 8. The pictures of items (Shared.Icons) side by side on dark tiles, as the inventory shows them.
@@ -345,6 +381,49 @@ function views() {
     });
     out["8-ikony"] = { objects, camera: { pos: [0, 58, 40], look: [0, 0, 3], fov: 58 }, shadowRadius: 70, caption: "Ikony przedmiotów: małe modele 3D z src/shared/Icons.luau, które gra rysuje w kratce ekwipunku.", labels };
   }
+  // 9. The workbench's window: tabs, recipe tiles, the chosen recipe's card and the queue.
+  {
+    let objects = square().concat(forest([0, 0, 160]));
+    for (let i = 1; i <= L.Count; i++) objects = objects.concat(plot(i, { furnaces: ["lit"] }).objects);
+    const W = L.Workbench;
+    const locked = ["furniture_stonemason", "furniture_crusher", "furniture_foundry"];
+    const recipes = lua.call("Workshop.Recipes").map((r) => ({ ...r, locked: locked.includes(r.id) }));
+    const chosen = recipes.find((r) => r.id === "logistics_inserter");
+    const queue = [slot("nails", "×5", { size: 56, caption: "6 s", captionColor: "#ebecf0", bar: 0.4 }), slot("logistics_belt", "×4", { size: 56, caption: "16 s" })];
+    for (let i = queue.length; i < 5; i++) queue.push(slot(null, "", { size: 56, caption: "wolne" }));
+    out["9-stol-warsztatowy"] = { objects, camera: { pos: [W.x - 16, 9, W.z + 4], look: [W.x + 2, 2.5, W.z - 2] }, shadowRadius: 60, hud: "1 284,50 $", caption,
+      avatars: [{ at: [W.x - 5, 0, W.z + 1], yaw: -Math.PI / 2, shirt: [200, 60, 60] }],
+      overlay: `<div class="win" style="width:560px;right:16px;bottom:16px"><div class="hd">Stół warsztatowy<span class="x">✕</span></div><div class="bd">
+        ${tabs(["Wszystko", "Budowle", "Maszyny", "Materiały"], "Wszystko")}
+        ${picker(recipes, chosen.id)}
+        ${card(chosen, "", `<span class="btn" style="width:150px;text-align:center;padding:8px 0;font-size:15px">Wytwórz</span><span class="muted">Składniki zostaną zabrane od razu.</span>`)}
+        <div class="muted" style="font-size:14px">Kolejka (2/5) &nbsp;·&nbsp; gotowe trafia do ekwipunku, także gdy odejdziesz</div>
+        <div style="display:flex;gap:8px">${queue.join("")}</div>
+      </div></div>` };
+  }
+  // 10. A machine's window: its recipes, the card, what is in it and the inventory.
+  {
+    const scene7 = out["7-przetworstwo"];
+    const recipes = lua.call("Processing.Machines[Items.Foundry].recipes");
+    const chosen = recipes.find((r) => r.id === "bricks") || recipes[recipes.length - 1];
+    const inside = [[20, 0.4], [20, 0.4]];
+    const inputs = chosen.ingredients.map(([id], i) => slot(id, `${(inside[i] || [0])[0]}/50`, { size: 56, caption: name(id) }));
+    inputs.push(slot("coal", "5/50", { size: 56, caption: "Paliwo (żar 2)" }));
+    out["10-maszyna"] = { ...scene7, overlay: `<div class="win" style="width:560px;right:16px;bottom:8px"><div class="hd">${name("furniture_foundry")}<span class="x">✕</span></div><div class="bd">
+        <div class="muted" style="font-size:14px">Co robić:</div>
+        ${picker(recipes, chosen.id, chosen.id)}
+        ${card(chosen, "za wsad", `<b style="color:${GOLD};font-size:14px">▶ Maszyna robi ten przepis</b>`)}
+        <div class="muted" style="font-size:14px">W maszynie (kliknij kafelek, aby wyjąć):</div>
+        ${contents(inputs, 0.55, slot(chosen.id, "6/100", { size: 56, caption: "Gotowe", captionColor: "#ebecf0" }))}
+        <div class="muted" style="font-size:14px">Ekwipunek: kliknij składnik albo paliwo, aby włożyć (Shift: połowę)</div>
+        ${haveGrid(8, 16)}
+      </div></div>` };
+  }
+  // The windows' item pictures: every item's parts, drawn by index.html.
+  const icons = {};
+  for (const id of lua.call("Items.Order")) icons[id] = lua.call(`Icons.Model("${id}")`);
+  const iconView = lua.call("Icons.ViewDirection");
+  for (const v of Object.values(out)) if (v.overlay) Object.assign(v, { icons, iconView });
   return out;
 }
 
@@ -353,7 +432,10 @@ async function shoot() {
   const browser = await chromium.launch({ args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
   const out = path.join(__dirname, "../../docs/screenshots");
   fs.mkdirSync(out, { recursive: true });
+  // `node tools/preview/scene.js 3 9` takes only the views whose names start with 3 or 9.
+  const only = process.argv.slice(2);
   for (const [name, scene] of Object.entries(views())) {
+    if (only.length && !only.some((o) => name.startsWith(o + "-"))) continue;
     // A new page for each scene: init scripts stay on a page and would all run again.
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     page.on("pageerror", (e) => console.log("page error:", e.message));

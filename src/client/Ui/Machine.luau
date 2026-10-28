@@ -1,6 +1,7 @@
--- A processing machine's window: what it makes, what is in it, how far the batch has got, and
--- buttons to choose the recipe, load it and empty it. The progress is worked out here from the
--- state the server sent (the same Processing.Advance).
+-- A processing machine's window: a grid of what it can make and a card for the chosen recipe, what
+-- is in it as tiles (ingredients, fuel, the batch's progress and what is ready), and the inventory
+-- to load it from. The progress is worked out here from the state the server sent (the same
+-- Processing.Advance).
 local RunService = game:GetService("RunService")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
@@ -8,17 +9,45 @@ local Items = require(Shared.Items)
 local Processing = require(Shared.Processing)
 local Kit = require(script.Parent.Kit)
 local ItemGrid = require(script.Parent.ItemGrid)
+local Recipes = require(script.Parent.Recipes)
 local InventoryWindow = require(script.Parent.Inventory)
 local Game = require(script.Parent.Parent.Game)
 
 local Machine = {}
 
-local function list(entries)
-	local parts = {}
-	for _, entry in ipairs(entries) do
-		table.insert(parts, entry[2] .. " × " .. Items.Name(entry[1]))
+-- A row of tiles for what is in a machine or furnace, with an arrow and a progress bar before what
+-- is ready. Returns the row, a function adding a tile ({ caption, onClick }) and the bar.
+function Machine.Contents(parent)
+	local row = Kit.Row(parent, 84)
+	row.BackgroundTransparency = 1
+	local order = 0
+	local function slot(caption, onClick)
+		order = order + 1
+		return ItemGrid.Slot(row, { size = 56, caption = caption, layoutOrder = order, onClick = onClick })
 	end
-	return table.concat(parts, ", ")
+	local function arrow()
+		order = order + 1
+		local holder = Kit.New("Frame", {
+			BackgroundTransparency = 1,
+			Size = UDim2.fromOffset(90, 56),
+			LayoutOrder = order,
+			Parent = row,
+		})
+		Kit.Label(holder, "➜", {
+			Size = UDim2.new(1, 0, 0, 34),
+			TextSize = 28,
+			TextXAlignment = Enum.TextXAlignment.Center,
+			TextColor3 = Kit.Colors.Muted,
+		})
+		local track = Kit.New("Frame", {
+			Position = UDim2.fromOffset(4, 38),
+			Size = UDim2.new(1, -8, 0, 10),
+			BackgroundColor3 = Color3.fromRGB(24, 27, 33),
+			Parent = holder,
+		}, { Kit.Corner(5) })
+		return Kit.New("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.fromRGB(255, 140, 50), Parent = track }, { Kit.Corner(5) })
+	end
+	return row, slot, arrow
 end
 
 function Machine.Open(screen, id)
@@ -28,13 +57,14 @@ function Machine.Open(screen, id)
 	end
 	Game.SyncTime(reply.serverTime)
 	local connections = {}
-	local window, body = Kit.Window(screen, Items.Name(reply.kind), 560, 640, function()
+	local window, body = Kit.Window(screen, Items.Name(reply.kind), 560, 680, function()
 		for _, c in ipairs(connections) do
 			c:Disconnect()
 		end
 	end)
-	local labels = {}
-	local bar
+	local kind = reply.kind
+	local viewing = reply.state.recipe or (reply.recipes[1] and reply.recipes[1].id)
+	local live -- { inputs = { slot }, fuel = slot, output = slot, bar, recipe }
 
 	local function apply(r)
 		if r then
@@ -43,9 +73,9 @@ function Machine.Open(screen, id)
 		end
 	end
 
-	local function current()
+	local function find(recipeId)
 		for _, r in ipairs(reply.recipes) do
-			if r.id == reply.state.recipe then
+			if r.id == recipeId then
 				return r
 			end
 		end
@@ -54,41 +84,65 @@ function Machine.Open(screen, id)
 
 	local function render()
 		Kit.Clear(body)
-		labels = {}
-		local kind = reply.kind
-		Kit.Label(body, "Co robić:", { TextColor3 = Kit.Colors.Muted })
-		for _, r in ipairs(reply.recipes) do
-			local row = Kit.Row(body, 48)
-			Kit.Swatch(row, Items.Colors[r.id], 26)
-			local text = Kit.Label(row, "", { Size = UDim2.new(0, 330, 1, 0), TextWrapped = true, RichText = true, TextSize = 15 })
-			text.Text = "<b>" .. Items.Name(r.id) .. " × " .. r.quantity .. "</b>  (" .. r.time .. " s)\n"
-				.. '<font color="#a0a6b2">z: ' .. list(r.ingredients) .. "</font>"
-			if r.locked then
-				Kit.Label(row, "Wymaga badań", { Size = UDim2.new(0, 110, 1, 0), TextColor3 = Kit.Colors.Muted, TextSize = 14 })
-			elseif r.id == reply.state.recipe then
-				Kit.Label(row, "Wybrane", { Size = UDim2.new(0, 90, 1, 0), Font = Enum.Font.GothamBold, TextColor3 = Kit.Colors.Money })
-			else
-				Kit.Button(row, "Wybierz", function()
-					apply(Game.Call("MachineRecipe", { id = id, recipe = r.id }))
-					render()
-				end, { Size = UDim2.fromOffset(90, 30) })
+		live = nil
+		Kit.Label(body, "Co robić:", { TextColor3 = Kit.Colors.Muted, TextSize = 14 })
+		Recipes.Picker(body, reply.recipes, {
+			selected = viewing,
+			marked = reply.state.recipe,
+			tile = 56,
+			onSelect = function(r)
+				viewing = r.id
+				render()
+			end,
+		})
+		local shown = find(viewing)
+		if shown then
+			local _, actions = Recipes.Card(body, shown, "za wsad")
+			if not shown.locked then
+				if shown.id == reply.state.recipe then
+					Kit.Label(actions, "▶ Maszyna robi ten przepis", {
+						Size = UDim2.new(1, 0, 1, 0),
+						Font = Enum.Font.GothamBold,
+						TextSize = 14,
+						TextColor3 = Recipes.Colors.Selected,
+					})
+				else
+					Recipes.Action(actions, "Ustaw przepis", true, function()
+						apply(Game.Call("MachineRecipe", { id = id, recipe = shown.id }))
+						render()
+					end)
+					Kit.Label(actions, "To, co jest w maszynie, wróci do ekwipunku.", {
+						Size = UDim2.new(1, -160, 1, 0),
+						TextSize = 13,
+						TextColor3 = Kit.Colors.Muted,
+					})
+				end
 			end
 		end
 
-		local recipe = current()
+		local recipe = find(reply.state.recipe)
 		if recipe == nil then
-			Kit.Label(body, "Wybierz przepis, potem włóż składniki.", { TextColor3 = Kit.Colors.Muted })
+			Kit.Label(body, "Wybierz przepis i kliknij „Ustaw przepis”, potem włóż składniki.", { TextColor3 = Kit.Colors.Muted, TextSize = 14 })
 			return
 		end
+		Kit.Label(body, "W maszynie (kliknij kafelek, aby wyjąć):", { TextColor3 = Kit.Colors.Muted, TextSize = 14 })
+		local _, slot, arrow = Machine.Contents(body)
+		live = { inputs = {}, recipe = recipe }
 		for i, entry in ipairs(recipe.ingredients) do
-			labels[i] = Kit.Label(body, "")
+			live.inputs[i] = slot(Items.Name(entry[1]), function()
+				apply(Game.Call("MachineTake", { id = id, what = "input" }))
+			end)
 		end
 		if reply.fired then
-			labels.fuel = Kit.Label(body, "")
+			live.fuel = slot("Paliwo", function()
+				apply(Game.Call("MachineTake", { id = id, what = "fuel" }))
+			end)
 		end
-		labels.output = Kit.Label(body, "", { Font = Enum.Font.GothamBold })
-		local track = Kit.New("Frame", { Size = UDim2.new(1, -8, 0, 12), BackgroundColor3 = Kit.Colors.Row, Parent = body }, { Kit.Corner(6) })
-		bar = Kit.New("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.fromRGB(255, 140, 50), Parent = track }, { Kit.Corner(6) })
+		live.bar = arrow()
+		live.output = slot("Gotowe", function()
+			apply(Game.Call("MachineTake", { id = id, what = "output" }))
+		end)
+		live.output.caption.Font = Enum.Font.GothamBold
 
 		-- The inventory: a click puts what the machine takes in (Shift: half), as in the 2D game.
 		Kit.Label(body, "Ekwipunek: kliknij składnik albo paliwo, aby włożyć (Shift: połowę)", { TextColor3 = Kit.Colors.Muted, TextSize = 14 })
@@ -118,43 +172,30 @@ function Machine.Open(screen, id)
 			end,
 		})
 		grid.Set(ItemGrid.Inventory(Game, InventoryWindow.Tiles, 8))
-
-		local actions = Kit.Row(body, 40)
-		actions.BackgroundTransparency = 1
-		Kit.Button(actions, "Weź gotowe", function()
-			apply(Game.Call("MachineTake", { id = id, what = "output" }))
-		end, { Size = UDim2.fromOffset(120, 30) })
-		Kit.Button(actions, "Weź składniki", function()
-			apply(Game.Call("MachineTake", { id = id, what = "input" }))
-		end, { Size = UDim2.fromOffset(120, 30), BackgroundColor3 = Kit.Colors.ButtonAlt })
-		if reply.fired then
-			Kit.Button(actions, "Weź paliwo", function()
-				apply(Game.Call("MachineTake", { id = id, what = "fuel" }))
-			end, { Size = UDim2.fromOffset(110, 30), BackgroundColor3 = Kit.Colors.ButtonAlt })
-		end
 	end
 
 	table.insert(connections, Game.Changed.Event:Connect(render))
 	table.insert(connections, RunService.RenderStepped:Connect(function()
-		local recipe = current()
-		if recipe == nil or labels.output == nil or labels.output.Parent == nil then
+		if live == nil or live.bar.Parent == nil then
 			return
 		end
+		local recipe = live.recipe
 		local now = Game.Now()
-		local s = Processing.Advance(reply.kind, reply.state, now)
+		local s = Processing.Advance(kind, reply.state, now)
 		for i, entry in ipairs(recipe.ingredients) do
-			labels[i].Text = Items.Name(entry[1]) .. ": " .. (s.inputs[i] or 0) .. " / " .. Processing.MaxInput
+			local n = s.inputs[i] or 0
+			live.inputs[i].Set(entry[1], n .. "/" .. Processing.MaxInput, n == 0)
 		end
-		if labels.fuel then
-			local fuel = s.fuelItem and (Items.Name(s.fuelItem) .. " × " .. s.fuel) or "brak"
-			labels.fuel.Text = "Paliwo: " .. fuel .. " / " .. Processing.MaxFuel .. "   (żar na " .. s.heat .. " wsad.)"
+		if live.fuel then
+			live.fuel.Set(s.fuelItem or Items.Coal, s.fuel .. "/" .. Processing.MaxFuel, s.fuel == 0)
+			live.fuel.caption.Text = s.heat > 0 and ("Paliwo (żar " .. s.heat .. ")") or "Paliwo"
 		end
-		labels.output.Text = "Gotowe: " .. Items.Name(recipe.id) .. " × " .. s.output .. " / " .. Processing.MaxOutput
+		live.output.Set(recipe.id, s.output .. "/" .. Processing.MaxOutput, s.output == 0)
 		local progress = 0
 		if s.startedAt then
 			progress = math.clamp((now - s.startedAt) / recipe.time, 0, 1)
 		end
-		bar.Size = UDim2.fromScale(progress, 1)
+		live.bar.Size = UDim2.fromScale(progress, 1)
 	end))
 	render()
 	return window

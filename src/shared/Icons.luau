@@ -188,10 +188,11 @@ local function tool(head)
 		add(parts, { size = { 1.3, 0.22, 1.3 }, pos = { 1.75, 0, -0.95 }, color = steel, material = "Metal" })
 		add(parts, { size = { 1.6, 0.24, 0.25 }, pos = { 1.75, 0, -1.65 }, color = edge, material = "Metal" })
 	end
-	-- Lay it down at a slant so the head shows.
+	-- Lay it down across the view (Icons.ViewDirection) at a slant, so it shows its full length
+	-- running corner to corner and the head is not hidden behind the handle.
 	for _, part in ipairs(parts) do
 		local x, z = part.pos[1], part.pos[3]
-		local a = 0.6
+		local a = -0.15
 		part.pos = { x * math.cos(a) + z * math.sin(a), 0.5 + part.pos[2], -x * math.sin(a) + z * math.cos(a) }
 		part.yaw = a
 	end

@@ -46,6 +46,12 @@ BuildBar.Mount(screen)
 task.spawn(GridView.Start)
 
 UserInputService.InputBegan:Connect(function(input, processed)
+	-- Esc closes the open window (Roblox may also open its menu; the window goes either way).
+	if input.KeyCode == Enum.KeyCode.Escape and current and current.Parent then
+		current:Destroy()
+		current = nil
+		return
+	end
 	if processed then
 		return
 	end

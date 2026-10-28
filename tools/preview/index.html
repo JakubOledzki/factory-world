@@ -30,6 +30,13 @@ canvas{display:block}
 .topbar{position:absolute;left:12px;top:12px;display:flex;gap:6px}
 .topbar span{width:32px;height:32px;border-radius:8px;background:rgba(20,20,20,.55)}
 .cap{position:absolute;left:12px;bottom:10px;color:rgba(255,255,255,.9);font-size:12px;text-shadow:0 0 3px #000}
+.slot{position:relative;box-sizing:border-box;border-radius:6px;background:linear-gradient(#404654,#262931);border:1px solid #60687a;flex:none}
+.slot .ic{position:absolute;left:8%;top:6%;width:84%;height:84%;background:center/contain no-repeat}
+.slot b{position:absolute;right:4px;bottom:2px;font-size:13px;color:#fff;text-shadow:0 0 2px #000,0 0 2px #000}
+.slot .badge{position:absolute;left:3px;top:1px;font-size:12px;color:#ffd65a;font-weight:800}
+.scap{font-size:12px;text-align:center;margin:1px -8px 0;white-space:nowrap;font-weight:600}
+.tabs{display:flex;gap:8px}.tabs span{width:112px;text-align:center;padding:8px 0;font-size:14px}
+.card{background:#2c313b;border-radius:8px;position:relative}
 .tag{position:absolute;transform:translate(-50%,0);color:#fff;font-weight:700;font-size:15px;background:rgba(20,22,28,.6);padding:3px 10px;border-radius:6px;white-space:nowrap}
 </style></head>
 <body>
@@ -147,7 +154,7 @@ function geometry(p) {
   return new THREE.BoxGeometry(x, y, z);
 }
 const effects = [];
-function build(object) {
+function build(object, target = scene) {
   const root = new THREE.Group();
   root.position.set(...object.at); root.rotation.y = object.yaw || 0;
   if (object.rot) root.rotation.set(object.rot[0], object.yaw || 0, object.rot[2]);
@@ -169,9 +176,9 @@ function build(object) {
     if (p.smoke && object.lit) effects.push({ kind: "smoke", holder });
     if (p.sparkle) effects.push({ kind: "spray", holder });
   }
-  scene.add(root);
+  target.add(root);
 }
-S.objects.forEach(build);
+S.objects.forEach((o) => build(o));
 scene.updateMatrixWorld(true);
 // Fire, smoke and the fountain's spray, drawn simply.
 const rnd = seeded(42);
@@ -226,6 +233,40 @@ if (S.hud) {
   add(`<div class="board"><div class="h"><span>Gracz</span><span>Pieniądze</span></div><div><span>Jakub</span><span>1 284</span></div><div><span>Ola_Buduje</span><span>412</span></div><div><span>kopacz77</span><span>96</span></div></div>`);
 }
 add(S.overlay || "");
+// Item pictures in the windows: each one's parts (Shared.Icons) drawn small, as the game's
+// ViewportFrames do (client/Ui/ItemGrid.luau: field of view 30, light from the same side).
+const tiles = ui.querySelectorAll("[data-icon]");
+if (S.icons && tiles.length) {
+  const ir = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+  ir.setSize(144, 144); ir.setPixelRatio(1);
+  ir.outputColorSpace = THREE.SRGBColorSpace; ir.toneMapping = THREE.ACESFilmicToneMapping; ir.toneMappingExposure = 1.05;
+  const pictures = {};
+  for (const el of tiles) {
+    const id = el.dataset.icon;
+    if (!pictures[id]) {
+      const sc = new THREE.Scene();
+      sc.add(new THREE.HemisphereLight(0xe6e6f0, 0x6a6a74, 1.3));
+      const light = new THREE.DirectionalLight(0xfff8eb, 2.4); light.position.set(0.6, 1, -0.4); sc.add(light);
+      build({ at: [0, 0, 0], parts: S.icons[id] }, sc);
+      const box = new THREE.Box3().setFromObject(sc);
+      const mid = box.getCenter(new THREE.Vector3());
+      const dir = new THREE.Vector3(...S.iconView).normalize();
+      const right = dir.clone().cross(new THREE.Vector3(0, 1, 0)).normalize(), up = right.clone().cross(dir).normalize();
+      const slope = Math.tan(Math.PI / 12) * 0.94;
+      let distance = 0;
+      for (const x of [box.min.x, box.max.x]) for (const y of [box.min.y, box.max.y]) for (const z of [box.min.z, box.max.z]) {
+        const d = new THREE.Vector3(x, y, z).sub(mid);
+        distance = Math.max(distance, d.dot(dir) + Math.max(Math.abs(d.dot(right)), Math.abs(d.dot(up))) / slope);
+      }
+      const cam = new THREE.PerspectiveCamera(30, 1, 0.01, 500);
+      cam.position.copy(mid).addScaledVector(dir, distance);
+      cam.lookAt(mid);
+      ir.render(sc, cam);
+      pictures[id] = ir.domElement.toDataURL();
+    }
+    el.style.backgroundImage = `url(${pictures[id]})`;
+  }
+}
 add(`<div class="cap">${S.caption}</div>`);
 document.title = "ready";
 }

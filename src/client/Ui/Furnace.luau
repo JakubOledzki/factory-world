@@ -1,4 +1,5 @@
--- A furnace's window: what is in it, how far the smelting has got, and buttons to load and empty it.
+-- A furnace's window: what is in it as tiles, how far the smelting has got, and the inventory to
+-- load it from.
 -- The progress is worked out here from the state the server sent (the same Smelting.Advance).
 local RunService = game:GetService("RunService")
 
@@ -8,16 +9,10 @@ local Smelting = require(Shared.Smelting)
 local Kit = require(script.Parent.Kit)
 local ItemGrid = require(script.Parent.ItemGrid)
 local InventoryWindow = require(script.Parent.Inventory)
+local MachineWindow = require(script.Parent.Machine)
 local Game = require(script.Parent.Parent.Game)
 
 local Furnace = {}
-
-local function describe(item, quantity)
-	if item == nil or quantity == 0 then
-		return "pusto"
-	end
-	return Items.Name(item) .. " × " .. quantity
-end
 
 function Furnace.Open(screen, id)
 	local reply = Game.Call("FurnaceGet", { id = id })
@@ -33,7 +28,7 @@ function Furnace.Open(screen, id)
 		end
 	end)
 
-	local inputLabel, fuelLabel, outputLabel, bar
+	local live -- the tiles of what is in the furnace, set every frame
 
 	local function apply(r)
 		if r then
@@ -44,11 +39,20 @@ function Furnace.Open(screen, id)
 
 	local function render()
 		Kit.Clear(body)
-		inputLabel = Kit.Label(body, "")
-		fuelLabel = Kit.Label(body, "")
-		outputLabel = Kit.Label(body, "", { Font = Enum.Font.GothamBold })
-		local track = Kit.New("Frame", { Size = UDim2.new(1, -8, 0, 12), BackgroundColor3 = Kit.Colors.Row, Parent = body }, { Kit.Corner(6) })
-		bar = Kit.New("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.fromRGB(255, 140, 50), Parent = track }, { Kit.Corner(6) })
+		Kit.Label(body, "W piecu (kliknij kafelek, aby wyjąć):", { TextColor3 = Kit.Colors.Muted, TextSize = 14 })
+		local _, slot, arrow = MachineWindow.Contents(body)
+		live = {}
+		live.input = slot("Ruda", function()
+			apply(Game.Call("FurnaceTake", { id = id, what = "input" }))
+		end)
+		live.fuel = slot("Węgiel", function()
+			apply(Game.Call("FurnaceTake", { id = id, what = "fuel" }))
+		end)
+		live.bar = arrow()
+		live.output = slot("Gotowe", function()
+			apply(Game.Call("FurnaceTake", { id = id, what = "output" }))
+		end)
+		live.output.caption.Font = Enum.Font.GothamBold
 
 		-- The inventory: a click puts ore or coal in (Shift: half), as in the 2D game.
 		Kit.Label(body, "Ekwipunek: kliknij rudę albo węgiel, aby włożyć (Shift: połowę)", { TextColor3 = Kit.Colors.Muted, TextSize = 14 })
@@ -79,37 +83,29 @@ function Furnace.Open(screen, id)
 
 		local actions = Kit.Row(body, 40)
 		actions.BackgroundTransparency = 1
-		Kit.Button(actions, "Weź sztabki", function()
-			apply(Game.Call("FurnaceTake", { id = id, what = "output" }))
-		end, { Size = UDim2.fromOffset(110, 30) })
-		Kit.Button(actions, "Weź rudę", function()
-			apply(Game.Call("FurnaceTake", { id = id, what = "input" }))
-		end, { Size = UDim2.fromOffset(100, 30), BackgroundColor3 = Kit.Colors.ButtonAlt })
-		Kit.Button(actions, "Weź węgiel", function()
-			apply(Game.Call("FurnaceTake", { id = id, what = "fuel" }))
-		end, { Size = UDim2.fromOffset(100, 30), BackgroundColor3 = Kit.Colors.ButtonAlt })
-		Kit.Button(actions, "Schowaj", function()
+		Kit.Button(actions, "Schowaj piec", function()
 			if Game.Call("FurnacePickup", { id = id }) then
 				window:Destroy()
 			end
-		end, { Size = UDim2.fromOffset(80, 30), BackgroundColor3 = Kit.Colors.Danger })
+		end, { Size = UDim2.fromOffset(120, 30), BackgroundColor3 = Kit.Colors.Danger })
 	end
 
 	table.insert(connections, Game.Changed.Event:Connect(render))
 	table.insert(connections, RunService.RenderStepped:Connect(function()
-		if inputLabel == nil or inputLabel.Parent == nil then
+		if live == nil or live.bar.Parent == nil then
 			return
 		end
 		local now = Game.Now()
 		local s = Smelting.Advance(state, now)
-		inputLabel.Text = "Ruda: " .. describe(s.input, s.inputQuantity) .. " / " .. Smelting.MaxInput
-		fuelLabel.Text = "Węgiel: " .. s.fuel .. " / " .. Smelting.MaxFuel .. "   (żar na " .. s.heat .. " szt.)"
-		outputLabel.Text = "Gotowe: " .. describe(s.output, s.outputQuantity)
+		live.input.Set(s.input, s.inputQuantity > 0 and (s.inputQuantity .. "/" .. Smelting.MaxInput) or "", s.inputQuantity == 0)
+		live.fuel.Set(Items.Coal, s.fuel .. "/" .. Smelting.MaxFuel, s.fuel == 0)
+		live.fuel.caption.Text = s.heat > 0 and ("Węgiel (żar " .. s.heat .. ")") or "Węgiel"
+		live.output.Set(s.output, s.outputQuantity > 0 and tostring(s.outputQuantity) or "", s.outputQuantity == 0)
 		local progress = 0
 		if s.startedAt and s.input then
 			progress = math.clamp((now - s.startedAt) / Smelting.Recipes[s.input].time, 0, 1)
 		end
-		bar.Size = UDim2.fromScale(progress, 1)
+		live.bar.Size = UDim2.fromScale(progress, 1)
 	end))
 	render()
 	return window
