@@ -29,6 +29,13 @@ return {
 	GeneratorGet = "GeneratorGet", -- { id }
 	GeneratorLoad = "GeneratorLoad", -- { id, item, quantity }
 	GeneratorTake = "GeneratorTake", -- { id }
+	StationGet = "StationGet",
+	StationLoad = "StationLoad", -- { item, quantity }
+	StationUnload = "StationUnload", -- { item, quantity }
+	StationFind = "StationFind", -- { name }
+	StationSend = "StationSend", -- { to, item, quantity }
+	StationRoute = "StationRoute", -- { to, items, every }
+	StationUnroute = "StationUnroute", -- { id }
 	ResearchGet = "ResearchGet",
 	ResearchStart = "ResearchStart", -- { id }
 	InventoryMove = "InventoryMove", -- { item, slot }

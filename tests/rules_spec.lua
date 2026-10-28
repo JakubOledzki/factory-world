@@ -198,7 +198,7 @@ local function checkModel(name, parts, required)
 		if p.shape == "Ball" then
 			assert(p.size[1] == p.size[2] and p.size[2] == p.size[3], where .. ": a ball is round")
 		end
-		assert(p.group == nil or p.group == "crown" or p.group == "glow" or p.group == "arm" or p.group == "spin", where .. ": group")
+		assert(p.group == nil or p.group == "crown" or p.group == "glow" or p.group == "arm" or p.group == "spin" or p.group == "train", where .. ": group")
 		if p.name then
 			named[p.name] = true
 		end
@@ -828,4 +828,71 @@ test("A workbench can be bought, made and put on the plot's grid on 2 × 2 tiles
 	eq(select(2, Logistics.CanPlace(objects, {}, Items.Belt, 11, 11)), "tile_taken")
 	eq(Logistics.CanPlace(objects, {}, Items.Belt, 12, 11), true)
 	eq(Items.Category(Items.Workbench), "buildings")
+end)
+
+local Rail = load_shared("Rail")
+
+test("Trains: fee and time by distance, cargo of a route, and every station somewhere on the map", function()
+	eq(Rail.FeeCents(250, 100), 100 + 250)
+	eq(Rail.TripSeconds(10), Rail.MinTrip)
+	eq(Rail.TripSeconds(1000), 50)
+	for id = 1, 50 do
+		local x, y = Rail.Location(id * 7919)
+		assert(x >= 0 and x <= Rail.WorldKm.width and y >= 0 and y <= Rail.WorldKm.height)
+		eq(Rail.DistanceKm(id, id + 1), Rail.DistanceKm(id + 1, id))
+	end
+	local cargo = Rail.Cargo({ coal = 1500, wood = 900, stone = 10 }, {})
+	eq(Rail.Count(cargo), Rail.RouteCapacity)
+	eq(cargo[1][1], "coal")
+	cargo = Rail.Cargo({ coal = 1500, wood = 900 }, { "wood", "planks" })
+	eq(#cargo, 1)
+	eq(cargo[1][2], 900)
+end)
+
+test("Trains: shipments wait in the inbox until they arrive, once each, and only to an open station", function()
+	local ship = { tx = "a", kind = "ship", from = 1, fromName = "Ola", items = { { "coal", 5 } }, sentAt = 0, arriveAt = 30 }
+	eq(select(2, Rail.Apply(nil, ship)), "no_station")
+	local inbox = Rail.Apply(nil, { kind = "open" })
+	inbox = Rail.Apply(inbox, ship)
+	eq(select(2, Rail.Apply(inbox, ship)), "duplicate")
+	eq(select(2, Rail.Apply(inbox, { tx = "b", kind = "collect", now = 10 })), "nothing_arrived")
+	local after, result = Rail.Apply(inbox, { tx = "c", kind = "collect", now = 30 })
+	eq(#result.shipments, 1)
+	eq(#after.shipments, 0)
+	eq(Rail.Done(after, "c").result.shipments[1].items[1][2], 5, "a server that lost the answer finds it")
+	eq(Rail.Arrived(after, 1000), false)
+end)
+
+test("The station stands on every grid at the same tiles, inserters load and unload it, and the forest keeps off the railway", function()
+	local chest0 = Logistics.New(1, Items.WoodenChest, GridLayout.Station.x + 1, GridLayout.Station.z + 1, 0)
+	local objects = { chest0 }
+	local station, removed = Logistics.EnsureStation(objects, 2)
+	eq(#removed, 1, "what stood there goes back")
+	eq(Logistics.EnsureStation(objects, 3), station, "only one station")
+	eq(#objects, 1)
+	eq(select(2, Logistics.CanPlace(objects, {}, Items.Belt, GridLayout.Station.x, GridLayout.Station.z + 2)), "tile_taken")
+	-- A chest of coal → inserter → station → inserter → chest.
+	local s = GridLayout.Station
+	local chest = Logistics.New(10, Items.WoodenChest, s.x - 2, s.z + 1, 1)
+	Logistics.Store(chest.items, Items.Coal, 20)
+	table.insert(objects, chest)
+	table.insert(objects, Logistics.New(11, Items.Inserter, s.x - 1, s.z + 1, 1))
+	local out = Logistics.New(12, Items.WoodenChest, s.x - 2, s.z + 2, 1)
+	table.insert(objects, out)
+	Rail.Add(station.stock, Items.Wood, 3)
+	table.insert(objects, Logistics.New(13, Items.Inserter, s.x - 1, s.z + 2, 3))
+	Logistics.Run(objects, {}, 0, 120)
+	local wood = 0
+	for _, stack in ipairs(out.items) do
+		if stack.item == Items.Wood then wood = stack.quantity end
+	end
+	eq(wood, 3, "the station's wood came out")
+	eq(#chest.items, 0, "the coal went in (and on out again: an inserter takes anything from a station)")
+	for index = 1, GridLayout.Count do
+		local cx, cz = GridLayout.Center(index)
+		local r = GridLayout.Rail
+		for z = r.from, r.to, 10 do
+			eq(GridLayout.ForestClear(cx + r.x, cz + z), false)
+		end
+	end
 end)

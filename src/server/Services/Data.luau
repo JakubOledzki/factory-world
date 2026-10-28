@@ -180,6 +180,33 @@ local function migrate(profile)
 		profile.wildTrees = true
 		profile.trees = nil
 	end
+	-- The railway station, once: what stood on its tiles goes back to the inventory.
+	if Logistics.Station(grid.objects) == nil then
+		local _, removed = Logistics.EnsureStation(grid.objects, Data.NextId(profile))
+		for _, o in ipairs(removed) do
+			if Items.Names[o.kind] then
+				Inventory.Add(profile, o.kind, 1)
+			end
+			for _, entry in ipairs(Logistics.Contents(o)) do
+				Inventory.Add(profile, entry[1], entry[2])
+			end
+		end
+		local s = PlotLayout.Station
+		for i = #profile.furnaces, 1, -1 do
+			local f = profile.furnaces[i]
+			if f.tile and f.tile.x < s.x + s.size and f.tile.x + 2 > s.x and f.tile.z < s.z + s.size and f.tile.z + 2 > s.z then
+				table.remove(profile.furnaces, i)
+				Inventory.Add(profile, Items.Furnace, 1)
+				local st = f.state
+				for _, entry in ipairs({ { st.input, st.inputQuantity }, { Items.Coal, st.fuel }, { st.output, st.outputQuantity } }) do
+					if entry[1] and (entry[2] or 0) > 0 then
+						Inventory.Add(profile, entry[1], entry[2])
+					end
+				end
+			end
+		end
+	end
+	profile.rail = profile.rail or {}
 	if profile.research == nil then
 		profile.research = {}
 	end

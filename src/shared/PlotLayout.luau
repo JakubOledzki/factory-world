@@ -118,6 +118,32 @@ function PlotLayout.Blocked(tx, tz)
 	return false
 end
 
+-- Every plot's railway station (Shared.Rail): a building of `size` × `size` tiles with its corner
+-- on tile (x, z), at the east edge of the grid, and the track just outside the east fence: along z
+-- at `x` studs from the plot's centre, from `from` to `to`, ending in a tunnel at each end. Trains
+-- come out of the south tunnel, stop at the platform by the station (`stop`, z of the locomotive's
+-- front) and go on into the north one. The same on every plot, so a grid fits any plot it is put on.
+PlotLayout.Station = { x = 53, z = 4, size = 3 }
+PlotLayout.Rail = { x = 124, from = -134, to = 134, stop = -104, clear = 9 }
+
+-- The station's span along the east fence, in studs from the plot's centre: from, to.
+function PlotLayout.StationSpan()
+	local s, g = PlotLayout.Station, PlotLayout.Grid
+	return g.z + s.z * g.tile, g.z + (s.z + s.size) * g.tile
+end
+
+-- Openings in the fence besides the gate (Models.PlotDecor): the way from the station to the platform.
+function PlotLayout.FenceGaps()
+	local from, to = PlotLayout.StationSpan()
+	return { { "x+", from + 2, to - 2 } }
+end
+
+-- Whether tile (tx, tz) lies under the station.
+function PlotLayout.StationTile(tx, tz)
+	local s = PlotLayout.Station
+	return tx >= s.x and tx < s.x + s.size and tz >= s.z and tz < s.z + s.size
+end
+
 -- The forest between the plots and around the square: only to look at, nothing in it can be cut
 -- or built. It keeps clear of the plots, the square and the paths, and reaches out to the edge of
 -- the ground (World), where it closes the world.
@@ -144,6 +170,11 @@ function PlotLayout.ForestClear(x, z)
 	for index = 1, PlotLayout.Count do
 		local cx, cz = PlotLayout.Center(index)
 		if math.abs(x - cx) < reach and math.abs(z - cz) < reach then
+			return false
+		end
+		-- The railway along the east fence, and its tunnels.
+		local r = PlotLayout.Rail
+		if math.abs(x - cx - r.x) < r.clear and z - cz > r.from - r.clear and z - cz < r.to + r.clear then
 			return false
 		end
 		-- The path runs from the square straight to the plot's centre.

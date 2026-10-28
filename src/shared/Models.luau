@@ -468,13 +468,11 @@ end
 -- Everything on one plot that is not on its build grid: the fence (open on the sides in `open`, a
 -- list of "x+", "x-", "z+", "z-") and the bare rocky ground under the mines. Coordinates from the
 -- plot's centre. Everything else on a plot stands on the grid.
-function Models.PlotDecor(seed, size, open)
+-- `gaps` (optional): more openings in the fence, { side, from, to } along the side (x for the
+-- z sides, z for the x sides), like the one to the railway platform.
+function Models.PlotDecor(seed, size, open, gaps)
 	local parts = {}
 	local half = size / 2
-	local isOpen = {}
-	for _, side in ipairs(open) do
-		isOpen[side] = true
-	end
 	local sides = {
 		{ "z-", 0, -half, 0 },
 		{ "z+", 0, half, 0 },
@@ -482,12 +480,36 @@ function Models.PlotDecor(seed, size, open)
 		{ "x+", half, 0, math.pi / 2 },
 	}
 	for i, side in ipairs(sides) do
-		if isOpen[side[1]] then
-			-- Two short lengths either side of a gap for the path.
-			place(parts, Models.Fence(half - 6, seed + i), side[2] + (side[4] == 0 and -(half + 6) / 2 or 0), 0, side[3] + (side[4] ~= 0 and -(half + 6) / 2 or 0), side[4])
-			place(parts, Models.Fence(half - 6, seed + i + 10), side[2] + (side[4] == 0 and (half + 6) / 2 or 0), 0, side[3] + (side[4] ~= 0 and (half + 6) / 2 or 0), side[4])
-		else
-			place(parts, Models.Fence(size, seed + i), side[2], 0, side[3], side[4])
+		-- The gate for the path in the middle, and any other openings.
+		local cuts = {}
+		for _, s in ipairs(open) do
+			if s == side[1] then
+				table.insert(cuts, { -6, 6 })
+			end
+		end
+		for _, g in ipairs(gaps or {}) do
+			if g[1] == side[1] then
+				table.insert(cuts, { g[2], g[3] })
+			end
+		end
+		table.sort(cuts, function(a, b)
+			return a[1] < b[1]
+		end)
+		local from = -half
+		table.insert(cuts, { half, half })
+		for k, cut in ipairs(cuts) do
+			local length = cut[1] - from
+			if length > 0.5 then
+				local mid = (from + cut[1]) / 2
+				local x, z = side[2], side[3]
+				if side[4] == 0 then
+					x = mid
+				else
+					z = mid
+				end
+				place(parts, Models.Fence(length, seed + i + 10 * (k - 1)), x, 0, z, side[4])
+			end
+			from = math.max(from, cut[2])
 		end
 	end
 	-- Bare rocky ground under the mine.
@@ -854,6 +876,137 @@ function Models.Pole()
 	add(parts, { size = { 3.2, 0.3, 0.35 }, pos = { 0, 8.6, 0 }, color = { 90, 66, 44 }, material = "Wood" })
 	for _, x in ipairs({ -1.3, 0, 1.3 }) do
 		post(parts, 0.45, 0.3, { x, 8.95, 0 }, { 236, 236, 228 }, "Glass")
+	end
+	return parts
+end
+
+-- The railway station, 3 × 3 tiles: a brick house with a pitched roof, a clock and a canopy over
+-- its front (-z), where the platform is. The house is named "Body".
+function Models.Station()
+	local rng = Models.Rng(71)
+	local parts = {}
+	local brick = { 160, 78, 58 }
+	local trim = { 226, 214, 190 }
+	add(parts, { size = { 11.6, 0.4, 11.6 }, pos = { 0, 0.2, 0 }, color = { 120, 116, 110 }, material = "Concrete" })
+	add(parts, { name = "Body", size = { 10, 7, 7 }, pos = { 0, 3.9, 1.6 }, color = vary(brick, rng, 6), material = "Brick" })
+	-- Corners and a cornice of light stone.
+	for _, x in ipairs({ -5, 5 }) do
+		for _, z in ipairs({ -1.9, 5.1 }) do
+			add(parts, { size = { 0.7, 7, 0.7 }, pos = { x, 3.9, z }, color = trim, material = "Sandstone" })
+		end
+	end
+	add(parts, { size = { 10.8, 0.5, 7.8 }, pos = { 0, 7.6, 1.6 }, color = trim, material = "Sandstone" })
+	-- The roof: two slopes and a ridge.
+	add(parts, { shape = "Wedge", size = { 11.2, 2.6, 4.2 }, pos = { 0, 9.15, -0.5 }, color = { 70, 74, 84 }, material = "Slate" })
+	add(parts, { shape = "Wedge", size = { 11.2, 2.6, 4.2 }, pos = { 0, 9.15, 3.7 }, rot = { 0, math.pi, 0 }, color = { 70, 74, 84 }, material = "Slate" })
+	-- Door and windows on the front, the clock above the door.
+	add(parts, { size = { 2, 3.6, 0.2 }, pos = { 0, 2.2, -2 }, color = { 92, 60, 40 }, material = "WoodPlanks" })
+	for _, x in ipairs({ -3.4, 3.4 }) do
+		add(parts, { size = { 2, 2.2, 0.2 }, pos = { x, 3.6, -2 }, color = { 150, 190, 210 }, material = "Glass" })
+		add(parts, { size = { 2.4, 0.3, 0.4 }, pos = { x, 2.4, -2.1 }, color = trim, material = "Sandstone" })
+	end
+	add(parts, { name = "Clock", shape = "Cylinder", size = { 0.3, 1.8, 1.8 }, pos = { 0, 5.6, -2.1 }, rot = { 0, math.pi / 2, 0 }, color = { 240, 236, 220 }, material = "SmoothPlastic" })
+	add(parts, { size = { 0.12, 0.7, 0.1 }, pos = { 0, 5.85, -2.3 }, color = { 30, 30, 30 }, material = "SmoothPlastic" })
+	add(parts, { size = { 0.5, 0.12, 0.1 }, pos = { 0.2, 5.6, -2.3 }, color = { 30, 30, 30 }, material = "SmoothPlastic" })
+	-- The canopy on posts over the way out to the platform.
+	add(parts, { size = { 11, 0.3, 3.6 }, pos = { 0, 6.2, -3.8 }, color = { 60, 90, 70 }, material = "Metal" })
+	for _, x in ipairs({ -5, 5 }) do
+		post(parts, 6, 0.3, { x, 3.1, -5.4 }, { 60, 90, 70 }, "Metal")
+	end
+	-- Crates waiting to go, and a lamp.
+	add(parts, { size = { 1.6, 1.4, 1.6 }, pos = { -3.5, 1.1, -4 }, color = Planks, material = "WoodPlanks" })
+	add(parts, { size = { 1.2, 1, 1.2 }, pos = { -3.3, 2.3, -4.1 }, rot = { 0, 0.4, 0 }, color = { 140, 100, 64 }, material = "WoodPlanks" })
+	ball(parts, 0.6, { 4, 5.6, -3.8 }, { 255, 226, 150 }, "Neon", { noCollide = true, light = { color = { 255, 214, 150 }, range = 14, brightness = 1 } })
+	return parts
+end
+
+-- The railway along a plot's east fence, in the plot's own frame: ballast, sleepers and rails
+-- along z at `rail.x` from `rail.from` to `rail.to`, the platform by the station (from `stationFrom`
+-- to `stationTo` along z) and a tunnel in a rocky hill at each end, its mouth named "North" and
+-- "South". Trains run over it (Models.Train).
+function Models.Railway(rail, stationFrom, stationTo)
+	local rng = Models.Rng(808)
+	local parts = {}
+	local length = rail.to - rail.from
+	local mid = (rail.from + rail.to) / 2
+	add(parts, { size = { 5.4, 0.3, length }, pos = { rail.x, 0.15, mid }, color = { 112, 106, 100 }, material = "Pebble" })
+	local sleepers = math.floor(length / 2.4)
+	for i = 0, sleepers - 1 do
+		add(parts, { size = { 4.4, 0.25, 0.7 }, pos = { rail.x, 0.4, rail.from + 1.2 + i * 2.4 }, color = vary({ 86, 64, 46 }, rng, 6), material = "Wood" })
+	end
+	for _, dx in ipairs({ -1.25, 1.25 }) do
+		add(parts, { size = { 0.3, 0.35, length }, pos = { rail.x + dx, 0.7, mid }, color = { 150, 150, 156 }, material = "Metal" })
+	end
+	-- The platform between the fence and the track.
+	local pFrom, pTo = stationFrom - 12, stationTo + 12
+	local px = rail.x - 4.6
+	add(parts, { size = { 4.6, 1.2, pTo - pFrom }, pos = { px, 0.6, (pFrom + pTo) / 2 }, color = { 150, 146, 140 }, material = "Concrete" })
+	add(parts, { size = { 0.4, 0.06, pTo - pFrom }, pos = { px + 2, 1.23, (pFrom + pTo) / 2 }, color = { 230, 196, 50 }, material = "SmoothPlastic", noCollide = true })
+	add(parts, { shape = "Wedge", size = { 4.6, 1.2, 3 }, pos = { px, 0.6, pFrom - 1.5 }, color = { 150, 146, 140 }, material = "Concrete" })
+	add(parts, { shape = "Wedge", size = { 4.6, 1.2, 3 }, pos = { px, 0.6, pTo + 1.5 }, rot = { 0, math.pi, 0 }, color = { 150, 146, 140 }, material = "Concrete" })
+	for _, z in ipairs({ pFrom + 4, pTo - 4 }) do
+		post(parts, 5, 0.3, { px - 1.4, 3.7, z }, { 50, 54, 60 }, "Metal")
+		ball(parts, 0.7, { px - 1.4, 6.3, z }, { 255, 226, 150 }, "Neon", { noCollide = true })
+	end
+	add(parts, { size = { 3, 0.3, 1 }, pos = { px - 1, 1.9, (pFrom + pTo) / 2 + 6 }, color = Planks, material = "WoodPlanks" })
+	-- A tunnel at each end: a stone face with a dark mouth, in a hill of rocks behind it.
+	for _, e in ipairs({ { "North", rail.from, -1 }, { "South", rail.to, 1 } }) do
+		local z, out = e[2], e[3]
+		add(parts, { size = { 16, 11, 2 }, pos = { rail.x, 5.5, z }, color = vary(Stone, rng, 8), material = "Cobblestone" })
+		add(parts, { name = e[1], size = { 5.6, 6.4, 2.2 }, pos = { rail.x, 3.2, z }, color = { 14, 14, 16 }, material = "SmoothPlastic", noCollide = true })
+		add(parts, { shape = "Cylinder", size = { 2.2, 5.6, 5.6 }, pos = { rail.x, 6.4, z }, rot = { 0, math.pi / 2, 0 }, color = { 14, 14, 16 }, material = "SmoothPlastic", noCollide = true })
+		add(parts, { size = { 16.5, 0.8, 2.4 }, pos = { rail.x, 11.2, z }, color = { 100, 96, 90 }, material = "Slate" })
+		-- The hill: rocks either side of the face and over it, grassy ones behind.
+		for k, h in ipairs({ { -9, 3, 3 }, { 9, 3, 3 }, { -5, 9, 5 }, { 5, 9, 5 }, { 0, 11, 8 }, { -8, 5, 10 }, { 8, 5, 10 }, { 0, 6, 13 } }) do
+			ball(parts, rng.Num(10, 14), { rail.x + h[1], h[2], z + out * h[3] }, vary(k <= 2 and { 120, 116, 108 } or { 98, 120, 74 }, rng, 10), k <= 2 and "Rock" or "Grass")
+		end
+	end
+	return parts
+end
+
+-- A steam train heading -z: a locomotive (front at z = 0) and `wagons` open wagons behind it, each
+-- with crates of the colours `cargo` (a list of { r, g, b }, used in turn; none: empty). Every
+-- part is in the group "train" and nothing collides.
+function Models.Train(wagons, cargo)
+	local parts = {}
+	local black = { 34, 34, 38 }
+	local red = { 160, 40, 36 }
+	local function part(p)
+		p.group = "train"
+		p.noCollide = true
+		return add(parts, p)
+	end
+	local y = 0.9
+	-- The locomotive: frame, boiler, chimney, cab, wheels.
+	part({ size = { 3.2, 0.6, 10 }, pos = { 0, y + 0.6, 5 }, color = black, material = "Metal" })
+	part({ shape = "Cylinder", size = { 6.4, 2.6, 2.6 }, pos = { 0, y + 2.3, 3.6 }, rot = { 0, math.pi / 2, 0 }, color = { 30, 32, 36 }, material = "Metal" })
+	part({ shape = "Cylinder", size = { 0.3, 2.7, 2.7 }, pos = { 0, y + 2.3, 0.4 }, rot = { 0, math.pi / 2, 0 }, color = { 200, 160, 60 }, material = "Metal" })
+	part({ shape = "Cylinder", size = { 1.8, 0.9, 0.9 }, pos = { 0, y + 4.2, 1.6 }, rot = { 0, 0, math.pi / 2 }, color = black, material = "Metal", smoke = true })
+	part({ size = { 3.2, 3.6, 3 }, pos = { 0, y + 2.9, 8.2 }, color = red, material = "Metal" })
+	part({ size = { 3.6, 0.3, 3.4 }, pos = { 0, y + 4.85, 8.2 }, color = black, material = "Metal" })
+	part({ size = { 3.3, 1.2, 1.4 }, pos = { 0, y + 3.3, 7.4 }, color = { 150, 190, 210 }, material = "Glass" })
+	ball(parts, 0.7, { 0, y + 2.4, -0.1 }, { 255, 236, 170 }, "Neon", { group = "train", noCollide = true })
+	for _, z in ipairs({ 1.6, 4, 6.4 }) do
+		for _, x in ipairs({ -1.5, 1.5 }) do
+			part({ shape = "Cylinder", size = { 0.4, 1.7, 1.7 }, pos = { x, y + 0.2, z }, color = red, material = "Metal" })
+		end
+	end
+	-- The wagons, coupled 1 stud apart.
+	for w = 1, wagons do
+		local z0 = 10 + (w - 1) * 9 + 1
+		part({ size = { 3.2, 0.5, 8 }, pos = { 0, y + 0.6, z0 + 4 }, color = black, material = "Metal" })
+		part({ size = { 3.4, 1.6, 8 }, pos = { 0, y + 1.6, z0 + 4 }, color = { 116, 76, 50 }, material = "WoodPlanks" })
+		local color = cargo and #cargo > 0 and cargo[(w - 1) % #cargo + 1]
+		if color then
+			for k = 0, 2 do
+				part({ size = { 2.6, 1.2, 2.2 }, pos = { 0, y + 2.9, z0 + 1.4 + k * 2.6 }, color = color, material = "SmoothPlastic" })
+			end
+		end
+		for _, z in ipairs({ z0 + 1.5, z0 + 6.5 }) do
+			for _, x in ipairs({ -1.5, 1.5 }) do
+				part({ shape = "Cylinder", size = { 0.4, 1.3, 1.3 }, pos = { x, y + 0.05, z }, color = black, material = "Metal" })
+			end
+		end
 	end
 	return parts
 end

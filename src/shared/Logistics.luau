@@ -19,6 +19,7 @@ local Smelting = require(script.Parent.Smelting)
 local Processing = require(script.Parent.Processing)
 local PlotLayout = require(script.Parent.PlotLayout)
 local Power = require(script.Parent.Power)
+local Rail = require(script.Parent.Rail)
 
 local Logistics = {}
 
@@ -53,6 +54,7 @@ Logistics.Sizes = {
 	[Items.Generator] = 2,
 	[Items.Pole] = 1,
 	[Items.Workbench] = 2,
+	[Rail.StationKind] = PlotLayout.Station.size,
 }
 
 -- An inserter drops on a lane in the middle first, where the item has room to move on.
@@ -145,8 +147,42 @@ function Logistics.New(id, kind, x, z, rot)
 		o.machine = Processing.Empty()
 	elseif kind == Items.Generator then
 		o.generator = Power.EmptyGenerator()
+	elseif kind == Rail.StationKind then
+		o.stock = {}
+		o.next = 0
 	end
 	return o
+end
+
+-- The grid's station, if it has one.
+function Logistics.Station(objects)
+	for _, o in ipairs(objects) do
+		if o.kind == Rail.StationKind then
+			return o
+		end
+	end
+	return nil
+end
+
+-- Puts the plot's station on a grid that has none yet (one built before the railway): returns the
+-- station and the objects that stood on its tiles, taken off the grid for the caller to give back.
+function Logistics.EnsureStation(objects, newId)
+	local station = Logistics.Station(objects)
+	if station then
+		return station, {}
+	end
+	local s = PlotLayout.Station
+	local removed = {}
+	for i = #objects, 1, -1 do
+		local o = objects[i]
+		local size = Logistics.Sizes[o.kind] or 1
+		if o.x < s.x + s.size and o.x + size > s.x and o.z < s.z + s.size and o.z + size > s.z then
+			table.insert(removed, table.remove(objects, i))
+		end
+	end
+	station = Logistics.New(newId, Rail.StationKind, s.x, s.z, 1)
+	table.insert(objects, station)
+	return station, removed
 end
 
 -- Everything an object holds, as a list of { item, quantity }, to hand back when it is picked up.
@@ -366,6 +402,36 @@ local function generatorPort(o)
 	return port
 end
 
+-- The railway station as inserters see it: anything goes in (up to Rail.InserterStockLimit of one
+-- item) and anything comes out, every kind in turn.
+local function stationPort(o)
+	local port = {}
+	function port.Output(wanted)
+		local items = Rail.Items(o.stock)
+		for i = 0, #items - 1 do
+			local item = items[(o.next + i) % #items + 1]
+			if wanted(item) then
+				return item
+			end
+		end
+		return nil
+	end
+	function port.Take(item)
+		Rail.Take(o.stock, item, 1)
+		o.next = o.next + 1
+	end
+	function port.Accepts(item)
+		return (o.stock[item] or 0) < Rail.InserterStockLimit
+	end
+	function port.Put(item)
+		Rail.Add(o.stock, item, 1)
+	end
+	function port.NextChange()
+		return nil
+	end
+	return port
+end
+
 -- Which side a belt turns in from: -1 when the only belt feeding it comes from its left, 1 from its
 -- right, 0 when it runs straight (fed from behind, from both sides or not at all).
 local function bend(belts, b)
@@ -484,6 +550,8 @@ local function build(objects, furnaces)
 				ports[thing] = machinePort(thing)
 			elseif thing.generator then
 				ports[thing] = generatorPort(thing)
+			elseif thing.stock then
+				ports[thing] = stationPort(thing)
 			else
 				return nil
 			end

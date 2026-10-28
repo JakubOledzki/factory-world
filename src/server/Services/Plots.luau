@@ -75,7 +75,11 @@ local function buildPlot(player, index)
 	model.Parent = folder
 	local cx, cz = PlotLayout.Center(index)
 
-	Build.FromModel(model, "Decor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index)), CFrame.new(cx, 0, cz))
+	Build.FromModel(model, "Decor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index), PlotLayout.FenceGaps()), CFrame.new(cx, 0, cz))
+	-- The railway outside the east fence; trains run over it on the clients (client/TrainView).
+	local stationFrom, stationTo = PlotLayout.StationSpan()
+	local railway = Build.FromModel(model, "Railway", Models.Railway(PlotLayout.Rail, stationFrom, stationTo), CFrame.new(cx, 0, cz))
+	railway:SetAttribute("Origin", CFrame.new(cx, 0, cz))
 
 	-- A signpost with the owner's name by the gate, facing the square.
 	local half = PlotLayout.Size / 2

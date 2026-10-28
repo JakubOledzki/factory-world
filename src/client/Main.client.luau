@@ -14,11 +14,13 @@ local WorkshopWindow = require(Ui.Workshop)
 local ChestWindow = require(Ui.Chest)
 local MachineWindow = require(Ui.Machine)
 local GeneratorWindow = require(Ui.Generator)
+local StationWindow = require(Ui.Station)
 local ResearchWindow = require(Ui.Research)
 local MarketWindow = require(Ui.Market)
 local BuildBar = require(Ui.BuildBar)
 require(script.Parent:WaitForChild("Game"))
 local GridView = require(script.Parent:WaitForChild("GridView"))
+local TrainView = require(script.Parent:WaitForChild("TrainView"))
 
 local player = Players.LocalPlayer
 
@@ -48,6 +50,7 @@ end, function()
 end)
 BuildBar.Mount(screen)
 task.spawn(GridView.Start)
+task.spawn(TrainView.Start)
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	-- Esc closes the open window (Roblox may also open its menu; the window goes either way).
@@ -103,6 +106,8 @@ ProximityPromptService.PromptTriggered:Connect(function(prompt)
 		show(ChestWindow.Open, prompt:GetAttribute("ChestId"))
 	elseif kind == "machine" then
 		show(MachineWindow.Open, prompt:GetAttribute("MachineId"))
+	elseif kind == "station" then
+		show(StationWindow.Open)
 	elseif kind == "generator" then
 		show(GeneratorWindow.Open, prompt:GetAttribute("GeneratorId"))
 	end

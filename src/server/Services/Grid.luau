@@ -17,6 +17,7 @@ local PlotLayout = require(Shared.PlotLayout)
 local Smelting = require(Shared.Smelting)
 local Processing = require(Shared.Processing)
 local Power = require(Shared.Power)
+local Rail = require(Shared.Rail)
 local Build = require(script.Parent.Build)
 local Clock = require(script.Parent.Clock)
 local Data = require(script.Parent.Data)
@@ -49,6 +50,8 @@ local function specOf(o, bend, now)
 		return Models.Pole()
 	elseif o.kind == Items.Workbench then
 		return Models.Workbench()
+	elseif o.kind == Rail.StationKind then
+		return Models.Station()
 	elseif Forestry.Grown(o, now) then
 		return Models.Tree(o.id)
 	end
@@ -149,6 +152,15 @@ function show(player, o, bend)
 			HoldDuration = 0,
 			MaxActivationDistance = 12,
 		}, { Kind = "generator", GeneratorId = o.id, Owner = player.UserId })
+	elseif o.kind == Rail.StationKind then
+		Build.Prompt(model.Body, {
+			Name = "Prompt",
+			ActionText = "Otwórz",
+			ObjectText = Rail.StationName,
+			HoldDuration = 0,
+			MaxActivationDistance = 14,
+		}, { Kind = "station", Owner = player.UserId })
+		Build.Label(model.Body, Rail.StationName, 7, Color3.fromRGB(255, 240, 200))
 	elseif o.kind == Items.Workbench then
 		-- The same workbench as on the square (Services/Workshop).
 		Build.Prompt(model.Top, {
@@ -369,6 +381,9 @@ function Grid.Start()
 		if o then
 			if o.kind == Forestry.Tree then
 				return Net.Error("cut_tree")
+			end
+			if o.kind == Rail.StationKind then
+				return Net.Error("fixture")
 			end
 			if not Net.Near(player, tilePosition(player, o.x, o.z, Logistics.Sizes[o.kind] or 1), PlotLayout.BuildReach) then
 				return Net.Error("too_far")
