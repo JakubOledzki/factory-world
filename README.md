@@ -7,6 +7,7 @@ Branch `roblox-3d` ma własną historię i zawiera tylko wersję Roblox: nie dzi
 ![Plac i działki](docs/screenshots/1-plac-i-dzialki.png)
 ![Kopanie na działce](docs/screenshots/2-kopanie-na-dzialce.png)
 ![Budowanie na siatce](docs/screenshots/6-budowanie.png)
+![Maszyny i badania](docs/screenshots/7-przetworstwo.png)
 ![Modele](docs/screenshots/5-modele.png)
 
 Zrzuty pochodzą z podglądu w przeglądarce (`tools/preview/`), który rysuje dokładnie te modele, które buduje serwer
@@ -18,8 +19,8 @@ Zrzuty pochodzą z podglądu w przeglądarce (`tools/preview/`), który rysuje d
 | --- | --- | --- |
 | 1. Rdzeń | Plac z handlarzem i stołem warsztatowym, działka 3D dla każdego gracza (8 na serwer), 3 kopalnie (kilof, 5 s, do 2 rud, 50 urobków, 10 min na odnowienie), 8 dzikich sosen (siekiera, 5 s, 1 drewno), piec kamienny (węgiel, 5 wytopów z jednej bryłki, liczy się sam, gdy gracza nie ma), stół warsztatowy (piec z 20 kamieni, gwoździe), ekwipunek, portfel w centach z księgą operacji, zapis postępu w DataStore | gotowe |
 | 2. Logistyka | Działka 232 × 232 study z siatką budowania na całości (56 × 56 pól po 4 study; wszystko na działce stoi na jej polach), tryb budowania (stawianie, obracanie, rozbiórka, linie siatki widoczne tylko przy budowaniu), taśmociągi (2 pasy, zakręty, dołączanie z boku, przeciąganie skręca taśmę), podajniki, drewniane skrzynie (8 miejsc po 100 szt.), piec na siatce karmiony podajnikami, drzewa jak w 2D (ścięte znika, 30% na sadzonkę, sadzonka rośnie 10 min), nowe przepisy na stole (taśmociąg ×4, podajnik, skrzynia), gęsty las między działkami i wokół placu (tylko ozdoba, nie da się go ściąć ani w nim budować; ścieżki do bram wolne) | gotowe |
-| 3. Przetwórstwo | Maszyny przetwórcze, więcej przepisów, drzewko badań | następny |
-| 4. Handel | Rynek między graczami (wszystkie serwery), wydarzenia rynkowe | |
+| 3. Przetwórstwo | Maszyny na siatce (2 × 2 pola, odlewnia 3 × 3) z przepisami i czasami z gry 2D: tartak (deski, belki, pellet), warsztat kamieniarski (bloki), kruszarka (piasek, kruszywo rud: 3 z 2 rud, w piecu topi się szybciej), odlewnia na węgiel, drewno albo pellet (brąz, stal, cegły); maszyna robi wsad za wsadem także pod nieobecność gracza, podajniki ją karmią i opróżniają. Badania (jedno naraz, koszt od razu, czas jak w 2D): Gospodarka leśna, Kamieniarstwo, Kruszenie, Metalurgia odblokowują maszyny na stole i u handlarza. Kruszarka działa bez prądu do etapu 5 | gotowe |
+| 4. Handel | Rynek między graczami (wszystkie serwery), wydarzenia rynkowe | następny |
 | 5. Świat | Prąd, pociągi, spółki, mapa świata, lepsze modele z Blendera | |
 
 ## Uruchomienie w Roblox Studio
@@ -41,18 +42,19 @@ Zbudowanie pliku miejsca bez Studio: `rojo build -o FactoryWorld3D.rbxl`.
 Chodzenie jak w każdej grze Roblox. **E** (przytrzymaj) przy kopalni kopie, przy drzewie ścina, przy handlarzu, stole i piecu otwiera okno.
 **I** otwiera ekwipunek. Nowy gracz dostaje kilof, siekierę i 50 $. Ceny skupu i sprzedaży są takie jak w grze 2D.
 
-**B** (albo przycisk *Budowanie*) włącza tryb budowania na siatce działki: **1–5** wybiera taśmociąg, podajnik,
-skrzynię, piec albo sadzonkę, **R** obraca, kliknięcie stawia (przeciągnięcie układa taśmę, która skręca razem z ruchem),
+**B** (albo przycisk *Budowanie*) włącza tryb budowania na siatce działki: **1–9** wybiera taśmociąg, podajnik,
+skrzynię, piec, sadzonkę albo maszynę (maszyny widać na pasku, gdy ma się którąś w ekwipunku), **R** obraca, kliknięcie stawia (przeciągnięcie układa taśmę, która skręca razem z ruchem),
 **X** to rozbiórka (kliknięta rzecz wraca do ekwipunku razem z zawartością). Drzewa ścina się siekierą (przytrzymaj **E**). Podajnik bierze z pola za sobą (taśma, skrzynia, sztabki z pieca) i kładzie na
-pole przed sobą. Skrzynię i piec otwiera **E**.
+pole przed sobą. Skrzynię, piec i maszynę otwiera **E**; w oknie maszyny wybiera się, co ma robić, i wkłada składniki.
+**T** (albo przycisk *Badania*) otwiera badania. W Studio badania trwają najwyżej 10 s, żeby szybciej testować.
 
 ## Jak to jest zbudowane
 
 | Miejsce | Zawartość |
 | --- | --- |
-| `src/shared/` (`ReplicatedStorage.Shared`) | Czyste zasady gry bez API Robloxa: `Items` (id jak w `Contracts/Items.cs`, nazwy, kolory), `Prices`, `Mining`, `Forestry`, `Smelting`, `Workshop`, `Logistics` (siatka, taśmy, podajniki, skrzynie, jak `Simulation.cs`), `PlotLayout`, `Money`, `Remotes`, `Assemble` (składa model z części, dla serwera i ducha budowania u klienta), a także `Models`: każdy obiekt (kopalnia, sosna, piec, stół, stragan, handlarz, fontanna, płot, ozdoby działki) jako lista części z kształtem (kula, walec, klin, prostopadłościan), materiałem, kolorem i efektami (ogień, dym, światło) |
-| `src/server/` (`ServerScriptService.Server`) | `Main` uruchamia usługi z `Services/`: `Data` (DataStore z blokadą sesji i autozapisem), `Wallet`, `Inventory`, `Net` (zdalne wywołania, limit 20 na sekundę, sprawdzanie danych), `World` (plac i las), `Plots` (działki, kopanie), `Furnaces`, `Factory` (liczy siatkę do teraz), `Grid` (budowanie, ścinanie i sadzenie drzew, skrzynie, stan taśm i ramion dla klienta), `Merchant`, `Workshop`, `Build` (zamienia `Models` w części Robloxa) |
-| `src/client/` (`StarterPlayerScripts.Client`) | `Main`, `Game` (stan gracza, wywołania serwera, polskie teksty błędów), `GridView` (płynny ruch taśm i ramion podajników), `Ui/` (HUD, ekwipunek, handlarz, piec, stół, skrzynia, pasek budowania) |
+| `src/shared/` (`ReplicatedStorage.Shared`) | Czyste zasady gry bez API Robloxa: `Items` (id jak w `Contracts/Items.cs`, nazwy, kolory), `Prices`, `Mining`, `Forestry`, `Smelting`, `Processing` (maszyny przetwórcze, jak `Processing.cs`), `Research` (drzewko badań, jak `Research.cs`), `Workshop`, `Logistics` (siatka, taśmy, podajniki, skrzynie, porty maszyn, jak `Simulation.cs`), `PlotLayout`, `Money`, `Remotes`, `Assemble` (składa model z części, dla serwera i ducha budowania u klienta), a także `Models`: każdy obiekt (kopalnia, sosna, piec, maszyny, stół, stragan, handlarz, fontanna, płot, ozdoby działki) jako lista części z kształtem (kula, walec, klin, prostopadłościan), materiałem, kolorem i efektami (ogień, dym, światło) |
+| `src/server/` (`ServerScriptService.Server`) | `Main` uruchamia usługi z `Services/`: `Data` (DataStore z blokadą sesji i autozapisem), `Wallet`, `Inventory`, `Net` (zdalne wywołania, limit 20 na sekundę, sprawdzanie danych), `World` (plac i las), `Plots` (działki, kopanie), `Furnaces`, `Factory` (liczy siatkę do teraz), `Grid` (budowanie, ścinanie i sadzenie drzew, skrzynie, stan taśm i ramion dla klienta), `Machines` (okno maszyny), `Lab` (badania), `Merchant`, `Workshop`, `Build` (zamienia `Models` w części Robloxa) |
+| `src/client/` (`StarterPlayerScripts.Client`) | `Main`, `Game` (stan gracza, wywołania serwera, polskie teksty błędów), `GridView` (płynny ruch taśm i ramion podajników, kręcące się piły i walce maszyn), `Ui/` (HUD, ekwipunek, handlarz, piec, stół, skrzynia, maszyna, badania, pasek budowania) |
 | `tests/` | Testy zasad z `src/shared` i sprawdzenie składni wszystkich plików: `npm install`, potem `npm test` (Lua 5.3 w Node, bez Robloxa) |
 | `tools/preview/` | Podgląd 3D w przeglądarce (three.js): `scene.js` uruchamia `Models.luau` i `PlotLayout.luau` w Node i składa z nich plac i działki tak jak serwer, a potem robi zrzuty do `docs/screenshots` (`npm run preview`, wymaga Chromium z Playwright) |
 

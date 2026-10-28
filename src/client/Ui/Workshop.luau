@@ -15,7 +15,7 @@ function Workshop.Open(screen)
 	end
 	Game.SyncTime(reply.serverTime)
 	local connections = {}
-	local window, body = Kit.Window(screen, "Stół warsztatowy", 520, 480, function()
+	local window, body = Kit.Window(screen, "Stół warsztatowy", 540, 560, function()
 		for _, c in ipairs(connections) do
 			c:Disconnect()
 		end
@@ -40,14 +40,18 @@ function Workshop.Open(screen)
 			local text = Kit.Label(row, "", { Size = UDim2.new(0, 300, 1, 0), TextWrapped = true, RichText = true })
 			text.Text = "<b>" .. Items.Name(recipe.id) .. " × " .. recipe.quantity .. "</b>  (" .. recipe.time .. " s)\n"
 				.. '<font color="#a0a6b2">' .. table.concat(parts, ", ") .. "</font>"
-			Kit.Button(row, "Zamów", function()
-				local r = Game.Call("WorkshopOrder", { recipe = recipe.id })
-				if r then
-					reply = r
-					Game.SyncTime(r.serverTime)
-					render()
-				end
-			end, { BackgroundColor3 = enough and Kit.Colors.Button or Kit.Colors.Row })
+			if recipe.locked then
+				Kit.Label(row, "Wymaga badań", { Size = UDim2.new(0, 110, 1, 0), TextColor3 = Kit.Colors.Muted, TextSize = 14 })
+			else
+				Kit.Button(row, "Zamów", function()
+					local r = Game.Call("WorkshopOrder", { recipe = recipe.id })
+					if r then
+						reply = r
+						Game.SyncTime(r.serverTime)
+						render()
+					end
+				end, { BackgroundColor3 = enough and Kit.Colors.Button or Kit.Colors.Row })
+			end
 		end
 		Kit.Label(body, "Kolejka (" .. #reply.queue .. "/" .. reply.maxQueue .. "):", { TextColor3 = Kit.Colors.Muted })
 		for _, order in ipairs(reply.queue) do

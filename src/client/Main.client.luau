@@ -12,6 +12,8 @@ local MerchantWindow = require(Ui.Merchant)
 local FurnaceWindow = require(Ui.Furnace)
 local WorkshopWindow = require(Ui.Workshop)
 local ChestWindow = require(Ui.Chest)
+local MachineWindow = require(Ui.Machine)
+local ResearchWindow = require(Ui.Research)
 local BuildBar = require(Ui.BuildBar)
 require(script.Parent:WaitForChild("Game"))
 local GridView = require(script.Parent:WaitForChild("GridView"))
@@ -37,7 +39,9 @@ end
 
 Hud.Mount(screen, function()
 	show(InventoryWindow.Open)
-end, BuildBar.Toggle)
+end, BuildBar.Toggle, function()
+	show(ResearchWindow.Open)
+end)
 BuildBar.Mount(screen)
 task.spawn(GridView.Start)
 
@@ -52,6 +56,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		else
 			show(InventoryWindow.Open)
 		end
+	elseif input.KeyCode == Enum.KeyCode.T then
+		show(ResearchWindow.Open)
 	end
 end)
 
@@ -83,5 +89,7 @@ ProximityPromptService.PromptTriggered:Connect(function(prompt)
 		show(FurnaceWindow.Open, prompt:GetAttribute("FurnaceId"))
 	elseif kind == "chest" then
 		show(ChestWindow.Open, prompt:GetAttribute("ChestId"))
+	elseif kind == "machine" then
+		show(MachineWindow.Open, prompt:GetAttribute("MachineId"))
 	end
 end)

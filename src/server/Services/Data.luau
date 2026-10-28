@@ -51,6 +51,8 @@ local function newProfile()
 		-- The build grid: trees, belts, inserters and chests (furnaces are in `furnaces`), the time it
 		-- was worked out until and the grid layout it was saved in (PlotLayout.Grid.layout).
 		grid = { objects = {}, layout = PlotLayout.Grid.layout },
+		-- Technologies started: [id] = { startsAt, finishesAt } (Shared.Research).
+		research = {},
 		nextId = 1,
 		lock = nil,
 	}
@@ -173,6 +175,9 @@ local function migrate(profile)
 		end
 		profile.wildTrees = true
 		profile.trees = nil
+	end
+	if profile.research == nil then
+		profile.research = {}
 	end
 end
 

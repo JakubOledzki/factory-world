@@ -6,7 +6,7 @@ local Game = require(script.Parent.Parent.Game)
 
 local Hud = {}
 
-function Hud.Mount(screen, openInventory, toggleBuild)
+function Hud.Mount(screen, openInventory, toggleBuild, openResearch)
 	local money = Kit.New("Frame", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -16, 0, 16),
@@ -35,6 +35,12 @@ function Hud.Mount(screen, openInventory, toggleBuild)
 	Kit.Button(screen, "Budowanie [B]", toggleBuild, {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -16, 0, 110),
+		Size = UDim2.fromOffset(200, 36),
+		BackgroundColor3 = Kit.Colors.ButtonAlt,
+	})
+	Kit.Button(screen, "Badania [T]", openResearch, {
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -16, 0, 152),
 		Size = UDim2.fromOffset(200, 36),
 		BackgroundColor3 = Kit.Colors.ButtonAlt,
 	})

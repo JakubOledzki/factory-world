@@ -37,6 +37,14 @@ Game.Errors = {
 	cut_tree = "Drzewo zetnij siekierą (przytrzymaj E).",
 	chest_full = "Skrzynia jest pełna.",
 	chest_empty = "Tego nie ma w skrzyni.",
+	not_researched = "Najpierw to zbadaj (przycisk Badania).",
+	research_done = "To już zbadane albo właśnie się bada.",
+	research_busy = "Badasz już coś innego. Poczekaj, aż skończysz.",
+	research_locked = "Najpierw zbadaj to, czego wymaga.",
+	bad_recipe = "Ta maszyna tego nie robi.",
+	machine_full = "Maszyna jest pełna.",
+	machine_wrong_item = "Ta maszyna nie przyjmie tego przy tym przepisie.",
+	no_recipe = "Najpierw wybierz, co maszyna ma robić.",
 }
 
 function Game.ErrorText(code)

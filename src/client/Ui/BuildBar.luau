@@ -18,7 +18,12 @@ local Game = require(script.Parent.Parent.Game)
 local BuildBar = {}
 
 local Pickup = "pickup"
-local Buildable = { Items.Belt, Items.Inserter, Items.WoodenChest, Items.Furnace, Items.Sapling }
+local Buildable = {
+	Items.Belt, Items.Inserter, Items.WoodenChest, Items.Furnace, Items.Sapling,
+	Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry,
+}
+-- Machines show on the bar only while the player has one to put down.
+local OnlyWhenHeld = { [Items.Sawmill] = true, [Items.Stonemason] = true, [Items.Crusher] = true, [Items.Foundry] = true }
 local ModelOf = {
 	[Items.Sapling] = function()
 		return Models.Sapling(1)
@@ -30,6 +35,11 @@ local ModelOf = {
 		return Models.Furnace(true)
 	end,
 }
+for kind in pairs(OnlyWhenHeld) do
+	ModelOf[kind] = function()
+		return Models.Machine(kind)
+	end
+end
 
 local player = Players.LocalPlayer
 local active = false
@@ -135,6 +145,7 @@ local function refreshBar()
 		button.BackgroundColor3 = on and Kit.Colors.Button or (item == Pickup and Kit.Colors.Danger or Kit.Colors.ButtonAlt)
 		if item ~= Pickup then
 			button.Text = Items.Name(item) .. " (" .. Game.Count(item) .. ")"
+			button.Visible = not OnlyWhenHeld[item] or Game.Count(item) > 0 or item == selected
 		end
 	end
 end
@@ -287,12 +298,12 @@ function BuildBar.Mount(screen)
 	bar = Kit.New("Frame", {
 		AnchorPoint = Vector2.new(0.5, 1),
 		Position = UDim2.new(0.5, 0, 1, -16),
-		Size = UDim2.fromOffset(900, 86),
+		Size = UDim2.new(1, -32, 0, 86),
 		BackgroundColor3 = Kit.Colors.Panel,
 		BackgroundTransparency = 0.1,
 		Visible = false,
 		Parent = screen,
-	}, { Kit.Corner(10), Kit.New("UISizeConstraint", { MaxSize = Vector2.new(900, 86) }) })
+	}, { Kit.Corner(10), Kit.New("UISizeConstraint", { MaxSize = Vector2.new(1180, 86) }) })
 	local row = Kit.New("Frame", {
 		Position = UDim2.fromOffset(10, 8),
 		Size = UDim2.new(1, -20, 0, 40),
@@ -306,7 +317,7 @@ function BuildBar.Mount(screen)
 	for i, item in ipairs(Buildable) do
 		buttons[item] = Kit.Button(row, "", function()
 			choose(item)
-		end, { Size = UDim2.fromOffset(130, 40), LayoutOrder = i, TextWrapped = true })
+		end, { Size = UDim2.fromOffset(112, 40), LayoutOrder = i, TextWrapped = true, TextSize = 13 })
 	end
 	buttons[Pickup] = Kit.Button(row, "Rozbiórka [X]", function()
 		choose(Pickup)
@@ -314,7 +325,7 @@ function BuildBar.Mount(screen)
 	Kit.Button(row, "Obróć [R]", function()
 		rot = (rot + 1) % 4
 	end, { Size = UDim2.fromOffset(80, 40), LayoutOrder = 11, BackgroundColor3 = Kit.Colors.ButtonAlt })
-	Kit.Label(bar, "Kliknij, by postawić. Przeciągnij, by ułożyć taśmę (skręca razem z ruchem). 1–5 wybór, R obrót, X rozbiórka, B koniec.", {
+	Kit.Label(bar, "Kliknij, by postawić. Przeciągnij, by ułożyć taśmę (skręca razem z ruchem). 1–9 wybór, R obrót, X rozbiórka, B koniec.", {
 		Position = UDim2.fromOffset(12, 54),
 		Size = UDim2.new(1, -24, 0, 24),
 		TextSize = 14,
@@ -333,7 +344,10 @@ function BuildBar.Mount(screen)
 		if not active then
 			return
 		end
-		local number = { [Enum.KeyCode.One] = 1, [Enum.KeyCode.Two] = 2, [Enum.KeyCode.Three] = 3, [Enum.KeyCode.Four] = 4, [Enum.KeyCode.Five] = 5 }
+		local number = {
+			[Enum.KeyCode.One] = 1, [Enum.KeyCode.Two] = 2, [Enum.KeyCode.Three] = 3, [Enum.KeyCode.Four] = 4, [Enum.KeyCode.Five] = 5,
+			[Enum.KeyCode.Six] = 6, [Enum.KeyCode.Seven] = 7, [Enum.KeyCode.Eight] = 8, [Enum.KeyCode.Nine] = 9,
+		}
 		if number[input.KeyCode] then
 			choose(Buildable[number[input.KeyCode]])
 		elseif input.KeyCode == Enum.KeyCode.X then

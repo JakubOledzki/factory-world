@@ -5,6 +5,8 @@ local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local PlotLayout = require(Shared.PlotLayout)
 local Items = require(Shared.Items)
 local Prices = require(Shared.Prices)
+local Research = require(Shared.Research)
+local Clock = require(script.Parent.Clock)
 local Inventory = require(script.Parent.Inventory)
 local Wallet = require(script.Parent.Wallet)
 local Net = require(script.Parent.Net)
@@ -42,6 +44,9 @@ function Merchant.Start()
 		local price = Prices.Sells[item]
 		if price == nil then
 			return Net.Error("not_sold")
+		end
+		if not Research.Unlocked(profile.research, item, Clock.Now()) then
+			return Net.Error("not_researched")
 		end
 		if not Wallet.TryDebit(profile, price * quantity, "merchant_buy:" .. item) then
 			return Net.Error("not_enough_money")

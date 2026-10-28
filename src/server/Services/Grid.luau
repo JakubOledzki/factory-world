@@ -1,5 +1,5 @@
--- The build grid on each player's plot: putting belts, inserters, chests, furnaces and saplings on
--- it, turning and taking them back, cutting trees, and the chests' contents. What is on the grid is worked out on demand from the
+-- The build grid on each player's plot: putting belts, inserters, chests, machines, furnaces and
+-- saplings on it, turning and taking them back, cutting trees, and the chests' contents. What is on the grid is worked out on demand from the
 -- time it was last looked at (Factory.CatchUp); while the owner is on the server it is looked at
 -- every Logistics.Tick only so that clients can draw what moves. The server puts what a belt or an
 -- inserter holds in attributes of its model ("Items", "Arm") and each client animates the items and
@@ -15,6 +15,7 @@ local Logistics = require(Shared.Logistics)
 local Models = require(Shared.Models)
 local PlotLayout = require(Shared.PlotLayout)
 local Smelting = require(Shared.Smelting)
+local Processing = require(Shared.Processing)
 local Build = require(script.Parent.Build)
 local Clock = require(script.Parent.Clock)
 local Data = require(script.Parent.Data)
@@ -39,6 +40,8 @@ local function specOf(o, bend, now)
 		return Models.Inserter()
 	elseif o.kind == Items.WoodenChest then
 		return Models.WoodenChest()
+	elseif Processing.IsMachine(o.kind) then
+		return Models.Machine(o.kind)
 	elseif Forestry.Grown(o, now) then
 		return Models.Tree(o.id)
 	end
@@ -52,6 +55,12 @@ local function find(profile, id)
 		end
 	end
 	return nil
+end
+Grid.Find = find
+
+-- The model of the player's object `id`, while it is shown.
+function Grid.Model(player, id)
+	return views[player] and views[player][id]
 end
 
 -- The middle of a tile of the player's grid in the world, for checking how near the player is.
@@ -95,7 +104,7 @@ end
 
 function show(player, o, bend)
 	local now = Clock.Now()
-	local cframe = Plots.TileCFrame(player, o.x, o.z, 1, o.rot)
+	local cframe = Plots.TileCFrame(player, o.x, o.z, Logistics.Sizes[o.kind] or 1, o.rot)
 	if o.kind == Forestry.Tree then
 		-- Trees face any way, but always the same one.
 		cframe = cframe * CFrame.Angles(0, (o.id % 7) * 0.9, 0)
@@ -117,6 +126,14 @@ function show(player, o, bend)
 			ObjectText = Items.Name(Items.WoodenChest),
 			HoldDuration = 0,
 		}, { Kind = "chest", ChestId = o.id, Owner = player.UserId })
+	elseif Processing.IsMachine(o.kind) then
+		Build.Prompt(model.Body, {
+			Name = "Prompt",
+			ActionText = "Obsługuj",
+			ObjectText = Items.Name(o.kind),
+			HoldDuration = 0,
+			MaxActivationDistance = 12,
+		}, { Kind = "machine", MachineId = o.id, Owner = player.UserId })
 	elseif o.kind == Forestry.Tree then
 		if Forestry.Grown(o, now) then
 			Build.Prompt(model.Trunk, {
@@ -157,14 +174,22 @@ local function refresh(player, profile)
 	local watch = { slid = {} }
 	Factory.CatchUp(profile, watch)
 	local tick = math.floor(profile.grid.at / Logistics.Tick + 0.5) % 1000
+	local now = Clock.Now()
 	for _, o in ipairs(profile.grid.objects) do
 		local model = mine[o.id]
 		if model then
 			draw(model, o, watch.slid[o.id], tick)
+			-- A machine at work glows and turns its saw or rollers (client/GridView).
+			if o.machine then
+				local working = Processing.Advance(o.kind, o.machine, now).startedAt ~= nil
+				if model:GetAttribute("Working") ~= working then
+					model:SetAttribute("Working", working)
+					Build.SetFurnaceLit(model, working)
+				end
+			end
 		end
 	end
 	-- Furnaces that inserters feed light up and go out with what they bring.
-	local now = Clock.Now()
 	for _, furnace in ipairs(profile.furnaces) do
 		local model = furnace.tile and Furnaces.Model(player, furnace.id)
 		if model then
@@ -284,7 +309,7 @@ function Grid.Start()
 			if o.kind == Forestry.Tree then
 				return Net.Error("cut_tree")
 			end
-			if not Net.Near(player, tilePosition(player, o.x, o.z, 1), PlotLayout.BuildReach) then
+			if not Net.Near(player, tilePosition(player, o.x, o.z, Logistics.Sizes[o.kind] or 1), PlotLayout.BuildReach) then
 				return Net.Error("too_far")
 			end
 			table.remove(profile.grid.objects, index)

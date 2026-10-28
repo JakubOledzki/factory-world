@@ -2,7 +2,8 @@
 -- in attributes of its model, once a tick (Logistics.Tick): "Items" on a belt (with ">" after an
 -- item that slid into its place) and "Arm" on an inserter (its swing and its load). Here the items
 -- glide from the place behind to their new one and the arms swing round over that tick, every
--- frame. It only draws; nothing here changes the game.
+-- frame. A machine the server marks "Working" turns its parts of group "spin" (a saw blade, rollers).
+-- It only draws; nothing here changes the game.
 local RunService = game:GetService("RunService")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
@@ -17,6 +18,10 @@ local slotCount = Logistics.BeltSlots * Logistics.BeltLanes
 
 local belts = {} -- [Model] = { parts = { Part }, moving = { [Part] = { from, to, t0 } } }
 local arms = {} -- [Model] = { parts = { { Part, CFrame } }, hand, from, to, t0, angle }
+local working = {} -- [Model] = true while a machine works
+
+-- Radians a working machine's spinning parts turn each second.
+local SpinSpeed = 9
 
 local function split(text, sep)
 	local out = {}
@@ -149,14 +154,18 @@ local function watch(model)
 	model.AttributeChanged:Connect(function(name)
 		if name == "Items" or name == "Arm" or name == "Base" then
 			update(model)
+		elseif name == "Working" then
+			working[model] = model:GetAttribute("Working") or nil
 		end
 	end)
 	model.AncestryChanged:Connect(function(_, parent)
 		if parent == nil then
 			belts[model] = nil
 			arms[model] = nil
+			working[model] = nil
 		end
 	end)
+	working[model] = model:GetAttribute("Working") or nil
 	update(model)
 end
 
@@ -167,8 +176,15 @@ function GridView.Start()
 	end
 	plots.DescendantAdded:Connect(watch)
 
-	RunService.RenderStepped:Connect(function()
+	RunService.RenderStepped:Connect(function(dt)
 		local now = os.clock()
+		for model in pairs(working) do
+			for _, part in ipairs(model:GetChildren()) do
+				if part:IsA("BasePart") and part:GetAttribute("Group") == "spin" then
+					part.CFrame = part.CFrame * CFrame.Angles(dt * SpinSpeed, 0, 0)
+				end
+			end
+		end
 		for _, view in pairs(belts) do
 			for part, move in pairs(view.moving) do
 				local alpha = math.clamp((now - move.t0) / Tick, 0, 1)

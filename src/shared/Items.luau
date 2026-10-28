@@ -23,6 +23,21 @@ Items.Furnace = "furniture_furnace"
 Items.Belt = "logistics_belt"
 Items.Inserter = "logistics_inserter"
 Items.WoodenChest = "storage_wooden_chest"
+Items.Planks = "planks"
+Items.Beams = "beams"
+Items.WoodPellets = "wood_pellets"
+Items.Sand = "sand"
+Items.StoneBlocks = "stone_blocks"
+Items.CrushedIronOre = "crushed_iron_ore"
+Items.CrushedCopperOre = "crushed_copper_ore"
+Items.CrushedTinOre = "crushed_tin_ore"
+Items.BronzeIngot = "bronze_ingot"
+Items.SteelIngot = "steel_ingot"
+Items.Bricks = "bricks"
+Items.Sawmill = "furniture_sawmill"
+Items.Stonemason = "furniture_stonemason"
+Items.Crusher = "furniture_crusher"
+Items.Foundry = "furniture_foundry"
 
 -- What the player sees.
 Items.Names = {
@@ -47,6 +62,21 @@ Items.Names = {
 	[Items.Belt] = "Taśmociąg",
 	[Items.Inserter] = "Podajnik",
 	[Items.WoodenChest] = "Drewniana skrzynia",
+	[Items.Planks] = "Deski",
+	[Items.Beams] = "Belki",
+	[Items.WoodPellets] = "Pellet drzewny",
+	[Items.Sand] = "Piasek",
+	[Items.StoneBlocks] = "Bloki kamienne",
+	[Items.CrushedIronOre] = "Kruszywo żelaza",
+	[Items.CrushedCopperOre] = "Kruszywo miedzi",
+	[Items.CrushedTinOre] = "Kruszywo cyny",
+	[Items.BronzeIngot] = "Sztabka brązu",
+	[Items.SteelIngot] = "Sztabka stali",
+	[Items.Bricks] = "Cegły",
+	[Items.Sawmill] = "Tartak",
+	[Items.Stonemason] = "Warsztat kamieniarski",
+	[Items.Crusher] = "Kruszarka",
+	[Items.Foundry] = "Odlewnia",
 }
 
 -- Colour of the item's icon tile and of the ore veins in a mine, as {r, g, b}.
@@ -72,14 +102,33 @@ Items.Colors = {
 	[Items.Belt] = { 74, 76, 82 },
 	[Items.Inserter] = { 222, 176, 44 },
 	[Items.WoodenChest] = { 156, 112, 68 },
+	[Items.Planks] = { 196, 152, 98 },
+	[Items.Beams] = { 150, 104, 62 },
+	[Items.WoodPellets] = { 176, 140, 90 },
+	[Items.Sand] = { 222, 200, 140 },
+	[Items.StoneBlocks] = { 170, 168, 160 },
+	[Items.CrushedIronOre] = { 150, 96, 80 },
+	[Items.CrushedCopperOre] = { 180, 100, 56 },
+	[Items.CrushedTinOre] = { 176, 182, 188 },
+	[Items.BronzeIngot] = { 190, 130, 60 },
+	[Items.SteelIngot] = { 120, 130, 145 },
+	[Items.Bricks] = { 170, 74, 54 },
+	[Items.Sawmill] = { 168, 120, 70 },
+	[Items.Stonemason] = { 150, 146, 138 },
+	[Items.Crusher] = { 96, 104, 116 },
+	[Items.Foundry] = { 140, 70, 50 },
 }
 
 -- Order of items in the inventory and in the merchant's lists.
 Items.Order = {
 	Items.Pickaxe, Items.Axe, Items.Furnace, Items.Belt, Items.Inserter, Items.WoodenChest,
+	Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry,
 	Items.Sapling, Items.Wood, Items.Stone, Items.Coal,
 	Items.IronOre, Items.CopperOre, Items.TinOre, Items.SilverOre, Items.GoldOre,
+	Items.CrushedIronOre, Items.CrushedCopperOre, Items.CrushedTinOre,
 	Items.IronIngot, Items.CopperIngot, Items.TinIngot, Items.SilverIngot, Items.GoldIngot,
+	Items.BronzeIngot, Items.SteelIngot,
+	Items.Planks, Items.Beams, Items.WoodPellets, Items.Sand, Items.StoneBlocks, Items.Bricks,
 	Items.Nails,
 }
 

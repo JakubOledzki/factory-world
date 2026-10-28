@@ -1,9 +1,11 @@
 -- Faster work for testing in Roblox Studio only: holding a prompt to mine or cut takes a moment,
--- mines never run dry and saplings grow in seconds. A published game runs at the 2D game's pace.
+-- mines never run dry, saplings grow and research finishes in seconds. A published game runs at
+-- the 2D game's pace.
 local RunService = game:GetService("RunService")
 
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Forestry = require(Shared.Forestry)
+local Research = require(Shared.Research)
 
 local TestMode = {}
 
@@ -14,6 +16,9 @@ local HoldSeconds = 0.3
 if TestMode.On then
 	-- Only this server's copy of the rules; the clients and the tests keep the real time.
 	Forestry.Grow = 20
+	for _, t in ipairs(Research.Technologies) do
+		t.time = math.min(t.time, 10)
+	end
 end
 
 -- How long a prompt of `seconds` is held.

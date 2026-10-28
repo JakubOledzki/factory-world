@@ -11,10 +11,12 @@
 -- An object on the grid is { id, kind, x, z, rot, ... } (trees too, see Forestry) with the tile of its corner and its
 -- rotation (0 south, 1 east, 2 north, 3 west); a belt keeps `belt` (lane after lane, from where
 -- items come on to where they leave, false when empty), an inserter `hand` and `swing`, a chest
--- `items` ({ item, quantity } stacks) and `next`. Furnaces live in the player's furnace list and
--- stand on the grid when they have a `tile` ({ x, z }).
+-- `items` ({ item, quantity } stacks) and `next`, a processing machine `machine` (Processing). An
+-- object bigger than one tile takes the tiles from its corner to +x and +z. Furnaces live in the
+-- player's furnace list and stand on the grid when they have a `tile` ({ x, z }).
 local Items = require(script.Parent.Items)
 local Smelting = require(script.Parent.Smelting)
+local Processing = require(script.Parent.Processing)
 local PlotLayout = require(script.Parent.PlotLayout)
 
 local Logistics = {}
@@ -43,6 +45,10 @@ Logistics.Sizes = {
 	[Items.Inserter] = 1,
 	[Items.WoodenChest] = 1,
 	[Items.Furnace] = 2,
+	[Items.Sawmill] = 2,
+	[Items.Stonemason] = 2,
+	[Items.Crusher] = 2,
+	[Items.Foundry] = 3,
 }
 
 -- An inserter drops on a lane in the middle first, where the item has room to move on.
@@ -75,7 +81,12 @@ end
 function Logistics.Occupied(objects, furnaces)
 	local at = {}
 	for _, o in ipairs(objects) do
-		at[key(o.x, o.z)] = { object = o }
+		local size = Logistics.Sizes[o.kind] or 1
+		for dx = 0, size - 1 do
+			for dz = 0, size - 1 do
+				at[key(o.x + dx, o.z + dz)] = { object = o }
+			end
+		end
 	end
 	for _, f in ipairs(furnaces) do
 		if f.tile then
@@ -126,6 +137,8 @@ function Logistics.New(id, kind, x, z, rot)
 	elseif kind == Items.WoodenChest then
 		o.items = {}
 		o.next = 0
+	elseif Processing.IsMachine(kind) then
+		o.machine = Processing.Empty()
 	end
 	return o
 end
@@ -143,6 +156,11 @@ function Logistics.Contents(o)
 	end
 	for _, stack in ipairs(o.items or {}) do
 		table.insert(out, { stack.item, stack.quantity })
+	end
+	if o.machine then
+		for _, entry in ipairs(Processing.Contents(o.kind, o.machine)) do
+			table.insert(out, entry)
+		end
 	end
 	return out
 end
@@ -281,6 +299,41 @@ local function furnacePort(f)
 	return port
 end
 
+-- A processing machine as inserters see it at time `t`: ingredients and fuel go in, products come out.
+local function machinePort(o)
+	local port = {}
+	local function at(t)
+		o.machine = Processing.Advance(o.kind, o.machine, t)
+		return o.machine
+	end
+	function port.Output(wanted, t)
+		local s = at(t)
+		if s.output > 0 and wanted(s.recipe) then
+			return s.recipe
+		end
+		return nil
+	end
+	function port.Take(_item, t)
+		local s = at(t)
+		s.output = s.output - 1
+		o.machine = Processing.Start(o.kind, s, t)
+	end
+	function port.Accepts(item, t)
+		return Processing.Room(o.kind, at(t), item) > 0
+	end
+	function port.Put(item, t)
+		local after = Processing.Load(o.kind, at(t), item, 1, t)
+		if after then
+			o.machine = after
+		end
+	end
+	-- When the next batch is done, if one is being made.
+	function port.NextChange(t)
+		return Processing.NextChange(o.kind, at(t))
+	end
+	return port
+end
+
 -- Which side a belt turns in from: -1 when the only belt feeding it comes from its left, 1 from its
 -- right, 0 when it runs straight (fed from behind, from both sides or not at all).
 local function bend(belts, b)
@@ -395,6 +448,8 @@ local function build(objects, furnaces)
 				ports[thing] = furnacePort(here.furnace)
 			elseif thing.kind == Items.WoodenChest then
 				ports[thing] = chestPort(thing)
+			elseif thing.machine then
+				ports[thing] = machinePort(thing)
 			else
 				return nil
 			end

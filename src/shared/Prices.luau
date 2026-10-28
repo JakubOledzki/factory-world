@@ -13,6 +13,9 @@ Prices.Sells = {
 	[Items.Belt] = 1000,
 	[Items.Inserter] = 9000,
 	[Items.WoodenChest] = 7000,
+	[Items.Sawmill] = 40000,
+	[Items.Planks] = 300,
+	[Items.Sand] = 50,
 }
 
 -- What the merchant pays the player.
@@ -38,6 +41,20 @@ Prices.Buys = {
 	[Items.Belt] = 700,
 	[Items.Inserter] = 6500,
 	[Items.WoodenChest] = 5000,
+	[Items.Sawmill] = 22000,
+	[Items.Stonemason] = 21500,
+	[Items.Crusher] = 60000,
+	[Items.Foundry] = 61000,
+	[Items.Planks] = 150,
+	[Items.Beams] = 600,
+	[Items.WoodPellets] = 200,
+	[Items.StoneBlocks] = 450,
+	[Items.CrushedIronOre] = 560,
+	[Items.CrushedCopperOre] = 1100,
+	[Items.CrushedTinOre] = 2300,
+	[Items.BronzeIngot] = 3100,
+	[Items.SteelIngot] = 3400,
+	[Items.Bricks] = 110,
 }
 
 -- Most pieces bought or sold in one trade.

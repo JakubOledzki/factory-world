@@ -14,6 +14,11 @@ Workshop.Recipes = {
 	{ id = Items.Belt, quantity = 4, time = 10, ingredients = { { Items.IronIngot, 2 }, { Items.Wood, 1 } } },
 	{ id = Items.Inserter, quantity = 1, time = 15, ingredients = { { Items.IronIngot, 2 }, { Items.CopperIngot, 1 }, { Items.Nails, 5 } } },
 	{ id = Items.WoodenChest, quantity = 1, time = 10, ingredients = { { Items.Wood, 10 }, { Items.Nails, 5 } } },
+	-- Machines, once researched (Research).
+	{ id = Items.Sawmill, quantity = 1, time = 60, ingredients = { { Items.Wood, 30 }, { Items.IronIngot, 6 }, { Items.Nails, 10 } } },
+	{ id = Items.Stonemason, quantity = 1, time = 45, ingredients = { { Items.Stone, 30 }, { Items.IronIngot, 10 }, { Items.Wood, 10 } } },
+	{ id = Items.Crusher, quantity = 1, time = 60, ingredients = { { Items.IronIngot, 25 }, { Items.Stone, 30 }, { Items.CopperIngot, 8 } } },
+	{ id = Items.Foundry, quantity = 1, time = 90, ingredients = { { Items.Stone, 40 }, { Items.Sand, 20 }, { Items.IronIngot, 20 }, { Items.CopperIngot, 10 } } },
 }
 
 function Workshop.Recipe(id)

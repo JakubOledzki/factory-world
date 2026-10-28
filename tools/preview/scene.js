@@ -228,6 +228,76 @@ function views() {
         <div class="muted" style="margin-top:8px">Kliknij, by postawić. Przeciągnij, by ułożyć taśmę (skręca razem z ruchem). 1–5 wybór, R obrót, X rozbiórka, B koniec.</div>
       </div></div>` };
   }
+  // 7. Processing machines on the grid, fed by inserters, and the research window.
+  {
+    const p = plot(1, { cut: [5] });
+    const objects = square().concat(p.objects);
+    const { cx, cz } = p;
+    const state = lua.call(`(function()
+      local o, n = {}, 0
+      local function add(kind, x, z, rot) n = n + 1; local obj = Logistics.New(n, kind, x + 20, z + 10, rot); table.insert(o, obj); return obj end
+      local wood = add(Items.WoodenChest, 0, 1, 1); Logistics.Store(wood.items, Items.Wood, 40)
+      add(Items.Inserter, 1, 1, 1)
+      local mill = add(Items.Sawmill, 2, 0, 1); mill.machine = Processing.SetRecipe(Items.Sawmill, mill.machine, Items.Planks, 0)
+      add(Items.Inserter, 4, 1, 1)
+      for x = 5, 7 do add(Items.Belt, x, 1, 1) end
+      add(Items.Inserter, 8, 1, 1)
+      add(Items.WoodenChest, 9, 1, 1)
+      local stone = add(Items.WoodenChest, 0, 5, 1); Logistics.Store(stone.items, Items.Stone, 40)
+      add(Items.Inserter, 1, 5, 1)
+      local crusher = add(Items.Crusher, 2, 4, 1); crusher.machine = Processing.SetRecipe(Items.Crusher, crusher.machine, Items.Sand, 0)
+      add(Items.Inserter, 4, 5, 1)
+      add(Items.WoodenChest, 5, 5, 1)
+      local mason = add(Items.Stonemason, 12, 0, 0); mason.machine = Processing.SetRecipe(Items.Stonemason, mason.machine, Items.StoneBlocks, 0)
+      mason.machine = Processing.Load(Items.Stonemason, mason.machine, Items.Stone, 30, 0)
+      local foundry = add(Items.Foundry, 11, 4, 0); foundry.machine = Processing.SetRecipe(Items.Foundry, foundry.machine, Items.Bricks, 0)
+      foundry.machine = Processing.Load(Items.Foundry, foundry.machine, Items.Sand, 20, 0)
+      foundry.machine = Processing.Load(Items.Foundry, foundry.machine, Items.Stone, 20, 0)
+      foundry.machine = Processing.Load(Items.Foundry, foundry.machine, Items.Coal, 5, 0)
+      local bends = Logistics.Bends(o)
+      Logistics.Run(o, {}, 0, 23.4)
+      for _, obj in ipairs(o) do
+        obj.bend = bends[obj.id]
+        if obj.machine then obj.working = Processing.Advance(obj.kind, obj.machine, 23.4).startedAt ~= nil end
+      end
+      return o
+    end)()`);
+    const yaws = [Math.PI, -Math.PI / 2, 0, Math.PI / 2];
+    const tileAt = (x, z, size) => lua.call(`{ PlotLayout.TileCenter(${x}, ${z}, ${size}) }`);
+    const colors = lua.call("Items.Colors");
+    const sizes = lua.call("Logistics.Sizes");
+    for (const o of state) {
+      const [ox, oz] = tileAt(o.x, o.z, sizes[o.kind] || 1);
+      const at = [cx + ox, 0, cz + oz], yaw = yaws[o.rot];
+      if (o.kind === "logistics_inserter") {
+        const parts = lua.call("Models.Inserter()");
+        objects.push({ at, yaw, parts: parts.filter((q) => q.group !== "arm") });
+        const arm = parts.filter((q) => q.group === "arm").map((q) => q.name === "Hand" && o.hand ? { ...q, hidden: false, color: colors[o.hand] } : q);
+        objects.push({ at, yaw: yaw + Math.PI * (1 - o.swing / 4), parts: arm });
+      } else if (o.kind === "logistics_belt") {
+        objects.push({ at, yaw, parts: lua.call(`Models.Belt(${o.bend})`) });
+        const items = [];
+        o.belt.forEach((item, i) => {
+          if (!item) return;
+          items.push({ shape: "Ball", size: [0.75, 0.75, 0.75], pos: lua.call(`Models.BeltSlot(${i + 1}, Logistics.BeltSlots, ${o.bend})`), rot: [0, 0, 0], color: colors[item], material: "SmoothPlastic" });
+        });
+        objects.push({ at, yaw, parts: items });
+      } else if (o.machine) {
+        objects.push({ at, yaw, parts: lua.call(`Models.Machine("${o.kind}")`), lit: o.working });
+      } else {
+        objects.push({ at, yaw, parts: lua.call("Models.WoodenChest()") });
+      }
+    }
+    const techs = lua.call("Research.Technologies");
+    const status = ["Zbadane", "Bada się: 1 min 12 s", null, null];
+    const tech = (t, i) => `<div class="row" style="align-items:flex-start;padding:6px 8px;height:auto">${sw(colors[t.unlocks[0]].join(","))}
+      <span style="width:390px;font-size:13px;line-height:1.35"><b>${t.name}</b> (${t.time >= 60 ? t.time / 60 + " min" : t.time + " s"})<br>${t.description}<br>
+      <span class="muted">Koszt: ${t.cost.map((c) => c[1] + " × " + lua.call(`Items.Name("${c[0]}")`)).join(", ")}</span></span>
+      ${status[i] ? `<b style="width:110px;font-size:13px">${status[i]}</b>` : `<span class="btn" style="width:70px;text-align:center">Badaj</span>`}</div>`;
+    out["7-przetworstwo"] = { objects, camera: { pos: [cx - 6, 30, cz - 28], look: [cx + 2, 0, cz - 62], fov: 55 }, shadowRadius: 60, hud: "1 284,50 $", caption,
+      overlay: `<div class="win" style="width:560px;right:16px;bottom:40px"><div class="hd">Badania<span class="x">✕</span></div><div class="bd">
+        ${techs.map(tech).join("")}</div></div>` };
+  }
   return out;
 }
 

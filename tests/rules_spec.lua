@@ -178,7 +178,7 @@ local Models = load_shared("Models")
 
 local Materials = {}
 for _, m in ipairs({ "SmoothPlastic", "Plastic", "Wood", "WoodPlanks", "Slate", "Rock", "Basalt", "Cobblestone", "Brick",
-	"Metal", "CorrodedMetal", "Neon", "Fabric", "Grass", "LeafyGrass", "Ground", "Pebble", "Limestone", "Glass", "Pavement", "Marble", "Concrete", "DiamondPlate" }) do
+	"Metal", "CorrodedMetal", "Neon", "Fabric", "Grass", "LeafyGrass", "Ground", "Pebble", "Limestone", "Glass", "Pavement", "Marble", "Concrete", "DiamondPlate", "Sandstone", "Sand", "Rubber" }) do
 	Materials[m] = true
 end
 local Shapes = { Block = true, Ball = true, Cylinder = true, Wedge = true }
@@ -198,7 +198,7 @@ local function checkModel(name, parts, required)
 		if p.shape == "Ball" then
 			assert(p.size[1] == p.size[2] and p.size[2] == p.size[3], where .. ": a ball is round")
 		end
-		assert(p.group == nil or p.group == "crown" or p.group == "glow" or p.group == "arm", where .. ": group")
+		assert(p.group == nil or p.group == "crown" or p.group == "glow" or p.group == "arm" or p.group == "spin", where .. ": group")
 		if p.name then
 			named[p.name] = true
 		end
@@ -228,6 +228,10 @@ test("Every model is made of parts Roblox can build, with the parts the game loo
 	checkModel("Merchant", Models.Merchant())
 	checkModel("Fountain", Models.Fountain())
 	checkModel("Signpost", Models.Signpost(1), { "Board" })
+	for _, kind in ipairs({ Items.Sawmill, Items.Stonemason, Items.Crusher, Items.Foundry }) do
+		checkModel(kind, Models.Machine(kind), { "Body" })
+		checkModel("BuildMarker", Models.BuildMarker(kind, 4))
+	end
 	local PlotLayout = load_shared("PlotLayout")
 	for index = 1, PlotLayout.Count do
 		checkModel("PlotDecor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index)))
@@ -444,4 +448,111 @@ test("A belt fed from one side turns the corner, and items on it ride along the 
 	local back = Models.BeltSlot(2, 4, 1, true)
 	local one = Models.BeltSlot(1, 4, 1)
 	assert(math.abs(back[1] - one[1]) < 1e-9 and math.abs(back[3] - one[3]) < 1e-9, "the place behind is the previous place")
+end)
+
+local Processing = load_shared("Processing")
+local Research = load_shared("Research")
+
+test("A sawmill makes a batch after another from what it holds, and stops when it runs out", function()
+	local kind = Items.Sawmill
+	local s = Processing.SetRecipe(kind, Processing.Empty(), Items.Planks, 0)
+	s = Processing.Load(kind, s, Items.Wood, 5, 0)
+	eq(s.startedAt, 0, "starts once loaded")
+	s = Processing.Advance(kind, s, 20)
+	eq(s.output, 4, "two batches of 2 planks in 20 s")
+	eq(s.inputs[1], 3)
+	eq(s.startedAt, 16)
+	s = Processing.Advance(kind, s, 1000)
+	eq(s.output, 10)
+	eq(s.inputs[1], 0)
+	eq(s.startedAt, nil, "idle with nothing left")
+	local nothing = Processing.Load(kind, s, Items.Coal, 1, 1000)
+	eq(nothing, nil, "coal does not go in a sawmill")
+	-- Changing the recipe hands back its ingredients and products.
+	local after, handed = Processing.SetRecipe(kind, s, Items.Beams, 1000)
+	eq(after.output, 0)
+	eq(handed[1][1], Items.Planks)
+	eq(handed[1][2], 10)
+end)
+
+test("A full machine stops until its products are taken out, then goes on", function()
+	local kind = Items.Crusher
+	local s = Processing.SetRecipe(kind, Processing.Empty(), Items.Sand, 0)
+	s = Processing.Load(kind, s, Items.Stone, 50, 0)
+	s = Processing.Advance(kind, s, 10000)
+	eq(s.output, 99, "33 batches of 3 sand fit in 100")
+	eq(s.startedAt, nil)
+	local taken
+	s, taken = Processing.Take(kind, s, "output", 10000)
+	eq(taken[1][2], 99)
+	eq(s.startedAt, 10000, "starts again")
+end)
+
+test("A foundry burns fuel: coal lasts 4 batches, and coal for steel is shared with the fire", function()
+	local kind = Items.Foundry
+	local s = Processing.SetRecipe(kind, Processing.Empty(), Items.BronzeIngot, 0)
+	s = Processing.Load(kind, s, Items.CopperIngot, 30, 0)
+	s = Processing.Load(kind, s, Items.TinIngot, 10, 0)
+	eq(s.startedAt, nil, "no fire, no work")
+	s = Processing.Load(kind, s, Items.Coal, 1, 0)
+	s = Processing.Advance(kind, s, 1000)
+	eq(s.output, 16, "4 batches of 4 bronze on one coal")
+	eq(s.fuel, 0)
+	eq(s.heat, 0)
+	-- Steel takes coal as an ingredient too: loaded coal goes to both so neither runs out first.
+	local steel = Processing.SetRecipe(kind, Processing.Empty(), Items.SteelIngot, 0)
+	steel = Processing.Load(kind, steel, Items.IronIngot, 20, 0)
+	steel = Processing.Load(kind, steel, Items.Coal, 13, 0)
+	eq(steel.inputs[2] + steel.fuel, 13)
+	assert(steel.inputs[2] >= 8 and steel.fuel >= 2, "split " .. steel.inputs[2] .. "/" .. steel.fuel)
+	steel = Processing.Advance(kind, steel, 10000)
+	eq(steel.output, 10, "all 20 iron made into steel")
+end)
+
+test("Inserters feed a sawmill from a chest and take the planks to another chest", function()
+	local function at(id, kind, x, z, rot)
+		return Logistics.New(id, kind, x, z + 8, rot)
+	end
+	local wood = at(1, Items.WoodenChest, 0, 0, 1)
+	Logistics.Store(wood.items, Items.Wood, 10)
+	local mill = at(3, Items.Sawmill, 2, 0, 1)
+	mill.machine = Processing.SetRecipe(Items.Sawmill, mill.machine, Items.Planks, 0)
+	local out = at(5, Items.WoodenChest, 5, 1, 1)
+	local objects = { wood, at(2, Items.Inserter, 1, 0, 1), mill, at(4, Items.Inserter, 4, 1, 1), out }
+	eq(select(2, Logistics.CanPlace(objects, {}, Items.Belt, 3, 9)), "tile_taken", "a sawmill takes 2 × 2 tiles")
+	Logistics.Run(objects, {}, 0, 200)
+	local planks = 0
+	for _, stack in ipairs(out.items) do
+		if stack.item == Items.Planks then planks = stack.quantity end
+	end
+	eq(planks, 20, "10 wood made 20 planks")
+	eq(#wood.items, 0)
+	-- Picked up, a machine hands back what it holds.
+	mill.machine.output = 3
+	local back = Logistics.Contents(mill)
+	eq(back[1][1], Items.Planks)
+end)
+
+test("Research takes its time, one at a time, and unlocks machines", function()
+	local r = {}
+	eq(Research.Unlocked(r, Items.Sawmill, 0), false)
+	eq(Research.Unlocked(r, Items.Belt, 0), true, "belts came before research")
+	r = Research.Start(r, "forestry_industry", 100)
+	eq(Research.Status(r, "forestry_industry", 150), "active")
+	eq(select(2, Research.Start(r, "stonemasonry", 150)), "research_busy")
+	eq(Research.Unlocked(r, Items.Sawmill, 150), false)
+	eq(Research.Unlocked(r, Items.Sawmill, 190), true)
+	eq(select(2, Research.Start(r, "forestry_industry", 200)), "research_done")
+	local again = Research.Start(r, "stonemasonry", 200)
+	assert(again and again.forestry_industry, "keeps what was done")
+	-- Every machine is made at the workbench and unlocked by some technology.
+	for _, kind in ipairs(Processing.Kinds) do
+		assert(Workshop.Recipe(kind), "recipe for " .. kind)
+		eq(Research.Unlocked({}, kind, 0), false, kind .. " is researched")
+		assert(Logistics.Sizes[kind], "size of " .. kind)
+	end
+	for _, t in ipairs(Research.Technologies) do
+		for _, entry in ipairs(t.cost) do assert(Items.Names[entry[1]], entry[1]) end
+		for _, item in ipairs(t.unlocks) do assert(Items.Names[item], item) end
+	end
 end)

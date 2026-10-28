@@ -17,6 +17,10 @@ Smelting.Recipes = {
 	[Items.TinOre] = { output = Items.TinIngot, time = 10 },
 	[Items.SilverOre] = { output = Items.SilverIngot, time = 15 },
 	[Items.GoldOre] = { output = Items.GoldIngot, time = 20 },
+	-- Crushed ore smelts quicker; a crusher makes three of it from two ores.
+	[Items.CrushedIronOre] = { output = Items.IronIngot, time = 8 },
+	[Items.CrushedCopperOre] = { output = Items.CopperIngot, time = 8 },
+	[Items.CrushedTinOre] = { output = Items.TinIngot, time = 8 },
 }
 
 function Smelting.Empty()

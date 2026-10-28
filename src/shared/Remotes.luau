@@ -22,4 +22,10 @@ return {
 	ChestGet = "ChestGet", -- { id }
 	ChestPut = "ChestPut", -- { id, item, quantity }
 	ChestTake = "ChestTake", -- { id, item, quantity }
+	MachineGet = "MachineGet", -- { id }
+	MachineRecipe = "MachineRecipe", -- { id, recipe }
+	MachineLoad = "MachineLoad", -- { id, item, quantity }
+	MachineTake = "MachineTake", -- { id, what }
+	ResearchGet = "ResearchGet",
+	ResearchStart = "ResearchStart", -- { id }
 }

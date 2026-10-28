@@ -645,7 +645,8 @@ end
 function Models.BuildMarker(kind, tile)
 	local parts = {}
 	local glow = { 255, 220, 70 }
-	local y = kind == "furniture_furnace" and 12.5 or 5
+	local heights = { furniture_furnace = 12.5, furniture_foundry = 14, furniture_sawmill = 6.5, furniture_stonemason = 6.5, furniture_crusher = 7.5 }
+	local y = heights[kind] or 5
 	add(parts, { size = { 0.5, 0.3, 2.4 }, pos = { 0, y, 0.6 }, color = glow, material = "Neon", noCollide = true })
 	add(parts, { size = { 0.5, 0.3, 1.7 }, pos = { -0.5, y, -1 }, rot = { 0, -0.75, 0 }, color = glow, material = "Neon", noCollide = true })
 	add(parts, { size = { 0.5, 0.3, 1.7 }, pos = { 0.5, y, -1 }, rot = { 0, 0.75, 0 }, color = glow, material = "Neon", noCollide = true })
@@ -685,6 +686,128 @@ function Models.WoodenChest()
 	add(parts, { size = { 0.55, 0.65, 0.16 }, pos = { 0, 1.75, -1.2 }, color = { 196, 164, 80 }, material = "Metal" })
 	add(parts, { size = { 0.16, 0.2, 0.06 }, pos = { 0, 1.68, -1.29 }, color = { 30, 26, 22 }, material = "SmoothPlastic" })
 	return parts
+end
+
+-- The processing machines on the build grid (Shared.Processing), 2 × 2 tiles (8 studs) across but
+-- the foundry 3 × 3. Each has a part named "Body" for its prompt; parts in group "spin" turn while
+-- it works (a saw blade, rollers, a grinding wheel, about their own x axis) and parts in "glow"
+-- light up like a furnace's fire.
+local Steel = { 92, 96, 104 }
+local Hazard = { 222, 176, 44 }
+
+local function sawmill()
+	local rng = Models.Rng(41)
+	local parts = {}
+	add(parts, { size = { 7.4, 0.5, 7.4 }, pos = { 0, 0.25, 0 }, color = vary(Planks, rng, 8), material = "WoodPlanks" })
+	-- The saw table on four legs, a log on it and the blade through its middle.
+	add(parts, { name = "Body", size = { 2.6, 0.5, 6.4 }, pos = { 0, 2.6, 0 }, color = vary(Wood, rng, 8), material = "WoodPlanks" })
+	for _, x in ipairs({ -1.1, 1.1 }) do
+		for _, z in ipairs({ -2.8, 2.8 }) do
+			add(parts, { size = { 0.4, 2.1, 0.4 }, pos = { x, 1.4, z }, color = DarkWood, material = "Wood" })
+		end
+	end
+	add(parts, { shape = "Cylinder", size = { 0.18, 3.4, 3.4 }, pos = { 0, 3.2, -0.4 }, color = { 200, 204, 210 }, material = "Metal", group = "spin", noCollide = true })
+	post(parts, 0.3, 0.7, { 0, 3.2, -0.4 }, Steel, "Metal", { rot = { 0, 0, 0 }, noCollide = true })
+	log(parts, 3.2, 1.3, { 0, 3.5, 1.7 }, math.pi / 2, vary({ 120, 86, 56 }, rng, 8), "Wood")
+	-- Planks sawn off, stacked by the table.
+	for i = 0, 3 do
+		add(parts, { size = { 1.6, 0.25, 4.6 }, pos = { -2.6, 0.62 + i * 0.26, 0.2 + rng.Num(-0.15, 0.15) }, color = vary({ 196, 152, 98 }, rng, 10), material = "WoodPlanks" })
+	end
+	-- The motor in a steel box, with a belt to the blade's shaft.
+	add(parts, { size = { 1.8, 1.6, 1.8 }, pos = { 2.5, 1.3, -1.2 }, color = Steel, material = "DiamondPlate" })
+	post(parts, 0.4, 1.2, { 2.5, 2.3, -1.2 }, Hazard, "SmoothPlastic", { rot = { 0, 0, 0 }, group = "spin" })
+	add(parts, { size = { 2.4, 0.2, 0.2 }, pos = { 1.25, 2.8, -0.8 }, rot = { 0, 0, 0.35 }, color = { 30, 30, 32 }, material = "Rubber", noCollide = true })
+	-- A lamp that lights while it saws.
+	ball(parts, 0.5, { 2.5, 2.4, -2.2 }, { 60, 50, 40 }, "SmoothPlastic", { group = "glow", noCollide = true })
+	return parts
+end
+
+local function stonemason()
+	local rng = Models.Rng(43)
+	local parts = {}
+	add(parts, { size = { 7.4, 0.4, 7.4 }, pos = { 0, 0.2, 0 }, color = vary(Stone, rng, 8), material = "Slate" })
+	-- A heavy stone bench with a block being dressed.
+	add(parts, { name = "Body", size = { 4, 2.2, 2.4 }, pos = { -0.6, 1.5, 0.8 }, color = vary({ 150, 146, 138 }, rng, 6), material = "Cobblestone" })
+	add(parts, { size = { 1.6, 1.2, 1.6 }, pos = { -1.2, 3.2, 0.8 }, color = vary({ 176, 172, 164 }, rng, 6), material = "Limestone" })
+	-- A grinding wheel on a frame.
+	add(parts, { size = { 0.3, 2.4, 0.3 }, pos = { 1.4, 2.6, 0.2 }, color = Steel, material = "Metal" })
+	add(parts, { size = { 0.3, 2.4, 0.3 }, pos = { 1.4, 2.6, 1.4 }, color = Steel, material = "Metal" })
+	add(parts, { shape = "Cylinder", size = { 0.5, 2, 2 }, pos = { 1.4, 3.4, 0.8 }, rot = { 0, math.pi / 2, 0 }, color = { 110, 104, 96 }, material = "Sandstone", group = "spin", noCollide = true })
+	-- Dressed blocks stacked in front, and rough stone behind.
+	for i = 0, 2 do
+		for j = 0, 1 do
+			add(parts, { size = { 1.2, 0.9, 1.2 }, pos = { -2.4 + i * 1.3, 0.85 + j * 0.92, -2.4 }, color = vary({ 172, 168, 160 }, rng, 8), material = "Limestone" })
+		end
+	end
+	for _ = 1, 5 do
+		ball(parts, rng.Num(0.9, 1.5), { rng.Num(1.2, 3), 0.6, rng.Num(-2.6, -1) }, vary(Stone, rng, 12), "Rock")
+	end
+	-- A lantern on a post that lights while it works.
+	post(parts, 3.6, 0.3, { 3.2, 1.8, 3.2 }, DarkWood, "Wood")
+	ball(parts, 0.6, { 3.2, 3.8, 3.2 }, { 60, 50, 40 }, "SmoothPlastic", { group = "glow", noCollide = true })
+	return parts
+end
+
+local function crusher()
+	local parts = {}
+	add(parts, { size = { 7.4, 0.5, 7.4 }, pos = { 0, 0.25, 0 }, color = { 70, 72, 78 }, material = "DiamondPlate" })
+	-- A steel housing with two rollers inside, under a hopper.
+	add(parts, { name = "Body", size = { 5, 3, 4.4 }, pos = { 0, 2, 0.6 }, color = Steel, material = "Metal" })
+	for _, z in ipairs({ -0.2, 1.4 }) do
+		add(parts, { shape = "Cylinder", size = { 4.4, 1.5, 1.5 }, pos = { 0, 3.6, z }, color = { 60, 62, 66 }, material = "CorrodedMetal", group = "spin", noCollide = true })
+	end
+	add(parts, { shape = "Wedge", size = { 5.4, 1.8, 1.6 }, pos = { 0, 4.9, 2.4 }, rot = { 0, math.pi, 0 }, color = Hazard, material = "Metal" })
+	add(parts, { shape = "Wedge", size = { 5.4, 1.8, 1.6 }, pos = { 0, 4.9, -1.2 }, color = Hazard, material = "Metal" })
+	for _, x in ipairs({ -2.6, 2.6 }) do
+		add(parts, { size = { 0.25, 1.8, 3.8 }, pos = { x, 4.9, 0.6 }, color = Hazard, material = "Metal" })
+	end
+	-- The chute at the front where the crushed stone comes out, with a heap of it.
+	add(parts, { shape = "Wedge", size = { 2.4, 1.2, 1.8 }, pos = { 0, 1.1, -2.5 }, color = { 80, 82, 88 }, material = "Metal" })
+	ball(parts, 1.8, { 0, 0.5, -3 }, { 150, 140, 120 }, "Sand", { noCollide = true })
+	-- The motor and a warning light.
+	add(parts, { size = { 1.6, 1.4, 2 }, pos = { 3, 1.2, 1.8 }, color = { 50, 90, 140 }, material = "Metal" })
+	post(parts, 0.5, 0.5, { 3, 2.2, 1.8 }, { 60, 50, 40 }, "SmoothPlastic", { group = "glow", noCollide = true })
+	return parts
+end
+
+local function foundry()
+	local rng = Models.Rng(47)
+	local parts = {}
+	local brick = { 156, 70, 52 }
+	add(parts, { size = { 11.4, 0.5, 11.4 }, pos = { 0, 0.25, 0 }, color = vary(Stone, rng, 8), material = "Cobblestone" })
+	-- A brick hall with the fire mouth at the front and a tall chimney.
+	add(parts, { name = "Body", size = { 8, 5.5, 7 }, pos = { 0, 3.25, 1 }, color = vary(brick, rng, 6), material = "Brick" })
+	add(parts, { shape = "Wedge", size = { 8.6, 2.2, 3.8 }, pos = { 0, 7.1, -0.9 }, color = { 90, 60, 50 }, material = "Slate" })
+	add(parts, { shape = "Wedge", size = { 8.6, 2.2, 3.8 }, pos = { 0, 7.1, 2.9 }, rot = { 0, math.pi, 0 }, color = { 90, 60, 50 }, material = "Slate" })
+	add(parts, { size = { 2, 11, 2 }, pos = { 2.6, 6, 3.2 }, color = vary(brick, rng, 6), material = "Brick" })
+	add(parts, { name = "Chimney", size = { 2.4, 0.5, 2.4 }, pos = { 2.6, 11.7, 3.2 }, color = { 60, 50, 46 }, material = "Slate", smoke = true })
+	add(parts, { size = { 3.2, 2.6, 0.6 }, pos = { -1, 2.1, -2.6 }, color = { 30, 24, 20 }, material = "SmoothPlastic", group = "glow", noCollide = true })
+	add(parts, { name = "Fire", size = { 2.4, 0.5, 0.8 }, pos = { -1, 1.1, -2.5 }, color = { 30, 26, 24 }, material = "SmoothPlastic", group = "glow", noCollide = true, fire = true, light = { color = { 255, 140, 50 }, range = 18, brightness = 3 } })
+	-- A crucible on a stand pouring into moulds in front.
+	post(parts, 1.6, 1.8, { 3, 2.4, -3.4 }, Steel, "Metal")
+	post(parts, 1.2, 1.4, { 3, 3.6, -3.4 }, { 70, 64, 60 }, "Metal")
+	post(parts, 0.2, 1.1, { 3, 4.15, -3.4 }, { 40, 30, 26 }, "SmoothPlastic", { group = "glow", noCollide = true })
+	for i = 0, 2 do
+		add(parts, { size = { 1.2, 0.5, 0.7 }, pos = { -3.6 + i * 1.5, 0.75, -4.4 }, color = Iron, material = "Metal" })
+		add(parts, { size = { 0.9, 0.1, 0.45 }, pos = { -3.6 + i * 1.5, 1.02, -4.4 }, color = { 40, 30, 26 }, material = "SmoothPlastic", group = "glow", noCollide = true })
+	end
+	-- Coal by the door.
+	for _ = 1, 4 do
+		ball(parts, rng.Num(0.7, 1.1), { rng.Num(-4.6, -3.6), 0.7, rng.Num(-1.5, 0.5) }, { 40, 40, 44 }, "Basalt")
+	end
+	return parts
+end
+
+local Machines = {
+	furniture_sawmill = sawmill,
+	furniture_stonemason = stonemason,
+	furniture_crusher = crusher,
+	furniture_foundry = foundry,
+}
+
+-- The model of processing machine `kind` (an item id).
+function Models.Machine(kind)
+	return Machines[kind]()
 end
 
 return Models

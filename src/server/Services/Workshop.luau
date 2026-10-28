@@ -4,6 +4,7 @@ local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local PlotLayout = require(Shared.PlotLayout)
 local Items = require(Shared.Items)
 local Rules = require(Shared.Workshop)
+local Research = require(Shared.Research)
 local Clock = require(script.Parent.Clock)
 local Data = require(script.Parent.Data)
 local Inventory = require(script.Parent.Inventory)
@@ -33,8 +34,15 @@ end
 
 local function reply(profile)
 	local recipes = {}
+	local now = Clock.Now()
 	for _, recipe in ipairs(Rules.Recipes) do
-		table.insert(recipes, { id = recipe.id, quantity = recipe.quantity, time = recipe.time, ingredients = recipe.ingredients })
+		table.insert(recipes, {
+			id = recipe.id,
+			quantity = recipe.quantity,
+			time = recipe.time,
+			ingredients = recipe.ingredients,
+			locked = not Research.Unlocked(profile.research, recipe.id, now),
+		})
 	end
 	return { ok = true, recipes = recipes, queue = profile.workshop, maxQueue = Rules.MaxQueue, serverTime = Clock.Now() }
 end
@@ -58,6 +66,9 @@ function Workshop.Start()
 		end
 		if not Net.Near(player, BenchPosition, Reach) then
 			return Net.Error("too_far")
+		end
+		if not Research.Unlocked(profile.research, recipe.id, Clock.Now()) then
+			return Net.Error("not_researched")
 		end
 		if not Inventory.HasAll(profile, recipe.ingredients) then
 			return Net.Error("not_enough_items")
