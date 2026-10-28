@@ -12,12 +12,11 @@ PlotLayout.Size = 232
 -- of forest between neighbouring plots (Forest).
 PlotLayout.Ring = 380
 
--- Everything on a plot stands on its build grid (Grid below). The mines stay where they are, given
--- by the middle of the 6 × 6 tiles each takes (with its cart), in studs from the plot's centre.
+-- Everything on a plot stands on its build grid (Grid below). The plot's one mine stays where it
+-- is, given by the middle of the 6 × 6 tiles it takes (with its cart), in studs from the plot's
+-- centre. Plots had three mines before; the middle one is the one kept (Data).
 PlotLayout.Mines = {
-	{ x = -24, z = -100 },
 	{ x = 0, z = -100 },
-	{ x = 24, z = -100 },
 }
 PlotLayout.MineTiles = 6
 

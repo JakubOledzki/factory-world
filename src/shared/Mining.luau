@@ -48,14 +48,15 @@ function Mining.Roll(random)
 	return rolls
 end
 
+-- A mine keeps its `level` (1 for now; on main the owner builds a mine up to level 5).
 function Mining.New()
-	return { units = Mining.Units, refillAt = nil }
+	return { level = 1, units = Mining.Units, refillAt = nil }
 end
 
 -- The mine as it is at `now` (seconds): a dry one fills up again once its time has come.
 function Mining.Refresh(mine, now)
 	if mine.refillAt ~= nil and now >= mine.refillAt then
-		return { units = Mining.Units, refillAt = nil }
+		return { level = mine.level or 1, units = Mining.Units, refillAt = nil }
 	end
 	return mine
 end
@@ -67,7 +68,7 @@ function Mining.Work(mine, now)
 		return nil, "mine_empty"
 	end
 	local units = mine.units - 1
-	return { units = units, refillAt = units == 0 and now + Mining.Refill or nil }
+	return { level = mine.level or 1, units = units, refillAt = units == 0 and now + Mining.Refill or nil }
 end
 
 return Mining

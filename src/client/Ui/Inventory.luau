@@ -1,37 +1,36 @@
--- The inventory window: every item the player has, with the merchant's price for it.
+-- The inventory window: the player's items on tiles as in the 2D game. Drag an item onto another
+-- tile to move it there; pointing at one names it with the merchant's price.
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
-local Items = require(Shared.Items)
 local Prices = require(Shared.Prices)
 local Money = require(Shared.Money)
 local Kit = require(script.Parent.Kit)
+local ItemGrid = require(script.Parent.ItemGrid)
 local Game = require(script.Parent.Parent.Game)
 
 local Inventory = {}
 
+Inventory.Columns = 5
+Inventory.Tiles = 20
+
 function Inventory.Open(screen)
 	local connection
-	local window, body = Kit.Window(screen, "Ekwipunek", 420, 460, function()
+	local window, body = Kit.Window(screen, "Ekwipunek", 330, 430, function()
 		connection:Disconnect()
 	end)
+	local grid = ItemGrid.New(body, {
+		columns = Inventory.Columns,
+		tile = 54,
+		hint = function(entry)
+			local price = Prices.Buys[entry.item]
+			return price and ("skup " .. Money.Format(price)) or nil
+		end,
+		onMove = function(_from, to, entry)
+			Game.Call("InventoryMove", { item = entry.item, slot = to })
+		end,
+	})
+	Kit.Label(body, "Przeciągnij, aby przenieść.", { TextColor3 = Kit.Colors.Muted, TextSize = 13 })
 	local function render()
-		Kit.Clear(body)
-		local any = false
-		for _, id in ipairs(Items.Order) do
-			local quantity = Game.Count(id)
-			if quantity > 0 then
-				any = true
-				local row = Kit.Row(body)
-				Kit.Swatch(row, Items.Colors[id])
-				Kit.Label(row, Items.Name(id), { Size = UDim2.new(0, 190, 1, 0) })
-				Kit.Label(row, "× " .. quantity, { Size = UDim2.new(0, 60, 1, 0), Font = Enum.Font.GothamBold })
-				if Prices.Buys[id] then
-					Kit.Label(row, Money.Format(Prices.Buys[id]), { Size = UDim2.new(0, 80, 1, 0), TextColor3 = Kit.Colors.Muted, TextSize = 14 })
-				end
-			end
-		end
-		if not any then
-			Kit.Label(body, "Pusto. Kup kilof u handlarza i kop w kopalniach na swojej działce.", { TextWrapped = true, Size = UDim2.new(1, 0, 0, 44) })
-		end
+		grid.Set(ItemGrid.Inventory(Game, Inventory.Tiles, Inventory.Columns))
 	end
 	connection = Game.Changed.Event:Connect(render)
 	render()

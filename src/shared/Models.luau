@@ -487,8 +487,8 @@ function Models.PlotDecor(seed, size, open)
 			place(parts, Models.Fence(size, seed + i), side[2], 0, side[3], side[4])
 		end
 	end
-	-- Bare rocky ground under the mines.
-	add(parts, { size = { 74, 0.2, 25 }, pos = { 0, 0.04, -half + 16 }, color = { 128, 112, 92 }, material = "Ground", noCollide = true })
+	-- Bare rocky ground under the mine.
+	add(parts, { size = { 28, 0.2, 25 }, pos = { 0, 0.04, -half + 16 }, color = { 128, 112, 92 }, material = "Ground", noCollide = true })
 	return parts
 end
 

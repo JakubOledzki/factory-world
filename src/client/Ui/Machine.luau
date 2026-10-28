@@ -7,6 +7,8 @@ local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Items = require(Shared.Items)
 local Processing = require(Shared.Processing)
 local Kit = require(script.Parent.Kit)
+local ItemGrid = require(script.Parent.ItemGrid)
+local InventoryWindow = require(script.Parent.Inventory)
 local Game = require(script.Parent.Parent.Game)
 
 local Machine = {}
@@ -26,7 +28,7 @@ function Machine.Open(screen, id)
 	end
 	Game.SyncTime(reply.serverTime)
 	local connections = {}
-	local window, body = Kit.Window(screen, Items.Name(reply.kind), 560, 560, function()
+	local window, body = Kit.Window(screen, Items.Name(reply.kind), 560, 640, function()
 		for _, c in ipairs(connections) do
 			c:Disconnect()
 		end
@@ -88,38 +90,34 @@ function Machine.Open(screen, id)
 		local track = Kit.New("Frame", { Size = UDim2.new(1, -8, 0, 12), BackgroundColor3 = Kit.Colors.Row, Parent = body }, { Kit.Corner(6) })
 		bar = Kit.New("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.fromRGB(255, 140, 50), Parent = track }, { Kit.Corner(6) })
 
-		-- What can go in: the recipe's ingredients and, in a fired machine, fuel.
-		local loadable, seen = {}, {}
-		for _, entry in ipairs(recipe.ingredients) do
-			table.insert(loadable, entry[1])
-			seen[entry[1]] = true
-		end
-		if reply.fired then
-			for fuel in pairs(Processing.Fuels) do
-				if not seen[fuel] then
-					table.insert(loadable, fuel)
-				end
-			end
-		end
-		Kit.Label(body, "Włóż z ekwipunku:", { TextColor3 = Kit.Colors.Muted })
-		for _, item in ipairs(loadable) do
-			local have = Game.Count(item)
-			if have > 0 then
-				local row = Kit.Row(body)
-				Kit.Swatch(row, Items.Colors[item])
-				local fuel = Processing.Fuels[item] and reply.fired
-				Kit.Label(row, Items.Name(item) .. " (" .. have .. ")" .. (fuel and not seen[item] and "  paliwo" or ""), { Size = UDim2.new(0, 260, 1, 0) })
-				Kit.Button(row, "Włóż wszystko", function()
-					local s = Processing.Advance(kind, reply.state, Game.Now())
-					local quantity = math.min(Game.Count(item), Processing.Room(kind, s, item))
-					if quantity <= 0 then
-						Game.Toast:Fire(Game.ErrorText("machine_full"))
-						return
+		-- The inventory: a click puts what the machine takes in (Shift: half), as in the 2D game.
+		Kit.Label(body, "Ekwipunek: kliknij składnik albo paliwo, aby włożyć (Shift: połowę)", { TextColor3 = Kit.Colors.Muted, TextSize = 14 })
+		local grid = ItemGrid.New(body, {
+			columns = 8,
+			tile = 54,
+			hint = function(entry)
+				local s = Processing.Advance(kind, reply.state, Game.Now())
+				return Processing.Room(kind, s, entry.item) > 0 and "kliknij, aby włożyć" or nil
+			end,
+			onClick = function(_index, entry, half)
+				local s = Processing.Advance(kind, reply.state, Game.Now())
+				local wanted = half and math.max(1, math.ceil(entry.quantity / 2)) or entry.quantity
+				local quantity = math.min(wanted, Processing.Room(kind, s, entry.item))
+				if quantity <= 0 then
+					local takes = reply.fired and Processing.Fuels[entry.item] ~= nil
+					for _, ingredient in ipairs(recipe.ingredients) do
+						takes = takes or ingredient[1] == entry.item
 					end
-					apply(Game.Call("MachineLoad", { id = id, item = item, quantity = quantity }))
-				end, { Size = UDim2.fromOffset(120, 28) })
-			end
-		end
+					Game.Toast:Fire(Game.ErrorText(takes and "machine_full" or "machine_wrong_item"))
+					return
+				end
+				apply(Game.Call("MachineLoad", { id = id, item = entry.item, quantity = quantity }))
+			end,
+			onMove = function(_from, to, entry)
+				Game.Call("InventoryMove", { item = entry.item, slot = to })
+			end,
+		})
+		grid.Set(ItemGrid.Inventory(Game, InventoryWindow.Tiles, 8))
 
 		local actions = Kit.Row(body, 40)
 		actions.BackgroundTransparency = 1

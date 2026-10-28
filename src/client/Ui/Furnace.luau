@@ -6,6 +6,8 @@ local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Items = require(Shared.Items)
 local Smelting = require(Shared.Smelting)
 local Kit = require(script.Parent.Kit)
+local ItemGrid = require(script.Parent.ItemGrid)
+local InventoryWindow = require(script.Parent.Inventory)
 local Game = require(script.Parent.Parent.Game)
 
 local Furnace = {}
@@ -25,7 +27,7 @@ function Furnace.Open(screen, id)
 	Game.SyncTime(reply.serverTime)
 	local state = reply.state
 	local connections = {}
-	local window, body = Kit.Window(screen, "Piec kamienny", 480, 460, function()
+	local window, body = Kit.Window(screen, "Piec kamienny", 480, 560, function()
 		for _, c in ipairs(connections) do
 			c:Disconnect()
 		end
@@ -48,30 +50,32 @@ function Furnace.Open(screen, id)
 		local track = Kit.New("Frame", { Size = UDim2.new(1, -8, 0, 12), BackgroundColor3 = Kit.Colors.Row, Parent = body }, { Kit.Corner(6) })
 		bar = Kit.New("Frame", { Size = UDim2.fromScale(0, 1), BackgroundColor3 = Color3.fromRGB(255, 140, 50), Parent = track }, { Kit.Corner(6) })
 
-		Kit.Label(body, "Włóż z ekwipunku:", { TextColor3 = Kit.Colors.Muted })
-		local loadable = { Items.Coal }
-		for ore in pairs(Smelting.Recipes) do
-			table.insert(loadable, ore)
-		end
-		table.sort(loadable)
-		for _, item in ipairs(loadable) do
-			local have = Game.Count(item)
-			if have > 0 then
-				local row = Kit.Row(body)
-				Kit.Swatch(row, Items.Colors[item])
-				Kit.Label(row, Items.Name(item) .. " (" .. have .. ")", { Size = UDim2.new(0, 200, 1, 0) })
-				Kit.Button(row, "Włóż wszystko", function()
-					local s = Smelting.Advance(state, Game.Now())
-					local room = item == Items.Coal and Smelting.MaxFuel - s.fuel or Smelting.MaxInput - s.inputQuantity
-					local quantity = math.min(Game.Count(item), room)
-					if quantity <= 0 then
-						Game.Toast:Fire(Game.ErrorText("furnace_full"))
-						return
-					end
-					apply(Game.Call("FurnaceLoad", { id = id, item = item, quantity = quantity }))
-				end, { Size = UDim2.fromOffset(120, 28) })
-			end
-		end
+		-- The inventory: a click puts ore or coal in (Shift: half), as in the 2D game.
+		Kit.Label(body, "Ekwipunek: kliknij rudę albo węgiel, aby włożyć (Shift: połowę)", { TextColor3 = Kit.Colors.Muted, TextSize = 14 })
+		local grid = ItemGrid.New(body, {
+			columns = 7,
+			tile = 54,
+			onClick = function(_index, entry, half)
+				local item = entry.item
+				if item ~= Items.Coal and Smelting.Recipes[item] == nil then
+					Game.Toast:Fire(Game.ErrorText("not_smeltable"))
+					return
+				end
+				local s = Smelting.Advance(state, Game.Now())
+				local room = item == Items.Coal and Smelting.MaxFuel - s.fuel or Smelting.MaxInput - s.inputQuantity
+				local wanted = half and math.max(1, math.ceil(entry.quantity / 2)) or entry.quantity
+				local quantity = math.min(wanted, room)
+				if quantity <= 0 then
+					Game.Toast:Fire(Game.ErrorText("furnace_full"))
+					return
+				end
+				apply(Game.Call("FurnaceLoad", { id = id, item = item, quantity = quantity }))
+			end,
+			onMove = function(_from, to, entry)
+				Game.Call("InventoryMove", { item = entry.item, slot = to })
+			end,
+		})
+		grid.Set(ItemGrid.Inventory(Game, InventoryWindow.Tiles, 7))
 
 		local actions = Kit.Row(body, 40)
 		actions.BackgroundTransparency = 1

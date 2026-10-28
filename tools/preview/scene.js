@@ -84,6 +84,30 @@ function plot(index, opts = {}) {
 const caption = "Podgląd Factory World 3D: modele wprost z kodu gry (src/shared/Models.luau). W Robloxie oświetlenie, materiały i postacie wyglądają nieco inaczej.";
 const sw = (c) => `<span class="sw" style="background:rgb(${c})"></span>`;
 
+// Tiles of an item grid as the game draws them (client/Ui/ItemGrid.luau): a picture made of shapes
+// in the item's colour and the count in the corner; `entries` are [id, quantity], padded to `count`.
+function itemGrid(entries, columns, count) {
+  const colors = lua.call("Items.Colors");
+  const c = (id, k = 1) => `rgb(${colors[id].map((v) => Math.min(255, Math.round(v * k))).join(",")})`;
+  const icon = (id) => {
+    if (id.endsWith("_ore") || id === "coal" || id === "stone") {
+      const base = id === "coal" ? c(id) : "rgb(128,124,118)";
+      const dots = id.endsWith("_ore") ? [[30, 35], [62, 55], [42, 72]].map(([x, y]) => `<i style="position:absolute;left:${x - 12}%;top:${y - 14}%;width:24%;height:28%;border-radius:50%;background:${c(id, 1.1)}"></i>`).join("") : "";
+      return `<i style="position:absolute;left:11%;top:22%;width:78%;height:66%;border-radius:40%;background:${base}">${dots}</i>`;
+    }
+    if (id.endsWith("_ingot")) return `<i style="position:absolute;left:9%;top:38%;width:82%;height:40%;border-radius:15%;background:${c(id, 0.8)}"><i style="position:absolute;left:10%;top:0;width:80%;height:45%;border-radius:20%;background:${c(id, 1.15)}"></i></i>`;
+    if (id.startsWith("tool_")) return `<i style="position:absolute;left:43%;top:15%;width:14%;height:80%;border-radius:30%;background:#8c603c;transform:rotate(35deg)"></i><i style="position:absolute;left:32%;top:23%;width:60%;height:18%;border-radius:30%;background:${id === "tool_axe" ? "#aab0ba" : c(id)};transform:rotate(35deg)"></i>`;
+    if (/^(furniture|logistics|storage)_/.test(id)) return `<i style="position:absolute;left:10%;top:20%;width:80%;height:70%;border-radius:12%;background:${c(id)}"><i style="position:absolute;left:25%;top:38%;width:50%;height:40%;border-radius:15%;background:${c(id, 0.6)}"></i></i><i style="position:absolute;left:5%;top:14%;width:90%;height:12%;border-radius:30%;background:${c(id, 0.75)}"></i>`;
+    return `<i style="position:absolute;left:14%;top:16%;width:72%;height:72%;border-radius:18%;background:linear-gradient(150deg,${c(id, 1.2)},${c(id, 0.75)})"></i>`;
+  };
+  const tiles = [];
+  for (let i = 0; i < count; i++) {
+    const e = entries[i];
+    tiles.push(`<div style="position:relative;width:54px;height:54px;border-radius:6px;background:#1a1d24;border:1px solid #464e5e">${e ? `<div style="position:absolute;left:8%;top:6%;width:84%;height:84%">${icon(e[0])}</div><b style="position:absolute;right:4px;bottom:2px;font-size:13px;color:#fff;text-shadow:0 0 3px #000">${e[1]}</b>` : ""}</div>`);
+  }
+  return `<div style="display:grid;grid-template-columns:repeat(${columns},54px);gap:4px;margin:4px 0">${tiles.join("")}</div>`;
+}
+
 function views() {
   const out = {};
   // 1. The square and all plots from above.
@@ -100,7 +124,7 @@ function views() {
     const objects = square().concat(p.objects, forest([cx, cz - 100, 220]));
     out["2-kopanie-na-dzialce"] = { objects, camera: { pos: [cx + 11, 13, cz - 72], look: [cx - 1, 3, cz - 96] }, shadowRadius: 70, hud: "1 284,50 $", caption,
       avatars: [{ at: [cx + 0.5, 0, cz - 85.5], yaw: Math.PI, shirt: [200, 60, 60], pose: -1.9 }],
-      labels: [{ at: [cx + 0, 13, cz - 102], text: "Kopalnia 37/50" }, { at: [cx - 25, 13, cz - 100], text: "Kopalnia 50/50" }],
+      labels: [{ at: [cx + 0, 13, cz - 102], text: "Kopalnia (poziom 1) 37/50" }],
       prompts: [{ at: [cx + 5, 8, cz - 89], action: "Kop", object: "Kopalnia", progress: 0.62 }],
       overlay: `<div class="toast">+1 Kamień, +1 Ruda żelaza</div>` };
   }
@@ -111,11 +135,10 @@ function views() {
     const { cx, cz } = p;
     out["3-piec"] = { objects, camera: { pos: [cx + 6, 9, cz - 39], look: [cx + 17, 3, cz - 56] }, shadowRadius: 50, hud: "1 284,50 $", caption,
       avatars: [{ at: [cx + 13, 0, cz - 48], yaw: Math.PI + 0.3, shirt: [200, 60, 60] }],
-      overlay: `<div class="win" style="width:440px;right:16px;bottom:40px"><div class="hd">Piec kamienny<span class="x">✕</span></div><div class="bd">
+      overlay: `<div class="win" style="width:460px;right:16px;bottom:24px"><div class="hd">Piec kamienny<span class="x">✕</span></div><div class="bd">
         <div>Ruda: Ruda żelaza × 23 / 50</div><div>Węgiel: 4 / 50 &nbsp; (żar na 3 szt.)</div><div><b>Gotowe: Sztabka żelaza × 12</b></div>
-        <div class="bar"><i style="width:64%"></i></div><div class="muted">Włóż z ekwipunku:</div>
-        <div class="row">${sw("40,40,44")}<span style="width:190px">Węgiel (31)</span><span class="btn">Włóż wszystko</span></div>
-        <div class="row">${sw("196,112,60")}<span style="width:190px">Ruda miedzi (8)</span><span class="btn">Włóż wszystko</span></div>
+        <div class="bar"><i style="width:64%"></i></div><div class="muted">Ekwipunek: kliknij rudę albo węgiel, aby włożyć (Shift: połowę)</div>
+        ${itemGrid([["tool_pickaxe", 1], ["tool_axe", 1], ["coal", 31], ["copper_ore", 8], ["iron_ingot", 12], ["stone", 126], ["wood", 22], ["sapling", 3], ["logistics_belt", 6], ["logistics_inserter", 2], ["storage_wooden_chest", 1], ["tin_ore", 4], ["nails", 15]], 7, 14)}
         <div style="display:flex;gap:8px;margin-top:4px"><span class="btn">Weź sztabki</span><span class="btn alt">Weź rudę</span><span class="btn alt">Weź węgiel</span><span class="btn red">Schowaj</span></div>
       </div></div>` };
   }

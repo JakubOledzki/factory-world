@@ -11,6 +11,7 @@ local Furnaces = require(Services.Furnaces)
 local Grid = require(Services.Grid)
 local Machines = require(Services.Machines)
 local Lab = require(Services.Lab)
+local Inventory = require(Services.Inventory)
 local Merchant = require(Services.Merchant)
 local Workshop = require(Services.Workshop)
 
@@ -42,6 +43,20 @@ end
 
 Data.OnLoaded(function(player)
 	Net.PushState(player)
+end)
+
+-- Moving an item to another tile of the inventory window.
+Net.Handle("InventoryMove", function(player, profile, payload)
+	local item = Net.Item(payload.item)
+	local slot = Net.Int(payload.slot, 1, 200)
+	if item == nil or slot == nil then
+		return Net.Error("bad_payload")
+	end
+	if not Inventory.Move(profile, item, slot) then
+		return Net.Error("not_enough_items")
+	end
+	Net.PushState(player)
+	return { ok = true }
 end)
 
 -- Last: loads the players already here and those who join, which builds their plots.

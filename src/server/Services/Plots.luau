@@ -41,7 +41,7 @@ end
 local function mineText(mine, now)
 	mine = Mining.Refresh(mine, now)
 	if mine.units > 0 then
-		return "Kopalnia " .. mine.units .. "/" .. Mining.Units
+		return "Kopalnia (poziom " .. (mine.level or 1) .. ") " .. mine.units .. "/" .. Mining.Units
 	end
 	return "Pusta, pełna za " .. math.ceil((mine.refillAt - now) / 60) .. " min"
 end

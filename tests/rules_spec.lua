@@ -281,7 +281,7 @@ test("Things go on the grid only inside it and on free tiles; a furnace takes 2 
 	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Belt, -1, 8)), "outside_grid")
 	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Furnace, GridLayout.Grid.width - 1, 8)), "outside_grid")
 	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Coal, 8, 8)), "not_buildable")
-	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Belt, 20, 2)), "tile_blocked")
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Belt, 27, 2)), "tile_blocked")
 	eq(Logistics.CanPlace(objects, furnaces, Items.Sapling, 10, 12), true)
 end)
 

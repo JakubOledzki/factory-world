@@ -7,6 +7,8 @@ local Game = {}
 
 Game.BalanceCents = 0
 Game.Inventory = {}
+-- The inventory window's tiles: item ids, "" for an empty tile (server Inventory.Slots).
+Game.Slots = {}
 Game.Changed = Instance.new("BindableEvent")
 Game.Toast = Instance.new("BindableEvent")
 
@@ -89,6 +91,7 @@ end
 remotes:WaitForChild("State").OnClientEvent:Connect(function(state)
 	Game.BalanceCents = state.balanceCents
 	Game.Inventory = state.inventory or {}
+	Game.Slots = state.slots or {}
 	Game.Changed:Fire()
 end)
 

@@ -14,6 +14,7 @@ local Forestry = require(Shared.Forestry)
 local Logistics = require(Shared.Logistics)
 local PlotLayout = require(Shared.PlotLayout)
 local Clock = require(script.Parent.Clock)
+local Inventory = require(script.Parent.Inventory)
 
 local Data = {}
 
@@ -36,7 +37,7 @@ local loadedCallbacks = {}
 
 local function newProfile()
 	local mines = {}
-	for i = 1, 3 do
+	for i = 1, #PlotLayout.Mines do
 		mines[i] = Mining.New()
 	end
 	return {
@@ -179,6 +180,15 @@ local function migrate(profile)
 	if profile.research == nil then
 		profile.research = {}
 	end
+	-- Plots had three mines in a row; the middle one stands where the plot's one mine is now.
+	if #profile.mines > #PlotLayout.Mines then
+		profile.mines = { profile.mines[2] or profile.mines[1] }
+	end
+	for _, mine in ipairs(profile.mines) do
+		mine.level = mine.level or 1
+	end
+	-- The inventory's tiles, laid out in the game's item order the first time.
+	Inventory.Slots(profile, Items.Order)
 end
 
 local function onPlayerAdded(player)

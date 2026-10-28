@@ -28,4 +28,5 @@ return {
 	MachineTake = "MachineTake", -- { id, what }
 	ResearchGet = "ResearchGet",
 	ResearchStart = "ResearchStart", -- { id }
+	InventoryMove = "InventoryMove", -- { item, slot }
 }
