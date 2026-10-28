@@ -896,3 +896,26 @@ test("The station stands on every grid at the same tiles, inserters load and unl
 		end
 	end
 end)
+
+local WorldMap = load_shared("WorldMap")
+
+test("The world map: every station stands on land, the map's rows cover it whole, and the poles are ice", function()
+	for id = 1, 200 do
+		local x, y = Rail.Location(id * 104729)
+		assert(not WorldMap.IsWater(WorldMap.Biome(x, y)), "station " .. id .. " in water")
+	end
+	local water, cells = 0, 0
+	for _, runs in ipairs(WorldMap.Runs()) do
+		eq(runs[1].from, 1)
+		eq(runs[#runs].to, WorldMap.Columns)
+		for _, run in ipairs(runs) do
+			assert(WorldMap.Biomes[run.biome], run.biome)
+			cells = cells + run.to - run.from + 1
+			if WorldMap.IsWater(run.biome) then water = water + run.to - run.from + 1 end
+		end
+	end
+	eq(cells, WorldMap.Columns * WorldMap.Rows)
+	assert(water > cells * 0.1 and water < cells * 0.5, "water " .. water .. " of " .. cells)
+	eq(WorldMap.Biome(100, 5), "snow")
+	eq(WorldMap.Biome(700, 400), WorldMap.Biome(700 + WorldMap.Km.width, 400), "east-west wraps round")
+end)

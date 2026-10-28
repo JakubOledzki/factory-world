@@ -29,6 +29,7 @@ return {
 	GeneratorGet = "GeneratorGet", -- { id }
 	GeneratorLoad = "GeneratorLoad", -- { id, item, quantity }
 	GeneratorTake = "GeneratorTake", -- { id }
+	WorldMapGet = "WorldMapGet",
 	StationGet = "StationGet",
 	StationLoad = "StationLoad", -- { item, quantity }
 	StationUnload = "StationUnload", -- { item, quantity }

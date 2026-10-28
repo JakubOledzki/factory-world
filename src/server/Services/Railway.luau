@@ -178,7 +178,7 @@ end
 local function finish(player, profile, action, result)
 	local r = state(profile)
 	if action.kind == "ship" then
-		table.insert(r.outgoing, { toName = action.toName, items = action.items, arriveAt = action.arriveAt })
+		table.insert(r.outgoing, { to = action.to, toName = action.toName, items = action.items, sentAt = action.sentAt, arriveAt = action.arriveAt })
 		log(profile, "Wysłano do " .. action.toName .. ": " .. describe(action.items))
 		if player then
 			showTrain(player, action.items)
@@ -268,6 +268,7 @@ local function ship(player, profile, to, toName, items, feeCents)
 	local km = Rail.DistanceKm(player.UserId, to)
 	return run(player, profile, to, {
 		kind = "ship",
+		to = to,
 		from = player.UserId,
 		fromName = player.Name,
 		toName = toName,
@@ -470,6 +471,51 @@ function Railway.Start()
 		end
 		collect(player, profile, 5)
 		return reply(player, profile, station)
+	end)
+
+	-- The world map: the player's station, the other players on this server and the ones they
+	-- trade with, their routes and the trains on their way, all with their places (Rail.Location).
+	Net.Handle("WorldMapGet", function(player, profile)
+		local now = Clock.Now()
+		local r = state(profile)
+		local function place(id, name, kind)
+			local x, y = Rail.Location(id)
+			return { id = id, name = name, kind = kind, x = x, y = y, km = math.floor(Rail.DistanceKm(player.UserId, id) + 0.5), trip = Rail.TripSeconds(Rail.DistanceKm(player.UserId, id)) }
+		end
+		local stations, seen = {}, {}
+		local function add(id, name, kind)
+			if id ~= nil and not seen[id] then
+				seen[id] = true
+				table.insert(stations, place(id, name, kind))
+			end
+		end
+		add(player.UserId, player.Name, "me")
+		for _, route in ipairs(r.routes) do
+			add(route.to, route.toName, "partner")
+		end
+		for id, name in pairs(found[player] or {}) do
+			add(id, name, "partner")
+		end
+		for _, other in ipairs(Players:GetPlayers()) do
+			add(other.UserId, other.Name, "server")
+		end
+		local moving = {}
+		for _, s in ipairs(r.outgoing) do
+			if s.to and s.arriveAt > now then
+				add(s.to, s.toName, "partner")
+				table.insert(moving, { from = player.UserId, to = s.to, items = s.items, sentAt = s.sentAt or now, arriveAt = s.arriveAt })
+			end
+		end
+		local _, inbox = read(player.UserId, 30)
+		for _, s in ipairs((inbox and inbox.shipments) or {}) do
+			add(s.from, s.fromName, "partner")
+			table.insert(moving, { from = s.from, to = player.UserId, items = s.items, sentAt = s.sentAt, arriveAt = s.arriveAt })
+		end
+		local routes = {}
+		for _, route in ipairs(r.routes) do
+			table.insert(routes, { to = route.to, every = route.every })
+		end
+		return { ok = true, me = player.UserId, stations = stations, trains = moving, routes = routes, serverTime = now }
 	end)
 
 	Net.Handle("StationLoad", function(player, profile, payload)

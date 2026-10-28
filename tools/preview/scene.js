@@ -563,6 +563,41 @@ function views() {
         <div style="font-size:13px">➡ do Ola_Buduje: 60 × ${name("planks")} (dojedzie za 12 s)</div>
       </div></div>` };
   }
+  // 14. The world map: the land, the player's station, others' stations, a route and trains.
+  {
+    const scene = out["13-kolej"];
+    const W = 840, H = 420;
+    const km = lua.call("WorldMap.Km");
+    const biomes = lua.call("WorldMap.Biomes");
+    const rgb = (c) => `rgb(${c[0]},${c[1]},${c[2]})`;
+    const cols = lua.call("WorldMap.Columns"), rowsN = lua.call("WorldMap.Rows");
+    const cw = W / cols, ch = H / rowsN;
+    let land = "";
+    lua.call("WorldMap.Runs()").forEach((runs, r) => runs.forEach((run) => {
+      if (run.biome !== "sea") land += `<div style="position:absolute;left:${Math.floor((run.from - 1) * cw)}px;top:${Math.floor(r * ch)}px;width:${Math.ceil((run.to - run.from + 1) * cw)}px;height:${Math.ceil(ch)}px;background:${rgb(biomes[run.biome].color)}"></div>`;
+    }));
+    const people = [[1001, "Jakub", "me"], [2002, "Ola_Buduje", "partner"], [3003, "kopacz77", "partner"], [4004, "Tartak_Bartka", "server"], [5005, "Gosia_K", "server"]];
+    const at = {};
+    for (const [id] of people) { const [x, y] = lua.call(`{ Rail.Location(${id}) }`); at[id] = [x / km.width * W, y / km.height * H]; }
+    const colors = { me: "#ffd65a", partner: "#8cd77d", server: "#82b4ff" };
+    const seg = (a, b, color, t, op) => { let [ax, ay] = at[a], [bx, by] = at[b]; if (bx - ax > W / 2) bx -= W; else if (ax - bx > W / 2) bx += W;
+      const dx = bx - ax, dy = by - ay, len = Math.hypot(dx, dy); return { html: `<div style="position:absolute;left:${(ax + bx) / 2 - len / 2}px;top:${(ay + by) / 2 - t / 2}px;width:${len}px;height:${t}px;background:${color};opacity:${op};transform:rotate(${Math.atan2(dy, dx)}rad)"></div>`, ax, ay, bx, by }; };
+    let lines = seg(1001, 2002, "#ffd65a", 2, 0.65).html;
+    const t1 = seg(1001, 3003, "#28282e", 2, 0.6), t2 = seg(4004, 1001, "#28282e", 2, 0.6);
+    lines += t1.html + t2.html;
+    const dot = (t, u, c) => `<div style="position:absolute;left:${t.ax + (t.bx - t.ax) * u - 5}px;top:${t.ay + (t.by - t.ay) * u - 5}px;width:10px;height:10px;border-radius:2px;background:${c};border:1.5px solid #000"></div>`;
+    lines += dot(t1, 0.4, "#ffd65a") + dot(t2, 0.7, "#8cd77d");
+    const marks = people.map(([id, n, kind]) => { const [x, y] = at[id], s = kind === "me" ? 16 : 12;
+      return `<div style="position:absolute;left:${x - s / 2}px;top:${y - s / 2}px;width:${s}px;height:${s}px;border-radius:50%;background:${colors[kind]};border:2px solid ${id === 2002 ? "#fff" : "#000"};box-sizing:border-box"></div><b style="position:absolute;left:${x + 9}px;top:${y - 10}px;font-size:13px;text-shadow:0 0 3px #000">${kind === "me" ? "Ty" : n}</b>`; }).join("");
+    const [ox, oy] = lua.call("{ Rail.Location(2002) }");
+    const kmTo = Math.round(lua.call("Rail.DistanceKm(1001, 2002)"));
+    out["14-mapa-swiata"] = { ...scene, overlay: `<div class="win" style="width:880px;left:50%;transform:translateX(-50%);top:30px;bottom:20px;overflow:hidden"><div class="hd">Mapa świata<span class="x">✕</span></div><div class="bd">
+        <div style="position:relative;width:${W}px;height:${H}px;border-radius:8px;overflow:hidden;background:${rgb(biomes.sea.color)}">${land}${lines}${marks}</div>
+        <div class="card" style="height:70px;padding:8px 10px;box-sizing:border-box;font-size:14px"><b>Ola_Buduje</b> &nbsp;·&nbsp; ${biomes[lua.call(`WorldMap.Biome(${ox}, ${oy})`)].name} &nbsp;·&nbsp; ${kmTo} km, pociąg jedzie ${lua.call(`Rail.TripSeconds(${kmTo})`)} s, 100 szt. za ${lua.call(`Money.Format(Rail.FeeCents(${kmTo}, 100))`)}
+          <div class="muted" style="font-size:13px;margin-top:8px">Na liście odbiorców: wyślesz mu towar ze swojej stacji (zakładka Wyślij).</div></div>
+        <div class="muted" style="font-size:13px"><span style="color:#ffd65a">●</span> Ty &nbsp; <span style="color:#8cd77d">●</span> komu wysyłasz &nbsp; <span style="color:#82b4ff">●</span> gracze na tym serwerze &nbsp; ■ pociągi w drodze</div>
+      </div></div>` };
+  }
   // The windows' item pictures: every item's parts, drawn by index.html.
   const icons = {};
   for (const id of lua.call("Items.Order")) icons[id] = lua.call(`Icons.Model("${id}")`);

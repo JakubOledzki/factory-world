@@ -7,6 +7,8 @@
 -- one step at a time (Rail.Apply) so the server can make it in a single atomic update. An inbox:
 -- { shipments = { { tx, from, fromName, items = { { item, quantity } }, sentAt, arriveAt } },
 -- done = { { tx, result } } }. Pure functions: nothing yields.
+local WorldMap = require(script.Parent.WorldMap)
+
 local Rail = {}
 
 -- The station's kind on the build grid: a fixture of every plot, 3 × 3 tiles, never picked up.
@@ -32,9 +34,9 @@ Rail.InserterStockLimit = 10000
 Rail.MaxShipments = 200
 Rail.DoneKept = 200
 
--- The world players' stations stand in, km across (east-west wraps round) and from north to south;
--- each player's station has its own place in it, always the same (the world map shows them).
-Rail.WorldKm = { width = 2400, height = 1200 }
+-- The world players' stations stand in (Shared.WorldMap); each player's station has its own place
+-- on its land, always the same.
+Rail.WorldKm = WorldMap.Km
 
 local function hash(n)
 	local state = (n % 2147483646) + 1
@@ -47,7 +49,7 @@ end
 -- Where the station of player `userId` stands in the world, in km.
 function Rail.Location(userId)
 	local id = math.abs(math.floor(tonumber(userId) or 0))
-	return hash(id) * Rail.WorldKm.width, (0.1 + 0.8 * hash(id + 7919)) * Rail.WorldKm.height
+	return WorldMap.Land(hash(id) * Rail.WorldKm.width, (0.1 + 0.8 * hash(id + 7919)) * Rail.WorldKm.height)
 end
 
 -- Km between two players' stations, wrapping east-west.
