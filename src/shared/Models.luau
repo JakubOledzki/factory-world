@@ -488,7 +488,34 @@ function Models.PlotDecor(seed, size, open)
 		end
 	end
 	-- Bare rocky ground under the mines.
-	add(parts, { size = { 74, 0.2, 25 }, pos = { 0, 0.04, -30 }, color = { 128, 112, 92 }, material = "Ground", noCollide = true })
+	add(parts, { size = { 74, 0.2, 25 }, pos = { 0, 0.04, -half + 16 }, color = { 128, 112, 92 }, material = "Ground", noCollide = true })
+	return parts
+end
+
+-- A tree of the forest between the plots, of few parts as there are thousands: a tiered spruce or
+-- a leafy tree. Only to look at; its trunk is named "Trunk" and stops players.
+function Models.ForestTree(seed)
+	local rng = Models.Rng(seed)
+	local parts = {}
+	local bark = vary({ 96, 70, 48 }, rng, 10)
+	if rng.Next() < 0.6 then
+		local height = rng.Num(13, 20)
+		post(parts, height * 0.9, 1.5, { 0, height * 0.45, 0 }, bark, "Wood", { name = "Trunk" })
+		-- Three overlapping tiers, narrower going up, the trunk's tip showing above.
+		local green = vary({ 38, 92, 52 }, rng, 10)
+		local wide = rng.Num(9, 10.5)
+		for tier = 1, 3 do
+			local tall = height * 0.27
+			post(parts, tall, wide * (1.25 - tier * 0.3), { 0, height * (0.2 + (tier - 1) * 0.22) + tall / 2, 0 }, vary(green, rng, 6), "LeafyGrass", { noCollide = true })
+		end
+	else
+		local height = rng.Num(9, 13)
+		post(parts, height * 0.7, 1.6, { 0, height * 0.35, 0 }, bark, "Wood", { name = "Trunk" })
+		local green = vary({ 64, 122, 54 }, rng, 14)
+		ball(parts, rng.Num(7, 9), { 0, height * 0.8, 0 }, green, "LeafyGrass", { noCollide = true })
+		ball(parts, rng.Num(5, 6.5), { rng.Num(1.5, 2.5), height * 0.7, rng.Num(-1.5, 1.5) }, vary(green, rng, 8), "LeafyGrass", { noCollide = true })
+		ball(parts, rng.Num(5, 6.5), { rng.Num(-2.5, -1.5), height * 0.72, rng.Num(-1.5, 1.5) }, vary(green, rng, 8), "LeafyGrass", { noCollide = true })
+	end
 	return parts
 end
 

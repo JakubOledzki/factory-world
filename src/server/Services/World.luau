@@ -1,5 +1,5 @@
 -- The merchant's square in the middle of the server: the merchant's stall, the workbench, a
--- fountain, the spawn and the paths to the plots.
+-- fountain, the spawn and the paths to the plots, and the forest all around.
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local PlotLayout = require(Shared.PlotLayout)
 local Models = require(Shared.Models)
@@ -18,7 +18,7 @@ function World.Start()
 
 	Build.Part(folder, {
 		Name = "Ground",
-		Size = Vector3.new(2 * PlotLayout.Ring + PlotLayout.Size + 80, 2, 2 * PlotLayout.Ring + PlotLayout.Size + 80),
+		Size = Vector3.new(2 * PlotLayout.GroundHalf(), 2, 2 * PlotLayout.GroundHalf()),
 		CFrame = CFrame.new(0, -1.5, 0),
 		Color = Color3.fromRGB(92, 136, 66),
 		Material = Enum.Material.Grass,
@@ -85,6 +85,20 @@ function World.Start()
 			Color = Color3.fromRGB(156, 134, 100),
 			Material = Enum.Material.Ground,
 		})
+	end
+end
+
+-- The forest between the plots: thousands of trees with no prompts, so nothing in it can be cut or
+-- built on. Built a little at a time so the server keeps running meanwhile.
+function World.PlantForest()
+	local folder = Instance.new("Folder")
+	folder.Name = "Forest"
+	folder.Parent = workspace
+	for i, t in ipairs(PlotLayout.ForestTrees()) do
+		Build.FromModel(folder, "Tree", Models.ForestTree(t.seed), CFrame.new(t.x, 0, t.z) * CFrame.Angles(0, t.yaw, 0))
+		if i % 250 == 0 then
+			task.wait()
+		end
 	end
 end
 

@@ -6,30 +6,31 @@ local PlotLayout = {}
 PlotLayout.Count = 8
 
 -- A plot is Size × Size studs.
-PlotLayout.Size = 90
+PlotLayout.Size = 232
 
--- Distance from the middle of the square to the middle of each plot.
-PlotLayout.Ring = 140
+-- Distance from the middle of the square to the middle of each plot: far enough apart for a strip
+-- of forest between neighbouring plots (Forest).
+PlotLayout.Ring = 380
 
 -- Everything on a plot stands on its build grid (Grid below). The mines stay where they are, given
 -- by the middle of the 6 × 6 tiles each takes (with its cart), in studs from the plot's centre.
 PlotLayout.Mines = {
-	{ x = -24, z = -30 },
-	{ x = 0, z = -30 },
-	{ x = 24, z = -30 },
+	{ x = -24, z = -100 },
+	{ x = 0, z = -100 },
+	{ x = 24, z = -100 },
 }
 PlotLayout.MineTiles = 6
 
 -- The tiles of the wild trees a new plot starts with; they are cut and planted like any other.
 PlotLayout.WildTrees = {
-	{ x = 1, z = 9 }, { x = 1, z = 12 }, { x = 1, z = 15 }, { x = 1, z = 18 },
-	{ x = 3, z = 10 }, { x = 3, z = 13 }, { x = 3, z = 16 }, { x = 3, z = 19 },
+	{ x = 18, z = 9 }, { x = 18, z = 12 }, { x = 18, z = 15 }, { x = 18, z = 18 },
+	{ x = 20, z = 10 }, { x = 20, z = 13 }, { x = 20, z = 16 }, { x = 20, z = 19 },
 }
 
 -- Furnaces stood on four slots before they went on the grid; a furnace saved on slot i is put on
 -- the grid with its corner on tile FurnaceSlotTiles[i].
 PlotLayout.FurnaceSlotTiles = {
-	{ x = 11, z = 13 }, { x = 14, z = 13 }, { x = 17, z = 13 }, { x = 20, z = 13 },
+	{ x = 28, z = 13 }, { x = 31, z = 13 }, { x = 34, z = 13 }, { x = 37, z = 13 },
 }
 
 -- The square: where the merchant's stall, the workbench, the fountain and the spawn stand, and
@@ -40,7 +41,7 @@ PlotLayout.Fountain = { x = 0, z = 0 }
 PlotLayout.SquareSpawn = { x = 0, z = 14 }
 
 -- Where the player appears on their plot.
-PlotLayout.Spawn = { x = 0, z = 30 }
+PlotLayout.Spawn = { x = 0, z = -40 }
 
 -- The centre of plot `index` (1..Count) as x, z.
 function PlotLayout.Center(index)
@@ -68,10 +69,11 @@ PlotLayout.Reach = 14
 -- tile (0, 0) at (x, z) from the plot's centre. Tile x grows to the east and tile z to the south,
 -- like the studs. The tiles of the mines are taken for good (Blocked).
 -- `layout` counts changes of the grid: player data from an older one is moved over (Data).
-PlotLayout.Grid = { x = -44, z = -42, width = 22, depth = 21, tile = 4, layout = 2 }
+PlotLayout.Grid = { x = -112, z = -112, width = 56, depth = 56, tile = 4, layout = 3 }
 
--- Where tile (0, 0) was in older layouts, to move what players built: [layout] = { x, z }.
-PlotLayout.OldGrids = { [1] = { x = -20, z = -14 } }
+-- Where tile (0, 0) of older layouts lies on today's plot (so that the mines stay put), to move
+-- what players built: [layout] = { x, z }.
+PlotLayout.OldGrids = { [1] = { x = -20, z = -84 }, [2] = { x = -44, z = -112 } }
 
 -- Studs from which a player can build on their grid.
 PlotLayout.BuildReach = 48
@@ -115,6 +117,70 @@ function PlotLayout.Blocked(tx, tz)
 		end
 	end
 	return false
+end
+
+-- The forest between the plots and around the square: only to look at, nothing in it can be cut
+-- or built. It keeps clear of the plots, the square and the paths, and reaches out to the edge of
+-- the ground (World), where it closes the world.
+PlotLayout.Forest = {
+	spacing = 11, -- studs between neighbouring trees, before each is moved a little at random
+	plotMargin = 7, -- studs kept clear outside a plot's fence
+	square = 52, -- radius kept clear around the middle of the square
+	path = 9, -- studs kept clear either side of the middle of a path
+	seed = 4242,
+}
+
+-- Half the width of the ground the world stands on.
+function PlotLayout.GroundHalf()
+	return PlotLayout.Ring + PlotLayout.Size / 2 + 40
+end
+
+-- Whether a forest tree may stand at x, z (from the middle of the square).
+function PlotLayout.ForestClear(x, z)
+	local f = PlotLayout.Forest
+	if x * x + z * z < f.square * f.square then
+		return false
+	end
+	local reach = PlotLayout.Size / 2 + f.plotMargin
+	for index = 1, PlotLayout.Count do
+		local cx, cz = PlotLayout.Center(index)
+		if math.abs(x - cx) < reach and math.abs(z - cz) < reach then
+			return false
+		end
+		-- The path runs from the square straight to the plot's centre.
+		local length = math.sqrt(cx * cx + cz * cz)
+		local along = (x * cx + z * cz) / length
+		local across = math.abs(x * cz - z * cx) / length
+		if along > 0 and along < length and across < f.path then
+			return false
+		end
+	end
+	return true
+end
+
+-- The forest's trees as { x, z, seed, yaw }, always the same.
+function PlotLayout.ForestTrees()
+	local f = PlotLayout.Forest
+	local state = f.seed
+	local function random()
+		state = (state * 16807) % 2147483647
+		return state / 2147483647
+	end
+	local trees = {}
+	local edge = PlotLayout.GroundHalf() - 3
+	local n = math.floor(edge / f.spacing)
+	for i = -n, n do
+		for j = -n, n do
+			local x = i * f.spacing + (random() - 0.5) * f.spacing * 0.8
+			local z = j * f.spacing + (random() - 0.5) * f.spacing * 0.8
+			local seed = math.floor(random() * 100000)
+			local yaw = random() * 2 * math.pi
+			if math.abs(x) < edge and math.abs(z) < edge and PlotLayout.ForestClear(x, z) then
+				table.insert(trees, { x = x, z = z, seed = seed, yaw = yaw })
+			end
+		end
+	end
+	return trees
 end
 
 -- The yaw that turns a model's front (-z) the way rotation `rot` faces: 0 south (+z), 1 east (+x),

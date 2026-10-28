@@ -42,3 +42,6 @@ end)
 
 -- Last: loads the players already here and those who join, which builds their plots.
 Data.Start()
+
+-- The forest only decorates, so it grows in after everything else is up.
+task.spawn(World.PlantForest)

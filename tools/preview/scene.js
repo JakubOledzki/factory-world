@@ -17,7 +17,7 @@ const block = (size, pos, color, material, yaw = 0) => ({ shape: "Block", size, 
 
 function square() {
   const objects = [];
-  const big = 2 * L.Ring + L.Size + 80;
+  const big = 2 * lua.call("PlotLayout.GroundHalf()");
   objects.push({ at: [0, 0, 0], parts: [
     block([big, 2, big], [0, -1.5, 0], [92, 136, 66], "Grass"),
     cyl(1, 64, [0, -0.45, 0], [168, 160, 148], "Cobblestone"),
@@ -42,6 +42,14 @@ function square() {
     ] });
   }
   return objects;
+}
+
+// The forest between the plots (World.PlantForest); `near` = [x, z, radius] keeps only the trees
+// around that point, to spare the browser.
+function forest(near) {
+  const trees = lua.call("PlotLayout.ForestTrees()");
+  return trees.filter((t) => !near || Math.hypot(t.x - near[0], t.z - near[1]) < near[2])
+    .map((t) => ({ at: [t.x, 0, t.z], yaw: t.yaw, parts: lua.call(`Models.ForestTree(${t.seed})`) }));
 }
 
 // One plot as the server puts it together (Plots.buildPlot, Grid): `opts` says which wild trees
@@ -80,20 +88,20 @@ function views() {
   const out = {};
   // 1. The square and all plots from above.
   {
-    let objects = square();
+    let objects = square().concat(forest());
     for (let i = 1; i <= L.Count; i++) objects = objects.concat(plot(i, { furnaces: ["lit", i % 2 ? "lit" : "cold", i % 3 ? "cold" : null], cut: i % 2 ? [1, 4] : [] }).objects);
-    out["1-plac-i-dzialki"] = { objects, camera: { pos: [120, 190, 250], look: [0, 0, 10], fov: 60 }, shadowRadius: 260, fog: [400, 900], hud: "1 284,50 $", caption,
+    out["1-plac-i-dzialki"] = { objects, camera: { pos: [330, 560, 820], look: [0, 0, 60], fov: 60 }, shadowRadius: 700, fog: [1100, 2400], hud: "1 284,50 $", caption,
       labels: [{ at: [L.Stall.x, 14, L.Stall.z], text: "Handlarz", color: "#ffe678", size: 15 }] };
   }
   // 2. Mining on the player's plot.
   {
     const p = plot(1, { furnaces: ["lit", "lit", "cold"], cut: [0, 5] });
-    const objects = square().concat(p.objects, plot(2, { furnaces: ["lit"] }).objects, plot(8, { furnaces: ["cold", "cold"] }).objects);
     const { cx, cz } = p;
-    out["2-kopanie-na-dzialce"] = { objects, camera: { pos: [cx + 11, 13, cz - 2], look: [cx - 1, 3, cz - 26] }, shadowRadius: 70, hud: "1 284,50 $", caption,
-      avatars: [{ at: [cx + 0.5, 0, cz - 15.5], yaw: Math.PI, shirt: [200, 60, 60], pose: -1.9 }],
-      labels: [{ at: [cx + 0, 13, cz - 32], text: "Kopalnia 37/50" }, { at: [cx - 25, 13, cz - 30], text: "Kopalnia 50/50" }],
-      prompts: [{ at: [cx + 5, 8, cz - 19], action: "Kop", object: "Kopalnia", progress: 0.62 }],
+    const objects = square().concat(p.objects, forest([cx, cz - 100, 220]));
+    out["2-kopanie-na-dzialce"] = { objects, camera: { pos: [cx + 11, 13, cz - 72], look: [cx - 1, 3, cz - 96] }, shadowRadius: 70, hud: "1 284,50 $", caption,
+      avatars: [{ at: [cx + 0.5, 0, cz - 85.5], yaw: Math.PI, shirt: [200, 60, 60], pose: -1.9 }],
+      labels: [{ at: [cx + 0, 13, cz - 102], text: "Kopalnia 37/50" }, { at: [cx - 25, 13, cz - 100], text: "Kopalnia 50/50" }],
+      prompts: [{ at: [cx + 5, 8, cz - 89], action: "Kop", object: "Kopalnia", progress: 0.62 }],
       overlay: `<div class="toast">+1 Kamień, +1 Ruda żelaza</div>` };
   }
   // 3. Furnaces with the furnace window.
@@ -101,8 +109,8 @@ function views() {
     const p = plot(1, { furnaces: ["lit", "lit", "cold", "lit"], cut: [5] });
     const objects = square().concat(p.objects);
     const { cx, cz } = p;
-    out["3-piec"] = { objects, camera: { pos: [cx + 6, 9, cz + 31], look: [cx + 17, 3, cz + 14] }, shadowRadius: 50, hud: "1 284,50 $", caption,
-      avatars: [{ at: [cx + 13, 0, cz + 22], yaw: Math.PI + 0.3, shirt: [200, 60, 60] }],
+    out["3-piec"] = { objects, camera: { pos: [cx + 6, 9, cz - 39], look: [cx + 17, 3, cz - 56] }, shadowRadius: 50, hud: "1 284,50 $", caption,
+      avatars: [{ at: [cx + 13, 0, cz - 48], yaw: Math.PI + 0.3, shirt: [200, 60, 60] }],
       overlay: `<div class="win" style="width:440px;right:16px;bottom:40px"><div class="hd">Piec kamienny<span class="x">✕</span></div><div class="bd">
         <div>Ruda: Ruda żelaza × 23 / 50</div><div>Węgiel: 4 / 50 &nbsp; (żar na 3 szt.)</div><div><b>Gotowe: Sztabka żelaza × 12</b></div>
         <div class="bar"><i style="width:64%"></i></div><div class="muted">Włóż z ekwipunku:</div>
@@ -113,7 +121,7 @@ function views() {
   }
   // 4. The merchant's square.
   {
-    let objects = square();
+    let objects = square().concat(forest([0, 0, 160]));
     for (let i = 1; i <= L.Count; i++) objects = objects.concat(plot(i, { furnaces: ["lit"] }).objects);
     const rows = [["168,110,90", "Ruda żelaza (14)", "6 $"], ["40,40,44", "Węgiel (31)", "4 $"], ["140,140,140", "Kamień (126)", "1 $"], ["160,164,170", "Sztabka żelaza (12)", "10 $"], ["133,94,66", "Drewno (22)", "2 $"]];
     out["4-handlarz"] = { objects, camera: { pos: [17, 6.5, 1], look: [2, 4.5, -17] }, shadowRadius: 60, hud: "1 284,50 $", caption,
@@ -152,7 +160,7 @@ function views() {
     const { cx, cz } = p;
     const state = lua.call(`(function()
       local o, n = {}, 0
-      local function add(kind, x, z, rot) n = n + 1; local obj = Logistics.New(n, kind, x + 5, z + 7, rot); table.insert(o, obj); return obj end
+      local function add(kind, x, z, rot) n = n + 1; local obj = Logistics.New(n, kind, x + 22, z + 7, rot); table.insert(o, obj); return obj end
       local a = add(Items.WoodenChest, 1, 1, 1)
       Logistics.Store(a.items, Items.IronOre, 40); Logistics.Store(a.items, Items.Coal, 10)
       add(Items.Inserter, 2, 1, 1)
@@ -168,7 +176,7 @@ function views() {
       for x = 6, 8 do add(Items.Belt, x, 4, 1) end
       add(Items.Inserter, 9, 4, 1)
       add(Items.WoodenChest, 10, 4, 1)
-      local furnace = { id = 99, tile = { x = 14, z = 8 }, rot = 0, state = Smelting.Empty() }
+      local furnace = { id = 99, tile = { x = 31, z = 8 }, rot = 0, state = Smelting.Empty() }
       local bends = Logistics.Bends(o)
       Logistics.Run(o, { furnace }, 0, 41.4)
       for _, obj in ipairs(o) do obj.bend = bends[obj.id] end
@@ -204,7 +212,7 @@ function views() {
     const [fx, fz] = tileAt(state.furnace.x, state.furnace.z, 2);
     objects.push({ at: [cx + fx, 0, cz + fz], yaw: Math.PI, parts: lua.call("Models.Furnace(true)"), lit: state.lit });
     // The see-through ghost of the next belt under the pointer.
-    const [gx, gz] = tileAt(19, 9, 1);
+    const [gx, gz] = tileAt(36, 9, 1);
     const ghost = models.logistics_inserter.map((q) => ({ ...q, transparency: 0.3 })).concat(lua.call("Models.BuildMarker(Items.Inserter, PlotLayout.Grid.tile)"));
     objects.push({ at: [cx + gx, 0, cz + gz], yaw: yaws[1], parts: ghost });
     // The grid's lines, which the player sees while building (BuildBar.showLines).
@@ -214,7 +222,7 @@ function views() {
     for (let i = 0; i <= G.depth; i++) lines.push({ shape: "Block", size: [w, 0.05, 0.12], pos: [G.x + w / 2, 0.08, G.z + i * G.tile], rot: [0, 0, 0], color: [255, 255, 255], material: "SmoothPlastic", transparency: 0.55 });
     objects.push({ at: [cx, 0, cz], parts: lines });
     const btn = (t, on) => `<span class="btn${on ? "" : " alt"}" style="width:128px;text-align:center;white-space:nowrap;font-size:12px">${t}</span>`;
-    out["6-budowanie"] = { objects, camera: { pos: [cx + 6, 34, cz + 24], look: [cx + 4, 0, cz - 2], fov: 55 }, shadowRadius: 60, hud: "1 284,50 $", caption,
+    out["6-budowanie"] = { objects, camera: { pos: [cx + 6, 34, cz - 46], look: [cx + 4, 0, cz - 72], fov: 55 }, shadowRadius: 60, hud: "1 284,50 $", caption,
       overlay: `<div class="win" style="left:50%;transform:translateX(-50%);bottom:16px;width:960px"><div class="bd" style="padding-top:10px">
         <div style="display:flex;gap:6px">${btn("Taśmociąg (6)")}${btn("Podajnik (2)", true)}${btn("Drewniana skrzynia (1)")}${btn("Piec kamienny (0)")}${btn("Sadzonka (3)")}<span class="btn red">Rozbiórka [X]</span><span class="btn alt">Obróć [R]</span></div>
         <div class="muted" style="margin-top:8px">Kliknij, by postawić. Przeciągnij, by ułożyć taśmę (skręca razem z ruchem). 1–5 wybór, R obrót, X rozbiórka, B koniec.</div>
@@ -226,17 +234,19 @@ function views() {
 async function shoot() {
   const { chromium } = require("playwright");
   const browser = await chromium.launch({ args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader"] });
-  const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
-  page.on("pageerror", (e) => console.log("page error:", e.message));
-  await page.route("**/three.min.js", (route) => route.fulfill({ path: path.join(path.dirname(require.resolve("three")), "three.min.js"), contentType: "text/javascript" }));
   const out = path.join(__dirname, "../../docs/screenshots");
   fs.mkdirSync(out, { recursive: true });
   for (const [name, scene] of Object.entries(views())) {
+    // A new page for each scene: init scripts stay on a page and would all run again.
+    const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+    page.on("pageerror", (e) => console.log("page error:", e.message));
+    await page.route("**/three.min.js", (route) => route.fulfill({ path: path.join(path.dirname(require.resolve("three")), "three.min.js"), contentType: "text/javascript" }));
     await page.addInitScript((s) => { window.SCENE = s; }, scene);
-    await page.goto("file://" + path.join(__dirname, "index.html"));
+    await page.goto("file://" + path.join(__dirname, "index.html"), { timeout: 120000 });
     await page.waitForFunction(() => document.title === "ready", null, { timeout: 120000 });
     await page.screenshot({ path: path.join(out, name + ".png") });
     console.log("saved", name);
+    await page.close();
   }
   await browser.close();
 }

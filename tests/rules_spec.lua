@@ -277,7 +277,7 @@ test("Things go on the grid only inside it and on free tiles; a furnace takes 2 
 	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Belt, -1, 8)), "outside_grid")
 	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Furnace, GridLayout.Grid.width - 1, 8)), "outside_grid")
 	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Coal, 8, 8)), "not_buildable")
-	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Belt, 10, 2)), "tile_blocked")
+	eq(select(2, Logistics.CanPlace(objects, furnaces, Items.Belt, 20, 2)), "tile_blocked")
 	eq(Logistics.CanPlace(objects, furnaces, Items.Sapling, 10, 12), true)
 end)
 
@@ -390,9 +390,42 @@ test("The grid covers the plot; only the mines' tiles are taken for good, and wi
 	local sx, sz = GridLayout.TileAt(GridLayout.Spawn.x, GridLayout.Spawn.z)
 	eq(GridLayout.Blocked(sx, sz), false, "spawn")
 	-- Old grid objects move by whole tiles.
-	local old = GridLayout.OldGrids[1]
-	eq(((old.x - g.x) / g.tile) % 1, 0)
-	eq(((old.z - g.z) / g.tile) % 1, 0)
+	for _, old in pairs(GridLayout.OldGrids) do
+		eq(((old.x - g.x) / g.tile) % 1, 0)
+		eq(((old.z - g.z) / g.tile) % 1, 0)
+	end
+end)
+
+test("The forest stands between the plots, off the plots, the paths and the square, and neighbouring plots have forest between them", function()
+	local trees = GridLayout.ForestTrees()
+	assert(#trees > 1000, "dense: " .. #trees)
+	assert(#trees < 8000, "not too many parts: " .. #trees)
+	local half = GridLayout.Size / 2
+	for _, t in ipairs(trees) do
+		assert(t.x * t.x + t.z * t.z > 50 * 50, "off the square")
+		for index = 1, GridLayout.Count do
+			local cx, cz = GridLayout.Center(index)
+			assert(math.abs(t.x - cx) > half + 5 or math.abs(t.z - cz) > half + 5, "off plot " .. index)
+		end
+	end
+	-- Each path from the square to a plot's gate is clear.
+	for index = 1, GridLayout.Count do
+		local cx, cz = GridLayout.Center(index)
+		local length = math.sqrt(cx * cx + cz * cz)
+		for d = 40, length - half, 5 do
+			eq(GridLayout.ForestClear(cx / length * d, cz / length * d), false, "path " .. index)
+		end
+	end
+	-- Neighbouring plots don't touch, and there is room for trees between them.
+	for index = 1, GridLayout.Count do
+		local ax, az = GridLayout.Center(index)
+		local bx, bz = GridLayout.Center(index % GridLayout.Count + 1)
+		local gap = math.max(math.abs(ax - bx), math.abs(az - bz)) - GridLayout.Size
+		assert(gap >= 2 * GridLayout.Forest.plotMargin + 10, "forest between plots " .. index .. ": " .. gap)
+	end
+	eq(#GridLayout.ForestTrees(), #trees, "always the same")
+	checkModel("ForestTree", Models.ForestTree(1))
+	checkModel("ForestTree", Models.ForestTree(2))
 end)
 
 test("A belt fed from one side turns the corner, and items on it ride along the curve", function()
