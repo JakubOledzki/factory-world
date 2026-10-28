@@ -178,7 +178,7 @@ local Models = load_shared("Models")
 
 local Materials = {}
 for _, m in ipairs({ "SmoothPlastic", "Plastic", "Wood", "WoodPlanks", "Slate", "Rock", "Basalt", "Cobblestone", "Brick",
-	"Metal", "CorrodedMetal", "Neon", "Fabric", "Grass", "LeafyGrass", "Ground", "Pebble", "Limestone", "Glass", "Pavement", "Marble", "Concrete", "DiamondPlate", "Sandstone", "Sand", "Rubber" }) do
+	"Metal", "CorrodedMetal", "Neon", "Fabric", "Grass", "LeafyGrass", "Ground", "Pebble", "Limestone", "Glass", "Pavement", "Marble", "Concrete", "DiamondPlate", "Sandstone", "Sand", "Rubber", "Foil" }) do
 	Materials[m] = true
 end
 local Shapes = { Block = true, Ball = true, Cylinder = true, Wedge = true }
@@ -554,5 +554,12 @@ test("Research takes its time, one at a time, and unlocks machines", function()
 	for _, t in ipairs(Research.Technologies) do
 		for _, entry in ipairs(t.cost) do assert(Items.Names[entry[1]], entry[1]) end
 		for _, item in ipairs(t.unlocks) do assert(Items.Names[item], item) end
+	end
+end)
+
+test("Every item has a picture of parts Roblox can build", function()
+	local Icons = load_shared("Icons")
+	for _, id in ipairs(Items.Order) do
+		checkModel("Icon " .. id, Icons.Model(id))
 	end
 end)

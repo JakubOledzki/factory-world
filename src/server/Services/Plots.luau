@@ -75,13 +75,6 @@ local function buildPlot(player, index)
 	model.Parent = folder
 	local cx, cz = PlotLayout.Center(index)
 
-	Build.Part(model, {
-		Name = "Ground",
-		Size = Vector3.new(PlotLayout.Size, 1, PlotLayout.Size),
-		CFrame = CFrame.new(cx, -0.45, cz),
-		Color = Color3.fromRGB(116, 158, 78),
-		Material = Enum.Material.Grass,
-	})
 	Build.FromModel(model, "Decor", Models.PlotDecor(index * 100, PlotLayout.Size, PlotLayout.OpenSides(index)), CFrame.new(cx, 0, cz))
 
 	-- A signpost with the owner's name by the gate, facing the square.

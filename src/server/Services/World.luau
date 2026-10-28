@@ -16,19 +16,17 @@ function World.Start()
 	folder.Name = "Square"
 	folder.Parent = workspace
 
-	Build.Part(folder, {
-		Name = "Ground",
-		Size = Vector3.new(2 * PlotLayout.GroundHalf(), 2, 2 * PlotLayout.GroundHalf()),
-		CFrame = CFrame.new(0, -1.5, 0),
-		Color = Color3.fromRGB(92, 136, 66),
-		Material = Enum.Material.Grass,
-	})
+	-- The ground is Roblox terrain grass, flat with its top at y = 0 (one layer of 4-stud voxels).
+	local terrain = workspace.Terrain
+	terrain:SetMaterialColor(Enum.Material.Grass, Color3.fromRGB(96, 140, 64))
+	terrain:SetMaterialColor(Enum.Material.Ground, Color3.fromRGB(120, 98, 72))
+	terrain:FillBlock(CFrame.new(0, -2, 0), Vector3.new(2 * PlotLayout.GroundHalf(), 4, 2 * PlotLayout.GroundHalf()), Enum.Material.Grass)
 	-- Paving in two rings of stone.
 	Build.Part(folder, {
 		Name = "Paving",
 		Shape = Enum.PartType.Cylinder,
 		Size = Vector3.new(1, 64, 64),
-		CFrame = CFrame.new(0, -0.45, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		CFrame = CFrame.new(0, -0.4, 0) * CFrame.Angles(0, 0, math.pi / 2),
 		Color = Color3.fromRGB(168, 160, 148),
 		Material = Enum.Material.Cobblestone,
 	})
@@ -36,7 +34,7 @@ function World.Start()
 		Name = "PavingInner",
 		Shape = Enum.PartType.Cylinder,
 		Size = Vector3.new(1, 22, 22),
-		CFrame = CFrame.new(0, -0.4, 0) * CFrame.Angles(0, 0, math.pi / 2),
+		CFrame = CFrame.new(0, -0.35, 0) * CFrame.Angles(0, 0, math.pi / 2),
 		Color = Color3.fromRGB(190, 184, 172),
 		Material = Enum.Material.Pavement,
 	})
@@ -74,14 +72,14 @@ function World.Start()
 		Build.Part(folder, {
 			Name = "PathEdge",
 			Size = Vector3.new(7.4, 0.2, length + 2),
-			CFrame = cframe * CFrame.new(0, -0.48, 0),
+			CFrame = cframe * CFrame.new(0, 0.04, 0),
 			Color = Color3.fromRGB(112, 96, 70),
 			Material = Enum.Material.Ground,
 		})
 		Build.Part(folder, {
 			Name = "Path",
 			Size = Vector3.new(6, 0.2, length + 2),
-			CFrame = cframe * CFrame.new(0, -0.42, 0),
+			CFrame = cframe * CFrame.new(0, 0.08, 0),
 			Color = Color3.fromRGB(156, 134, 100),
 			Material = Enum.Material.Ground,
 		})

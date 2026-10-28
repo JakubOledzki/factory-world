@@ -321,6 +321,30 @@ function views() {
       overlay: `<div class="win" style="width:560px;right:16px;bottom:40px"><div class="hd">Badania<span class="x">✕</span></div><div class="bd">
         ${techs.map(tech).join("")}</div></div>` };
   }
+  // 8. The pictures of items (Shared.Icons) side by side on dark tiles, as the inventory shows them.
+  {
+    const objects = [{ at: [0, 0, 0], parts: [block([90, 1, 60], [0, -0.5, 0], [36, 40, 48], "SmoothPlastic")] }];
+    const order = lua.call("Items.Order");
+    const labels = [];
+    const columns = 8, gap = 10;
+    order.forEach((id, i) => {
+      const parts = lua.call(`Icons.Model("${id}")`).filter((q) => !q.hidden);
+      let lo = [1e9, 1e9, 1e9], hi = [-1e9, -1e9, -1e9];
+      for (const q of parts) for (let k = 0; k < 3; k++) {
+        const r = Math.max(...q.size) / 2;
+        lo[k] = Math.min(lo[k], q.pos[k] - r); hi[k] = Math.max(hi[k], q.pos[k] + r);
+      }
+      const radius = Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) / 2;
+      const k = 4.4 / radius;
+      const mid = [(lo[0] + hi[0]) / 2, lo[1], (lo[2] + hi[2]) / 2];
+      const scaled = parts.map((q) => ({ ...q, size: q.size.map((v) => v * k), pos: [(q.pos[0] - mid[0]) * k, (q.pos[1] - mid[1]) * k, (q.pos[2] - mid[2]) * k] }));
+      const x = (i % columns - (columns - 1) / 2) * gap, z = (Math.floor(i / columns) - 2) * gap;
+      objects.push({ at: [x, 0, z], parts: [block([9, 0.2, 9], [0, 0.1, 0], [64, 70, 84], "SmoothPlastic")] });
+      objects.push({ at: [x, 0.2, z], yaw: Math.PI + 0.65, parts: scaled });
+      labels.push({ at: [x, 0, z + 5.2], text: lua.call(`Items.Name("${id}")`), size: 11 });
+    });
+    out["8-ikony"] = { objects, camera: { pos: [0, 58, 40], look: [0, 0, 3], fov: 58 }, shadowRadius: 70, caption: "Ikony przedmiotów: małe modele 3D z src/shared/Icons.luau, które gra rysuje w kratce ekwipunku.", labels };
+  }
   return out;
 }
 

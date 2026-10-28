@@ -103,7 +103,7 @@ function texture(material) {
       noise(235, 12, 1);
       for (let y = 0; y < N; y += 3) { g.fillStyle = "rgba(80,80,80,.07)"; g.fillRect(0, y, N, 1); }
       break;
-    case "Metal": case "CorrodedMetal":
+    case "Metal": case "CorrodedMetal": case "Foil":
       noise(225, 16, 1);
       for (let i = 0; i < 90; i++) { g.fillStyle = `rgba(255,255,255,${r() * .12})`; g.fillRect(0, r() * N, N, 1); }
       if (material === "CorrodedMetal") for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(90,60,40,${.2 + r() * .2})`; g.beginPath(); g.arc(r() * N, r() * N, 2 + r() * 6, 0, 7); g.fill(); }
@@ -121,7 +121,7 @@ function material(p, scale) {
   const neon = p.material === "Neon" || p.glowing;
   let map = texture(p.material);
   if (map) { map = map.clone(); map.needsUpdate = true; map.repeat.set(scale, scale); }
-  const metal = p.material === "Metal" || p.material === "CorrodedMetal";
+  const metal = p.material === "Metal" || p.material === "CorrodedMetal" || p.material === "Foil";
   const m = new THREE.MeshStandardMaterial({
     color, map, roughness: metal ? .45 : p.material === "Glass" ? .1 : p.material === "SmoothPlastic" ? .6 : .9,
     metalness: metal ? .55 : 0, emissive: neon ? color : 0x000000, emissiveIntensity: neon ? 1.4 : 0,

@@ -1,5 +1,5 @@
--- A grid of item tiles like the 2D game's (InventoryGrid on main): each tile shows one kind with
--- its count in the corner. A click or tap on a tile calls `onClick` (Shift-click for half the stack);
+-- A grid of item tiles like the 2D game's (InventoryGrid on main): each tile shows one kind, as a
+-- small 3D picture (Shared.Icons), with its count in the corner. A click or tap on a tile calls `onClick` (Shift-click for half the stack);
 -- dragging an item onto another tile of the same grid calls `onMove`. Hovering names the item in
 -- the grid's info line. It only draws and reports; the windows ask the server.
 local Players = game:GetService("Players")
@@ -15,56 +15,52 @@ local ItemGrid = {}
 -- A press that moves less than this many pixels is a click, not a drag.
 local ClickSlop = 8
 
-local function rgb(c, k)
-	k = k or 1
-	return Color3.fromRGB(math.min(255, c[1] * k), math.min(255, c[2] * k), math.min(255, c[3] * k))
-end
+local Assemble = require(Shared.Assemble)
+local Icons = require(Shared.Icons)
 
-local function shape(parent, props, radius)
-	props.BorderSizePixel = 0
-	props.Parent = parent
-	local frame = Kit.New("Frame", props)
-	if radius then
-		Kit.New("UICorner", { CornerRadius = radius, Parent = frame })
-	end
-	return frame
-end
+-- Each item's picture is built once, then copied into each tile that shows it.
+local templates = {}
+local store = Instance.new("Folder")
+store.Name = "IconTemplates"
 
--- Draws a small picture of `item` filling `parent`, made of frames in the item's colour: a lump
--- of ore, crushed ore, an ingot, a tool, a building, or a block of material.
-function ItemGrid.Icon(parent, item)
-	local c = Items.Colors[item] or { 200, 200, 200 }
-	local round = UDim.new(0.5, 0)
-	if string.sub(item, 1, 8) == "crushed_" then
-		for _, p in ipairs({ { 0.3, 0.62 }, { 0.62, 0.66 }, { 0.46, 0.4 }, { 0.72, 0.38 }, { 0.26, 0.34 } }) do
-			shape(parent, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(p[1], p[2]), Size = UDim2.fromScale(0.3, 0.3), BackgroundColor3 = rgb(c) }, round)
-		end
-	elseif string.sub(item, -4) == "_ore" or item == "coal" or item == "stone" then
-		local lump = shape(parent, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.55), Size = UDim2.fromScale(0.78, 0.66), BackgroundColor3 = item == "coal" and rgb(c) or Color3.fromRGB(128, 124, 118) }, UDim.new(0.4, 0))
-		if item ~= "stone" and item ~= "coal" then
-			for _, p in ipairs({ { 0.3, 0.35 }, { 0.62, 0.55 }, { 0.42, 0.72 } }) do
-				shape(lump, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(p[1], p[2]), Size = UDim2.fromScale(0.24, 0.28), BackgroundColor3 = rgb(c, 1.1) }, round)
+local function template(item)
+	if templates[item] == nil then
+		local model = Assemble.Model(store, item, Icons.Model(item), CFrame.new(), false)
+		for _, d in ipairs(model:GetDescendants()) do
+			if d:IsA("Fire") or d:IsA("Smoke") or d:IsA("Light") or d:IsA("ParticleEmitter") then
+				d:Destroy()
+			elseif d:IsA("BasePart") and d.Transparency >= 1 then
+				d:Destroy()
 			end
 		end
-	elseif string.sub(item, -6) == "_ingot" then
-		local bar = shape(parent, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.58), Size = UDim2.fromScale(0.82, 0.4), BackgroundColor3 = rgb(c, 0.8) }, UDim.new(0.15, 0))
-		shape(bar, { Position = UDim2.fromScale(0.1, 0), Size = UDim2.fromScale(0.8, 0.45), BackgroundColor3 = rgb(c, 1.15) }, UDim.new(0.2, 0))
-	elseif string.sub(item, 1, 5) == "tool_" then
-		local handle = shape(parent, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.55), Size = UDim2.fromScale(0.14, 0.8), BackgroundColor3 = Color3.fromRGB(140, 96, 60), Rotation = 35 }, UDim.new(0.3, 0))
-		shape(parent, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.62, 0.32), Size = UDim2.fromScale(0.6, 0.18), BackgroundColor3 = item == "tool_axe" and Color3.fromRGB(170, 176, 186) or rgb(c), Rotation = 35 }, UDim.new(0.3, 0))
-		handle.ZIndex = handle.ZIndex + 1
-	elseif string.sub(item, 1, 10) == "furniture_" or string.sub(item, 1, 10) == "logistics_" or string.sub(item, 1, 8) == "storage_" then
-		local body = shape(parent, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.55), Size = UDim2.fromScale(0.8, 0.7), BackgroundColor3 = rgb(c) }, UDim.new(0.12, 0))
-		shape(body, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.58), Size = UDim2.fromScale(0.5, 0.4), BackgroundColor3 = rgb(c, 0.6) }, UDim.new(0.15, 0))
-		shape(parent, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.2), Size = UDim2.fromScale(0.9, 0.12), BackgroundColor3 = rgb(c, 0.75) }, UDim.new(0.3, 0))
-	else
-		local block = shape(parent, { AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.52), Size = UDim2.fromScale(0.72, 0.72), BackgroundColor3 = rgb(c) }, UDim.new(0.18, 0))
-		Kit.New("UIGradient", {
-			Color = ColorSequence.new(rgb(c, 1.2), rgb(c, 0.75)),
-			Rotation = 60,
-			Parent = block,
-		})
+		local cframe, size = model:GetBoundingBox()
+		templates[item] = { model = model, center = cframe.Position, radius = size.Magnitude / 2 }
 	end
+	return templates[item]
+end
+
+-- Draws a small 3D picture of `item` filling `parent` (Shared.Icons), lit like a sunny day.
+function ItemGrid.Icon(parent, item)
+	local t = template(item)
+	local view = Kit.New("ViewportFrame", {
+		BackgroundTransparency = 1,
+		Size = UDim2.fromScale(1, 1),
+		Ambient = Color3.fromRGB(150, 150, 160),
+		LightColor = Color3.fromRGB(255, 248, 235),
+		LightDirection = Vector3.new(-0.6, -1, 0.4),
+		Parent = parent,
+	})
+	local model = t.model:Clone()
+	model.Parent = view
+	local camera = Instance.new("Camera")
+	camera.FieldOfView = 30
+	local d = Icons.ViewDirection
+	local direction = Vector3.new(d[1], d[2], d[3]).Unit
+	local distance = t.radius / math.sin(math.rad(camera.FieldOfView / 2)) * 0.92
+	camera.CFrame = CFrame.lookAt(t.center + direction * distance, t.center)
+	camera.Parent = view
+	view.CurrentCamera = camera
+	return view
 end
 
 -- A grid in `parent`. `opts`: columns, tile (pixels), onClick(index, entry, half),
@@ -116,10 +112,18 @@ function ItemGrid.New(parent, opts)
 			local tile = Kit.New("TextButton", {
 				Text = "",
 				AutoButtonColor = entry ~= false,
-				BackgroundColor3 = Color3.fromRGB(26, 29, 36),
+				BackgroundColor3 = Color3.fromRGB(64, 70, 84),
 				LayoutOrder = index,
 				Parent = tiles,
-			}, { Kit.Corner(6), Kit.New("UIStroke", { Color = Color3.fromRGB(70, 78, 94), Thickness = 1 }) })
+			}, {
+				Kit.Corner(6),
+				Kit.New("UIStroke", { Color = Color3.fromRGB(96, 104, 122), Thickness = 1 }),
+				-- Lighter at the top, like a recessed slot lit from above.
+				Kit.New("UIGradient", {
+					Color = ColorSequence.new(Color3.fromRGB(255, 255, 255), Color3.fromRGB(150, 150, 160)),
+					Rotation = 90,
+				}),
+			})
 			tile:SetAttribute("GridTile", index)
 			if entry then
 				local art = Kit.New("Frame", {
@@ -187,7 +191,7 @@ function ItemGrid.New(parent, opts)
 		if press.ghost == nil and (at - press.at).Magnitude > ClickSlop then
 			press.ghost = Kit.New("Frame", {
 				BackgroundTransparency = 0.3,
-				BackgroundColor3 = Color3.fromRGB(26, 29, 36),
+				BackgroundColor3 = Color3.fromRGB(64, 70, 84),
 				Size = UDim2.fromOffset(size, size),
 				AnchorPoint = Vector2.new(0.5, 0.5),
 				ZIndex = 50,
