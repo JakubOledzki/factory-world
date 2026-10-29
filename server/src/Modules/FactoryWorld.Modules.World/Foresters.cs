@@ -41,6 +41,16 @@ public static class Foresters
     /// <summary>Wood taken out by hand gives one experience point for every this many.</summary>
     public const int WoodPerXp = 4;
 
+    /// <summary>A tree nursery raises the saplings of the foresters whose buildings stand this many tiles from it each way.</summary>
+    public const int NurseryReach = 8;
+
+    /// <summary>How many times faster a forest grows from a nursery's saplings.</summary>
+    public const double NurserySpeed = 1.5;
+
+    /// <summary>Whether a tree nursery among <paramref name="objects"/> raises the saplings of a forester standing on (tileX, tileY).</summary>
+    public static bool Nursed(IEnumerable<PlotObject> objects, int tileX, int tileY) =>
+        objects.Any(o => o.Kind == Items.TreeNursery && Math.Abs(o.TileX - tileX) <= NurseryReach && Math.Abs(o.TileY - tileY) <= NurseryReach);
+
     /// <summary>How long a sapling of <paramref name="kind"/> (a pine's when none) grows in its care on a plot of <paramref name="biome"/>;
     /// null where nothing grows.</summary>
     public static TimeSpan? GrowTime(ForesterLevel level, Biome biome, TreeKind? kind = null) =>
@@ -567,6 +577,11 @@ public sealed class ForesterService(
         foreach (var o in foresters)
         {
             var level = Foresters.Level(o.Kind)!;
+            if (Foresters.Nursed(all, o.TileX, o.TileY))
+            {
+                level = level with { GrowSpeed = level.GrowSpeed * Foresters.NurserySpeed };
+            }
+
             var (wood, oakWood, busyUntil, species) = rows.GetValueOrDefault(o.Id, (0, 0, start, Trees.Pine));
             var store = new Dictionary<string, int> { [Items.Wood] = wood, [Items.OakWood] = oakWood };
             var patch = new ForestPatch(level, k => Foresters.GrowTime(level, biome, k) ?? Forestry.Grow, Trees.Of(species), store, busyUntil);
@@ -801,6 +816,8 @@ public abstract class ForestryHandler(IServiceScopeFactory scopes, TimeProvider 
             capacity = level.Capacity,
             cutSeconds = level.CutTime.TotalSeconds,
             growSeconds = Foresters.GrowTime(level, biome, patch.Species)?.TotalSeconds,
+            // A tree nursery near it raises its saplings: its forest grows faster.
+            nursed = level.GrowSpeed > (Foresters.Level(o.Kind)?.GrowSpeed ?? level.GrowSpeed),
             species = patch.Species.Id,
             // The kinds it can plant, how long each grows in its care here and what it gives.
             kinds = Trees.Kinds.Select(k => new

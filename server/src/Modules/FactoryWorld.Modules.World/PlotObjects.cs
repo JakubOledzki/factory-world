@@ -57,6 +57,8 @@ public static class PlotObjects
         Items.Substation, Items.Pylon, Items.CoalPlant, Items.EnergyStore, Items.NuclearPlant, Items.GridTie,
         Items.Canteen, Items.Slaughterhouse, Items.Dairy, Items.PotatoDistillery, Items.BiogasPlant, Items.Stable, Items.Bellows,
         Items.Feeder, Items.Farmstead, Items.ManorFarm,
+        Items.CokeOven, Items.Jeweler, Items.TreeNursery, Items.SpinningMill, Items.Loom, Items.AutoBarn, Items.SugarFactory, Items.Sprinkler,
+        Items.MechanizedFarm, Items.BiomassPlant, Items.ChpPlant, Items.GeothermalPlant, Items.Electrolyzer, Items.FuelCell,
         Items.ExportChest, Items.BuyMarket, Items.RailPort, Items.Bank, Items.BankBranch,
         Items.LoadingChest, Items.LoadingChest2, Items.LoadingChest3, Items.LoadingChest4,
         Items.ReceivingChest, Items.ReceivingChest2, Items.ReceivingChest3, Items.ReceivingChest4,
@@ -96,6 +98,11 @@ public static class PlotObjects
         if (Items.IsHydro(kind) && kind != Items.TidalPlant && !WaterPower.Allowed((int)biome))
         {
             throw new GameException("no_water", "Water power needs a mountain stream, a lake or the sea.");
+        }
+
+        if (Items.IsGeothermal(kind) && !Geothermal.Allowed((int)biome))
+        {
+            throw new GameException("no_geothermal", "A geothermal plant stands in the mountains, on the glacier or on the tundra.");
         }
 
         if (kind == Items.SolarTower && !Oasis.Sandy((int)biome))

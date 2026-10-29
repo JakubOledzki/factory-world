@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draws the art of husbandry with Pillow alone (no Blender): the hen, the sheep, the cow, the camel and the work horse that
+"""Draws the art of husbandry with Pillow alone (no Blender): the hen, the sheep, the cow, the camel, the work horse, the pig and the goat that
 stand on a plot and the feeder they eat from (client/art/plot/, with their shadows and anchors in layout.json) and the icons of
 the animals, their products, the shears and the feeder (client/art/icons/).
 
@@ -193,6 +193,58 @@ def draw_horse(draw, cx, cy, k=1.0):
     draw.ellipse((cx - 22 * s, cy - 42 * s, cx - 8 * s, cy - 30 * s), outline=(70, 44, 24), width=3 * S)
 
 
+PIG = (226, 162, 150)
+GOAT = (204, 190, 166)
+
+
+def draw_pig(draw, cx, cy, k=1.0):
+    """A pink pig seen from the front left: a round body on short legs, a flat snout, floppy ears and a curly tail."""
+    s = S * k
+    for lx in (-12, 9):
+        draw.rounded_rectangle((cx + lx * s, cy - 8 * s, cx + (lx + 5) * s, cy), radius=2 * s, fill=shade(PIG, 0.6))
+    for lx in (-16, 5):
+        draw.rounded_rectangle((cx + lx * s, cy - 7 * s, cx + (lx + 5) * s, cy + 1 * s), radius=2 * s, fill=shade(PIG, 0.75))
+    # The tail curls up behind.
+    draw.arc((cx + 16 * s, cy - 26 * s, cx + 24 * s, cy - 18 * s), 180, 520, fill=shade(PIG, 0.7), width=2 * S)
+    blob(draw, (cx - 22 * s, cy - 28 * s, cx + 20 * s, cy - 5 * s), PIG, OUTLINE, light=0.16)
+    # A darker patch of mud on the flank.
+    draw.ellipse((cx + 4 * s, cy - 15 * s, cx + 16 * s, cy - 8 * s), fill=shade(PIG, 0.62))
+    blob(draw, (cx - 32 * s, cy - 28 * s, cx - 14 * s, cy - 10 * s), PIG, OUTLINE, light=0.16)
+    # The snout with its two nostrils, the eyes and the ears flopping forward.
+    draw.ellipse((cx - 34 * s, cy - 21 * s, cx - 24 * s, cy - 13 * s), fill=shade(PIG, 0.85), outline=OUTLINE, width=S)
+    for nx in (-32, -28):
+        draw.ellipse((cx + nx * s, cy - 18 * s, cx + (nx + 2) * s, cy - 16 * s), fill=(90, 46, 44))
+    draw.ellipse((cx - 27 * s, cy - 24 * s, cx - 25 * s, cy - 22 * s), fill=(10, 8, 8))
+    draw.ellipse((cx - 20 * s, cy - 24 * s, cx - 18 * s, cy - 22 * s), fill=(10, 8, 8))
+    for ex in (-31, -19):
+        draw.polygon([(cx + ex * s, cy - 27 * s), (cx + (ex + 6) * s, cy - 30 * s), (cx + (ex + 5) * s, cy - 23 * s)],
+                     fill=shade(PIG, 0.9), outline=OUTLINE)
+
+
+def draw_goat(draw, cx, cy, k=1.0):
+    """A goat seen from the front left: a lean body on thin dark legs, horns swept back, a beard and a short tail up."""
+    s = S * k
+    for lx in (-11, 9):
+        draw.rounded_rectangle((cx + lx * s, cy - 12 * s, cx + (lx + 3) * s, cy), radius=1 * s, fill=shade(GOAT, 0.4))
+    for lx in (-14, 6):
+        draw.rounded_rectangle((cx + lx * s, cy - 11 * s, cx + (lx + 3) * s, cy + 1 * s), radius=1 * s, fill=shade(GOAT, 0.5))
+    draw.polygon([(cx + 15 * s, cy - 24 * s), (cx + 20 * s, cy - 30 * s), (cx + 18 * s, cy - 22 * s)], fill=shade(GOAT, 0.8), outline=OUTLINE)
+    blob(draw, (cx - 18 * s, cy - 28 * s, cx + 18 * s, cy - 9 * s), GOAT, OUTLINE, light=0.18)
+    # A dark stripe along the back, like a chamois goat.
+    draw.line((cx - 12 * s, cy - 27 * s, cx + 14 * s, cy - 26 * s), fill=shade(GOAT, 0.55), width=2 * S)
+    # The neck, the horns swept back from the top of the head, the head, its ear and beard.
+    draw.polygon([(cx - 15 * s, cy - 24 * s), (cx - 22 * s, cy - 36 * s), (cx - 16 * s, cy - 38 * s), (cx - 8 * s, cy - 25 * s)],
+                 fill=shade(GOAT, 0.9), outline=OUTLINE)
+    for hx in (-25, -21):
+        draw.polygon([(cx + hx * s, cy - 40 * s), (cx + (hx + 2) * s, cy - 47 * s), (cx + (hx + 8) * s, cy - 49 * s),
+                      (cx + (hx + 4) * s, cy - 46 * s), (cx + (hx + 3) * s, cy - 40 * s)], fill=(104, 90, 74), outline=OUTLINE)
+    draw.ellipse((cx - 18 * s, cy - 40 * s, cx - 11 * s, cy - 36 * s), fill=shade(GOAT, 0.8), outline=OUTLINE, width=S)
+    blob(draw, (cx - 31 * s, cy - 42 * s, cx - 18 * s, cy - 31 * s), GOAT, OUTLINE, light=0.16)
+    draw.ellipse((cx - 32 * s, cy - 37 * s, cx - 26 * s, cy - 31 * s), fill=shade(GOAT, 0.8))
+    draw.polygon([(cx - 30 * s, cy - 32 * s), (cx - 26 * s, cy - 32 * s), (cx - 29 * s, cy - 27 * s)], fill=shade(GOAT, 0.5), outline=OUTLINE)
+    draw.ellipse((cx - 25 * s, cy - 39 * s, cx - 23 * s, cy - 37 * s), fill=(10, 8, 8))
+
+
 ANIMALS = {
     # name: (draw, shadow radii)
     "sheep": (draw_sheep, (22, 7)),
@@ -200,6 +252,8 @@ ANIMALS = {
     "chicken": (draw_hen, (12, 4)),
     "camel": (draw_camel, (28, 8)),
     "horse": (draw_horse, (30, 8)),
+    "pig": (draw_pig, (24, 7)),
+    "goat": (draw_goat, (22, 7)),
 }
 
 
@@ -268,7 +322,7 @@ def save_icon(img, name):
 def render_icons():
     for name, (paint, _) in ANIMALS.items():
         img, draw = icon()
-        k = {"sheep": 1.05, "cow": 0.8, "chicken": 1.6, "camel": 0.85, "horse": 0.9}[name]
+        k = {"sheep": 1.05, "cow": 0.8, "chicken": 1.6, "camel": 0.85, "horse": 0.9, "pig": 1.0, "goat": 1.0}[name]
         paint(draw, 34 * S if name != "chicken" else 36 * S, 52 * S, k)
         save_icon(img, f"animal_{name}")
 

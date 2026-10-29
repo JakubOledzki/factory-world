@@ -56,12 +56,22 @@ public static class Husbandry
         new(Items.Camel, Items.Milk, 2, TimeSpan.FromMinutes(10), null, 8) { Extra = (Items.Wool, 1), Sandy = true, BreedEvery = 10 },
         // A work horse lives by a stable, eats concentrate only and, while fed, helps with the work around it.
         new(Items.Horse, Items.Manure, 2, TimeSpan.FromMinutes(10), null, 6) { BreedEvery = 20, Diet = [Items.ConcentrateFeed], Works = true },
+        // A pig eats what is left of the kitchen and the distillery and gives meat without the slaughterhouse; a goat gives milk often, a little at a time.
+        new(Items.Pig, Items.Meat, 1, TimeSpan.FromMinutes(15), null, 6)
+        {
+            Manure = 2, BreedEvery = 6, Diet = [Items.Potato, Items.Corn, Items.Stillage, Items.BeetPulp, Items.ConcentrateFeed],
+        },
+        new(Items.Goat, Items.Milk, 2, TimeSpan.FromMinutes(7), null, 5) { Manure = 1, BreedEvery = 8 },
     ];
 
     public static readonly IReadOnlyDictionary<string, Animal> ById = Animals.ToDictionary(a => a.Item);
 
     /// <summary>What any animal eats, <see cref="FeedPerMeal"/> of one kind per feeding: crops, fish meal from the cannery and dates from an oasis.</summary>
-    public static readonly IReadOnlyList<string> Feed = [Items.Wheat, Items.Corn, Items.Carrot, Items.Cabbage, Items.FishMeal, Items.Dates, Items.ConcentrateFeed];
+    public static readonly IReadOnlyList<string> Feed =
+        [Items.Wheat, Items.Corn, Items.Carrot, Items.Cabbage, Items.FishMeal, Items.Dates, Items.ConcentrateFeed, Items.BeetPulp];
+
+    /// <summary>Whatever some animal eats: <see cref="Feed"/> and the diets of the animals that want their own.</summary>
+    public static readonly IReadOnlyList<string> AnyFeed = Animals.SelectMany(a => a.Eats).Distinct().ToList();
 
     public const int FeedPerMeal = 2;
 
@@ -200,16 +210,16 @@ public sealed class HusbandryService(
     public Task<AnimalChange> FeedAsync(Guid player, int x, int y, int tileX, int tileY, string feed, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            if (!Husbandry.Feed.Contains(feed))
+            if (!Husbandry.AnyFeed.Contains(feed))
             {
-                throw new GameException("bad_feed", "Animals eat wheat, corn, carrots, cabbage, fish meal, dates and concentrate.");
+                throw new GameException("bad_feed", "Animals eat wheat, corn, carrots, cabbage, fish meal, dates, beet pulp and concentrate.");
             }
 
             var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             var (kind, readyAt, _) = await LockAsync(x, y, tileX, tileY, cancellationToken);
             if (!Husbandry.ById[kind].Eats.Contains(feed))
             {
-                throw new GameException("bad_feed", "A work horse eats concentrate feed only.");
+                throw new GameException("bad_feed", kind == Items.Horse ? "A work horse eats concentrate feed only." : "It does not eat that.");
             }
 
             if (readyAt is not null)

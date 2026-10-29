@@ -918,12 +918,16 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             objects = objects.Select(PlaceOnPlotHandler.ObjectJson),
             placeable = PlotObjects.Placeable,
             fertile = Farming.Fertile(biome),
+            // The steppe and the desert can be tilled where a sprinkler waters, sprinklerReach tiles from it each way.
+            irrigable = Farming.Irrigable(biome),
+            sprinklerReach = Farming.SprinklerReach,
+            sprinklerSpeed = Farming.SprinklerSpeed,
             fields = fields.Select(FieldHandler.FieldJson),
             pasture = Husbandry.Pasture(biome),
             husbandryBonus = Husbandry.BonusPercent(biome),
             animals = animals.Select(AnimalHandler.AnimalJson),
             animalKinds = AnimalHandler.KindsJson(biome),
-            feed = Husbandry.Feed.Select(f => new { id = f, name = Items.Names[f] }),
+            feed = Husbandry.AnyFeed.Select(f => new { id = f, name = Items.Names[f] }),
             feedPerMeal = Husbandry.FeedPerMeal,
             crops = Farming.Crops.Select(c => new
             {

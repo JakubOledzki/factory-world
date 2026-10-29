@@ -13,8 +13,9 @@ signal failed(reply: Dictionary)
 signal pick_up_requested(id: String)
 
 const COAL := "coal"
-## What goes on the fire: coal and charcoal burn alike.
-const FUELS := ["coal", "charcoal"]
+## What goes on the fire: coal and charcoal burn alike; coke burns as long as two coal and catches fire at once.
+const FUELS := ["coal", "charcoal", "coke"]
+const COKE := "coke"
 
 var furnace := ""
 var can_pick_up := false
@@ -144,7 +145,10 @@ func _render() -> void:
 			continue
 		any = true
 		var owned := int(stack["quantity"])
-		var room := int(_state["maxFuel"]) - fuel if FUELS.has(item) else int(_state["maxInput"]) - (int(input["quantity"]) if input != null else 0)
+		var per_coal := int(_state.get("smeltsPerCoal", 5))
+		var coke_room := (int(_state["maxFuel"]) * per_coal - heat) / (2 * per_coal)
+		var room := (coke_room if item == COKE else int(_state["maxFuel"]) - fuel) if FUELS.has(item) \
+			else int(_state["maxInput"]) - (int(input["quantity"]) if input != null else 0)
 		var blocked: bool = not FUELS.has(item) and input != null and input["id"] != item
 		if not blocked:
 			offer(item, room, func(quantity: int) -> void: _put(item, quantity))
@@ -172,7 +176,7 @@ func _render() -> void:
 	if int(_state.get("speed", 1)) > 1:
 		lines.append("Poziom %d: przetapia %d razy szybciej niż piec kamienny i mieści po %d rudy i węgla."
 			% [int(_state["level"]), int(_state["speed"]), int(_state["maxInput"])])
-	lines.append("1 węgiel wystarcza na %d przetopień." % int(_state["smeltsPerCoal"]))
+	lines.append("1 węgiel wystarcza na %d przetopień, 1 koks na %d (od razu idzie w ogień)." % [int(_state["smeltsPerCoal"]), 2 * int(_state["smeltsPerCoal"])])
 	for recipe: Dictionary in _state.get("recipes", []):
 		lines.append("%s → %s: %s s" % [recipe["inputName"], recipe["outputName"].to_lower(), _seconds(float(recipe["seconds"]))])
 	_help.text = "\n".join(lines)

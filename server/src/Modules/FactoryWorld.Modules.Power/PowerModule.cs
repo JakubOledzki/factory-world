@@ -529,7 +529,8 @@ public static class PowerJson
         var state = grid.Generator(reply.Id, now);
         var network = grid.NetworkOf(reply.Id);
         var kind = grid.Objects.FirstOrDefault(o => o.Id == reply.Id)?.Kind ?? Items.Generator;
-        var hydro = Items.IsHydro(kind);
+        var hydro = Items.IsHydro(kind) || Items.IsGeothermal(kind);
+        var chp = kind == Items.ChpPlant;
         var solar = Items.IsSolar(kind);
         var battery = Items.IsBattery(kind);
         var wind = Items.IsWind(kind);
@@ -538,8 +539,9 @@ public static class PowerJson
         {
             id = reply.Id,
             kind,
-            // A water power plant burns nothing: it gives capacityKw all the time, more in the mountains.
+            // A water power plant burns nothing: it gives capacityKw all the time, more in the mountains. So does a geothermal plant.
             hydro,
+            geothermal = Items.IsGeothermal(kind),
             // A solar power plant burns nothing either: it gives capacityKw by day, more on sand, less in a sandstorm unless a reed fence shelters it.
             solar,
             day = Sun.IsDay(now),
@@ -557,7 +559,10 @@ public static class PowerJson
             heaterKw = heater ? Frost.HeaterKw : 0,
             heaterReach = Frost.HeaterReach,
             icy = grid.Icy,
-            warmed = heater ? grid.Objects.Count(o => PowerRules.Demand.ContainsKey(o.Kind) && grid.Warms(grid.Objects.First(h => h.Id == reply.Id), o.TileX, o.TileY)) : 0,
+            // A combined heat and power plant warms the machines chpReach tiles from it on the glacier while it burns.
+            chp,
+            chpReach = PowerRules.ChpReach,
+            warmed = heater || chp ? grid.Objects.Count(o => PowerRules.Demand.ContainsKey(o.Kind) && grid.Warms(grid.Objects.First(h => h.Id == reply.Id), o.TileX, o.TileY)) : 0,
             // A battery stores chargeKj of capacityKj; outputKw is less than 0 while it charges.
             battery,
             chargeKj = battery ? grid.Charge(reply.Id, now) : 0,
@@ -571,7 +576,7 @@ public static class PowerJson
                 : battery ? PowerRules.StoreKw(kind) : heater ? 0 : grid.KwOf(reply.Id),
             // A steam generator, a coal and a nuclear power plant give less on sand, where there is no water to cool them.
             dry = PowerRules.Steam(kind) && grid.Sandy,
-            hydroBonus = hydro ? WaterPower.Biomes.GetValueOrDefault(grid.Biome) : 0,
+            hydroBonus = Items.IsGeothermal(kind) ? Geothermal.Biomes.GetValueOrDefault(grid.Biome) : hydro ? WaterPower.Biomes.GetValueOrDefault(grid.Biome) : 0,
             runsOutAt = grid.RunsOutAt(reply.Id)?.ToUnixTimeMilliseconds(),
             serverTime = now.ToUnixTimeMilliseconds(),
             maxFuel = PowerRules.MaxFuel,

@@ -214,11 +214,17 @@ const PLACED_SPRITES := {
 	"furniture_bellows": "bellows", "furniture_feeder": "feeder", "furniture_farmstead": "farmstead", "furniture_manor_farm": "manor_farm",
 	"furniture_export_chest": "export_chest", "furniture_buy_market": "buy_market", "furniture_rail_port": "rail_port",
 	"furniture_bank": "bank", "furniture_bank_branch": "bank_branch",
+	"furniture_coke_oven": "coke_oven", "furniture_jeweler": "jeweler", "furniture_tree_nursery": "tree_nursery",
+	"furniture_spinning_mill": "spinning_mill", "furniture_loom": "loom", "furniture_auto_barn": "auto_barn",
+	"furniture_sugar_factory": "sugar_factory", "furniture_sprinkler": "sprinkler", "furniture_mechanized_farm": "mechanized_farm",
+	"power_biomass_plant": "biomass_plant", "power_chp_plant": "chp_plant", "power_geothermal_plant": "geothermal_plant",
+	"furniture_electrolyzer": "electrolyzer", "power_fuel_cell": "fuel_cell",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
 ## Animals let out on a pasture, and their sprites there.
 const ANIMAL_SPRITES := {"animal_chicken": "chicken", "animal_sheep": "sheep", "animal_cow": "cow", "animal_camel": "camel",
+	"animal_pig": "pig", "animal_goat": "goat",
 	"animal_horse": "horse"}
 ## Placed objects that open the machine window.
 const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen",
@@ -236,7 +242,8 @@ const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_
 	"furniture_laboratory", "furniture_service_workshop", "furniture_paper_mill", "furniture_carpentry", "furniture_charcoal_kiln",
 	"furniture_tar_kiln", "furniture_machine_shop", "furniture_robotic_hall", "furniture_oxygen_converter", "furniture_rolling_mill",
 	"furniture_continuous_caster", "furniture_steel_combine", "furniture_megafactory",
-	"furniture_slaughterhouse", "furniture_dairy", "furniture_potato_distillery", "furniture_biogas_plant"]
+	"furniture_slaughterhouse", "furniture_dairy", "furniture_potato_distillery", "furniture_biogas_plant",
+	"furniture_coke_oven", "furniture_jeweler", "furniture_spinning_mill", "furniture_loom", "furniture_sugar_factory", "furniture_electrolyzer"]
 ## A works canteen opens its own window and feeds the crews of the plot's machines; a stable lets horses out on the plot,
 ## a bellows blows the plot's furnaces: neither opens anything.
 const CANTEEN := "furniture_canteen"
@@ -246,6 +253,19 @@ const BELLOWS := "furniture_bellows"
 ## the plot, the animals are asked for every ANIMALS_POLL ms to show the ones it fed.
 const FEEDER := "furniture_feeder"
 const FEEDER_REACH := 3
+## An automatic barn is a bigger feeder (2 × 2) that collects what the animals give as well; it opens the feeder's window.
+const AUTO_BARN := "furniture_auto_barn"
+const FEEDERS := {FEEDER: FEEDER_REACH, AUTO_BARN: 4}
+## A sprinkler waters the fields this far from it (the steppe and the desert can be tilled there); a tree nursery raises the saplings
+## of the foresters this far from it; a combined heat and power plant warms the machines this far from it on the glacier.
+## None of them opens a window but the plant, which opens the generator's; hovered, each shows how far it reaches.
+const SPRINKLER := "furniture_sprinkler"
+const TREE_NURSERY := "furniture_tree_nursery"
+const CHP_PLANT := "power_chp_plant"
+const REACHES := {FEEDER: FEEDER_REACH, AUTO_BARN: 4, SPRINKLER: 4, TREE_NURSERY: 8, CHP_PLANT: 6}
+## A geothermal plant gives power without fuel, only in the mountains, on the tundra and the glacier.
+const GEOTHERMAL := "power_geothermal_plant"
+const GEOTHERMAL_BIOMES := [6, 7, 8]
 const ANIMALS_POLL := 5000.0
 ## A beehive opens its own window; a fire watchtower and a fire station only stand guard over the forest.
 const BEEHIVE := "furniture_beehive"
@@ -340,7 +360,7 @@ const FORESTERS := {"furniture_forester_hut": 5, "furniture_forester_lodge": 6, 
 const FOOTPRINT := 1
 ## Farmer's buildings of both levels and how far their fields reach, like the foresters'; they stand on fertile land only
 ## (farmland, oasis) and keep the same clearing and path free.
-const FARMSTEADS := {"furniture_farmstead": 4, "furniture_manor_farm": 5}
+const FARMSTEADS := {"furniture_farmstead": 4, "furniture_manor_farm": 5, "furniture_mechanized_farm": 6}
 const FERTILE := [3, 12]
 const FOREST_CLEARING := 2
 ## How often (ms) the foresters are asked for, to draw the trees they plant and cut.
@@ -360,11 +380,12 @@ const MACHINERY := [BELT, "logistics_fast_belt", "logistics_express_belt", INSER
 	"logistics_pipe", "logistics_pump"]
 const GENERATOR := "power_generator"
 ## Generators that burn fuel, which open the generator window.
-const GENERATORS := [GENERATOR, "power_coal_plant", "power_gas_plant", "power_diesel_generator", "power_nuclear_plant", "power_fusion_plant"]
+const GENERATORS := [GENERATOR, "power_coal_plant", "power_gas_plant", "power_diesel_generator", "power_nuclear_plant", "power_fusion_plant",
+	"power_biomass_plant", CHP_PLANT, "power_fuel_cell"]
 ## Placed objects with nothing to open: a click shows the menu to pick them up.
 const MENU_ONLY := ["power_pole", "power_substation", "power_pylon", "furniture_port", "furniture_lighthouse", "furniture_breakwater", ROAD, REED_FENCE,
 	"furniture_water_injector", "furniture_oil_separator", "furniture_dog_kennel", "furniture_snowmobile_garage", TRACK_FOUNDATION,
-	"furniture_freight_terminal", "furniture_company_hq", WATCHTOWER, FIRE_STATION, CONTROL_CENTER]
+	"furniture_freight_terminal", "furniture_company_hq", WATCHTOWER, FIRE_STATION, CONTROL_CENTER, SPRINKLER, TREE_NURSERY]
 const POLE := "power_pole"
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo", "storage_tank",
 	"storage_high_bay", "storage_automated_warehouse", "storage_logistics_depot", DRONE_PORT,
@@ -396,7 +417,7 @@ const MAX_UNDO := 20
 const SHAKE := 5.0
 const SHAKE_FADE := 30.0
 ## Crops in the order of the art; the server sends their names and growing times.
-const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower"]
+const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower", "sugar_beet", "flax", "hemp"]
 ## A crop shows as a sprout until this much of its growing time is left, then half grown.
 const SPROUT_UNTIL := 0.6
 ## Fertiliser sown with a crop makes it ripen this many times as fast; the crop menu numbers those choices from FERTILIZED.
@@ -450,6 +471,8 @@ var _visitor := false
 var _fields := {}
 var _crops := {}
 var _fertile := false
+## The steppe and the desert: tilled only where a sprinkler waters.
+var _irrigable := false
 ## Planted trees: Vector2i → readyAt (server milliseconds), and their kinds (the server's ids) where not a pine.
 var _trees := {}
 var _tree_species := {}
@@ -1023,6 +1046,7 @@ func _apply_plot(plot: Dictionary) -> void:
 	_tiles = packed.decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP)
 	_sync_tool_bar()
 	_fertile = plot.get("fertile", false)
+	_irrigable = plot.get("irrigable", false)
 	for crop: Dictionary in plot.get("crops", []):
 		_crops[crop["id"]] = crop
 	_pasture = plot.get("pasture", false)
@@ -1599,10 +1623,18 @@ func _ground_cell() -> Vector2i:
 	return Vector2i((get_global_mouse_position() / TILE).floor())
 
 
-## Whether the hoe can turn this tile into a field.
+## Whether the hoe can turn this tile into a field: on fertile soil, or on the steppe and the desert where a sprinkler waters.
 func _can_till(cell: Vector2i) -> bool:
-	return _placing == "" and _releasing == "" and _fertile and Game.holds("tool_hoe") and _tile(cell) == NONE \
+	return _placing == "" and _releasing == "" and (_fertile or _irrigable and _sprinkled(cell)) and Game.holds("tool_hoe") and _tile(cell) == NONE \
 		and not _fields.has(cell) and not _placed.has(cell) and not _animals.has(cell)
+
+
+## Whether a sprinkler waters the tile.
+func _sprinkled(cell: Vector2i) -> bool:
+	for at: Vector2i in _placed:
+		if _placed[at]["kind"] == SPRINKLER and absi(at.x - cell.x) <= REACHES[SPRINKLER] and absi(at.y - cell.y) <= REACHES[SPRINKLER]:
+			return true
+	return false
 
 
 ## Whether a sapling can be planted on this tile now.
@@ -1649,6 +1681,8 @@ func _can_place(cell: Vector2i) -> bool:
 		return (biome == only if only >= 0 else biome in [COAST, LAKESHORE]) and _footprint(_placing, cell).any(_by_water)
 	if _placing in HYDRO:
 		return biome in WATER_BIOMES
+	if _placing == GEOTHERMAL:
+		return biome in GEOTHERMAL_BIOMES
 	if _placing == SOLAR_TOWER:
 		return biome in SANDY
 	if _placing in GLACIER_ONLY:
@@ -1863,6 +1897,12 @@ func _placed_label(cell: Vector2i) -> String:
 		return "%s: po asfalcie chodzisz szybciej. Kliknij, aby schować" % object["name"]
 	if object["kind"] in HYDRO:
 		return "%s (woda kręci nim bez opału): kliknij po więcej" % object["name"]
+	if object["kind"] == GEOTHERMAL:
+		return "%s (ciepło ziemi daje prąd bez opału): kliknij po więcej" % object["name"]
+	if object["kind"] == SPRINKLER:
+		return "%s (podlewa pola %d pól wokół): kliknij, aby schować" % [object["name"], REACHES[SPRINKLER]]
+	if object["kind"] == TREE_NURSERY:
+		return "%s (sadzonki dla leśników %d pól wokół): kliknij, aby schować" % [object["name"], REACHES[TREE_NURSERY]]
 	if object["kind"] in SOLAR:
 		return "%s (słońce daje prąd za dnia, bez opału): kliknij po więcej" % object["name"]
 	if object["kind"] in BATTERIES:
@@ -1928,13 +1968,13 @@ func _draw_marks() -> void:
 			_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8))
 		if big and (FORESTERS.has(_placed[_hovered]["kind"]) or FARMSTEADS.has(_placed[_hovered]["kind"])):
 			_draw_forest(_placed[_hovered]["kind"], _hovered, int(_placed[_hovered].get("rotation", 0)))
-		elif _placed.has(_hovered) and _placed[_hovered]["kind"] == FEEDER:
-			_draw_reach(_hovered, FEEDER_REACH)
+		elif _placed.has(_hovered) and REACHES.has(_placed[_hovered]["kind"]):
+			_draw_reach(_anchor(_hovered), REACHES[_placed[_hovered]["kind"]])
 	if _placing != "" and ground.x >= 0:
 		if FORESTERS.has(_placing) or FARMSTEADS.has(_placing):
 			_draw_forest(_placing, ground, _place_rotation)
-		elif _placing == FEEDER:
-			_draw_reach(ground, FEEDER_REACH)
+		elif REACHES.has(_placing):
+			_draw_reach(ground, REACHES[_placing])
 		var tint := Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8)
 		_draw_footprint(_placing, ground, tint)
 		_draw_ring(_object_centre(_placing, ground), tint, _ring_size(_placing))
@@ -3152,6 +3192,16 @@ func _place_object(cell: Vector2i) -> void:
 		_show_toast("%s stoi na działce: drzewa do %d pól wokół niej nigdy nie spłoną." % [object["name"], int(_plot.get("fires", {}).get("stationReach", 12))])
 	elif kind == FEEDER:
 		_show_toast("%s stoi na działce: wsyp paszę (albo postaw podajnik), a sam nakarmi głodne zwierzęta do %d pól wokół. Kliknij go, aby go napełnić." % [object["name"], FEEDER_REACH])
+	elif kind == AUTO_BARN:
+		_show_toast("%s stoi na działce: wsyp paszę, a nakarmi zwierzęta do %d pól wokół i sama zbierze, co dają. Wyjmiesz to ręcznie albo podajnikiem." % [object["name"], REACHES[AUTO_BARN]])
+	elif kind == SPRINKLER:
+		_show_toast("%s stoi na działce: uprawy do %d pól wokół rosną szybciej, a na stepie i pustyni można tam orać." % [object["name"], REACHES[SPRINKLER]])
+	elif kind == TREE_NURSERY:
+		_show_toast("%s stoi na działce: lasy leśników do %d pól od niej rosną o połowę szybciej." % [object["name"], REACHES[TREE_NURSERY]])
+	elif kind == GEOTHERMAL:
+		_show_toast("%s stoi na działce i daje prąd bez opału, dzień i noc. Postaw obok słup energetyczny." % object["name"])
+	elif kind == CHP_PLANT:
+		_show_toast("%s stoi na działce: dołóż opału i podłącz ją słupem, a na lodowcu ogrzeje też maszyny do %d pól wokół." % [object["name"], REACHES[CHP_PLANT]])
 	elif kind == BEEHIVE:
 		_show_toast("%s stoi na działce: pszczoły same robią miód i wosk, szybciej przy kwitnących lipach. Kliknij go, aby wybrać miód." % object["name"])
 	elif kind == REED_FENCE:
@@ -3209,7 +3259,7 @@ func _use_placed(cell: Vector2i) -> void:
 	elif object["kind"] == ResearchWindow.TABLE:
 		_research_window.open_at(object["id"])
 	elif object["kind"] in GENERATORS or object["kind"] in HYDRO or object["kind"] in SOLAR or object["kind"] in BATTERIES \
-			or object["kind"] in WIND or object["kind"] == HEATER:
+			or object["kind"] in WIND or object["kind"] == HEATER or object["kind"] == GEOTHERMAL:
 		_generator_window.open_at(_at, object["id"])
 		# Only generators that burn fuel take anything in.
 		if object["kind"] in GENERATORS:
@@ -3225,7 +3275,7 @@ func _use_placed(cell: Vector2i) -> void:
 		_shop_window.open_at(object["id"])
 	elif object["kind"] == BEEHIVE:
 		_hive_window.open_at(object["id"])
-	elif object["kind"] == FEEDER:
+	elif FEEDERS.has(object["kind"]):
 		_feeder_window.feeds = _feed
 		_feeder_window.set_items(_items)
 		_feeder_window.open_at(_at, object["id"])
@@ -4603,7 +4653,7 @@ func _process(delta: float) -> void:
 		_poll_forestry()
 	if not _visitor and (_has_farmsteads() or not _farm_fields.is_empty()) and Time.get_ticks_msec() >= _next_farm_poll:
 		_poll_farmsteads()
-	if not _visitor and _kinds.has(FEEDER) and not _animals.is_empty() and Time.get_ticks_msec() >= _next_animals_poll:
+	if not _visitor and (_kinds.has(FEEDER) or _kinds.has(AUTO_BARN)) and not _animals.is_empty() and Time.get_ticks_msec() >= _next_animals_poll:
 		_poll_animals()
 	if not _visitor:
 		_poll_station()
@@ -5141,7 +5191,8 @@ func _update_hint() -> void:
 		"tool_steel_pickaxe": "Kliknij kopalnię albo skałę: kilof stalowy kopie o 50% szybciej niż żelazny.",
 		"tool_meteorite_pickaxe": "Kliknij kopalnię, skałę albo lód: kilof z meteorytu kopie dwa razy szybciej niż żelazny.",
 		"tool_shovel": "Kliknij zaspę, aby ją odkopać łopatą." if _biome() == GLACIER else "Kliknij wydmę, aby ją przekopać łopatą.",
-		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile else "Motyką orze się tylko żyzne gleby.",
+		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile \
+			else ("Motyką zaorzesz tu ziemię tylko tam, gdzie podlewa zraszacz." if _irrigable else "Motyką orze się tylko żyzne gleby."),
 		"tool_shears": "Kliknij owcę, aby ją ostrzyc nożycami, albo inne zwierzę, aby je nakarmić." if _pasture else "Na tej działce nie da się trzymać zwierząt.",
 	}
 	if _visitor:

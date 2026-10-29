@@ -1,6 +1,20 @@
 [
 	{
 		"date": "2026-10-29",
+		"title": "Nowe badania górnictwa, leśnictwa, hodowli, rolnictwa i energii",
+		"changes": [
+			"Nowa zakładka drzewka technologii: Rolnictwo. Trafiły do niej zagroda rolnika i folwark, a obok nich nawadnianie, mechanizacja, buraki cukrowe oraz len i konopie.",
+			"Górnictwo: „Geologia złożowa” sprawia, że minerał działki (siarka, sól, marmur, kwarc) trafia się w kopalniach i wiertłach dwa razy częściej, a badanie geologiczne kosztuje połowę. „Koksownictwo” daje koksownię: z 4 węgli robi 3 koksu i smołę, a koks grzeje jak dwa węgle w piecach, maszynach i elektrowniach.",
+			"„Metale szlachetne”: kruszarki kruszą rudę srebra i złota (z 2 rud 3 sztabki), a pracownia jubilerska robi biżuterię ze złota i bursztynu i srebrną zastawę dla miast.",
+			"Leśnictwo: szkółka leśna sprawia, że lasy leśników do 8 pól od niej rosną o połowę szybciej.",
+			"Hodowla: przędzalnia przędzie wełnę, a krosno tka z przędzy sukno. Obora automatyczna karmi zwierzęta do 4 pól wokół i sama zbiera jajka, wełnę, mleko, mięso, obornik i młode; podajnik wyjmuje zbiory. Nowe zwierzęta: świnie, które jedzą ziemniaki, kukurydzę, wywar i wysłodki i dają mięso bez rzeźni, oraz kozy, które dają mleko co 7 minut.",
+			"Rolnictwo: zraszacz przyspiesza uprawy do 4 pól wokół o 30% i pozwala orać na stepie i pustyni. Gospodarstwo zmechanizowane to trzeci poziom zagrody (4 × 4 pola, pole 13 × 13, uprawy 2 razy szybciej). Nowe uprawy: burak cukrowy (cukrownia robi z niego cukier, z cukru są pączki), len (płótno z krosna) i konopie (liny z przędzalni).",
+			"Energia: elektrownia na biomasę (500 kW z drewna i pelletu), elektrociepłownia (700 kW, a na lodowcu grzeje maszyny do 6 pól wokół), elektrownia geotermalna w górach, na tundrze i lodowcu (250 kW bez paliwa, dzień i noc) oraz wodór: elektrolizer robi go z wody na prąd, a ogniwo paliwowe oddaje z niego 70% tego prądu.",
+			"Miasta kupują cukier, pączki, sukno, płótno, liny, srebrną zastawę i biżuterię."
+		]
+	},
+	{
+		"date": "2026-10-29",
 		"title": "Policja, cło i przemyt",
 		"changes": [
 			"Każdy kraj z rządem ma własną policję. Złóż podanie w oknie „Policja” (od 5 poziomu, bez wyroku w ostatnim tygodniu). Komendanta mianuje prezydent albo minister spraw wewnętrznych, a on przyjmuje i awansuje funkcjonariuszy: kadet, posterunkowy, detektyw. Skarbiec kraju płaci pensję za każdy dzień służby i 10% grzywien z twoich wyroków.",

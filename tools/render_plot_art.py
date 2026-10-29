@@ -419,16 +419,64 @@ def sprout(scale):
     return meshes()
 
 
+def sugar_beet(scale):
+    """Sugar beets: low rosettes of broad glossy leaves, the white tops of the roots showing when ripe."""
+    leaves = foliage("beetleaf", (0.1, 0.26, 0.06), 0.25)
+    root = ra.plain("beetroot", (0.75, 0.7, 0.58), 0.7)
+    for x, y in rows(3, 4, 0.05):
+        for k in range(6):
+            a = k / 6 * math.tau + random.random() * 0.5
+            ra.sphere("leaf", 0.13 * scale, (x + math.cos(a) * 0.1 * scale, y + math.sin(a) * 0.1 * scale, 0.16 * scale), leaves,
+                      scale=(1.5, 0.8, 0.3), segments=8).rotation_euler = (0.5 * math.sin(a), -0.5 * math.cos(a), a)
+        if scale > 0.8:
+            ra.sphere("root", 0.08, (x, y, 0.03), root, scale=(1, 1, 0.8), segments=10)
+    return meshes()
+
+
+def flax(scale):
+    """Flax: dense thin stalks with small blue flowers on top."""
+    stalk = ra.plain("flaxstalk", (0.25, 0.35, 0.1), 0.7)
+    flower = ra.plain("flaxflower", (0.3, 0.42, 0.85), 0.5)
+    for x, y in rows(5, 8, 0.06):
+        h = random.uniform(0.8, 1.0) * scale
+        lean = random.uniform(-0.1, 0.1)
+        ra.cylinder("stalk", 0.008, h, (x, y, h / 2), stalk, rotation=(lean, lean, 0), verts=5)
+        ra.sphere("flower" if scale > 0.8 else "bud", 0.035 if scale > 0.8 else 0.02, (x + lean * h * 0.5, y - lean * h * 0.5, h),
+                  flower if scale > 0.8 else stalk, scale=(1, 1, 0.5), segments=8)
+    return meshes()
+
+
+def hemp(scale):
+    """Hemp: tall stalks crowded with fingered leaves, densest at the top."""
+    stalk = ra.plain("hempstalk", (0.1, 0.2, 0.05), 0.7)
+    leaf = foliage("hempleaf", (0.06, 0.2, 0.05), 0.3)
+    for x, y in rows(3, 4, 0.05):
+        h = random.uniform(1.6, 1.9) * scale
+        ra.cylinder("stalk", 0.02, h, (x, y, h / 2), stalk, verts=6)
+        for k in range(4):
+            z = h * (0.35 + k * 0.17)
+            r = 0.2 * scale * (1 - k * 0.18)
+            for j in range(5):
+                a = j / 5 * math.tau + k
+                ra.box("finger", (r, 0.035, 0.01), (x + math.cos(a) * r / 2, y + math.sin(a) * r / 2, z), leaf, rotation=(0, math.radians(-20), a))
+        ra.sphere("top", 0.06 * scale + 0.02, (x, y, h + 0.03), leaf, scale=(1, 1, 2.0), segments=8)
+    return meshes()
+
+
 CROPS = {"wheat": (wheat, 1.1), "carrot": (carrot, 0.5), "cabbage": (cabbage, 0.5), "corn": (corn, 2.0),
-         "potato": (potato, 0.5), "sunflower": (sunflower, 1.9)}
+         "potato": (potato, 0.5), "sunflower": (sunflower, 1.9),
+         "sugar_beet": (sugar_beet, 0.5), "flax": (flax, 1.0), "hemp": (hemp, 1.9)}
 
 
-def render_farming(layout: dict):
-    """The tilled field (drawn flat under the crop) and every crop half-grown and ripe."""
-    layout["field"] = render_sprite("field", 112, 96, Vector((0, 0, 0)), field)
-    random.seed(3)
-    layout["sprout"] = render_sprite("sprout", 112, 96, Vector((0, 0, 0)), lambda: sprout(1.0))
+def render_farming(layout: dict, only=()):
+    """The tilled field (drawn flat under the crop) and every crop half-grown and ripe; names of crops render just those."""
+    if not only:
+        layout["field"] = render_sprite("field", 112, 96, Vector((0, 0, 0)), field)
+        random.seed(3)
+        layout["sprout"] = render_sprite("sprout", 112, 96, Vector((0, 0, 0)), lambda: sprout(1.0))
     for name, (build, height) in CROPS.items():
+        if only and name not in only:
+            continue
         for stage, scale in (("young", 0.55), ("ripe", 1.0)):
             random.seed(zlib.crc32(name.encode()))
             h = int(96 + height * scale * 32 * 0.8)
@@ -6811,7 +6859,7 @@ def husbandry_icon_models():
 
 def render_icons(only=()):
     ICONS.mkdir(parents=True, exist_ok=True)
-    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models(), **city_icon_models(), **forest_icon_models(), **tree_icon_models(), **husbandry_icon_models(), **big_power_icon_models()}.items():
+    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models(), **city_icon_models(), **forest_icon_models(), **tree_icon_models(), **husbandry_icon_models(), **big_power_icon_models(), **branch_icon_models()}.items():
         if only and name not in only:
             continue
         random.seed(zlib.crc32(name.encode()))
@@ -7186,8 +7234,590 @@ def render_banks(layout: dict, only=()):
         ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"furniture_{name}.png")
 
 
+# --- The raw-material branches: coking, precious metals, the nursery, textiles, farming and energy ----------------------
+# Drawn at their size from the start: 2 × 2 tiles is a 4 m square, 3 × 3 a 6 m one, 4 × 4 an 8 m one, centred on the origin.
+
+def branch_mats():
+    """tree_mats with the paint of the countryside: brick, timber, barn red, glass and water."""
+    return big_power_mats() | {
+        "timber": ra.wood("br_timber", (0.3, 0.18, 0.09)),
+        "boards": ra.wood("br_boards", (0.22, 0.12, 0.06)),
+        "barn": ra.plain("br_barn", (0.42, 0.07, 0.04), 0.7, variation=0.2, bump=0.3),
+        "roof": ra.plain("br_roof", (0.12, 0.13, 0.14), 0.6, 0.3, variation=0.15, grime=0.3),
+        "tiles": ra.plain("br_tiles", (0.42, 0.12, 0.06), 0.8, variation=0.3, scale=16, bump=0.5),
+        "plaster": ra.plain("br_plaster", (0.74, 0.71, 0.62), 0.85, variation=0.15, bump=0.3),
+        "pane": ra.plain("br_pane", (0.35, 0.5, 0.45), 0.05, 0.2, variation=0.05, grime=0.05),
+        "water": water_mat("br_water"),
+        "spray": ra.plain("br_spray", (0.7, 0.8, 0.88), 0.2, variation=0.05, grime=0.0),
+        "soil": soil_mat(),
+        "leaf": foliage("br_leaf", (0.07, 0.17, 0.07)),
+        "chips": ra.plain("br_chips", (0.45, 0.3, 0.14), 0.9, variation=0.3, scale=30, bump=0.8),
+        "coke": ra.plain("br_coke", (0.17, 0.17, 0.18), 0.8, 0.3, variation=0.3, scale=24, bump=0.8),
+        "beet": ra.plain("br_beet", (0.7, 0.62, 0.5), 0.8, variation=0.2, bump=0.5),
+        "wool": ra.plain("br_wool", (0.75, 0.72, 0.64), 0.95, variation=0.12, bump=0.6),
+        "cloth": ra.plain("br_cloth", (0.12, 0.2, 0.45), 0.85, variation=0.1, bump=0.3),
+        "linen": ra.plain("br_linen", (0.72, 0.68, 0.58), 0.9, variation=0.1, bump=0.3),
+        "gold": ra.plain("br_gold", (0.8, 0.55, 0.15), 0.25, 1.0, variation=0.1),
+        "hydrogen": ra.plain("br_h2", (0.75, 0.78, 0.8), 0.35, 0.2, variation=0.05, grime=0.2),
+        "hot": ra.emission("br_hot", (1.0, 0.4, 0.08), 5.0),
+    }
+
+
+def build_coke_oven():
+    """A coke oven battery on 3 × 3 tiles: a long block of refractory brick with a row of steel oven doors, the charging
+    car on rails along its top, a tall brick chimney, the quench tower breathing steam and a car of glowing coke below it."""
+    m = branch_mats()
+    ra.box("co_pad", (5.8, 5.8, 0.06), (0, 0, 0.03), m["concrete"])
+    ra.box("co_battery", (4.2, 1.8, 2.0), (-0.5, 0.9, 1.06), m["brick"], bevel=0.03)
+    ra.box("co_top", (4.3, 1.9, 0.12), (-0.5, 0.9, 2.12), m["dark"])
+    for k in range(6):
+        x = -2.25 + k * 0.7
+        ra.box("co_door", (0.42, 0.06, 1.5), (x, -0.02, 0.95), m["rusty"], bevel=0.02)
+        ra.box("co_buckstay", (0.08, 0.1, 2.0), (x + 0.35, -0.03, 1.06), m["dark"])
+        ra.box("co_glow", (0.3, 0.02, 0.06), (x, -0.06, 1.6), m["hot"])
+    for y in (0.4, 1.4):
+        ra.box("co_rail", (4.3, 0.06, 0.06), (-0.5, y, 2.21), m["steel"])
+    ra.box("co_larry", (0.9, 1.2, 0.6), (-1.4, 0.9, 2.54), m["yellow"], bevel=0.03)
+    ra.cylinder("co_larry_hopper", 0.3, 0.4, (-1.4, 0.9, 3.04), m["dark"], radius2=0.4, verts=16)
+    ra.cylinder("co_chimney", 0.4, 5.6, (2.2, 2.2, 2.86), m["brick"], verts=20, radius2=0.28)
+    ra.cylinder("co_chimney_rim", 0.32, 0.15, (2.2, 2.2, 5.66), m["dark"], verts=20)
+    # The quench tower over the track, and a car of coke glowing on the way to it.
+    ra.box("co_quench", (1.2, 1.2, 2.6), (2.0, -1.0, 1.36), m["concrete"], bevel=0.03)
+    ra.box("co_quench_mouth", (0.9, 0.06, 0.9), (2.0, -1.62, 0.5), m["dark"])
+    for k in range(3):
+        ra.sphere("co_steam", 0.6 - k * 0.12, (2.0 + k * 0.2, -0.9 + k * 0.15, 2.9 + k * 0.5), m["steam"], scale=(1, 1, 0.6), segments=16)
+    ra.box("co_track", (5.4, 0.06, 0.04), (0, -1.15, 0.08), m["steel"])
+    ra.box("co_track", (5.4, 0.06, 0.04), (0, -0.75, 0.08), m["steel"])
+    ra.box("co_car", (1.3, 0.7, 0.45), (0.2, -0.95, 0.4), m["rusty"], bevel=0.02)
+    heap = ra.sphere("co_car_coke", 0.45, (0.2, -0.95, 0.6), m["hot"], scale=(1.3, 0.7, 0.35), segments=12)
+    ra.displace(heap, 0.04, 0.2, 1)
+    # A heap of finished coke by the gate.
+    heap = ra.sphere("co_heap", 0.8, (-2.0, -1.9, 0.0), m["coke"], scale=(1, 0.75, 0.6), segments=16, keep=lambda co: co.z > -0.01)
+    ra.displace(heap, 0.08, 0.3, 2)
+
+
+def build_jeweler():
+    """A jeweller's workshop on 2 × 2 tiles: a narrow town house of white plaster with a red roof, a lit shop window with
+    gold on velvet behind it, a green awning, a sign of a ring over the door and a small safe."""
+    m = branch_mats()
+    ra.box("jw_pad", (3.8, 3.8, 0.05), (0, 0, 0.025), m["concrete"])
+    w, d, h = 2.8, 2.2, 1.9
+    ra.box("jw_house", (w, d, h), (0, 0.5, 0.05 + h / 2), m["plaster"], bevel=0.03)
+    gable_ends("jw_gable", w, d, 0.05 + h, 0.05 + h + 1.0, m["plaster"], (0, 0.5))
+    gable_roof("jw_roof", w, d, h, 0.05 + h + 1.0, m["tiles"], (0, 0.5))
+    front = 0.5 - d / 2
+    ra.box("jw_window", (1.3, 0.04, 0.8), (-0.5, front - 0.02, 0.85), m["window"])
+    ra.box("jw_frame", (1.4, 0.06, 0.08), (-0.5, front - 0.03, 1.28), m["dark"])
+    ra.box("jw_velvet", (1.2, 0.08, 0.12), (-0.5, front - 0.06, 0.5), ra.plain("jw_velvet", (0.3, 0.03, 0.05), 0.8))
+    for k in range(4):
+        ra.torus("jw_ring", 0.06, 0.015, (-0.95 + k * 0.3, front - 0.1, 0.6), m["gold"], rotation=(math.radians(90), 0, 0))
+    ra.box("jw_awning", (1.6, 0.6, 0.06), (-0.5, front - 0.3, 1.45), ra.plain("jw_awning", (0.08, 0.3, 0.14), 0.7),
+           rotation=(math.radians(-20), 0, 0))
+    ra.box("jw_door", (0.55, 0.05, 1.2), (0.8, front - 0.02, 0.65), m["boards"], bevel=0.02)
+    ra.cylinder("jw_sign_arm", 0.02, 0.5, (1.2, front - 0.25, 1.65), m["dark"], rotation=(math.radians(90), 0, 0), verts=8)
+    ra.torus("jw_sign", 0.16, 0.04, (1.2, front - 0.45, 1.45), m["gold"], rotation=(math.radians(90), 0, 0))
+    ra.box("jw_safe", (0.5, 0.45, 0.6), (-1.35, -1.3, 0.35), m["dark"], bevel=0.03)
+    ra.cylinder("jw_dial", 0.08, 0.03, (-1.35, -1.53, 0.4), m["gold"], rotation=(math.radians(90), 0, 0), verts=16)
+
+
+def build_tree_nursery():
+    """A tree nursery on 2 × 2 tiles: a greenhouse of glass on a steel frame with seedlings inside, and in front rows of
+    young conifers in pots and a watering can."""
+    m = branch_mats()
+    ra.box("tn_soil", (3.8, 3.8, 0.05), (0, 0, 0.025), m["soil"])
+    w, d, h = 2.6, 1.6, 1.1
+    ra.box("tn_base", (w, d, 0.2), (0, 0.9, 0.15), m["concrete"], bevel=0.02)
+    ra.box("tn_glass", (w, d, h), (0, 0.9, 0.25 + h / 2), m["pane"])
+    gable_ends("tn_gable", w, d, 0.25 + h, 0.25 + h + 0.7, m["pane"], (0, 0.9))
+    gable_roof("tn_roof", w, d, 0.25 + h, 0.25 + h + 0.7, m["pane"], (0, 0.9))
+    for k in range(5):
+        x = -w / 2 + k * w / 4
+        ra.box("tn_mullion", (0.04, d + 0.02, 0.04), (x, 0.9, 0.25 + h), m["white"])
+        ra.box("tn_post", (0.04, 0.04, h), (x, 0.9 - d / 2, 0.25 + h / 2), m["white"])
+        ra.box("tn_post", (0.04, 0.04, h), (x, 0.9 + d / 2, 0.25 + h / 2), m["white"])
+    ra.box("tn_ridge", (w + 0.04, 0.05, 0.05), (0, 0.9, 0.25 + h + 0.7), m["white"])
+    for k in range(6):
+        ra.sphere("tn_seedling", 0.14, (-1.0 + k * 0.4, 0.9, 0.4), m["leaf"], scale=(1, 1, 1.4), segments=10)
+    pot = ra.plain("tn_pot", (0.4, 0.15, 0.06), 0.8)
+    for r in range(2):
+        for c in range(5):
+            x, y = -1.3 + c * 0.6, -0.4 - r * 0.7
+            ra.cylinder("tn_pot", 0.13, 0.2, (x, y, 0.15), pot, radius2=0.1, verts=12)
+            ra.cylinder("tn_tree", 0.18, 0.55, (x, y, 0.5), m["leaf"], radius2=0.0, verts=10)
+            ra.cylinder("tn_tree", 0.14, 0.4, (x, y, 0.72), m["leaf"], radius2=0.0, verts=10)
+    ra.cylinder("tn_can", 0.12, 0.22, (1.55, -1.6, 0.16), ra.plain("tn_can", (0.15, 0.3, 0.15), 0.4, 0.5), verts=14)
+    ra.cylinder("tn_spout", 0.02, 0.3, (1.38, -1.6, 0.25), m["steel"], rotation=(0, math.radians(-50), 0), verts=8)
+
+
+def build_spinning_mill():
+    """A spinning mill on 2 × 2 tiles: a brick hall with a sawtooth roof of north lights and a motor's cabinet on its side,
+    bales of wool going in and a pallet of spools of yarn coming out."""
+    m = branch_mats()
+    ra.box("sp_pad", (3.8, 3.8, 0.05), (0, 0, 0.025), m["concrete"])
+    w, d, h = 3.0, 2.2, 1.3
+    ra.box("sp_hall", (w, d, h), (0, 0.5, 0.05 + h / 2), m["brick"], bevel=0.03)
+    sawtooth("sp_roof", -w / 2, w / 2, 0.5 - d / 2, 0.5 + d / 2, 0.05 + h, 3, 0.5, m, m["roof"])
+    front = 0.5 - d / 2
+    for k in range(4):
+        ra.box("sp_window", (0.4, 0.04, 0.55), (-1.05 + k * 0.7, front - 0.02, 0.85), m["window"])
+    ra.box("sp_door", (0.6, 0.04, 0.8), (0.0, front - 0.02, 0.45), ra.corrugated("sp_roller", (0.55, 0.42, 0.08), 0.1))
+    ra.box("sp_motor", (0.4, 0.5, 0.7), (w / 2 + 0.2, 0.2, 0.4), m["blue"], bevel=0.02)
+    ra.box("sp_motor_lamp", (0.08, 0.02, 0.08), (w / 2 + 0.2, -0.06, 0.65), m["lamp"])
+    for k, (x, y) in enumerate(((-1.4, -1.3), (-0.9, -1.4), (-1.15, -1.35))):
+        bale = ra.box("sp_bale", (0.5, 0.4, 0.35), (x, y, 0.2 + 0.33 * (k // 2)), m["wool"], bevel=0.08)
+        ra.displace(bale, 0.02, 0.15, 1)
+    ra.box("sp_pallet", (0.9, 0.7, 0.1), (1.1, -1.3, 0.08), m["boards"])
+    spool = ra.plain("sp_spool", (0.7, 0.55, 0.3), 0.8)
+    for r in range(2):
+        for c in range(3):
+            ra.cylinder("sp_spool", 0.11, 0.3, (0.85 + c * 0.25, -1.45 + r * 0.3, 0.28), spool, verts=14)
+            ra.cylinder("sp_spool_end", 0.12, 0.03, (0.85 + c * 0.25, -1.45 + r * 0.3, 0.44), m["boards"], verts=14)
+
+
+def build_loom():
+    """A weaving shed on 2 × 2 tiles: a big wooden loom under an open timber roof, the warp threads running to a roll of
+    blue cloth, a basket of yarn and a stack of folded cloth and linen."""
+    m = branch_mats()
+    ra.box("lm_floor", (3.8, 3.8, 0.05), (0, 0, 0.025), m["boards"])
+    # A lean-to roof at the back, so the loom in front of it shows.
+    for x in (-1.6, 1.6):
+        for y in (0.6, 1.6):
+            ra.box("lm_post", (0.14, 0.14, 1.9), (x, y, 1.0), m["timber"])
+    ra.box("lm_roof", (3.5, 1.5, 0.08), (0, 1.1, 2.0), m["tiles"], rotation=(math.radians(15), 0, 0))
+    plank_wall("lm_back", 3.2, 1.9, (0, 1.65, 0.05), True, m["boards"])
+    # The loom: two side frames, the beams, the warp and the cloth.
+    for x in (-0.9, 0.9):
+        ra.box("lm_side", (0.1, 1.2, 0.1), (x, 0.4, 0.9), m["timber"])
+        for y in (-0.1, 0.9):
+            ra.box("lm_leg", (0.1, 0.1, 1.2), (x, y, 0.65), m["timber"])
+    ra.cylinder("lm_warp_beam", 0.1, 1.9, (0, 0.9, 0.95), m["timber"], rotation=(0, math.radians(90), 0), verts=12)
+    ra.cylinder("lm_cloth_beam", 0.16, 1.8, (0, -0.1, 0.9), m["cloth"], rotation=(0, math.radians(90), 0), verts=16)
+    ra.box("lm_warp", (1.6, 1.0, 0.01), (0, 0.4, 1.02), ra.plain("lm_warp", (0.75, 0.7, 0.55), 0.8), rotation=(math.radians(-5), 0, 0))
+    ra.box("lm_beater", (1.75, 0.08, 0.5), (0, 0.3, 1.25), m["timber"])
+    ra.box("lm_bench", (1.0, 0.3, 0.45), (0, -0.6, 0.27), m["timber"])
+    ra.cylinder("lm_basket", 0.25, 0.3, (-1.3, -1.3, 0.2), ra.plain("lm_wicker", (0.45, 0.32, 0.12), 0.9, bump=0.6), verts=16)
+    for k in range(3):
+        ra.sphere("lm_yarn", 0.1, (-1.35 + k * 0.08, -1.3 + (k % 2) * 0.08, 0.4), m["wool"], segments=10)
+    for k in range(4):
+        ra.box("lm_fold", (0.6, 0.45, 0.08), (1.1, -1.3, 0.1 + k * 0.085), m["cloth"] if k % 2 else m["linen"], bevel=0.03)
+
+
+def build_auto_barn():
+    """An automatic barn on 2 × 2 tiles: a red barn with a grey roof, a feed silo with a screw conveyor into the barn,
+    a white egg belt coming out of its side into a crate and a little steel control box."""
+    m = branch_mats()
+    ra.box("ab_pad", (3.8, 3.8, 0.05), (0, 0, 0.025), m["concrete"])
+    w, d, h = 2.6, 2.4, 1.3
+    plank_wall("ab_front", w, h, (-0.3, 0.4 - d / 2, 0.05), True, m["barn"])
+    plank_wall("ab_back", w, h, (-0.3, 0.4 + d / 2, 0.05), True, m["barn"])
+    plank_wall("ab_side", d, h, (-0.3 - w / 2, 0.4, 0.05), False, m["barn"])
+    plank_wall("ab_side", d, h, (-0.3 + w / 2, 0.4, 0.05), False, m["barn"])
+    ra.box("ab_inside", (w - 0.1, d - 0.1, h), (-0.3, 0.4, 0.05 + h / 2), m["dark"])
+    gable_ends("ab_gable", w, d, 0.05 + h, 0.05 + h + 0.9, m["barn"], (-0.3, 0.4))
+    gable_roof("ab_roof", w, d, h, 0.05 + h + 0.9, m["roof"], (-0.3, 0.4))
+    front = 0.4 - d / 2
+    ra.box("ab_door", (0.9, 0.06, 1.0), (-0.3, front - 0.05, 0.55), m["white"], bevel=0.02)
+    ra.box("ab_brace", (0.06, 0.07, 1.25), (-0.3, front - 0.08, 0.55), m["white"], rotation=(0, math.radians(38), 0))
+    # The feed silo and its screw into the roof.
+    ra.cylinder("ab_silo", 0.45, 2.3, (1.4, 1.2, 1.2), m["steel"], verts=24)
+    ra.cylinder("ab_silo_top", 0.45, 0.35, (1.4, 1.2, 2.52), m["steel"], radius2=0.05, verts=24)
+    ra.cylinder("ab_silo_cone", 0.45, 0.3, (1.4, 1.2, 0.15), m["grey"], radius2=0.15, verts=24)
+    ra.cylinder("ab_screw", 0.07, 1.2, (0.7, 1.0, 1.75), m["grey"], rotation=(0, math.radians(-70), 0), verts=10)
+    # The belt out of the side and the crate it fills.
+    ra.box("ab_belt", (0.8, 0.25, 0.05), (1.4, -0.4, 0.45), m["dark"])
+    for k in range(4):
+        ra.sphere("ab_egg", 0.05, (1.15 + k * 0.17, -0.4, 0.51), ra.plain("ab_egg", (0.85, 0.75, 0.6), 0.4), scale=(1, 1, 1.25), segments=10)
+    ra.box("ab_crate", (0.55, 0.5, 0.35), (1.45, -1.1, 0.2), m["boards"], bevel=0.02)
+    ra.box("ab_control", (0.35, 0.2, 0.45), (-1.4, -1.25, 0.6), m["grey"], bevel=0.02)
+    ra.box("ab_control_post", (0.06, 0.06, 0.4), (-1.4, -1.2, 0.2), m["steel"])
+    ra.box("ab_control_lamp", (0.06, 0.02, 0.06), (-1.4, -1.36, 0.72), m["lamp"])
+
+
+def build_sugar_factory():
+    """A sugar factory on 2 × 2 tiles: a tall white-washed hall with a brick chimney smoking, a washing flume and a heap
+    of beets, an evaporator tank and sacks of white sugar by the door."""
+    m = branch_mats()
+    ra.box("sf_pad", (3.8, 3.8, 0.05), (0, 0, 0.025), m["concrete"])
+    w, d, h = 2.4, 2.0, 1.8
+    ra.box("sf_hall", (w, d, h), (-0.4, 0.6, 0.05 + h / 2), m["plaster"], bevel=0.03)
+    gable_ends("sf_gable", w, d, 0.05 + h, 0.05 + h + 0.8, m["plaster"], (-0.4, 0.6))
+    gable_roof("sf_roof", w, d, h, 0.05 + h + 0.8, m["tiles"], (-0.4, 0.6))
+    front = 0.6 - d / 2
+    for k in range(3):
+        ra.box("sf_window", (0.35, 0.04, 0.6), (-1.2 + k * 0.8, front - 0.02, 1.25), m["window"])
+    ra.box("sf_door", (0.6, 0.04, 0.9), (-0.4, front - 0.02, 0.5), m["boards"])
+    ra.cylinder("sf_chimney", 0.25, 4.0, (1.35, 1.4, 2.0), m["brick"], verts=16, radius2=0.18)
+    for k in range(3):
+        ra.sphere("sf_smoke", 0.35 - k * 0.06, (1.45 + k * 0.25, 1.5 + k * 0.1, 4.2 + k * 0.35), m["steam"], scale=(1, 1, 0.6), segments=12)
+    ra.cylinder("sf_tank", 0.4, 1.2, (1.35, 0.3, 0.65), m["steel"], verts=20)
+    ra.sphere("sf_tank_dome", 0.4, (1.35, 0.3, 1.25), m["steel"], scale=(1, 1, 0.5), segments=20, keep=lambda co: co.z >= -0.01)
+    ra.cylinder("sf_pipe", 0.05, 0.9, (1.0, 0.3, 1.0), m["grey"], rotation=(0, math.radians(90), 0), verts=10)
+    # The beets wait in a heap by a washing flume.
+    beets = ra.sphere("sf_beets", 0.75, (1.1, -1.2, 0.0), m["beet"], scale=(1, 0.8, 0.55), segments=16, keep=lambda co: co.z > -0.01)
+    ra.displace(beets, 0.08, 0.15, 2)
+    ra.box("sf_flume", (1.2, 0.25, 0.15), (0.1, -0.8, 0.12), m["concrete"], rotation=(0, 0, math.radians(30)))
+    ra.box("sf_flume_water", (1.1, 0.18, 0.02), (0.1, -0.8, 0.2), m["water"], rotation=(0, 0, math.radians(30)))
+    sack_m = ra.plain("sf_sack", (0.85, 0.84, 0.8), 0.95, variation=0.08, bump=0.5)
+    for k, (x, y, z) in enumerate(((-1.4, -1.3, 0.2), (-1.0, -1.35, 0.2), (-1.2, -1.3, 0.52))):
+        s = ra.sphere("sf_sack", 0.22, (x, y, z), sack_m, scale=(1.1, 0.9, 1.0), segments=14)
+        ra.displace(s, 0.012, 0.2, 1)
+
+
+def build_sprinkler():
+    """A sprinkler on one tile: a steel riser from a buried pipe with a rotating arm, water spraying out of both ends."""
+    m = branch_mats()
+    ra.box("sk_valve_box", (0.4, 0.4, 0.1), (0, 0, 0.05), m["concrete"])
+    ra.cylinder("sk_riser", 0.05, 1.0, (0, 0, 0.55), m["steel"], verts=12)
+    ra.cylinder("sk_head", 0.09, 0.12, (0, 0, 1.08), m["yellow"], verts=12)
+    ra.cylinder("sk_arm", 0.025, 1.4, (0, 0, 1.12), m["steel"], rotation=(0, math.radians(90), math.radians(20)), verts=8)
+    for side in (-1, 1):
+        x, y = side * 0.66, side * 0.24
+        for k in range(5):
+            t = k + 1
+            ra.sphere("sk_spray", 0.05 + 0.025 * t, (x + side * 0.18 * t, y + side * 0.07 * t, 1.12 + 0.08 * t - 0.03 * t * t), m["spray"],
+                      segments=8)
+    puddle = ra.cylinder("sk_puddle", 0.7, 0.01, (0, 0, 0.005), m["water"], verts=24)
+    puddle.scale = (1.2, 0.8, 1)
+
+
+def build_mechanized_farm():
+    """A mechanised farm on 4 × 4 tiles: a big hall of green cladding with a curved roof, a white farmhouse, two tall grain
+    silos with a bucket elevator, a red tractor with a plough and round bales stacked in the yard."""
+    m = branch_mats()
+    ra.box("mf_yard", (7.8, 7.8, 0.04), (0, 0, 0.02), m["concrete"])
+    green = ra.corrugated("mf_cladding", (0.12, 0.28, 0.14), 0.1)
+    ra.box("mf_hall", (4.0, 2.8, 1.8), (-1.6, 1.8, 0.94), green, bevel=0.03)
+    for k in range(10):
+        a0, a1 = math.pi * k / 10, math.pi * (k + 1) / 10
+        x0, z0 = -math.cos(a0) * 1.4, math.sin(a0) * 0.9
+        x1, z1 = -math.cos(a1) * 1.4, math.sin(a1) * 0.9
+        ra.box("mf_vault", (4.1, math.hypot(x1 - x0, z1 - z0) + 0.02, 0.06), (-1.6, 1.8 + (x0 + x1) / 2, 1.84 + (z0 + z1) / 2), m["roof"],
+               rotation=(math.atan2(z1 - z0, x1 - x0), 0, 0))
+    ra.box("mf_hall_door", (1.6, 0.04, 1.4), (-1.6, 0.38, 0.74), ra.corrugated("mf_roller", (0.55, 0.42, 0.08), 0.1))
+    ra.box("mf_hall_inside", (1.5, 0.02, 1.3), (-1.6, 0.39, 0.7), m["dark"])
+    # The farmhouse.
+    ra.box("mf_house", (2.0, 1.6, 1.4), (2.3, 2.4, 0.74), m["plaster"], bevel=0.03)
+    gable_ends("mf_house_gable", 2.0, 1.6, 1.44, 2.3, m["plaster"], (2.3, 2.4))
+    gable_roof("mf_house_roof", 2.0, 1.6, 1.4, 2.3, m["tiles"], (2.3, 2.4))
+    for x in (1.8, 2.8):
+        ra.box("mf_house_window", (0.35, 0.04, 0.4), (x, 1.58, 0.95), m["window"])
+    ra.box("mf_house_door", (0.4, 0.04, 0.8), (2.3, 1.58, 0.45), m["boards"])
+    # Two silos and the elevator between them.
+    for x in (1.5, 3.1):
+        ra.cylinder("mf_silo", 0.65, 3.4, (x, 0.2, 1.74), m["steel"], verts=28)
+        ra.cylinder("mf_silo_top", 0.67, 0.5, (x, 0.2, 3.69), m["steel"], radius2=0.1, verts=28)
+        for z in (0.8, 1.6, 2.4, 3.2):
+            ra.cylinder("mf_silo_band", 0.66, 0.04, (x, 0.2, z), m["grey"], verts=28)
+    bucket_elevator("mf_lift", 2.3, -0.4, 4.3, m, m["yellow"])
+    # The tractor and its plough.
+    red = ra.plain("mf_tractor", (0.5, 0.05, 0.03), 0.4, 0.2, variation=0.08, grime=0.3)
+    ra.box("mf_tractor_body", (1.0, 0.5, 0.45), (-1.4, -1.6, 0.75), red, bevel=0.04)
+    ra.box("mf_cab", (0.6, 0.6, 0.6), (-1.0, -1.6, 1.25), m["glass"], bevel=0.02)
+    ra.box("mf_cab_roof", (0.66, 0.66, 0.06), (-1.0, -1.6, 1.58), red)
+    for x, r in ((-1.85, 0.3), (-0.95, 0.48)):
+        for y in (-1.95, -1.25):
+            ra.cylinder("mf_wheel", r, 0.25, (x, y, r), m["dark"], rotation=(math.radians(90), 0, 0), verts=20)
+    ra.cylinder("mf_exhaust", 0.04, 0.5, (-1.75, -1.45, 1.2), m["dark"], verts=8)
+    for k in range(3):
+        ra.box("mf_plough", (0.1, 0.5, 0.3), (-0.2 + k * 0.3, -1.6 - 0.1 * k, 0.25), m["steel"], rotation=(0, 0, math.radians(30)))
+    for k, (x, y, z) in enumerate(((1.5, -2.6, 0.4), (2.4, -2.6, 0.4), (3.3, -2.6, 0.4), (1.95, -2.6, 1.15), (2.85, -2.6, 1.15))):
+        hay_bale((x, y), 0.4, along_x=False)
+        if z > 1:
+            ra.cylinder("mf_bale_top", 0.4, 0.6, (x, y, z), ra.plain("hay", (0.55, 0.42, 0.14), 0.9), rotation=(math.radians(90), 0, 0), verts=20)
+
+
+def boiler_house(prefix, at, size, m, cladding):
+    """A boiler house of corrugated cladding on a brick base, a row of lit windows and a roller door to the south."""
+    x, y = at
+    w, d, h = size
+    ra.box(f"{prefix}_base", (w, d, 0.6), (x, y, 0.36), m["brick"], bevel=0.02)
+    ra.box(f"{prefix}_hall", (w, d, h - 0.6), (x, y, 0.66 + (h - 0.6) / 2), cladding, bevel=0.02)
+    ra.box(f"{prefix}_roof", (w + 0.1, d + 0.1, 0.08), (x, y, h + 0.1), m["dark"])
+    for k in range(int(w / 0.55)):
+        ra.box(f"{prefix}_window", (0.3, 0.02, 0.35), (x - w / 2 + 0.35 + k * 0.55, y - d / 2 - 0.01, h - 0.4), m["window"])
+    ra.box(f"{prefix}_door", (0.7, 0.03, 0.8), (x + w / 2 - 0.6, y - d / 2 - 0.01, 0.46), ra.corrugated(f"{prefix}_roller", (0.55, 0.42, 0.08), 0.1))
+
+
+def build_biomass_plant():
+    """A biomass power plant on 3 × 3 tiles: a boiler house of green cladding, a steel chimney, a big heap of wood chips
+    under a covered conveyor into the boiler, a pile of logs and the transformer the pole's wire comes to."""
+    m = branch_mats()
+    ra.box("bm_pad", (5.8, 5.8, 0.06), (0, 0, 0.03), m["concrete"])
+    boiler_house("bm", (-0.8, 1.0), (3.0, 2.0, 2.4), m, ra.corrugated("bm_cladding", (0.14, 0.3, 0.16), 0.1))
+    ra.cylinder("bm_chimney", 0.3, 4.8, (-2.2, 2.3, 2.46), m["steel"], verts=20, radius2=0.25)
+    ra.cylinder("bm_chimney_band", 0.27, 0.2, (-2.2, 2.3, 4.5), m["red"], verts=20)
+    ra.sphere("bm_smoke", 0.35, (-2.1, 2.4, 5.1), m["steam"], scale=(1, 1, 0.6), segments=14)
+    chips = ra.sphere("bm_chips", 1.1, (1.5, -0.6, 0.0), m["chips"], scale=(1, 0.9, 0.6), segments=18, keep=lambda co: co.z > -0.01)
+    ra.displace(chips, 0.06, 0.2, 2)
+    ra.box("bm_conveyor", (0.35, 2.6, 0.25), (1.0, 0.8, 1.35), m["grey"], rotation=(math.radians(-30), 0, 0))
+    ra.box("bm_conveyor_roof", (0.45, 2.6, 0.05), (1.0, 0.8, 1.53), m["dark"], rotation=(math.radians(-30), 0, 0))
+    log_pile((-2.0, -1.6), 6, ra.wood("bm_bark", (0.15, 0.09, 0.05)), r=0.16, length=1.2)
+    transformer_box("bm_tr", (1.9, -2.3, 0.06), (0.9, 0.6, 0.6), m)
+
+
+def build_chp_plant():
+    """A combined heat and power plant on 3 × 3 tiles: a white turbine hall with a striped chimney, a tall heat
+    accumulator tank, insulated pipes of district heating leaving on supports, a coal bunker and the transformer."""
+    m = branch_mats()
+    ra.box("ch_pad", (5.8, 5.8, 0.06), (0, 0, 0.03), m["concrete"])
+    boiler_house("ch", (-0.9, 1.1), (3.2, 2.0, 2.6), m, ra.corrugated("ch_cladding", (0.62, 0.63, 0.62), 0.08))
+    ra.cylinder("ch_chimney", 0.35, 5.6, (-2.3, 2.3, 2.86), m["concrete"], verts=20, radius2=0.26)
+    for z in (4.6, 5.2):
+        ra.cylinder("ch_band", 0.3, 0.25, (-2.3, 2.3, z), m["red"], verts=20)
+    # The heat accumulator: a tall insulated tank.
+    ra.cylinder("ch_tank", 0.8, 3.6, (1.8, 1.4, 1.86), m["grey"], verts=28)
+    ra.cylinder("ch_tank_top", 0.82, 0.12, (1.8, 1.4, 3.7), m["dark"], verts=28)
+    for z in (0.8, 1.6, 2.4, 3.2):
+        ra.cylinder("ch_tank_band", 0.81, 0.05, (1.8, 1.4, z), m["steel"], verts=28)
+    # The district heating pipes: a red supply and a blue return on low supports, leaving to the south.
+    for x, mat in ((0.9, m["red"]), (1.25, m["blue"])):
+        ra.cylinder("ch_pipe", 0.11, 3.6, (x, -1.0, 0.55), mat, rotation=(math.radians(90), 0, 0), verts=14)
+        ra.cylinder("ch_riser", 0.11, 1.1, (x, 0.85, 0.95), mat, verts=14)
+    for y in (-2.4, -1.4, -0.4):
+        ra.box("ch_support", (0.6, 0.12, 0.45), (1.07, y, 0.28), m["concrete"])
+    ra.box("ch_bunker", (1.0, 0.9, 0.7), (-2.0, -1.4, 0.41), m["concrete"], bevel=0.02)
+    heap = ra.sphere("ch_coal", 0.45, (-2.0, -1.4, 0.75), m["coal"], scale=(1.1, 0.9, 0.5), segments=12, keep=lambda co: co.z > -0.01)
+    ra.displace(heap, 0.04, 0.2, 1)
+    transformer_box("ch_tr", (-0.4, -2.2, 0.06), (0.9, 0.6, 0.6), m)
+
+
+def build_geothermal_plant():
+    """A geothermal power plant on 3 × 3 tiles: wellheads with valve trees, silver insulated steam pipes with expansion
+    loops, a separator, a turbine hall, a small cooling tower and steam venting, and the transformer."""
+    m = branch_mats()
+    ra.box("gt_pad", (5.8, 5.8, 0.06), (0, 0, 0.03), m["concrete"])
+    boiler_house("gt", (-1.2, 1.4), (2.6, 1.6, 1.8), m, ra.corrugated("gt_cladding", (0.55, 0.4, 0.22), 0.15))
+    cooling_tower("gt_ct", (1.6, 1.6), 1.0, 2.6, m)
+    silver = ra.plain("gt_lagging", (0.62, 0.64, 0.66), 0.25, 0.9, variation=0.05, grime=0.2)
+    for x, y in ((-2.1, -1.8), (0.2, -2.1)):
+        ra.box("gt_cellar", (0.7, 0.7, 0.1), (x, y, 0.08), m["dark"])
+        ra.cylinder("gt_wellhead", 0.12, 0.8, (x, y, 0.5), m["red"], verts=12)
+        for z in (0.45, 0.75):
+            ra.cylinder("gt_valve", 0.14, 0.08, (x, y, z), m["yellow"], rotation=(0, math.radians(90), 0), verts=12)
+    pipe_run(Vector((-2.1, -1.8, 0.9)), Vector((-2.1, -0.6, 0.9)), 0.1, silver, "gt_pipe")
+    pipe_run(Vector((0.2, -2.1, 0.9)), Vector((0.2, -0.6, 0.9)), 0.1, silver, "gt_pipe")
+    pipe_run(Vector((-2.2, -0.6, 0.9)), Vector((0.9, -0.6, 0.9)), 0.12, silver, "gt_pipe")
+    # An expansion loop in the line, then the separator.
+    pipe_run(Vector((-1.1, -0.6, 0.9)), Vector((-1.1, -0.6, 1.6)), 0.1, silver, "gt_loop")
+    pipe_run(Vector((-0.6, -0.6, 0.9)), Vector((-0.6, -0.6, 1.6)), 0.1, silver, "gt_loop")
+    pipe_run(Vector((-1.15, -0.6, 1.6)), Vector((-0.55, -0.6, 1.6)), 0.1, silver, "gt_loop")
+    ra.cylinder("gt_separator", 0.35, 1.6, (1.1, -0.6, 0.86), m["white"], verts=20)
+    ra.sphere("gt_separator_top", 0.35, (1.1, -0.6, 1.66), m["white"], scale=(1, 1, 0.5), segments=20, keep=lambda co: co.z >= -0.01)
+    pipe_run(Vector((1.1, -0.3, 1.2)), Vector((1.1, 0.6, 1.2)), 0.1, silver, "gt_pipe")
+    for k in range(3):
+        ra.sphere("gt_vent", 0.3 - k * 0.05, (1.25 + k * 0.15, -0.6, 2.0 + k * 0.4), m["steam"], scale=(1, 1, 0.7), segments=12)
+    transformer_box("gt_tr", (2.0, -2.2, 0.06), (0.9, 0.6, 0.6), m)
+
+
+def build_electrolyzer():
+    """An electrolyser on 2 × 2 tiles: two white containers with blue doors and vents holding the cell stacks, a water
+    tank, white hydrogen bullets on saddles and the pipes between them."""
+    m = branch_mats()
+    ra.box("el_pad", (3.8, 3.8, 0.05), (0, 0, 0.025), m["concrete"])
+    for k, y in enumerate((0.3, 1.25)):
+        ra.box("el_container", (2.4, 0.85, 1.0), (-0.5, y, 0.56), m["white"], bevel=0.03)
+        ra.box("el_door", (0.5, 0.02, 0.8), (-1.25, y - 0.43, 0.5), m["blue"])
+        for j in range(3):
+            ra.box("el_vent", (0.3, 0.02, 0.25), (-0.4 + j * 0.45, y - 0.43, 0.75), m["grey"])
+        ra.box("el_lamp", (0.06, 0.02, 0.06), (0.55, y - 0.43, 0.9), m["lamp"])
+    ra.cylinder("el_water", 0.4, 1.2, (1.4, 1.2, 0.65), m["blue"], verts=20)
+    ra.cylinder("el_water_top", 0.41, 0.05, (1.4, 1.2, 1.27), m["dark"], verts=20)
+    for y in (-1.0, -1.5):
+        ra.cylinder("el_bullet", 0.2, 1.5, (0.3, y, 0.42), m["hydrogen"], rotation=(0, math.radians(90), 0), verts=18)
+        for e in (-1, 1):
+            ra.sphere("el_bullet_end", 0.2, (0.3 + e * 0.75, y, 0.42), m["hydrogen"], scale=(0.5, 1, 1), segments=14)
+        for x in (-0.2, 0.8):
+            ra.box("el_saddle", (0.1, 0.3, 0.22), (x, y, 0.16), m["concrete"])
+    pipe_run(Vector((0.75, 0.3, 0.4)), Vector((0.75, -1.0, 0.4)), 0.04, m["steel"], "el_pipe")
+    pipe_run(Vector((1.4, 0.8, 0.3)), Vector((0.75, 0.8, 0.3)), 0.04, m["steel"], "el_pipe")
+    ra.cylinder("el_vent_stack", 0.05, 1.2, (-1.55, -1.3, 0.6), m["steel"], verts=10)
+
+
+def build_fuel_cell():
+    """A fuel cell plant on 2 × 2 tiles: a row of grey cabinets with green lamps and fans on top, a hydrogen tank, the
+    inverter and the transformer the pole's wire comes to."""
+    m = branch_mats()
+    ra.box("fc_pad", (3.8, 3.8, 0.05), (0, 0, 0.025), m["concrete"])
+    for k in range(3):
+        x = -1.2 + k * 0.85
+        ra.box("fc_cabinet", (0.75, 1.0, 1.2), (x, 0.9, 0.65), m["grey"], bevel=0.02)
+        ra.box("fc_lamp", (0.4, 0.02, 0.05), (x, 0.39, 1.0), m["lamp"])
+        ra.box("fc_grille", (0.5, 0.02, 0.4), (x, 0.39, 0.5), m["dark"])
+        ra.cylinder("fc_fan", 0.22, 0.08, (x, 0.9, 1.29), m["dark"], verts=18)
+    ra.cylinder("fc_tank", 0.3, 1.6, (1.4, 1.2, 0.85), m["hydrogen"], verts=20)
+    ra.sphere("fc_tank_top", 0.3, (1.4, 1.2, 1.65), m["hydrogen"], scale=(1, 1, 0.6), segments=16, keep=lambda co: co.z >= -0.01)
+    ra.box("fc_tank_band", (0.62, 0.62, 0.08), (1.4, 1.2, 1.2), m["blue"])
+    pipe_run(Vector((1.1, 1.2, 0.4)), Vector((0.5, 1.2, 0.4)), 0.04, m["steel"], "fc_pipe")
+    ra.box("fc_inverter", (0.6, 0.4, 0.8), (-1.2, -0.9, 0.45), m["white"], bevel=0.02)
+    ra.box("fc_screen", (0.25, 0.02, 0.15), (-1.2, -1.11, 0.65), m["screen"])
+    transformer_box("fc_tr", (0.9, -1.0, 0.05), (0.8, 0.5, 0.5), m)
+
+
+BRANCHES = {
+    # name: (canvas width, height, camera target height, builder, icon file, where the pole's wire meets a generator)
+    "coke_oven": (256, 336, 1.8, build_coke_oven, "furniture_coke_oven", None),
+    "jeweler": (192, 208, 1.0, build_jeweler, "furniture_jeweler", None),
+    "tree_nursery": (192, 176, 0.6, build_tree_nursery, "furniture_tree_nursery", None),
+    "spinning_mill": (192, 192, 0.8, build_spinning_mill, "furniture_spinning_mill", None),
+    "loom": (192, 192, 0.9, build_loom, "furniture_loom", None),
+    "auto_barn": (192, 208, 1.0, build_auto_barn, "furniture_auto_barn", None),
+    "sugar_factory": (192, 256, 1.6, build_sugar_factory, "furniture_sugar_factory", None),
+    "sprinkler": (112, 112, 0.5, build_sprinkler, "furniture_sprinkler", None),
+    "mechanized_farm": (352, 400, 1.6, build_mechanized_farm, "furniture_mechanized_farm", None),
+    "electrolyzer": (192, 176, 0.6, build_electrolyzer, "furniture_electrolyzer", None),
+    "biomass_plant": (256, 336, 1.9, build_biomass_plant, "item_power_biomass_plant", Vector((1.9, -2.3, 0.95))),
+    "chp_plant": (256, 352, 2.2, build_chp_plant, "item_power_chp_plant", Vector((-0.4, -2.2, 0.95))),
+    "geothermal_plant": (256, 304, 1.3, build_geothermal_plant, "item_power_geothermal_plant", Vector((2.0, -2.2, 0.95))),
+    "fuel_cell": (192, 176, 0.6, build_fuel_cell, "item_power_fuel_cell", Vector((0.9, -1.0, 0.85))),
+}
+
+
+def render_branches(layout: dict, only=()):
+    for name, (w, h, tz, build, icon, wire) in BRANCHES.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        target = Vector((0, 0, tz))
+        layout[name] = render_sprite(name, w, h, target, crafted(build), true_scale=True)
+        if wire is not None:
+            layout[name]["wireX"], layout[name]["wireY"] = anchor(w, h, target, wire)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"{icon}.png")
+
+
+def branch_icon_models():
+    """Icons of what the new branches give: coke, the crushed precious ores, jewellery and silverware, yarn, cloth, linen
+    and rope, the beet, flax and hemp and what is made of them, and hydrogen."""
+    def lumps(color, specks=None, count=14, rough=0.85):
+        def build():
+            mat = ra.plain("ic_lump", color, rough, 0.2, variation=0.3, scale=30, bump=0.9)
+            speck = ra.plain("ic_speck", specks, 0.25, 1.0) if specks else mat
+            for i in range(count):
+                a = random.random() * math.tau
+                r = random.uniform(0, 0.15)
+                s = ra.sphere("lump", random.uniform(0.045, 0.075), (math.cos(a) * r, math.sin(a) * r * 0.8, 0.03 + (0.15 - r) * 0.5),
+                              speck if specks and i % 3 == 0 else mat, segments=8)
+                ra.displace(s, 0.012, 0.05, 1)
+        return build
+
+    def jewelry():
+        gold = ra.plain("ic_gold", (0.8, 0.55, 0.15), 0.2, 1.0, variation=0.08)
+        amber = ra.plain("ic_amber", (0.85, 0.4, 0.05), 0.1, variation=0.1, grime=0.0)
+        ra.cylinder("cushion", 0.24, 0.06, (0, 0, 0.03), ra.plain("ic_velvet", (0.3, 0.03, 0.05), 0.85), verts=32)
+        ra.torus("ring", 0.08, 0.018, (-0.08, 0.04, 0.14), gold, rotation=(math.radians(70), 0, 0.3))
+        ra.sphere("stone", 0.04, (-0.08, -0.0, 0.23), amber, segments=14)
+        for k in range(14):
+            a = math.pi * 0.15 + k / 13 * math.pi * 0.9
+            ra.sphere("bead", 0.018, (0.06 + math.cos(a) * 0.13, -0.02 - math.sin(a) * 0.1, 0.07), gold, segments=8)
+        ra.sphere("pendant", 0.035, (0.06, -0.14, 0.07), amber, scale=(1, 1, 0.6), segments=12)
+
+    def silverware():
+        silver = ra.plain("ic_silver", (0.75, 0.76, 0.78), 0.15, 1.0, variation=0.05)
+        ra.cylinder("cup", 0.08, 0.16, (0.08, 0.08, 0.2), silver, radius2=0.06, verts=24)
+        ra.cylinder("stem", 0.015, 0.1, (0.08, 0.08, 0.07), silver, verts=10)
+        ra.cylinder("foot", 0.06, 0.02, (0.08, 0.08, 0.01), silver, verts=20)
+        ra.box("fork", (0.03, 0.3, 0.01), (-0.12, -0.04, 0.01), silver, rotation=(0, 0, 0.3))
+        for k in range(3):
+            ra.box("tine", (0.006, 0.06, 0.008), (-0.18 + k * 0.012 + 0.0, 0.12, 0.012), silver, rotation=(0, 0, 0.3))
+        ra.box("spoon", (0.025, 0.24, 0.01), (-0.02, -0.08, 0.02), silver, rotation=(0, 0, 0.15))
+        ra.sphere("bowl", 0.045, (-0.04, 0.06, 0.02), silver, scale=(0.8, 1.2, 0.3), segments=12)
+
+    def yarn():
+        wool = ra.plain("ic_yarn", (0.7, 0.62, 0.48), 0.95, variation=0.1, bump=0.4)
+        ra.sphere("ball", 0.16, (0, 0, 0.16), wool, segments=24)
+        for k in range(7):
+            ra.torus("strand", 0.16, 0.012, (0, 0, 0.16), wool, rotation=(random.uniform(0, 3), random.uniform(0, 3), 0))
+        ra.cylinder("thread", 0.01, 0.25, (0.2, -0.08, 0.01), wool, rotation=(0, math.radians(90), 0.6), verts=6)
+
+    def folded(color):
+        def build():
+            m = ra.plain("ic_cloth", color, 0.9, variation=0.1, bump=0.3)
+            darker = ra.plain("ic_cloth_edge", tuple(c * 0.8 for c in color), 0.9)
+            for k in range(3):
+                ra.box("fold", (0.36, 0.26, 0.07), (0.01 * k, -0.01 * k, 0.04 + k * 0.075), m if k % 2 == 0 else darker, bevel=0.03,
+                       rotation=(0, 0, 0.05 * k))
+        return build
+
+    def rope():
+        hemp = ra.plain("ic_rope", (0.55, 0.42, 0.22), 0.9, variation=0.15, bump=0.6)
+        for k in range(4):
+            ra.torus("coil", 0.16 - k * 0.012, 0.035, (0, 0, 0.035 + k * 0.06), hemp)
+        ra.cylinder("end", 0.03, 0.2, (0.2, -0.1, 0.03), hemp, rotation=(0, math.radians(90), 0.5), verts=8)
+
+    def sugar_beet():
+        root = ra.plain("ic_beet", (0.8, 0.74, 0.62), 0.7, variation=0.15, bump=0.4)
+        leaf = foliage("ic_beet_leaf", (0.1, 0.3, 0.06))
+        ra.cylinder("root", 0.1, 0.32, (0, 0, 0.05), root, radius2=0.01, rotation=(0, math.radians(100), 0), verts=18)
+        ra.sphere("crown", 0.1, (-0.16, 0, 0.08), root, segments=14)
+        for k in range(5):
+            a = (k - 2) * 0.35
+            ra.sphere("leaf", 0.08, (-0.3 - math.cos(a) * 0.06, math.sin(a) * 0.12, 0.1), leaf, scale=(1.6, 0.8, 0.25), segments=10)
+
+    def bundle(stalk_color, top, flower=None):
+        def build():
+            stalk = ra.plain("ic_bstalk", stalk_color, 0.7)
+            tip = foliage("ic_btop", top)
+            for i in range(9):
+                a = (i - 4) * 0.08
+                ra.cylinder("stalk", 0.012, 0.44, (a * 0.4, (i % 3 - 1) * 0.02, 0.0), stalk, rotation=(0, math.radians(90) + a, 0), verts=6)
+                ra.sphere("top", 0.04, (0.24, a * 0.3, 0.0), tip, scale=(2.0, 1, 1), segments=8)
+                if flower and i % 2 == 0:
+                    ra.sphere("flower", 0.025, (0.27, a * 0.3, 0.03), ra.plain("ic_bflower", flower, 0.5), segments=8)
+            ra.cylinder("band", 0.035, 0.03, (-0.02, 0, 0), ra.plain("ic_bband", (0.3, 0.12, 0.05), 0.6), rotation=(0, math.radians(90), 0))
+        return build
+
+    def sugar():
+        white = ra.plain("ic_sugar", (0.9, 0.9, 0.88), 0.6, variation=0.05, bump=0.3)
+        ra.sphere("bowl", 0.2, (0, 0, 0.17), ra.plain("ic_sbowl", (0.25, 0.35, 0.55), 0.3), scale=(1, 1, 0.75), segments=28,
+                  keep=lambda co: co.z <= 0.01)
+        ra.sphere("heap", 0.17, (0, 0, 0.14), white, scale=(1, 1, 0.45), segments=20, keep=lambda co: co.z >= 0)
+        for k, (x, y) in enumerate(((0.2, -0.14), (0.27, -0.06), (0.23, -0.1))):
+            ra.box("cube", (0.06, 0.06, 0.06), (x, y, 0.03 + 0.06 * (k // 2)), white, bevel=0.005, rotation=(0, 0, 0.3 * k))
+
+    def beet_pulp():
+        pulp = ra.plain("ic_pulp", (0.55, 0.47, 0.3), 0.9, variation=0.25, scale=30, bump=0.8)
+        pile = ra.sphere("pile", 0.22, (0, 0, -0.03), pulp, scale=(1, 1, 0.55), segments=24)
+        ra.displace(pile, 0.03, 0.08, 2)
+        for k in range(10):
+            a = random.random() * math.tau
+            ra.box("shred", (0.08, 0.015, 0.012), (math.cos(a) * 0.15, math.sin(a) * 0.15, 0.07), pulp, rotation=(0, 0.2, a))
+
+    def donuts():
+        dough = ra.plain("ic_dough", (0.65, 0.38, 0.14), 0.7, variation=0.15)
+        glaze = ra.plain("ic_glaze", (0.85, 0.4, 0.5), 0.3, variation=0.05)
+        for k, (x, y, z) in enumerate(((-0.08, 0.05, 0.04), (0.1, -0.04, 0.04))):
+            ra.torus("donut", 0.1, 0.045, (x, y, z), dough)
+            ra.torus("glaze", 0.1, 0.035, (x, y, z + 0.022), glaze if k == 0 else ra.plain("ic_choc", (0.2, 0.09, 0.04), 0.3))
+
+    def hydrogen():
+        shell = ra.plain("ic_h2", (0.85, 0.86, 0.86), 0.3, 0.3, variation=0.05)
+        ra.cylinder("cylinder", 0.1, 0.38, (0, 0, 0.19), shell, verts=24)
+        ra.sphere("shoulder", 0.1, (0, 0, 0.38), shell, scale=(1, 1, 0.6), segments=20, keep=lambda co: co.z >= -0.01)
+        ra.cylinder("band", 0.102, 0.06, (0, 0, 0.3), ra.plain("ic_h2_band", (0.6, 0.06, 0.04), 0.4), verts=24)
+        ra.cylinder("valve", 0.03, 0.08, (0, 0, 0.47), ra.plain("ic_h2_valve", (0.6, 0.45, 0.15), 0.3, 1.0), verts=12)
+        ra.box("handle", (0.1, 0.02, 0.02), (0, 0, 0.51), ra.plain("ic_h2_handle", (0.1, 0.1, 0.1), 0.5))
+
+    return {
+        "item_coke": lumps((0.22, 0.22, 0.23), count=16, rough=0.95),
+        "item_crushed_silver_ore": lumps((0.12, 0.12, 0.13), (0.8, 0.82, 0.85), count=22),
+        "item_crushed_gold_ore": lumps((0.2, 0.15, 0.1), (0.85, 0.6, 0.15), count=22),
+        "item_jewelry": jewelry,
+        "item_silverware": silverware,
+        "item_yarn": yarn,
+        "item_cloth": folded((0.12, 0.22, 0.5)),
+        "item_linen": folded((0.75, 0.72, 0.62)),
+        "item_rope": rope,
+        "item_sugar_beet": sugar_beet,
+        "item_flax": bundle((0.55, 0.48, 0.25), (0.45, 0.42, 0.2), (0.35, 0.45, 0.85)),
+        "item_hemp": bundle((0.25, 0.35, 0.12), (0.12, 0.3, 0.08)),
+        "item_sugar": sugar,
+        "item_beet_pulp": beet_pulp,
+        "item_donuts": donuts,
+        "item_hydrogen": hydrogen,
+    }
+
+
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "assemblers", "machine_levels", "office", "logistics", "husbandry", "export", "freight", "banks", "big_power", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "assemblers", "machine_levels", "office", "logistics", "husbandry", "export", "freight", "banks", "big_power", "branches", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -7201,8 +7831,9 @@ if __name__ == "__main__":
         render_rail(layout)
     if "trains" in args:
         render_trains(layout)
-    if "farming" in args:
-        render_farming(layout)
+    if "farming" in args or any(a in CROPS for a in args):
+        # Names of crops render just those.
+        render_farming(layout, [a for a in args if a in CROPS])
     if "forestry" in args:
         render_forestry(layout)
     if "station" in args:
@@ -7273,6 +7904,9 @@ if __name__ == "__main__":
     if "banks" in args or any(a in BANKS for a in args):
         # Names of bank sprites render just those.
         render_banks(layout, [a for a in args if a in BANKS])
+    if "branches" in args or any(a in BRANCHES for a in args):
+        # Names of the buildings of the raw-material branches render just those.
+        render_branches(layout, [a for a in args if a in BRANCHES])
     # "item_<id>" arguments render just those icons.
     if "icons" in args or any(a.startswith("item_") for a in args):
         render_icons([a for a in args if a.startswith("item_")])
