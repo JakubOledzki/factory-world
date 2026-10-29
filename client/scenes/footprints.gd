@@ -20,7 +20,7 @@ const BIG := {
 	"furniture_forester_hut": 3, "furniture_forester_lodge": 3, "furniture_forestry_station": 3, "power_solar_tower": 3,
 	"power_large_wind_turbine": 3, "furniture_ice_hotel": 3, "furniture_assembly_hall": 3, "furniture_robotic_hall": 3,
 	"furniture_oxygen_converter": 3, "furniture_rolling_mill": 3, "furniture_continuous_caster": 3, "storage_automated_warehouse": 3,
-	"power_fusion_plant": 3, "furniture_canteen": 3, "furniture_biogas_plant": 3, "furniture_farmstead": 3, "furniture_manor_farm": 3,
+	"power_fusion_plant": 3, "power_coal_plant": 3, "power_nuclear_plant": 4, "power_energy_store": 2, "furniture_canteen": 3, "furniture_biogas_plant": 3, "furniture_farmstead": 3, "furniture_manor_farm": 3,
 	"furniture_buy_market": 3, "furniture_bank_branch": 3,
 	"furniture_assembler": 2, "furniture_fast_assembler": 3, "furniture_express_assembler": 4,
 	"furniture_roller_mill": 3, "furniture_flour_works": 4, "furniture_mechanized_quarry": 3, "furniture_open_pit_mine": 4,

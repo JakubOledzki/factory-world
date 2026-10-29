@@ -17,8 +17,9 @@ signal pick_up_requested(id: String)
 ## How often (ms) the window asks again while it is open: inserters may put fuel in.
 const POLL := 2000.0
 const HYDRO_NAMES := {"power_water_wheel": "Koło wodne", "power_hydro_plant": "Mała elektrownia wodna", "power_tidal_plant": "Elektrownia pływowa"}
-const FUEL_NAMES := {"power_gas_plant": "Elektrownia gazowa", "power_diesel_generator": "Agregat spalinowy", "power_fusion_plant": "Elektrownia fuzyjna"}
-const FREE_NAMES := {"power_solar_panel": "Panel słoneczny", "power_solar_tower": "Elektrownia słoneczna z lustrami", "power_battery": "Akumulator",
+const FUEL_NAMES := {"power_gas_plant": "Elektrownia gazowa", "power_diesel_generator": "Agregat spalinowy", "power_fusion_plant": "Elektrownia fuzyjna",
+	"power_coal_plant": "Elektrownia węglowa", "power_nuclear_plant": "Elektrownia jądrowa"}
+const FREE_NAMES := {"power_solar_panel": "Panel słoneczny", "power_solar_tower": "Elektrownia słoneczna z lustrami", "power_battery": "Akumulator", "power_energy_store": "Magazyn energii",
 	"power_wind_turbine": "Turbina wiatrowa", "power_large_wind_turbine": "Duża turbina wiatrowa", "power_heater": "Kocioł grzewczy"}
 
 var generator := ""
@@ -259,7 +260,8 @@ func _render() -> void:
 		_fit.call_deferred()
 		return
 	if battery:
-		_help.text = "Akumulator bierze to, czego woda i słońce dają za dużo (do %s), i oddaje, gdy im brakuje, zanim generatory zaczną palić opał. Wszystkie akumulatory sieci ładują się i rozładowują razem; schowany traci ładunek." % kw(capacity)
+		_help.text = "%s bierze to, czego woda, słońce i wiatr dają za dużo (do %s), i oddaje, gdy im brakuje, zanim generatory zaczną palić opał. Wszystkie akumulatory i magazyny sieci ładują się i rozładowują razem, każdy według pojemności; schowany traci ładunek." % [
+			"Magazyn energii" if _state.get("kind", "") == "power_energy_store" else "Akumulator", kw(capacity)]
 		_fit.call_deferred()
 		return
 	if hydro:
@@ -273,7 +275,7 @@ func _render() -> void:
 		lines.append("%s: %s, przy pełnej mocy na %d s." % [option["name"], _energy(float(option["kj"])), roundi(float(option["kj"]) / capacity)])
 	lines.append("Podajnik może dokładać opał z taśmy albo ze skrzyni.")
 	if _state.get("dry", false):
-		lines.append("Na piasku brak wody do chłodzenia: generator parowy daje tylko 70% mocy.")
+		lines.append("Na piasku brak wody do chłodzenia: daje tylko 70% mocy.")
 	_help.text = "\n".join(lines)
 	_update_runs_out()
 	_fit.call_deferred()

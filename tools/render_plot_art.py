@@ -8,7 +8,7 @@ Every picture is stored at SS times that size and the game draws it back at scre
 stays sharp when the window or the camera zoom enlarges it. Anchors and sizes in layout.json are
 in screen pixels.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [tree] [assemblers] [machine_levels] [logistics] [husbandry] [export] [freight] [banks] [<sprite>...] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [tree] [assemblers] [machine_levels] [logistics] [husbandry] [export] [freight] [banks] [big_power] [<sprite>...] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -4765,6 +4765,265 @@ def render_tree(layout: dict, only=()):
         ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"{TREE_ICONS[name]}.png")
 
 
+# --- Bigger power ----------------------------------------------------------------------------------
+
+def big_power_mats():
+    """The paint of the power works: tree_mats with a hazard green, porcelain, coal and the glow of uranium."""
+    return tree_mats() | {
+        "green": ra.plain("bp_green", (0.07, 0.22, 0.1), 0.5, 0.2, variation=0.08, grime=0.35),
+        "red": ra.plain("bp_red", (0.55, 0.05, 0.03), 0.45, 0.1, variation=0.08, grime=0.3),
+        "porcelain": ra.plain("bp_porcelain", (0.75, 0.72, 0.65), 0.3),
+        "coal": ra.plain("bp_coal", (0.025, 0.025, 0.028), 0.7, variation=0.3, scale=20, bump=0.6),
+        "brick": ra.plain("bp_brick", (0.3, 0.11, 0.06), 0.9, variation=0.35, scale=10, bump=0.5),
+        "steam": ra.plain("bp_steam", (0.75, 0.77, 0.8), 0.95, variation=0.1),
+        "uranium": ra.emission("bp_uranium", (0.45, 1.0, 0.2), 5.0),
+        "lamp": ra.emission("bp_lamp", (0.2, 1.0, 0.35), 6.0),
+    }
+
+
+def transformer_box(prefix, at, size, m, bushings=3):
+    """A transformer: an oil tank with cooling fins along its sides and porcelain bushings on top."""
+    x, y, z = at
+    w, d, h = size
+    ra.box(f"{prefix}_tank", (w, d, h), (x, y, z + h / 2), m["green"], bevel=0.02)
+    for k in range(5):
+        for side in (-1, 1):
+            ra.box(f"{prefix}_fin", (0.03, 0.12, h * 0.8), (x - w * 0.4 + k * w * 0.2, y + side * (d / 2 + 0.06), z + h * 0.45), m["grey"])
+    s = min(1.0, h / 0.6)
+    for k in range(bushings):
+        bx = x - w * 0.3 + k * w * 0.6 / max(1, bushings - 1)
+        ra.cylinder(f"{prefix}_bushing", 0.035 * s, 0.32 * s, (bx, y, z + h + 0.16 * s), m["porcelain"], verts=10)
+        for j in range(3):
+            ra.cylinder(f"{prefix}_shed", 0.055 * s, 0.025 * s, (bx, y, z + h + (0.08 + j * 0.09) * s), m["porcelain"], verts=12)
+
+
+def lattice(prefix, base, top, height, m, levels=6):
+    """A steel lattice mast tapering from a square of `base` to `top` metres across, `height` tall."""
+    corners = [(-1, -1), (1, -1), (1, 1), (-1, 1)]
+    def at(c, z):
+        half = (base + (top - base) * z / height) / 2
+        return Vector((c[0] * half, c[1] * half, z))
+    for c in corners:
+        a, b = at(c, 0), at(c, height)
+        mid = (a + b) / 2
+        leg = ra.cylinder(f"{prefix}_leg", 0.035, (b - a).length, mid, m["steel"], verts=6)
+        leg.rotation_mode = "QUATERNION"
+        leg.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(b - a)
+    for k in range(levels):
+        z0, z1 = height * k / levels, height * (k + 1) / levels
+        for i in range(4):
+            c0, c1 = corners[i], corners[(i + 1) % 4]
+            for a, b in ((at(c0, z0), at(c1, z1)), (at(c1, z0), at(c0, z1))):
+                brace = ra.cylinder(f"{prefix}_brace", 0.015, (b - a).length, (a + b) / 2, m["steel"], verts=5)
+                brace.rotation_mode = "QUATERNION"
+                brace.rotation_quaternion = Vector((0, 0, 1)).rotation_difference(b - a)
+
+
+PYLON_TOP = 7.0
+
+
+def build_pylon():
+    """A high-voltage pylon: a tapering steel lattice mast on four concrete feet, two cross-arms and strings of porcelain insulators."""
+    m = big_power_mats()
+    for x in (-0.35, 0.35):
+        for y in (-0.35, 0.35):
+            ra.box("py_foot", (0.18, 0.18, 0.12), (x, y, 0.06), m["concrete"])
+    lattice("py", 0.75, 0.22, PYLON_TOP, m, levels=7)
+    for z, w in ((PYLON_TOP - 0.15, 1.5), (PYLON_TOP - 0.85, 1.9)):
+        ra.box("py_arm", (w, 0.12, 0.1), (0, 0, z), m["steel"])
+        for x in (-w / 2 + 0.08, w / 2 - 0.08):
+            for j in range(4):
+                ra.cylinder("py_shed", 0.05, 0.025, (x, 0, z - 0.1 - j * 0.07), m["porcelain"], verts=10)
+    ra.cylinder("py_peak", 0.03, 0.4, (0, 0, PYLON_TOP + 0.2), m["steel"], verts=6)
+    ra.box("py_sign", (0.16, 0.01, 0.16), (0, -0.21, 1.4), m["yellow"], rotation=(0, math.radians(45), 0))
+
+
+def build_substation():
+    """A substation: a fenced concrete yard with a big transformer, a steel gantry with insulators and a switch cabinet."""
+    m = big_power_mats()
+    ra.box("ss_pad", (1.9, 1.9, 0.06), (0, 0, 0.03), m["concrete"])
+    transformer_box("ss_tr", (-0.2, 0.25, 0.06), (0.8, 0.55, 0.6), m)
+    for x in (-0.75, 0.75):
+        ra.box("ss_post", (0.07, 0.07, 1.3), (x, 0.55, 0.71), m["steel"])
+    ra.box("ss_beam", (1.6, 0.07, 0.07), (0, 0.55, 1.35), m["steel"])
+    for x in (-0.45, 0.0, 0.45):
+        ra.cylinder("ss_insulator", 0.04, 0.25, (x, 0.55, 1.2), m["porcelain"], verts=10)
+    ra.box("ss_cabinet", (0.35, 0.3, 0.55), (0.6, -0.35, 0.335), m["grey"], bevel=0.015)
+    ra.box("ss_lamp", (0.05, 0.02, 0.05), (0.6, -0.51, 0.5), m["lamp"])
+    # A low wire fence round the yard.
+    for x in (-0.9, 0.9):
+        ra.box("ss_fence", (0.02, 1.8, 0.35), (x, 0, 0.235), ra.plain("ss_mesh", (0.3, 0.32, 0.33), 0.5, 0.6, variation=0.1))
+    ra.box("ss_fence", (1.8, 0.02, 0.35), (0, 0.9, 0.235), ra.plain("ss_mesh", (0.3, 0.32, 0.33), 0.5, 0.6, variation=0.1))
+    ra.box("ss_sign", (0.2, 0.01, 0.14), (-0.4, -0.92, 0.3), m["yellow"])
+
+
+def build_grid_tie():
+    """A grid tie: a concrete pad with a transformer, a terminal mast where the plot's wires meet the cable,
+    and the cable going down into a duct that leads off the plot, next to a drum of spare cable."""
+    m = big_power_mats()
+    ra.box("gt_pad", (1.8, 1.8, 0.06), (0, 0, 0.03), m["concrete"])
+    transformer_box("gt_tr", (-0.35, 0.3, 0.06), (0.65, 0.45, 0.5), m)
+    lattice("gt_mast", 0.32, 0.14, 1.9, m, levels=4)
+    ra.box("gt_arm", (0.9, 0.08, 0.08), (0, 0, 1.85), m["steel"])
+    for x in (-0.38, 0.0, 0.38):
+        for j in range(3):
+            ra.cylinder("gt_shed", 0.045, 0.022, (x, 0, 1.78 - j * 0.06), m["porcelain"], verts=10)
+    # The cable runs down the mast into a duct in the ground, which leads off towards the other plot.
+    ra.cylinder("gt_cable", 0.04, 1.75, (0.2, -0.12, 0.95), m["dark"], verts=8)
+    ra.box("gt_duct", (0.3, 0.9, 0.12), (0.2, -0.55, 0.12), m["grey"], bevel=0.02)
+    ra.box("gt_duct_band", (0.32, 0.06, 0.13), (0.2, -0.9, 0.125), m["yellow"])
+    drum = ra.cylinder("gt_drum", 0.26, 0.22, (0.62, 0.45, 0.32), ra.plain("gt_wood", (0.32, 0.2, 0.09), 0.8, variation=0.3), verts=20)
+    drum.rotation_euler = (math.radians(90), 0, 0)
+    coil = ra.cylinder("gt_coil", 0.19, 0.24, (0.62, 0.45, 0.32), m["dark"], verts=20)
+    coil.rotation_euler = (math.radians(90), 0, 0)
+    ra.box("gt_cabinet", (0.3, 0.22, 0.45), (-0.55, -0.45, 0.285), m["grey"], bevel=0.015)
+    ra.box("gt_lamp", (0.05, 0.02, 0.05), (-0.55, -0.57, 0.42), m["lamp"])
+    ra.box("gt_sign", (0.16, 0.01, 0.16), (0, -0.17, 0.9), m["yellow"], rotation=(0, math.radians(45), 0))
+
+
+def cooling_tower(prefix, at, radius, height, m, steam=True):
+    """A hyperbolic cooling tower of concrete, narrowest two thirds of the way up, with steam rising out of it."""
+    x, y = at
+    steps = 24
+    for k in range(steps):
+        z0, z1 = height * k / steps, height * (k + 1) / steps
+        def r(z):
+            t = z / height
+            return radius * (1 - 0.38 * math.sin(min(1.0, t / 0.7) * math.pi / 2) + (0.12 * (t - 0.7) / 0.3 if t > 0.7 else 0))
+        ra.cylinder(f"{prefix}_shell", r(z0), z1 - z0 + 0.01, (x, y, (z0 + z1) / 2), m["concrete"], verts=36, radius2=r(z1))
+    ra.cylinder(f"{prefix}_rim", radius * 0.75, 0.08, (x, y, height), m["grey"], verts=36)
+    if steam:
+        for k in range(3):
+            ra.sphere(f"{prefix}_steam", radius * (0.5 - k * 0.1), (x + k * 0.25, y + k * 0.15, height + 0.15 + k * radius * 0.4),
+                      m["steam"], scale=(1, 1, 0.5), segments=16)
+
+
+def build_coal_plant():
+    """A coal power plant on 3 × 3 tiles: a brick boiler house with a tall striped chimney, a cooling tower,
+    a heap of coal with a conveyor up to the boiler, the turbine hall and the transformer the pole's wire comes to."""
+    m = big_power_mats()
+    ra.box("cp_pad", (5.8, 5.8, 0.06), (0, 0, 0.03), m["concrete"])
+    ra.box("cp_boiler", (2.2, 1.8, 2.4), (-0.9, 0.9, 1.26), m["brick"], bevel=0.03)
+    ra.box("cp_roof", (2.3, 1.9, 0.08), (-0.9, 0.9, 2.5), m["dark"])
+    for k in range(4):
+        ra.box("cp_window", (0.3, 0.02, 0.5), (-1.65 + k * 0.5, -0.01, 1.7), m["window"])
+    ra.box("cp_hall", (2.4, 1.4, 1.3), (-0.8, -1.3, 0.71), ra.corrugated("cp_cladding", (0.32, 0.35, 0.38), 0.15), bevel=0.02)
+    ra.box("cp_hall_roof", (2.5, 1.5, 0.06), (-0.8, -1.3, 1.39), m["dark"])
+    ra.box("cp_door", (0.7, 0.03, 0.8), (-0.8, -2.01, 0.46), ra.corrugated("cp_roller", (0.55, 0.42, 0.08), 0.1))
+    ra.cylinder("cp_chimney", 0.35, 5.6, (-2.1, 2.1, 2.86), m["concrete"], verts=20, radius2=0.25)
+    for z in (4.9, 5.4):
+        ra.cylinder("cp_band", 0.29, 0.22, (-2.1, 2.1, z), m["red"], verts=20)
+    cooling_tower("cp_ct", (1.5, 1.4), 1.2, 3.2, m)
+    # The coal heap and the belt that carries it up into the boiler.
+    heap = ra.sphere("cp_heap", 0.9, (1.6, -1.5, 0.0), m["coal"], scale=(1, 0.8, 0.55), segments=16, keep=lambda co: co.z > -0.01)
+    ra.displace(heap, 0.08, 0.3, 2)
+    ra.box("cp_belt", (0.22, 2.6, 0.08), (0.75, -0.3, 1.0), m["dark"], rotation=(math.radians(-28), 0, 0))
+    ra.box("cp_belt_coal", (0.16, 2.5, 0.05), (0.75, -0.3, 1.06), m["coal"], rotation=(math.radians(-28), 0, 0))
+    transformer_box("cp_tr", (1.9, -2.3, 0.06), (0.9, 0.6, 0.6), m)
+
+
+def build_energy_store():
+    """An energy store on 2 × 2 tiles: two rows of white battery containers with green status lamps, an inverter cabinet
+    and the transformer the pole's wire comes to."""
+    m = big_power_mats()
+    ra.box("es_pad", (3.8, 3.8, 0.06), (0, 0, 0.03), m["concrete"])
+    for row, y in enumerate((0.9, -0.3)):
+        ra.box("es_container", (2.8, 0.9, 0.95), (-0.35, y, 0.535), ra.corrugated(f"es_sheet{row}", (0.62, 0.64, 0.63), 0.08), bevel=0.02)
+        for k in range(5):
+            ra.box("es_vent", (0.3, 0.02, 0.18), (-1.45 + k * 0.55, y - 0.46, 0.6), m["dark"])
+            ra.box("es_lamp", (0.05, 0.02, 0.05), (-1.45 + k * 0.55, y - 0.46, 0.85), m["lamp"])
+        ra.box("es_stripe", (2.8, 0.91, 0.08), (-0.35, y, 0.95), m["green"])
+    ra.box("es_inverter", (0.5, 0.4, 0.8), (1.45, -1.3, 0.46), m["grey"], bevel=0.015)
+    ra.box("es_screen", (0.2, 0.02, 0.12), (1.45, -1.51, 0.65), m["screen"])
+    transformer_box("es_tr", (-0.9, -1.35, 0.06), (0.7, 0.45, 0.5), m)
+
+
+def build_nuclear_plant():
+    """A nuclear power plant on 4 × 4 tiles: a white containment dome, a great cooling tower breathing steam,
+    the turbine hall between them, the fuel building and the transformer the pole's wire comes to."""
+    m = big_power_mats()
+    ra.box("np_pad", (7.8, 7.8, 0.06), (0, 0, 0.03), m["concrete"])
+    ra.cylinder("np_containment", 1.5, 2.2, (-1.7, 0.4, 1.16), m["white"], verts=40)
+    ra.sphere("np_dome", 1.5, (-1.7, 0.4, 2.26), m["white"], scale=(1, 1, 0.75), segments=36, keep=lambda co: co.z > -0.02)
+    ra.cylinder("np_ring", 1.52, 0.12, (-1.7, 0.4, 2.2), m["grey"], verts=40)
+    ra.box("np_airlock", (0.6, 0.4, 0.7), (-1.7, -1.15, 0.41), m["grey"], bevel=0.02)
+    ra.box("np_trefoil", (0.3, 0.01, 0.3), (-1.7, -1.36, 0.6), m["yellow"])
+    cooling_tower("np_ct", (1.8, 1.9), 1.7, 4.6, m)
+    ra.box("np_hall", (3.0, 1.6, 1.6), (0.8, -1.5, 0.86), ra.corrugated("np_cladding", (0.55, 0.58, 0.6), 0.1), bevel=0.02)
+    ra.box("np_hall_roof", (3.1, 1.7, 0.06), (0.8, -1.5, 1.69), m["dark"])
+    for k in range(5):
+        ra.box("np_window", (0.35, 0.02, 0.3), (-0.3 + k * 0.55, -2.31, 1.2), m["window"])
+    ra.box("np_fuel", (1.2, 1.0, 1.0), (-2.6, -2.4, 0.56), m["white"], bevel=0.02)
+    ra.box("np_fuel_door", (0.5, 0.02, 0.6), (-2.6, -2.91, 0.36), m["dark"])
+    ra.cylinder("np_vent", 0.18, 3.6, (-0.2, 2.6, 1.86), m["white"], verts=16)
+    ra.cylinder("np_vent_band", 0.19, 0.2, (-0.2, 2.6, 3.4), m["red"], verts=16)
+    pipe_run((-0.2, 0.5, 0.9), (0.6, 1.4, 0.9), 0.12, m["steel"])
+    transformer_box("np_tr", (2.9, -3.1, 0.06), (1.0, 0.6, 0.7), m)
+
+
+# name: (canvas width, height, camera target height, builder, where the wires meet it). The pylon, the substation
+# and the grid tie stand on one tile, the energy store on 2 × 2, the coal plant on 3 × 3 and the nuclear plant on 4 × 4.
+BIG_POWER = {
+    "pylon": (96, 288, PYLON_TOP / 2, build_pylon, Vector((0, 0, PYLON_TOP - 0.3))),
+    "grid_tie": (128, 150, 0.8, build_grid_tie, Vector((0, 0, 1.85))),
+    "substation": (128, 144, 0.6, build_substation, Vector((0, 0.55, 1.35))),
+    "energy_store": (176, 176, 0.5, build_energy_store, Vector((-0.9, -1.35, 0.9))),
+    "coal_plant": (256, 384, 2.2, build_coal_plant, Vector((1.9, -2.3, 0.95))),
+    "nuclear_plant": (352, 448, 2.6, build_nuclear_plant, Vector((2.9, -3.1, 1.1))),
+}
+
+
+def render_big_power(layout: dict, only=()):
+    for name, (w, h, tz, build, wire) in BIG_POWER.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        target = Vector((0, 0, tz))
+        layout[name] = render_sprite(name, w, h, target, crafted(build), true_scale=True)
+        layout[name]["wireX"], layout[name]["wireY"] = anchor(w, h, target, wire)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"item_power_{name}.png")
+
+
+def big_power_icon_models():
+    """Icons of the transformer, uranium ore and the fuel rod."""
+    m = {}
+
+    def transformer():
+        transformer_box("ic_tr", (0, 0, 0), (0.3, 0.2, 0.22), m)
+
+    def uranium_ore():
+        mat = rock("ic_uranium_rock", (0.12, 0.13, 0.1))
+        for i in range(4):
+            a = i / 4 * math.tau + 0.4
+            s = ra.sphere("stone", random.uniform(0.08, 0.12), (math.cos(a) * 0.11, math.sin(a) * 0.1, 0.07), mat, scale=(1, 0.9, 0.7), segments=10)
+            ra.displace(s, 0.03, 0.15, 1)
+        for _ in range(12):
+            a = random.random() * math.tau
+            ra.sphere("speck", 0.022, (math.cos(a) * 0.12, math.sin(a) * 0.1, 0.13), m["uranium"], segments=6)
+
+    def fuel_rod():
+        for k in range(3):
+            for j in range(3):
+                x, y = -0.06 + k * 0.06, -0.06 + j * 0.06
+                ra.cylinder("rod", 0.025, 0.42, (x, y, 0.23), m["steel"], verts=12)
+                ra.cylinder("rod_tip", 0.026, 0.04, (x, y, 0.45), m["uranium"], verts=12)
+        for z in (0.06, 0.4):
+            ra.box("grid", (0.2, 0.2, 0.025), (0, 0, z), m["dark"])
+
+    def fresh(build):
+        def make():
+            m.clear()
+            m.update(big_power_mats())
+            build()
+        return make
+
+    return {name: fresh(build) for name, build in {
+        "item_transformer": transformer,
+        "item_uranium_ore": uranium_ore,
+        "item_fuel_rod": fuel_rod,
+    }.items()}
+
+
 # --- Assembling machines ------------------------------------------------------------------------
 
 def assembler_cell(prefix, x, y, w, d, h, m, body, arms=1, screen=True):
@@ -6552,7 +6811,7 @@ def husbandry_icon_models():
 
 def render_icons(only=()):
     ICONS.mkdir(parents=True, exist_ok=True)
-    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models(), **city_icon_models(), **forest_icon_models(), **tree_icon_models(), **husbandry_icon_models()}.items():
+    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models(), **city_icon_models(), **forest_icon_models(), **tree_icon_models(), **husbandry_icon_models(), **big_power_icon_models()}.items():
         if only and name not in only:
             continue
         random.seed(zlib.crc32(name.encode()))
@@ -6928,7 +7187,7 @@ def render_banks(layout: dict, only=()):
 
 
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "assemblers", "machine_levels", "office", "logistics", "husbandry", "export", "freight", "banks", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "assemblers", "machine_levels", "office", "logistics", "husbandry", "export", "freight", "banks", "big_power", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -6990,6 +7249,9 @@ if __name__ == "__main__":
     if "tree" in args or any(a in tree for a in args):
         # Names of crafting tree sprites render just those.
         render_tree(layout, [a for a in args if a in tree])
+    if "big_power" in args or any(a in BIG_POWER for a in args):
+        # Names of the bigger power sprites render just those.
+        render_big_power(layout, [a for a in args if a in BIG_POWER])
     if "assemblers" in args or any(a in ASSEMBLERS for a in args):
         # Names of assembling machines render just those.
         render_assemblers(layout, [a for a in args if a in ASSEMBLERS])

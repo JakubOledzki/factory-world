@@ -273,6 +273,8 @@ public static class Processing
             new(Items.GlassLaminate, 2, TimeSpan.FromSeconds(10), [(Items.Glass, 2), (Items.Resin, 1), (Items.Plastic, 1)], 2),
             new(Items.Coolant, 2, TimeSpan.FromSeconds(10), [(Items.NaturalGas, 2), (Items.Water, 2), (Items.Ice, 2)], 2),
             new(Items.CarbonComposite, 2, TimeSpan.FromSeconds(15), [(Items.GlassLaminate, 2), (Items.Charcoal, 2), (Items.CaseinGlue, 1)], 3),
+            // Fuel rods for the nuclear plant: uranium ore from the deep mines sealed in steel.
+            new(Items.FuelRod, 1, TimeSpan.FromSeconds(60), [(Items.UraniumOre, 4), (Items.SteelIngot, 2)], 6),
         ], Powered: true),
         // The desert: a fired glassworks melts sand into glass (30% faster on sand) and blows bottles from waste glass;
         // an arc furnace on power makes silicon from quartz and cuts it into wafers for solar panels.

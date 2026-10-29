@@ -489,6 +489,20 @@ public static class Items
     public const string Megafactory = "furniture_megafactory";
     public const string FusionPlant = "power_fusion_plant";
 
+    // Bigger power: a substation and a high-voltage pylon carry power farther than a pole, a coal power plant and a nuclear one
+    // give a lot of it and an energy store keeps it; uranium ore from deep mines goes into fuel rods for the nuclear plant.
+    public const string Transformer = "transformer";
+    public const string Substation = "power_substation";
+    public const string Pylon = "power_pylon";
+    public const string CoalPlant = "power_coal_plant";
+    public const string EnergyStore = "power_energy_store";
+    public const string UraniumOre = "uranium_ore";
+    public const string FuelRod = "fuel_rod";
+    public const string NuclearPlant = "power_nuclear_plant";
+
+    // A grid tie joins a plot's network to a cable to a tie on another plot: power goes along it, for a price the supplier sets.
+    public const string GridTie = "power_grid_tie";
+
     // Husbandry and gastronomy for the other industries: a slaughterhouse, a dairy, a potato distillery, a biogas plant and work horses
     // give what the rest of the game needs; meals feed the character, a works canteen feeds the machines' crews, fine dishes feed banquets.
     public const string Meat = "meat";
@@ -916,6 +930,15 @@ public static class Items
         [SteelCombine] = "Kombinat hutniczy",
         [Megafactory] = "Megafabryka",
         [FusionPlant] = "Elektrownia fuzyjna",
+        [Transformer] = "Transformator",
+        [Substation] = "Podstacja",
+        [Pylon] = "Słup wysokiego napięcia",
+        [CoalPlant] = "Elektrownia węglowa",
+        [EnergyStore] = "Magazyn energii",
+        [UraniumOre] = "Ruda uranu",
+        [FuelRod] = "Pręt paliwowy",
+        [NuclearPlant] = "Elektrownia jądrowa",
+        [GridTie] = "Przyłącze sieciowe",
         [Meat] = "Mięso",
         [Hide] = "Skóra",
         [Tallow] = "Łój",
@@ -1058,8 +1081,15 @@ public static class Items
     /// <summary>Wells, which pump the oil or gas under their plot by themselves.</summary>
     public static bool IsWell(string id) => id is Pumpjack or GasWell or OffshorePlatform;
 
-    /// <summary>Generators that burn fuel: the steam generator, the gas power plant, the diesel generator and the fusion plant, which uses up coolant.</summary>
-    public static bool IsGenerator(string id) => id is Generator or GasPlant or DieselGenerator or FusionPlant;
+    /// <summary>Generators that burn fuel: the steam generator, the coal and gas power plants, the diesel generator, the nuclear plant,
+    /// which burns fuel rods, and the fusion plant, which uses up coolant.</summary>
+    public static bool IsGenerator(string id) => id is Generator or CoalPlant or GasPlant or DieselGenerator or NuclearPlant or FusionPlant;
+
+    /// <summary>What carries power on a plot: the pole, the substation, which powers more around it, and the high-voltage pylon, which is wired farther.</summary>
+    public static bool IsPole(string id) => id is Pole or Substation or Pylon;
+
+    /// <summary>What stores power: the battery and the energy store.</summary>
+    public static bool IsBattery(string id) => id is Battery or EnergyStore;
 
     /// <summary>What turns sunlight into power: by day only, and less in a sandstorm.</summary>
     public static bool IsSolar(string id) => id is SolarPanel or SolarTower;

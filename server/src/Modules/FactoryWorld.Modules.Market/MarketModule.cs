@@ -451,6 +451,16 @@ public static class NpcPrices
         [Items.SteelCombine] = 8_000_000,
         [Items.Megafactory] = 23_500_000,
         [Items.FusionPlant] = 56_500_000,
+        // Bigger power: about 1.1 times what went into it; uranium ore is rare, from deep mines only.
+        [Items.Transformer] = 20_000,
+        [Items.Substation] = 50_000,
+        [Items.Pylon] = 30_000,
+        [Items.CoalPlant] = 240_000,
+        [Items.EnergyStore] = 260_000,
+        [Items.UraniumOre] = 8000,
+        [Items.FuelRod] = 40_000,
+        [Items.NuclearPlant] = 1_350_000,
+        [Items.GridTie] = 120_000,
         // Husbandry and gastronomy: what the other industries need pays about 1.4 times what went into it.
         [Items.Meat] = 900,
         [Items.Hide] = 3000,

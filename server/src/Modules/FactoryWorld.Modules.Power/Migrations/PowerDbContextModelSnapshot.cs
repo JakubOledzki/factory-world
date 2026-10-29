@@ -23,6 +23,64 @@ namespace FactoryWorld.Modules.Power.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("FactoryWorld.Modules.Power.PowerLineRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("BuiltAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("built_at");
+
+                    b.Property<Guid>("FromTie")
+                        .HasColumnType("uuid")
+                        .HasColumnName("from_tie");
+
+                    b.Property<int>("FromX")
+                        .HasColumnType("integer")
+                        .HasColumnName("from_x");
+
+                    b.Property<int>("FromY")
+                        .HasColumnType("integer")
+                        .HasColumnName("from_y");
+
+                    b.Property<double>("Kw")
+                        .HasColumnType("double precision")
+                        .HasColumnName("kw");
+
+                    b.Property<DateTimeOffset>("PaidUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_until");
+
+                    b.Property<Guid>("ToTie")
+                        .HasColumnType("uuid")
+                        .HasColumnName("to_tie");
+
+                    b.Property<int>("ToX")
+                        .HasColumnType("integer")
+                        .HasColumnName("to_x");
+
+                    b.Property<int>("ToY")
+                        .HasColumnType("integer")
+                        .HasColumnName("to_y");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FromTie", "ToTie")
+                        .IsUnique();
+
+                    b.HasIndex("FromX", "FromY");
+
+                    b.HasIndex("ToX", "ToY");
+
+                    b.ToTable("lines", "power", t =>
+                        {
+                            t.HasCheckConstraint("ck_lines_kw", "kw > 0");
+                        });
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.Power.PowerPlotRow", b =>
                 {
                     b.Property<int>("X")
@@ -45,6 +103,39 @@ namespace FactoryWorld.Modules.Power.Migrations
                     b.HasKey("X", "Y");
 
                     b.ToTable("plots", "power");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Power.PowerTieRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<bool>("Open")
+                        .HasColumnType("boolean")
+                        .HasColumnName("open");
+
+                    b.Property<long>("PriceCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("price_cents");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("X", "Y");
+
+                    b.ToTable("ties", "power", t =>
+                        {
+                            t.HasCheckConstraint("ck_ties_price", "price_cents >= 0");
+                        });
                 });
 #pragma warning restore 612, 618
         }

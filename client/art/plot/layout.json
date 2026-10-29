@@ -1034,5 +1034,41 @@
  "feeder": {
   "anchorX": 56,
   "anchorY": 62
+ },
+ "pylon": {
+  "anchorX": 48,
+  "anchorY": 223,
+  "wireX": 48,
+  "wireY": 72
+ },
+ "substation": {
+  "anchorX": 64,
+  "anchorY": 86,
+  "wireX": 64,
+  "wireY": 43
+ },
+ "energy_store": {
+  "anchorX": 88,
+  "anchorY": 99,
+  "wireX": 59,
+  "wireY": 109
+ },
+ "coal_plant": {
+  "anchorX": 128,
+  "anchorY": 242,
+  "wireX": 189,
+  "wireY": 272
+ },
+ "nuclear_plant": {
+  "anchorX": 176,
+  "anchorY": 283,
+  "wireX": 269,
+  "wireY": 328
+ },
+ "grid_tie": {
+  "anchorX": 64,
+  "anchorY": 93,
+  "wireX": 64,
+  "wireY": 51
  }
 }

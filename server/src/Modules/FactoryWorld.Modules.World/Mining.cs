@@ -11,14 +11,16 @@ namespace FactoryWorld.Modules.World;
 /// <param name="Time">How long one load takes with the pickaxe.</param>
 /// <param name="Cost">Items the owner spends to build the mine up to this level from the one below.</param>
 /// <param name="Rare">How many times more often silver and gold drop: a deep mine reaches richer veins.</param>
-public sealed record MineLevel(int Level, int Units, TimeSpan Refill, TimeSpan Time, IReadOnlyList<(string Item, int Quantity)> Cost, int Xp, int Rare = 1);
+/// <param name="Uranium">The chance in thousandths that uranium ore drops: only the deep levels reach it.</param>
+public sealed record MineLevel(
+    int Level, int Units, TimeSpan Refill, TimeSpan Time, IReadOnlyList<(string Item, int Quantity)> Cost, int Xp, int Rare = 1, int Uranium = 0);
 
 /// <summary>
 /// Every mountain plot has 1-5 mines. A player with a pickaxe in hand works a mine for 5 s and
 /// gets up to two ores. A mine gives 50 loads in a row; 10 minutes after the last one it is full again.
 /// The owner can build a mine up four times, with ingots and timber and, for the deep levels 4 and 5,
 /// mine props and alloys: it then gives more loads, quicker, fills up again sooner and, deep down,
-/// silver and gold more often. Mining in the mountains goes 30% faster (<see cref="BonusPercent"/>), and
+/// silver and gold more often, and uranium ore for nuclear power. Mining in the mountains goes 30% faster (<see cref="BonusPercent"/>), and
 /// a bronze or steel pickaxe faster still. Some mountain plots have a mineral (sulfur, salt, marble or
 /// quartz, see <see cref="Deposits"/>) that comes up with the ore. A stick of dynamite blasts
 /// <see cref="BlastLoads"/> loads out at once, and a drill standing at a mine digs it by itself (<see cref="Drills"/>).
@@ -31,9 +33,9 @@ public static class Mining
         new(2, 100, TimeSpan.FromMinutes(5), TimeSpan.FromSeconds(4), [(Items.IronIngot, 30), (Items.Wood, 40)], 30),
         new(3, 200, TimeSpan.FromSeconds(150), TimeSpan.FromSeconds(3), [(Items.IronIngot, 80), (Items.CopperIngot, 30), (Items.TinIngot, 10), (Items.Provisions, 10)], 80),
         new(4, 400, TimeSpan.FromSeconds(90), TimeSpan.FromSeconds(2.5),
-            [(Items.MineSupport, 20), (Items.SteelIngot, 40), (Items.BronzeIngot, 20), (Items.StoneBlocks, 40), (Items.Provisions, 20)], 150, 2),
+            [(Items.MineSupport, 20), (Items.SteelIngot, 40), (Items.BronzeIngot, 20), (Items.StoneBlocks, 40), (Items.Provisions, 20)], 150, 2, 10),
         new(5, 800, TimeSpan.FromSeconds(60), TimeSpan.FromSeconds(2),
-            [(Items.MineSupport, 50), (Items.SteelIngot, 100), (Items.BronzeIngot, 50), (Items.Bricks, 100), (Items.Provisions, 20)], 300, 3),
+            [(Items.MineSupport, 50), (Items.SteelIngot, 100), (Items.BronzeIngot, 50), (Items.Bricks, 100), (Items.Provisions, 20)], 300, 3, 20),
     ];
 
     /// <summary>How much faster mining goes on a plot of the biome, in percent: mines, drills and breaking rocks.</summary>
@@ -107,6 +109,11 @@ public static class Mining
         if (mineral.Item is { } item && MineralPerMille(mineral.Size) is > 0 and var chance)
         {
             drops.Add((item, chance, chance));
+        }
+
+        if (level.Uranium > 0)
+        {
+            drops.Add((Items.UraniumOre, level.Uranium, level.Uranium));
         }
 
         return drops
