@@ -129,6 +129,9 @@ public static class CityRules
         // Husbandry and gastronomy: cheese and butter from the dairy, meat and the fine dishes of banquets.
         (Items.Cheese, 0, 20), (Items.Butter, 0, 20), (Items.Meat, 1, 30), (Items.WorkersLunch, 1, 15), (Items.LeatherBoots, 2, 4),
         (Items.RoastBeef, 2, 10), (Items.Cheesecake, 2, 10),
+        // The raw-material branches grown further: sugar and donuts, cloth, linen and rope, silver tableware and jewellery.
+        (Items.Sugar, 0, 30), (Items.Donuts, 1, 15), (Items.Cloth, 1, 15), (Items.Linen, 1, 15), (Items.Rope, 1, 20),
+        (Items.Silverware, 2, 4), (Items.Jewelry, 3, 2),
     ];
 
     /// <summary>A town pays this many times the trader's price for what it wants, and more at each level.</summary>

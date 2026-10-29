@@ -387,7 +387,7 @@ public sealed class PlotTests(ServerFactory factory) : IClassFixture<ServerFacto
         Assert.Equal(Items.Hoe, Tool((await client.SendAsync("character.get")).Payload()));
         var (plot, tiles) = await EnterAsync(client, farm);
         Assert.True(plot.GetProperty("fertile").GetBoolean());
-        Assert.Equal(6, plot.GetProperty("crops").GetArrayLength());
+        Assert.Equal(Farming.Crops.Count, plot.GetProperty("crops").GetArrayLength());
         var (tx, ty) = (plot.GetProperty("spawn").GetProperty("x").GetInt32(), plot.GetProperty("spawn").GetProperty("y").GetInt32());
         Assert.Equal((byte)TileObject.None, tiles[ty * PlotLayout.Size + tx]);
         object At(string? crop = null) => new { x = farm.X, y = farm.Y, tileX = tx, tileY = ty, crop };

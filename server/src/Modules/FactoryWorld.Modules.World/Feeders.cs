@@ -10,7 +10,10 @@ namespace FactoryWorld.Modules.World;
 /// A feeder stands on one tile by the pasture and feeds every hungry animal within <see cref="Reach"/> tiles of it by itself,
 /// <see cref="Husbandry.FeedPerMeal"/> pieces of a feed the animal eats, as if fed by hand. The feed goes in by hand or by an
 /// inserter, up to <see cref="Capacity"/> pieces of any feed together. An animal is fed the moment it is hungry: when let out,
-/// when its product is collected, or when feed comes in for it. Products are still collected by hand.
+/// when its product is collected, or when feed comes in for it. Products are still collected by hand. An automatic barn on 2 × 2
+/// tiles feeds the animals within <see cref="BarnReach"/> of its tile the same way and collects what they give as well, the moment
+/// they give it (eggs, wool, milk, meat, manure and the young of two of a kind side by side), up to <see cref="BarnOutput"/> pieces,
+/// and feeds them again at once. Its products are taken out by hand or by an inserter.
 /// </summary>
 public static class Feeders
 {
@@ -18,16 +21,37 @@ public static class Feeders
 
     public const int Reach = 3;
 
+    /// <summary>Feed an automatic barn holds.</summary>
+    public const int BarnCapacity = 100;
+
+    /// <summary>An automatic barn feeds and collects from the animals this many tiles from its tile each way.</summary>
+    public const int BarnReach = 4;
+
+    /// <summary>Products an automatic barn keeps; full, it leaves the animals be until its products are taken out.</summary>
+    public const int BarnOutput = 200;
+
+    /// <summary>A feeder or an automatic barn.</summary>
+    public static bool IsFeeder(string kind) => kind is Items.Feeder or Items.AutoBarn;
+
+    public static int CapacityOf(string kind) => kind == Items.AutoBarn ? BarnCapacity : Capacity;
+
+    public static int ReachOf(string kind) => kind == Items.AutoBarn ? BarnReach : Reach;
+
     public static bool Reaches(int feederX, int feederY, int tileX, int tileY) =>
         Math.Abs(tileX - feederX) <= Reach && Math.Abs(tileY - feederY) <= Reach;
+
+    public static bool Reaches(string kind, int feederX, int feederY, int tileX, int tileY) =>
+        Math.Abs(tileX - feederX) <= ReachOf(kind) && Math.Abs(tileY - feederY) <= ReachOf(kind);
 }
 
-/// <summary>One feeder in memory: where it stands and the feed in it.</summary>
-public sealed class Trough(Guid id, Guid owner, int tileX, int tileY, IReadOnlyDictionary<string, int> store)
+/// <summary>One feeder or automatic barn in memory: where it stands, the feed in it and, in a barn, what it collected.</summary>
+public sealed class Trough(Guid id, Guid owner, string kind, int tileX, int tileY, IReadOnlyDictionary<string, int> store, IReadOnlyDictionary<string, int>? output = null)
 {
     public Guid Id { get; } = id;
 
     public Guid Owner { get; } = owner;
+
+    public string Kind { get; } = kind;
 
     public int TileX { get; } = tileX;
 
@@ -35,11 +59,25 @@ public sealed class Trough(Guid id, Guid owner, int tileX, int tileY, IReadOnlyD
 
     public Dictionary<string, int> Store { get; } = store.Where(s => s.Value > 0).ToDictionary();
 
+    /// <summary>What an automatic barn collected; always empty in a plain feeder.</summary>
+    public Dictionary<string, int> Output { get; } = (output ?? new Dictionary<string, int>()).Where(s => s.Value > 0).ToDictionary();
+
+    /// <summary>Whether it collects what the animals give: an automatic barn.</summary>
+    public bool Collects => Kind == Items.AutoBarn;
+
+    public int Capacity => Feeders.CapacityOf(Kind);
+
+    public int Reach => Feeders.ReachOf(Kind);
+
     public int Feed => Store.Values.Sum();
 
-    public int Room => Math.Max(0, Feeders.Capacity - Feed);
+    public int Room => Math.Max(0, Capacity - Feed);
+
+    public int Collected => Output.Values.Sum();
 
     public bool Changed { get; set; }
+
+    public bool Reaches(int tileX, int tileY) => Feeders.Reaches(Kind, TileX, TileY, tileX, tileY);
 
     /// <summary>Puts feed in, as much as there is room for; returns how much went in.</summary>
     public int Add(string item, int quantity)
@@ -56,10 +94,26 @@ public sealed class Trough(Guid id, Guid owner, int tileX, int tileY, IReadOnlyD
 
     public IReadOnlyList<(string Item, int Quantity)> TakeAll()
     {
-        var all = Store.OrderBy(s => s.Key).Select(s => (s.Key, s.Value)).ToList();
-        Changed |= Store.Count > 0;
+        var all = Store.Concat(Output).GroupBy(s => s.Key).OrderBy(g => g.Key).Select(g => (g.Key, g.Sum(s => s.Value))).ToList();
+        Changed |= Store.Count > 0 || Output.Count > 0;
         Store.Clear();
+        Output.Clear();
         return all;
+    }
+
+    /// <summary>Takes one piece of a product out of an automatic barn.</summary>
+    public void TakeOne(string item)
+    {
+        if (Output.GetValueOrDefault(item) > 0)
+        {
+            Output[item]--;
+            if (Output[item] == 0)
+            {
+                Output.Remove(item);
+            }
+
+            Changed = true;
+        }
     }
 
     /// <summary>A meal for an animal that eats <paramref name="eats"/>, taken out of the feeder: the first feed it has enough of, in that order.</summary>
@@ -80,23 +134,66 @@ public sealed class Trough(Guid id, Guid owner, int tileX, int tileY, IReadOnlyD
         Changed = true;
         return feed;
     }
+
+    /// <summary>Puts what an animal gave into an automatic barn, if all of it fits.</summary>
+    public bool Collect(IReadOnlyList<(string Item, int Quantity)> gives)
+    {
+        if (Collected + gives.Sum(g => g.Quantity) > Feeders.BarnOutput)
+        {
+            return false;
+        }
+
+        foreach (var (item, quantity) in gives)
+        {
+            Output[item] = Output.GetValueOrDefault(item) + quantity;
+        }
+
+        Changed = true;
+        return true;
+    }
 }
 
-/// <summary>The feeders of a plot and its hungry animals, in memory: fed up to a moment, then written back.</summary>
-public sealed class Yard(Biome biome, IReadOnlyList<Trough> troughs, IEnumerable<(int X, int Y, string Kind)> hungry)
+/// <summary>An animal of a plot as its feeders and barns see it.</summary>
+public sealed class Beast(int x, int y, string kind, DateTimeOffset? readyAt, int meals)
+{
+    public int X { get; } = x;
+
+    public int Y { get; } = y;
+
+    public string Kind { get; } = kind;
+
+    public DateTimeOffset? ReadyAt { get; set; } = readyAt;
+
+    public int Meals { get; set; } = meals;
+
+    public bool Changed { get; set; }
+}
+
+/// <summary>The feeders and barns of a plot and its animals, in memory: fed and collected from up to a moment, then written back.</summary>
+public sealed class Yard(Biome biome, IReadOnlyList<Trough> troughs, IEnumerable<Beast> animals)
 {
     public IReadOnlyList<Trough> Troughs { get; } = troughs.OrderBy(t => t.TileY).ThenBy(t => t.TileX).ThenBy(t => t.Id).ToList();
 
-    /// <summary>Hungry animals still waiting for a meal, from north to south, west to east.</summary>
-    private readonly List<(int X, int Y, string Kind)> _hungry = hungry.OrderBy(a => a.Y).ThenBy(a => a.X).ToList();
+    /// <summary>The animals read: all of them when a barn stands on the plot, otherwise the hungry ones; north to south, west to east.</summary>
+    private readonly List<Beast> _animals = animals.OrderBy(a => a.Y).ThenBy(a => a.X).ToList();
 
     /// <summary>Animals fed since the yard was read, and when each will give its product.</summary>
     public Dictionary<(int X, int Y), DateTimeOffset> Fed { get; } = [];
 
-    /// <summary>The feed eaten, by the owner of the feeder it came from.</summary>
+    /// <summary>The feed eaten and the products collected, by the owner of the feeder or barn.</summary>
     public List<(Guid Owner, ProductionEntry Entry)> Eaten { get; } = [];
 
-    /// <summary>Feeds every hungry animal in reach of a feeder that has what it eats, at <paramref name="now"/>; the first feeder in reach serves.</summary>
+    /// <summary>The animals whose time or meals changed, to be written back.</summary>
+    public IEnumerable<Beast> Changed => _animals.Where(a => a.Changed);
+
+    /// <summary>When the next animal in reach of <paramref name="barn"/> gives something after <paramref name="now"/>, or null.</summary>
+    public DateTimeOffset? NextReady(Trough barn, DateTimeOffset now) =>
+        _animals.Where(a => a.ReadyAt > now && barn.Reaches(a.X, a.Y)).Select(a => a.ReadyAt).Min();
+
+    /// <summary>
+    /// Collects what the animals in reach of a barn gave up to <paramref name="now"/>, each fed again from a feeder in reach at the
+    /// moment it gave, then feeds every hungry animal in reach of a feeder that has what it eats; the first feeder in reach serves.
+    /// </summary>
     public void Feed(DateTimeOffset now)
     {
         if (Troughs.Count == 0)
@@ -104,24 +201,64 @@ public sealed class Yard(Biome biome, IReadOnlyList<Trough> troughs, IEnumerable
             return;
         }
 
-        foreach (var (x, y, kind) in _hungry.ToList())
+        foreach (var animal in _animals)
         {
-            if (!Husbandry.ById.TryGetValue(kind, out var animal))
+            if (!Husbandry.ById.TryGetValue(animal.Kind, out var kind) || Troughs.FirstOrDefault(t => t.Collects && t.Reaches(animal.X, animal.Y)) is not { } barn)
             {
                 continue;
             }
 
-            foreach (var trough in Troughs.Where(t => Feeders.Reaches(t.TileX, t.TileY, x, y)))
+            while (animal.ReadyAt is { } ready && ready <= now)
             {
-                if (trough.Serve(animal.Eats) is { } feed)
+                var gives = kind.Gives.ToList();
+                var meals = animal.Meals + 1;
+                if (kind.BreedEvery > 0 && meals % kind.BreedEvery == 0 && _animals.Any(o => o != animal && o.Kind == animal.Kind
+                    && Math.Abs(o.X - animal.X) <= 1 && Math.Abs(o.Y - animal.Y) <= 1))
                 {
-                    Fed[(x, y)] = now + (Husbandry.Time(animal, biome) ?? animal.Time);
-                    Eaten.Add((trough.Owner, ProductionEntry.Used(feed, Husbandry.FeedPerMeal, now)));
-                    _hungry.Remove((x, y, kind));
+                    gives.Add((animal.Kind, 1));
+                }
+
+                if (!barn.Collect(gives))
+                {
+                    break;
+                }
+
+                Eaten.AddRange(gives.Select(g => (barn.Owner, ProductionEntry.Made(g.Item, g.Quantity, ready))));
+                animal.Meals = meals;
+                animal.ReadyAt = null;
+                animal.Changed = true;
+                if (!Serve(animal, kind, ready))
+                {
                     break;
                 }
             }
         }
+
+        foreach (var animal in _animals.Where(a => a.ReadyAt is null))
+        {
+            if (Husbandry.ById.TryGetValue(animal.Kind, out var kind))
+            {
+                Serve(animal, kind, now);
+            }
+        }
+    }
+
+    /// <summary>Feeds a hungry animal at <paramref name="at"/> from the first feeder in reach that has what it eats.</summary>
+    private bool Serve(Beast animal, Animal kind, DateTimeOffset at)
+    {
+        foreach (var trough in Troughs.Where(t => t.Reaches(animal.X, animal.Y)))
+        {
+            if (trough.Serve(kind.Eats) is { } feed)
+            {
+                animal.ReadyAt = at + (Husbandry.Time(kind, biome) ?? kind.Time);
+                animal.Changed = true;
+                Fed[(animal.X, animal.Y)] = animal.ReadyAt.Value;
+                Eaten.Add((trough.Owner, ProductionEntry.Used(feed, Husbandry.FeedPerMeal, at)));
+                return true;
+            }
+        }
+
+        return false;
     }
 }
 
@@ -148,14 +285,14 @@ public sealed class FeederService(
         Guid player, int x, int y, Guid id, string item, int quantity, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            if (!Husbandry.Feed.Contains(item))
+            if (!Husbandry.AnyFeed.Contains(item))
             {
-                throw new GameException("bad_feed", "Animals eat wheat, corn, carrots, cabbage, fish meal, dates and concentrate.");
+                throw new GameException("bad_feed", "Animals eat wheat, corn, carrots, cabbage, fish meal, dates, beet pulp and concentrate.");
             }
 
-            if (quantity is < 1 or > Feeders.Capacity)
+            if (quantity is < 1 or > Feeders.BarnCapacity)
             {
-                throw new GameException("bad_quantity", $"Put in 1 to {Feeders.Capacity} pieces.");
+                throw new GameException("bad_quantity", $"Put in 1 to {Feeders.BarnCapacity} pieces.");
             }
 
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
@@ -164,7 +301,7 @@ public sealed class FeederService(
             var added = feeder.Add(item, quantity);
             if (added == 0)
             {
-                throw new GameException("feeder_full", $"A feeder holds at most {Feeders.Capacity} pieces of feed.");
+                throw new GameException("feeder_full", $"It holds at most {feeder.Capacity} pieces of feed.");
             }
 
             await inventory.RemoveAsync(player, item, added, cancellationToken);
@@ -173,7 +310,7 @@ public sealed class FeederService(
             return (feeder, await AnimalsAsync(x, y, cancellationToken));
         }, cancellationToken);
 
-    /// <summary>Takes all the feed out of a feeder into the inventory.</summary>
+    /// <summary>Takes all the feed out of a feeder into the inventory, and from an automatic barn what it collected too.</summary>
     public Task<(Trough Feeder, IReadOnlyList<PlotAnimal> Animals, IReadOnlyList<(string Item, int Quantity)> Taken)> TakeAsync(
         Guid player, int x, int y, Guid id, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -242,7 +379,7 @@ public sealed class FeederService(
 
     public async Task PlacedAsync(Guid owner, int x, int y, PlacedOnPlot placed, CancellationToken cancellationToken)
     {
-        if (placed.Kind != Items.Feeder)
+        if (!Feeders.IsFeeder(placed.Kind))
         {
             return;
         }
@@ -259,14 +396,14 @@ public sealed class FeederService(
     /// <summary>The feeder is being picked up: the feed in it goes back to the player.</summary>
     public async Task ReleaseAsync(Guid owner, Guid id, CancellationToken cancellationToken)
     {
-        await using var delete = await db.CommandAsync("DELETE FROM world.plot_feeders WHERE object_id = @id RETURNING store", cancellationToken);
+        await using var delete = await db.CommandAsync("DELETE FROM world.plot_feeders WHERE object_id = @id RETURNING store, output", cancellationToken);
         delete.Parameters.AddWithValue("id", id);
-        var back = new Dictionary<string, int>();
+        var back = new List<KeyValuePair<string, int>>();
         await using (var reader = await delete.ExecuteReaderAsync(cancellationToken))
         {
             if (await reader.ReadAsync(cancellationToken))
             {
-                back = ReadStore(reader.GetString(0));
+                back = [.. ReadStore(reader.GetString(0)), .. ReadStore(reader.GetString(1))];
             }
         }
 
@@ -278,7 +415,7 @@ public sealed class FeederService(
 
     public async Task<IMachinePort?> OpenAsync(Guid owner, Guid id, string kind, CancellationToken cancellationToken)
     {
-        if (kind != Items.Feeder || await objects.PlotOfAsync(id, cancellationToken) is not var (x, y))
+        if (!Feeders.IsFeeder(kind) || await objects.PlotOfAsync(id, cancellationToken) is not var (x, y))
         {
             return null;
         }
@@ -294,7 +431,7 @@ public sealed class FeederService(
     public async Task PrepareAsync(IReadOnlyList<PlotObject> reached, CancellationToken cancellationToken)
     {
         _prepared = null;
-        if (reached.FirstOrDefault(o => o.Kind == Items.Feeder) is { } first && await objects.PlotOfAsync(first.Id, cancellationToken) is var (x, y))
+        if (reached.FirstOrDefault(o => Feeders.IsFeeder(o.Kind)) is { } first && await objects.PlotOfAsync(first.Id, cancellationToken) is var (x, y))
         {
             _prepared = (x, y, await OpenAsync(x, y, cancellationToken));
         }
@@ -306,19 +443,20 @@ public sealed class FeederService(
     private static Dictionary<string, int> ReadStore(string json) =>
         JsonSerializer.Deserialize<Dictionary<string, int>>(json) is { } store ? store.Where(s => Items.Exists(s.Key)).ToDictionary() : [];
 
-    /// <summary>The feeders of a plot and its hungry animals, both locked until the transaction ends (feeders first).</summary>
+    /// <summary>The feeders and barns of a plot and its animals, both locked until the transaction ends (feeders first): the hungry
+    /// animals only, unless a barn stands there to collect from the others.</summary>
     private async Task<Yard> OpenAsync(int x, int y, CancellationToken cancellationToken)
     {
-        var rows = new List<(Guid Id, Guid Owner, string Store)>();
+        var rows = new List<(Guid Id, Guid Owner, string Store, string Output)>();
         await using (var command = await db.CommandAsync(
-            "SELECT object_id, owner_id, store FROM world.plot_feeders WHERE x = @x AND y = @y ORDER BY object_id FOR UPDATE", cancellationToken))
+            "SELECT object_id, owner_id, store, output FROM world.plot_feeders WHERE x = @x AND y = @y ORDER BY object_id FOR UPDATE", cancellationToken))
         {
             command.Parameters.AddWithValue("x", x);
             command.Parameters.AddWithValue("y", y);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                rows.Add((reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2)));
+                rows.Add((reader.GetGuid(0), reader.GetGuid(1), reader.GetString(2), reader.GetString(3)));
             }
         }
 
@@ -326,30 +464,32 @@ public sealed class FeederService(
         var troughs = new List<Trough>();
         if (rows.Count > 0)
         {
-            var placed = (await objects.ObjectsAsync(x, y, cancellationToken)).Where(o => o.Kind == Items.Feeder)
+            var placed = (await objects.ObjectsAsync(x, y, cancellationToken)).Where(o => Feeders.IsFeeder(o.Kind))
                 .GroupBy(o => o.Id).ToDictionary(g => g.Key, g => g.First());
-            troughs.AddRange(rows.Where(r => placed.ContainsKey(r.Id))
-                .Select(r => new Trough(r.Id, r.Owner, placed[r.Id].TileX, placed[r.Id].TileY, ReadStore(r.Store))));
+            troughs.AddRange(rows.Where(r => placed.ContainsKey(r.Id)).Select(r =>
+                new Trough(r.Id, r.Owner, placed[r.Id].Kind, placed[r.Id].TileX, placed[r.Id].TileY, ReadStore(r.Store), ReadStore(r.Output))));
         }
 
-        var hungry = new List<(int X, int Y, string Kind)>();
+        var animals = new List<Beast>();
         if (troughs.Count > 0)
         {
             await using var command = await db.CommandAsync(
                 """
-                SELECT tile_x, tile_y, kind FROM world.plot_animals WHERE x = @x AND y = @y AND ready_at IS NULL
+                SELECT tile_x, tile_y, kind, ready_at, meals FROM world.plot_animals WHERE x = @x AND y = @y AND (@all OR ready_at IS NULL)
                 ORDER BY tile_y, tile_x FOR UPDATE
                 """, cancellationToken);
             command.Parameters.AddWithValue("x", x);
             command.Parameters.AddWithValue("y", y);
+            command.Parameters.AddWithValue("all", troughs.Any(t => t.Collects));
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
             while (await reader.ReadAsync(cancellationToken))
             {
-                hungry.Add((reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2)));
+                animals.Add(new Beast(reader.GetInt32(0), reader.GetInt32(1), reader.GetString(2),
+                    reader.IsDBNull(3) ? null : reader.GetFieldValue<DateTimeOffset>(3), reader.GetInt32(4)));
             }
         }
 
-        return new Yard(map.BiomeAt(x, y), troughs, hungry);
+        return new Yard(map.BiomeAt(x, y), troughs, animals);
     }
 
     /// <summary>Writes back the feeders that changed and the animals they fed.</summary>
@@ -357,30 +497,42 @@ public sealed class FeederService(
     {
         foreach (var trough in yard.Troughs.Where(t => t.Changed))
         {
-            await using var update = await db.CommandAsync("UPDATE world.plot_feeders SET store = @store WHERE object_id = @id", cancellationToken);
+            await using var update = await db.CommandAsync("UPDATE world.plot_feeders SET store = @store, output = @output WHERE object_id = @id", cancellationToken);
             update.Parameters.AddWithValue("id", trough.Id);
             update.Parameters.AddWithValue("store", JsonSerializer.Serialize(trough.Store));
+            update.Parameters.AddWithValue("output", JsonSerializer.Serialize(trough.Output));
             await update.ExecuteNonQueryAsync(cancellationToken);
             trough.Changed = false;
         }
 
-        if (yard.Fed.Count > 0)
+        // The animals fed, and those a barn collected from: their time and meals, a hungry one with no time.
+        var changed = yard.Changed.ToList();
+        if (changed.Count > 0)
         {
-            var fed = yard.Fed.ToList();
             await using var update = await db.CommandAsync(
                 """
-                UPDATE world.plot_animals AS a SET ready_at = t.ready
-                FROM unnest(@txs, @tys, @ready) AS t(tx, ty, ready)
-                WHERE a.x = @x AND a.y = @y AND a.tile_x = t.tx AND a.tile_y = t.ty AND a.ready_at IS NULL
+                UPDATE world.plot_animals AS a SET ready_at = CASE WHEN t.fed THEN t.ready END, meals = t.meals
+                FROM unnest(@txs, @tys, @fed, @ready, @meals) AS t(tx, ty, fed, ready, meals)
+                WHERE a.x = @x AND a.y = @y AND a.tile_x = t.tx AND a.tile_y = t.ty
                 """, cancellationToken);
             update.Parameters.AddWithValue("x", x);
             update.Parameters.AddWithValue("y", y);
-            update.Parameters.AddWithValue("txs", fed.Select(f => f.Key.X).ToArray());
-            update.Parameters.AddWithValue("tys", fed.Select(f => f.Key.Y).ToArray());
-            update.Parameters.Add(new Npgsql.NpgsqlParameter("ready", NpgsqlDbType.Array | NpgsqlDbType.TimestampTz) { Value = fed.Select(f => f.Value).ToArray() });
+            update.Parameters.AddWithValue("txs", changed.Select(a => a.X).ToArray());
+            update.Parameters.AddWithValue("tys", changed.Select(a => a.Y).ToArray());
+            update.Parameters.AddWithValue("fed", changed.Select(a => a.ReadyAt is not null).ToArray());
+            update.Parameters.Add(new Npgsql.NpgsqlParameter("ready", NpgsqlDbType.Array | NpgsqlDbType.TimestampTz)
+            {
+                Value = changed.Select(a => a.ReadyAt ?? DateTimeOffset.UnixEpoch).ToArray(),
+            });
+            update.Parameters.AddWithValue("meals", changed.Select(a => a.Meals).ToArray());
             await update.ExecuteNonQueryAsync(cancellationToken);
-            yard.Fed.Clear();
+            foreach (var animal in changed)
+            {
+                animal.Changed = false;
+            }
         }
+
+        yard.Fed.Clear();
 
         foreach (var owner in yard.Eaten.GroupBy(e => e.Owner))
         {
@@ -407,16 +559,24 @@ public sealed class FeederService(
         return animals;
     }
 
-    /// <summary>A feeder as inserters see it: feed goes in and the hungry animals around it eat at once; nothing comes out.</summary>
+    /// <summary>A feeder as inserters see it: feed goes in and the hungry animals around it eat at once; out of an automatic barn come
+    /// what it collected.</summary>
     private sealed class Port(FeederService service, int x, int y, Yard yard, Trough trough) : IMachinePort
     {
-        public string? Output(DateTimeOffset now, Func<string, bool> wanted) => null;
-
-        public void Take(string item, DateTimeOffset now)
+        public string? Output(DateTimeOffset now, Func<string, bool> wanted)
         {
+            if (!trough.Collects)
+            {
+                return null;
+            }
+
+            yard.Feed(now);
+            return trough.Output.Where(o => o.Value > 0).Select(o => o.Key).OrderBy(k => k).FirstOrDefault(wanted);
         }
 
-        public bool Accepts(string item, DateTimeOffset now) => Husbandry.Feed.Contains(item) && trough.Room > 0;
+        public void Take(string item, DateTimeOffset now) => trough.TakeOne(item);
+
+        public bool Accepts(string item, DateTimeOffset now) => Husbandry.AnyFeed.Contains(item) && trough.Room > 0;
 
         public void Put(string item, DateTimeOffset now)
         {
@@ -424,7 +584,8 @@ public sealed class FeederService(
             yard.Feed(now);
         }
 
-        public DateTimeOffset? NextChange(DateTimeOffset now) => null;
+        /// <summary>An automatic barn has something new to give when the next animal in its reach does.</summary>
+        public DateTimeOffset? NextChange(DateTimeOffset now) => trough.Collects ? yard.NextReady(trough, now) : null;
 
         public bool Predictable => true;
 
@@ -445,7 +606,7 @@ public abstract class FeederHandler(IServiceScopeFactory scopes, TimeProvider ti
         await using var scope = scopes.CreateAsyncScope();
         var (feeder, animals, taken) = await RunAsync(
             scope.ServiceProvider.GetRequiredService<FeederService>(), scope.ServiceProvider.GetServices<IPlotAutomation>(), client.RequireAccount(), request, cancellationToken);
-        var reached = animals.Where(a => Feeders.Reaches(feeder.TileX, feeder.TileY, a.TileX, a.TileY)).ToList();
+        var reached = animals.Where(a => feeder.Reaches(a.TileX, a.TileY)).ToList();
         return new Reply("feeder", new
         {
             x = request.X,
@@ -456,9 +617,14 @@ public abstract class FeederHandler(IServiceScopeFactory scopes, TimeProvider ti
                 tileX = feeder.TileX,
                 tileY = feeder.TileY,
                 store = feeder.Store.OrderBy(s => s.Key).Select(s => new { id = s.Key, name = Items.Names[s.Key], quantity = s.Value }),
+                kind = feeder.Kind,
                 feed = feeder.Feed,
-                capacity = Feeders.Capacity,
-                reach = Feeders.Reach,
+                capacity = feeder.Capacity,
+                reach = feeder.Reach,
+                // An automatic barn collects what the animals in its reach give: here, up to maxOutput pieces.
+                collects = feeder.Collects,
+                output = feeder.Output.OrderBy(s => s.Key).Select(s => new { id = s.Key, name = Items.Names[s.Key], quantity = s.Value }),
+                maxOutput = feeder.Collects ? Feeders.BarnOutput : 0,
                 feedPerMeal = Husbandry.FeedPerMeal,
                 animals = reached.Count,
                 hungry = reached.Count(a => a.ReadyAt is null),

@@ -23,13 +23,13 @@ public sealed class FeederTests(ServerFactory factory) : IClassFixture<ServerFac
     [Fact]
     public void A_feeder_feeds_the_hungry_animals_in_its_reach_with_what_each_eats_until_it_runs_out()
     {
-        var feeder = new Trough(Guid.NewGuid(), Guid.NewGuid(), 10, 10, new Dictionary<string, int> { [Items.Wheat] = 5, [Items.ConcentrateFeed] = 2 });
+        var feeder = new Trough(Guid.NewGuid(), Guid.NewGuid(), Items.Feeder, 10, 10, new Dictionary<string, int> { [Items.Wheat] = 5, [Items.ConcentrateFeed] = 2 });
         var yard = new Yard(Biome.Grassland, [feeder],
         [
-            (10 + Feeders.Reach, 10, Items.Chicken),
-            (10, 10 - Feeders.Reach, Items.Horse),
-            (11, 11, Items.Cow),
-            (10 + Feeders.Reach + 1, 10, Items.Sheep),
+            new Beast(10 + Feeders.Reach, 10, Items.Chicken, null, 0),
+            new Beast(10, 10 - Feeders.Reach, Items.Horse, null, 0),
+            new Beast(11, 11, Items.Cow, null, 0),
+            new Beast(10 + Feeders.Reach + 1, 10, Items.Sheep, null, 0),
         ]);
         yard.Feed(Start);
 
@@ -43,7 +43,7 @@ public sealed class FeederTests(ServerFactory factory) : IClassFixture<ServerFac
         Assert.Equal(6, yard.Eaten.Sum(e => e.Entry.Consumed));
 
         // One piece is not a meal; a second makes one, for the next hungry animal in reach.
-        var later = new Yard(Biome.Grassland, [feeder], [(12, 12, Items.Chicken)]);
+        var later = new Yard(Biome.Grassland, [feeder], [new Beast(12, 12, Items.Chicken, null, 0)]);
         later.Feed(Start);
         Assert.Empty(later.Fed);
         Assert.Equal(Feeders.Capacity - 1, feeder.Add(Items.Corn, 1000));

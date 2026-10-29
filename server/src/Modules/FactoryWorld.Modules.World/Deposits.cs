@@ -27,6 +27,9 @@ public enum MineralKind : short
 /// <summary>The mineral in a plot's rock and how much of it there is; it comes up with the ore from its mines.</summary>
 public sealed record Mineral(MineralKind Kind, DepositSize Size)
 {
+    /// <summary>Whether the mine's owner researched <see cref="GeologyTech"/>: the mineral comes up more often.</summary>
+    public bool Rich { get; init; }
+
     public static readonly Mineral None = new(MineralKind.None, DepositSize.None);
 
     /// <summary>The item it comes up as, or null for none.</summary>
@@ -126,7 +129,8 @@ public static class Deposits
 
 public sealed record SurveyResult(Survey Survey, long BalanceCents);
 
-public sealed class SurveyService(GameDb db, WorldMap map, PlotService plots, IWallet wallet, ICharacterProgress progress, TimeProvider time)
+public sealed class SurveyService(
+    GameDb db, WorldMap map, PlotService plots, IWallet wallet, ICharacterProgress progress, TimeProvider time, ITechnologies technologies)
 {
     /// <summary>The survey the plot's owner ordered, or null. The mineral is worked out again, as it is fixed by the plot.</summary>
     public async Task<Survey?> FindAsync(int x, int y, CancellationToken cancellationToken)
@@ -140,6 +144,10 @@ public sealed class SurveyService(GameDb db, WorldMap map, PlotService plots, IW
                 Deposits.SeabedIn(x, y, map.BiomeAt(x, y)))
             : null;
     }
+
+    /// <summary>What a survey costs the player: half with <see cref="GeologyTech"/> researched.</summary>
+    public async Task<long> PriceAsync(Guid player, CancellationToken cancellationToken) =>
+        (await technologies.ResearchedAsync(player, cancellationToken)).Contains(GeologyTech.Id) ? Deposits.SurveyPriceCents / 2 : Deposits.SurveyPriceCents;
 
     /// <summary>Pays for a geological survey of one of the player's plots; a plot is surveyed once.</summary>
     public Task<SurveyResult> OrderAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
@@ -161,7 +169,7 @@ public sealed class SurveyService(GameDb db, WorldMap map, PlotService plots, IW
                 }
             }
 
-            var balance = await wallet.DebitAsync(player, Deposits.SurveyPriceCents, $"survey {x}:{y}", cancellationToken);
+            var balance = await wallet.DebitAsync(player, await PriceAsync(player, cancellationToken), $"survey {x}:{y}", cancellationToken);
             await progress.AddXpAsync(player, Deposits.XpPerSurvey, cancellationToken);
             return new SurveyResult(survey, balance);
         }, cancellationToken);

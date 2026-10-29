@@ -199,6 +199,9 @@ public sealed class PlotFeederRow
 
     /// <summary>The feed in it, as JSON: item → count.</summary>
     public string Store { get; set; } = "{}";
+
+    /// <summary>What an automatic barn collected from the animals and keeps until taken out, as JSON: item → count; a plain feeder keeps none.</summary>
+    public string Output { get; set; } = "{}";
 }
 
 /// <summary>A well pumping oil or gas: what it holds, how far it is with its unit and the state of its seals.</summary>
@@ -670,6 +673,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(f => f.Y).HasColumnName("y");
             e.Property(f => f.OwnerId).HasColumnName("owner_id");
             e.Property(f => f.Store).HasColumnName("store").HasDefaultValue("{}");
+            e.Property(f => f.Output).HasColumnName("output").HasDefaultValue("{}");
             e.HasIndex(f => new { f.X, f.Y });
         });
 
@@ -1246,6 +1250,9 @@ public sealed class WorldService(
     GameDb db, WorldMap map, IWallet wallet, ICharacterProgress progress, ICharacterNames names, IEquipment equipment, SurveyService surveys,
     IEnumerable<ICompanyPlots> companies, CityService cities, PlotTaxService taxes, Countries countries, INationalPolicy nation, TimeProvider time)
 {
+    /// <summary>What a geological survey costs the player.</summary>
+    public Task<long> SurveyPriceAsync(Guid player, CancellationToken cancellationToken) => surveys.PriceAsync(player, cancellationToken);
+
     /// <summary>Most owned plots one area request returns.</summary>
     public const int MaxAreaPlots = 5000;
 
@@ -1497,7 +1504,8 @@ public abstract class WorldHandler(IServiceScopeFactory scopes) : IMessageHandle
 
     protected abstract Task<Reply> RunAsync(WorldService world, Guid player, JsonElement? payload, CancellationToken cancellationToken);
 
-    public static object PlotJson(PlotState plot, Guid player) => new
+    /// <param name="surveyPriceCents">What a survey costs this player (less with geology researched); the plain price when not given.</param>
+    public static object PlotJson(PlotState plot, Guid player, long? surveyPriceCents = null) => new
     {
         x = plot.X,
         y = plot.Y,
@@ -1505,7 +1513,7 @@ public abstract class WorldHandler(IServiceScopeFactory scopes) : IMessageHandle
         owner = plot.Owner is { } owner ? new { name = owner.Name, mine = owner.AccountId == player } : null,
         priceCents = plot.PriceCents,
         survey = plot.Survey is { } survey ? SurveyHandler.SurveyJson(survey) : null,
-        surveyPriceCents = plot.Owner?.AccountId == player ? Deposits.SurveyPriceCents : (long?)null,
+        surveyPriceCents = plot.Owner?.AccountId == player ? surveyPriceCents ?? Deposits.SurveyPriceCents : (long?)null,
         company = plot.Company is { } company ? new { name = company.Name, member = company.Member } : null,
         canEnter = plot.CanEnter,
         name = plot.Name,
@@ -1580,7 +1588,8 @@ public sealed class GetPlotHandler(IServiceScopeFactory scopes) : WorldHandler(s
     protected override async Task<Reply> RunAsync(WorldService world, Guid player, JsonElement? payload, CancellationToken cancellationToken)
     {
         var request = Payload.Read<PlotRequest>(payload);
-        return new Reply("world.plot", PlotJson(await world.PlotAsync(player, request.X, request.Y, cancellationToken), player));
+        return new Reply("world.plot", PlotJson(
+            await world.PlotAsync(player, request.X, request.Y, cancellationToken), player, await world.SurveyPriceAsync(player, cancellationToken)));
     }
 }
 

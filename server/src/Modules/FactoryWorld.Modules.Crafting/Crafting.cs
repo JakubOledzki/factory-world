@@ -243,6 +243,24 @@ public static class Workshop
             [(Items.Farmstead, 1), (Items.Bricks, 40), (Items.Beams, 10), (Items.IronIngot, 20), (Items.Provisions, 5)], 60),
         new(Items.Bellows, 1, TimeSpan.FromSeconds(30), [(Items.Hide, 2), (Items.Planks, 4), (Items.IronIngot, 2)], 10),
         new(Items.LeatherBoots, 1, TimeSpan.FromSeconds(50), [(Items.Hide, 2), (Items.Wool, 2), (Items.SteelIngot, 1)], 20, Items.Tailor),
+        // The raw-material branches grown further: mining, forestry, husbandry, farming and energy.
+        new(Items.CokeOven, 1, TimeSpan.FromSeconds(120), [(Items.Bricks, 60), (Items.SteelIngot, 15), (Items.IronIngot, 20)], 50),
+        new(Items.Jeweler, 1, TimeSpan.FromSeconds(60), [(Items.Planks, 10), (Items.Glass, 6), (Items.SteelIngot, 4), (Items.SilverIngot, 2)], 25),
+        new(Items.TreeNursery, 1, TimeSpan.FromSeconds(60), [(Items.Planks, 20), (Items.Beams, 6), (Items.Sapling, 10), (Items.Nails, 10)], 20),
+        new(Items.SpinningMill, 1, TimeSpan.FromSeconds(60), [(Items.Planks, 20), (Items.IronIngot, 10), (Items.CopperIngot, 6), (Items.Nails, 10)], 25),
+        new(Items.Loom, 1, TimeSpan.FromSeconds(60), [(Items.Beams, 10), (Items.Planks, 10), (Items.IronIngot, 4), (Items.Nails, 10)], 20),
+        new(Items.AutoBarn, 1, TimeSpan.FromSeconds(90), [(Items.Feeder, 2), (Items.Bricks, 20), (Items.IronIngot, 20), (Items.Inserter, 2)], 30),
+        new(Items.SugarFactory, 1, TimeSpan.FromSeconds(90), [(Items.Bricks, 30), (Items.IronIngot, 15), (Items.Tank, 1), (Items.Pipe, 4)], 35),
+        new(Items.Sprinkler, 1, TimeSpan.FromSeconds(30), [(Items.Pipe, 4), (Items.IronIngot, 4), (Items.CopperIngot, 2)], 8),
+        new(Items.MechanizedFarm, 1, TimeSpan.FromSeconds(180),
+            [(Items.ManorFarm, 1), (Items.SteelIngot, 40), (Items.ElectricMotor, 4), (Items.Bricks, 40), (Items.Provisions, 10)], 120),
+        new(Items.BiomassPlant, 1, TimeSpan.FromSeconds(150),
+            [(Items.Bricks, 60), (Items.SteelIngot, 20), (Items.Beams, 20), (Items.CopperIngot, 20), (Items.Transformer, 1)], 70),
+        new(Items.ChpPlant, 1, TimeSpan.FromSeconds(150), [(Items.CoalPlant, 1), (Items.Heater, 2), (Items.Pipe, 20), (Items.CopperIngot, 20)], 100),
+        new(Items.GeothermalPlant, 1, TimeSpan.FromSeconds(180),
+            [(Items.SteelIngot, 40), (Items.MineSupport, 10), (Items.Pipe, 20), (Items.Bricks, 30), (Items.Transformer, 2)], 100),
+        new(Items.Electrolyzer, 1, TimeSpan.FromSeconds(90), [(Items.Tank, 2), (Items.CopperIngot, 30), (Items.SilverIngot, 2), (Items.Transformer, 1)], 40),
+        new(Items.FuelCell, 1, TimeSpan.FromSeconds(90), [(Items.Tank, 1), (Items.CopperIngot, 20), (Items.SilverIngot, 4), (Items.CircuitBoard, 4)], 40),
     ];
 
     public static Recipe? Find(string id) => Recipes.FirstOrDefault(r => r.Id == id);

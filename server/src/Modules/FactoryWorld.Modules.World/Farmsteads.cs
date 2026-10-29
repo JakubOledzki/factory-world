@@ -27,6 +27,8 @@ public static class Farmsteads
     [
         new(Items.Farmstead, 1, 4, 200, 1, TimeSpan.FromSeconds(4)),
         new(Items.ManorFarm, 2, 5, 400, 1.5, TimeSpan.FromSeconds(2)),
+        // Tractors and combines: the biggest fields, sown and reaped twice as fast as by a farmstead.
+        new(Items.MechanizedFarm, 3, 6, 800, 2, TimeSpan.FromSeconds(1)),
     ];
 
     public static FarmLevel? Level(string kind) => Levels.FirstOrDefault(l => l.Kind == kind);
@@ -272,7 +274,7 @@ public sealed record FarmsteadOnPlot(PlotObject Object, FarmPatch Patch);
 
 public sealed class FarmsteadService(
     GameDb db, WorldMap map, PlotService plots, IPlotObjects objects, IInventory inventory, ICharacterProgress progress, IProductionStats stats,
-    TimeProvider time) : IPlacedHook, IPlotAutomation, IMachineContents, IMachinePorts, IMachineStatuses
+    TimeProvider time, ITechnologies technologies) : IPlacedHook, IPlotAutomation, IMachineContents, IMachinePorts, IMachineStatuses
 {
     /// <summary>The plot's farmsteads worked up to now.</summary>
     public Task<IReadOnlyList<FarmsteadOnPlot>> StateAsync(Guid player, int x, int y, IEnumerable<IPlotAutomation> automation, CancellationToken cancellationToken) =>
@@ -325,6 +327,11 @@ public sealed class FarmsteadService(
             }
 
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
+            if (kind is not null)
+            {
+                await technologies.RequireUnlockedAsync(player, kind.Item, cancellationToken);
+            }
+
             foreach (var machinery in automation)
             {
                 await machinery.CatchUpAsync(x, y, cancellationToken);
@@ -556,6 +563,12 @@ public sealed class FarmsteadService(
         foreach (var o in farmsteads)
         {
             var level = Farmsteads.Level(o.Kind)!;
+            // A sprinkler within its square waters all its fields.
+            if (all.Any(s => s.Kind == Items.Sprinkler && Farmsteads.Claims(level, s.TileX - o.TileX, s.TileY - o.TileY)))
+            {
+                level = level with { GrowSpeed = level.GrowSpeed * Farming.SprinklerSpeed };
+            }
+
             var (crop, store, manure, busyUntil) = rows.GetValueOrDefault(o.Id, (Farming.Crops[0].Item, "{}", 0, start));
             var patch = new FarmPatch(level, Farming.ById.GetValueOrDefault(crop) ?? Farming.Crops[0], ReadStore(store), manure, busyUntil);
             foreach (var tile in areas[o.Id])
@@ -756,6 +769,8 @@ public abstract class FarmsteadHandler(IServiceScopeFactory scopes, TimeProvider
             crop = patch.Crop.Item,
             manure = patch.Manure,
             maxManure = Farmsteads.MaxManure,
+            // A sprinkler within its square waters its fields: its crops grow faster.
+            watered = level.GrowSpeed > (Farmsteads.Level(o.Kind)?.GrowSpeed ?? level.GrowSpeed),
             kinds = Farming.Crops.Select(c => new
             {
                 id = c.Item,

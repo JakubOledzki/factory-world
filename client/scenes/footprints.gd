@@ -25,6 +25,9 @@ const BIG := {
 	"furniture_assembler": 2, "furniture_fast_assembler": 3, "furniture_express_assembler": 4,
 	"furniture_roller_mill": 3, "furniture_flour_works": 4, "furniture_mechanized_quarry": 3, "furniture_open_pit_mine": 4,
 	"furniture_cone_crusher": 3, "furniture_ore_processing_plant": 4,
+	"furniture_spinning_mill": 2, "furniture_loom": 2, "furniture_sugar_factory": 2, "furniture_jeweler": 2, "furniture_electrolyzer": 2,
+	"furniture_tree_nursery": 2, "furniture_auto_barn": 2, "power_fuel_cell": 2,
+	"furniture_coke_oven": 3, "power_biomass_plant": 3, "power_chp_plant": 3, "power_geothermal_plant": 3, "furniture_mechanized_farm": 4,
 	"furniture_steel_combine": 5, "furniture_megafactory": 5, "furniture_bank": 5,
 	"furniture_rail_port": 9,
 }
