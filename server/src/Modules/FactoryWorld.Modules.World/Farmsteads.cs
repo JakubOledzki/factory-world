@@ -160,7 +160,8 @@ public sealed class FarmPatch(FarmLevel level, Crop crop, IReadOnlyDictionary<st
             Made.Add(ProductionEntry.Used(Items.Manure, 1, at));
         }
 
-        Fields[tile] = (Crop, at + Farmsteads.GrowTime(FarmLevel, Crop, manure));
+        // Rain makes it grow faster, a drought slower.
+        Fields[tile] = (Crop, FieldWeather.Ripe(at, Farmsteads.GrowTime(FarmLevel, Crop, manure)));
         Sown.Add(tile);
     }
 

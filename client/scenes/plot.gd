@@ -544,6 +544,8 @@ var _crevasse_source := 0
 var _bridge_source := 0
 ## Snow blown across the screen in a blizzard.
 var _snow: CPUParticles2D
+## Rain over the fields of fertile plots.
+var _rain: CPUParticles2D
 ## The blizzard and the aurora last seen, to notice when they begin and end.
 var _was_blizzard := false
 var _shadows: TileMapLayer
@@ -809,6 +811,23 @@ func _build_world() -> void:
 	_snow.color = Color(1, 1, 1, 0.8)
 	_snow.z_index = 100
 	_camera.add_child(_snow)
+	_rain = CPUParticles2D.new()
+	_rain.emitting = false
+	_rain.amount = 700
+	_rain.lifetime = 0.9
+	_rain.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	_rain.emission_rect_extents = Vector2(1100, 50)
+	_rain.position = Vector2(100, -650)
+	_rain.direction = Vector2(-0.15, 1)
+	_rain.spread = 3.0
+	_rain.gravity = Vector2(0, 600)
+	_rain.initial_velocity_min = 900.0
+	_rain.initial_velocity_max = 1200.0
+	_rain.scale_amount_min = 1.0
+	_rain.scale_amount_max = 2.0
+	_rain.color = Color(0.7, 0.8, 1.0, 0.55)
+	_rain.z_index = 100
+	_camera.add_child(_rain)
 
 
 ## The objects' and the shadows' tile sets with where each sprite lies on them, by whether they are the shadows.
@@ -4565,6 +4584,8 @@ func _update_weather() -> void:
 				_weather.text = "%s · burza piaskowa za %s" % [light, _clock_text(start - server)]
 			break
 	_daylight_target = Color(1.0, 0.86, 0.62) if sandstorm else (Color.WHITE if day else Color(0.62, 0.66, 0.85))
+	if _update_field_weather(server):
+		return
 	if _biome() in POLAR:
 		_update_polar_weather(server, day, sun_change)
 		return
@@ -4584,6 +4605,45 @@ func _update_weather() -> void:
 			_weather.add_theme_color_override("font_color", UI.MUTED)
 		return
 	_weather.visible = false
+
+
+## Where crops grow: the rain (they grow faster, it pours across the screen) and the drought (slower, the light goes
+## yellow) now or the next one, on the line over the plot; on sand after the desert's own weather. False elsewhere.
+func _update_field_weather(server: float) -> bool:
+	var weather: Variant = _plot.get("fieldWeather")
+	_rain.emitting = false
+	if weather == null:
+		return false
+	var line := ""
+	var color := UI.MUTED
+	for spell: Dictionary in weather["spells"]:
+		var start := float(spell["start"])
+		var end := float(spell["end"])
+		if end <= server:
+			continue
+		var rain: bool = spell["kind"] == "rain"
+		if start <= server:
+			if rain:
+				line = "Deszcz: uprawy rosną %s razy szybciej (jeszcze %s)" % [str(weather["rainSpeed"]).replace(".", ","), _clock_text(end - server)]
+				color = Color(0.6, 0.8, 1.0)
+				_rain.emitting = Settings.effects
+				_daylight_target = _daylight_target * Color(0.82, 0.85, 0.92)
+			else:
+				line = "Susza: uprawy rosną dwa razy wolniej (jeszcze %s)" % _clock_text(end - server)
+				color = UI.ERROR
+				_daylight_target = _daylight_target * Color(1.0, 0.93, 0.78)
+		else:
+			line = "%s za %s" % ["Deszcz" if rain else "Susza", _clock_text(start - server)]
+		break
+	if line == "":
+		return false
+	_weather.visible = true
+	if _sandy():
+		_weather.text = "%s · %s" % [_weather.text, line]
+	else:
+		_weather.text = line
+		_weather.add_theme_color_override("font_color", color)
+	return true
 
 
 ## On the glacier the blizzards, and on the glacier and the tundra the aurora on some nights: the line over the plot,

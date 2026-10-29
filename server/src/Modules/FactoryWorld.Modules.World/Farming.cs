@@ -12,6 +12,7 @@ public sealed record Crop(string Item, TimeSpan Grow, int Yield, int Xp);
 /// <summary>
 /// Fertile plots can be farmed: the hoe tills a free tile into a field, a crop is sown on the field
 /// and grows for its own time, then it is reaped by hand and the field can be sown again.
+/// Rain makes crops grow faster and a drought slower (<see cref="FieldWeather"/>).
 /// </summary>
 public static class Farming
 {
@@ -134,9 +135,10 @@ public sealed class FarmService(
             }
 
             // A fertilised crop counts as sown so long ago that it is ripe in half its time; a farmer's clothes take off more.
+            // Rain to come makes it ripe sooner, a drought later: it counts as sown as long before it is ripe as it grows in clear weather.
             var speed = (fertilize ? Farming.FertilizerSpeed : 1) * (manure ? Farming.ManureSpeed : 1)
                 * await plots.SpeedAsync(player, Industries.Farming, cancellationToken);
-            var sown = now - Farming.ById[crop].Grow * (1 - 1 / speed);
+            var sown = FieldWeather.Ripe(now, Farming.ById[crop].Grow / speed) - Farming.ById[crop].Grow;
             await using var update = await db.CommandAsync(
                 """
                 UPDATE world.plot_fields SET crop = @crop, planted_at = @now

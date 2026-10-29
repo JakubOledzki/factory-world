@@ -940,6 +940,8 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
                 daylightMs = (long)Sun.Daylight.TotalMilliseconds,
             },
             sandstorms = Oasis.Sandy((int)biome) ? SandstormsJson(time.GetUtcNow(), 12) : [],
+            // Where crops grow: the rain (crops grow rainSpeed times as fast) and the droughts (droughtSpeed) to come.
+            fieldWeather = Farming.Fertile(biome) ? FieldWeatherJson(time.GetUtcNow(), 12) : null,
             // On the glacier: the blizzards to come (turbines stop, ice freezes again, avalanches leave snow), the last one's window
             // for working out where its snow lies, and the frost that slows machines no heater warms.
             blizzards = biome == Biome.Ice ? BlizzardsJson(time.GetUtcNow(), 8) : [],
@@ -970,6 +972,21 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
         }
 
         return storms;
+    }
+
+    /// <summary>The rain or the drought now (if any) and the next ones, <paramref name="count"/> in all, with how fast crops grow in them.</summary>
+    public static object FieldWeatherJson(DateTimeOffset now, int count)
+    {
+        var spells = new List<object>();
+        var at = now;
+        for (var i = 0; i < count; i++)
+        {
+            var (start, end, kind) = FieldWeather.Next(at);
+            spells.Add(new { start = start.ToUnixTimeMilliseconds(), end = end.ToUnixTimeMilliseconds(), kind = kind == FieldWeather.Kind.Rain ? "rain" : "drought" });
+            at = end;
+        }
+
+        return new { rainSpeed = FieldWeather.RainSpeed, droughtSpeed = FieldWeather.DroughtSpeed, spells };
     }
 
     /// <summary>The blizzard blowing now (if any) and the next ones, <paramref name="count"/> in all.</summary>
