@@ -126,6 +126,8 @@ public static class Workshop
         new(Items.GasPlant, 1, TimeSpan.FromSeconds(150), [(Items.SteelIngot, 25), (Items.CopperIngot, 20), (Items.Bricks, 20)], 70),
         new(Items.DieselGenerator, 1, TimeSpan.FromSeconds(90), [(Items.SteelIngot, 15), (Items.IronIngot, 10), (Items.CopperIngot, 10)], 40),
         new(Items.Road, 4, TimeSpan.FromSeconds(10), [(Items.Asphalt, 2), (Items.Stone, 2)], 2),
+        new(Items.TruckDepot, 1, TimeSpan.FromSeconds(120), [(Items.SteelIngot, 20), (Items.Tyres, 2), (Items.Concrete, 10), (Items.ElectricMotor, 1)], 50),
+        new(Items.Scrubber, 1, TimeSpan.FromSeconds(60), [(Items.SteelIngot, 10), (Items.Charcoal, 20), (Items.CopperIngot, 5)], 20),
         // The desert: glass and silicon, water, building materials and the sun's power.
         new(Items.Glassworks, 1, TimeSpan.FromSeconds(60), [(Items.Bricks, 30), (Items.Stone, 20), (Items.IronIngot, 10)], 25),
         new(Items.ArcFurnace, 1, TimeSpan.FromSeconds(150), [(Items.SteelIngot, 20), (Items.CopperIngot, 30), (Items.Bricks, 20)], 80),

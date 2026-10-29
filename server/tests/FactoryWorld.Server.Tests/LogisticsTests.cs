@@ -152,6 +152,32 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
     }
 
     [Fact]
+    public void An_inserter_with_a_condition_fills_a_chest_up_to_its_limit_and_keeps_a_reserve_in_the_one_behind()
+    {
+        // chest (20 wood) → inserter (fill up to 8) → chest, and below it chest (20 wood) → inserter (keep 5) → chest
+        var from = Obj(Items.WoodenChest, 0, 0);
+        var filling = Obj(Items.Inserter, 1, 0);
+        var filled = Obj(Items.WoodenChest, 2, 0);
+        var reserve = Obj(Items.WoodenChest, 0, 2);
+        var keeping = Obj(Items.Inserter, 1, 2);
+        var to = Obj(Items.WoodenChest, 2, 2);
+        var contents = new Dictionary<Guid, Contents>
+        {
+            [from.Id] = new() { Items = [new() { Item = Items.Wood, Quantity = 20 }] },
+            [reserve.Id] = new() { Items = [new() { Item = Items.Wood, Quantity = 20 }] },
+            [filling.Id] = new() { Below = 8 },
+            [keeping.Id] = new() { Keep = 5 },
+        };
+        var (logistics, _) = Build([from, filling, filled, reserve, keeping, to], contents);
+
+        logistics.Run(Start, Start + TimeSpan.FromHours(1));
+        Assert.Equal(8, Stored(contents[filled.Id], Items.Wood));
+        Assert.Equal(12, Stored(contents[from.Id], Items.Wood));
+        Assert.Equal(5, Stored(contents[reserve.Id], Items.Wood));
+        Assert.Equal(15, Stored(contents[to.Id], Items.Wood));
+    }
+
+    [Fact]
     public void An_inserter_with_nothing_to_take_from_a_chest_takes_what_another_puts_in_on_the_same_tick()
     {
         // chest → inserter → chest → inserter → chest: the second one has nothing to do until the first drops.
@@ -547,6 +573,32 @@ public sealed class LogisticsTests(ServerFactory factory) : IClassFixture<Server
         Assert.Equal("logistics", (await client.SendAsync("splitter.set", new { x, y, id = splitter, side = 0, items = Array.Empty<string>() })).Type());
         state = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("belts")[0];
         Assert.Empty(state.GetProperty("filter").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task An_inserter_keeps_its_condition_and_only_an_inserter_takes_one()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, tx, ty) = await PlotWithFreeRowAsync(client, 2);
+        await GiveAsync(client, Items.Inserter, 1);
+        await GiveAsync(client, Items.WoodenChest, 1);
+        var inserter = await PlaceAsync(client, x, y, Items.Inserter, tx, ty);
+        var chest = await PlaceAsync(client, x, y, Items.WoodenChest, tx + 1, ty);
+
+        var set = await client.SendAsync("inserter.condition", new { x, y, id = inserter, below = 100, keep = 10 });
+        Assert.Equal("logistics", set.Type());
+        var condition = (await client.SendAsync("logistics.get", new { x, y, compact = true })).Payload().GetProperty("conditions")[0];
+        Assert.Equal(inserter, condition.GetProperty("id").GetString());
+        Assert.Equal(100, condition.GetProperty("below").GetInt32());
+        Assert.Equal(10, condition.GetProperty("keep").GetInt32());
+
+        Assert.Equal("bad_condition", (await client.SendAsync("inserter.condition", new { x, y, id = inserter, below = -1, keep = 0 })).ErrorCode());
+        Assert.Equal("no_object", (await client.SendAsync("inserter.condition", new { x, y, id = chest, below = 5, keep = 0 })).ErrorCode());
+        using var other = await PlayerAsync();
+        Assert.Equal("not_owner", (await other.SendAsync("inserter.condition", new { x, y, id = inserter, below = 5, keep = 0 })).ErrorCode());
+
+        Assert.Equal("logistics", (await client.SendAsync("inserter.condition", new { x, y, id = inserter, below = 0, keep = 0 })).Type());
+        Assert.Empty((await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("conditions").EnumerateArray());
     }
 
     [Fact]

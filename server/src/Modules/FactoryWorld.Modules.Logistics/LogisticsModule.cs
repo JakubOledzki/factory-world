@@ -204,6 +204,34 @@ public sealed class LogisticsService(
             return state with { Contents = all };
         }, cancellationToken);
 
+    /// <summary>Most pieces a condition counts to.</summary>
+    public const int MaxCondition = 1_000_000;
+
+    /// <summary>Sets the condition an inserter or a pump on the player's plot works on: it fills the storage in front up to
+    /// <paramref name="below"/> pieces of an item and leaves <paramref name="keep"/> of each in the storage behind it; 0 for no limit.</summary>
+    public Task<LogisticsState> SetConditionAsync(Guid player, int x, int y, Guid id, int below, int keep, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            if (below is < 0 or > MaxCondition || keep is < 0 or > MaxCondition)
+            {
+                throw new GameException("bad_condition", $"A condition counts from 0 to {MaxCondition} pieces.");
+            }
+
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            var state = await RunAsync(x, y, cancellationToken);
+            if (!state.Objects.Any(o => o.Id == id && Items.IsInserter(o.Kind)))
+            {
+                throw new GameException("no_object", "There is no such inserter on this plot.");
+            }
+
+            var contents = state.Contents.GetValueOrDefault(id) ?? new Contents();
+            contents.Below = below;
+            contents.Keep = keep;
+            await WriteAsync(id, x, y, contents, cancellationToken);
+            var all = new Dictionary<Guid, Contents>(state.Contents) { [id] = contents };
+            return state with { Contents = all };
+        }, cancellationToken);
+
     /// <summary>Whether an object can have a filter: an inserter, a storage, or a machine inserters put things into.</summary>
     private async Task<bool> FilterableAsync(PlotObject o, IPowerGrid grid, CancellationToken cancellationToken)
     {
@@ -450,6 +478,8 @@ public sealed record SplitterRequest(int X, int Y, Guid Id, int Side, List<strin
 
 public sealed record FilterRequest(int X, int Y, Guid Id, string? Item);
 
+public sealed record ConditionRequest(int X, int Y, Guid Id, int Below, int Keep);
+
 public sealed record StorageItemRequest(int X, int Y, Guid Id, string Item, int Quantity);
 
 /// <summary>The belts, inserters and storage of a plot; the client asks again every moment it watches them.</summary>
@@ -522,6 +552,8 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
             names = names || state.Objects.Any(o => o.Kind == Items.Splitter) ? Items.Names : null,
             // The one item each inserter, storage or machine with a filter takes, by object id.
             filters = state.Objects.Where(o => Of(o.Id).Only is not null).Select(o => new { id = o.Id, item = Of(o.Id).Only }),
+            // The conditions inserters and pumps work on: fill the storage in front up to `below`, keep `keep` in the one behind.
+            conditions = Conditions(state, Of),
             inserters = state.Objects.Where(o => Items.IsInserter(o.Kind))
                 .Select(o => new
                 {
@@ -613,6 +645,7 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
             belts,
             names = names ? Items.Names : null,
             filters = state.Objects.Where(o => of(o.Id).Only is not null).Select(o => new { id = o.Id, item = of(o.Id).Only }),
+            conditions = Conditions(state, of),
             inserters,
             drones = state.Objects.Where(o => o.Kind == Items.DronePort)
                 .Select(o => new { id = o.Id, speed = state.Power.Clock(o.Id).Speed(state.SimulatedAt) }),
@@ -621,6 +654,10 @@ public sealed class GetLogisticsHandler(IServiceScopeFactory scopes) : IMessageH
             power = CompactPower(state.Power.Summary(state.ServerTime)),
         };
     }
+
+    private static IEnumerable<object> Conditions(LogisticsState state, Func<Guid, Contents> of) =>
+        state.Objects.Where(o => Items.IsInserter(o.Kind) && (of(o.Id).Below > 0 || of(o.Id).Keep > 0))
+            .Select(o => new { id = o.Id, below = of(o.Id).Below, keep = of(o.Id).Keep });
 
     /// <summary>A storage as the plot shows it: how full it is and what it holds (ids only), the filter and what it takes when set.</summary>
     private static Dictionary<string, object?> CompactStorage(StorageKind kind, PlotObject o, Contents contents)
@@ -688,6 +725,21 @@ public sealed class SetSplitterHandler(IServiceScopeFactory scopes) : IMessageHa
         await using var scope = scopes.CreateAsyncScope();
         var state = await scope.ServiceProvider.GetRequiredService<LogisticsService>().SetSplitterAsync(
             client.RequireAccount(), request.X, request.Y, request.Id, request.Side, request.Items ?? [], cancellationToken);
+        return new Reply("logistics", GetLogisticsHandler.Json(request.X, request.Y, state));
+    }
+}
+
+/// <summary>Sets the condition of an inserter or a pump; answers with the plot's logistics like "logistics.get".</summary>
+public sealed class SetConditionHandler(IServiceScopeFactory scopes) : IMessageHandler
+{
+    public string Type => "inserter.condition";
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<ConditionRequest>(payload);
+        await using var scope = scopes.CreateAsyncScope();
+        var state = await scope.ServiceProvider.GetRequiredService<LogisticsService>().SetConditionAsync(
+            client.RequireAccount(), request.X, request.Y, request.Id, request.Below, request.Keep, cancellationToken);
         return new Reply("logistics", GetLogisticsHandler.Json(request.X, request.Y, state));
     }
 }
@@ -781,6 +833,7 @@ public sealed class LogisticsModule : IGameModule
         services.AddSingleton<IMessageHandler, GetLogisticsHandler>();
         services.AddSingleton<IMessageHandler, SetSplitterHandler>();
         services.AddSingleton<IMessageHandler, SetFilterHandler>();
+        services.AddSingleton<IMessageHandler, SetConditionHandler>();
         services.AddSingleton<IMessageHandler, GetStorageHandler>();
         services.AddSingleton<IMessageHandler, PutStorageHandler>();
         services.AddSingleton<IMessageHandler, TakeStorageHandler>();

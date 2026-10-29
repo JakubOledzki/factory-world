@@ -181,7 +181,7 @@ const PLACED_SPRITES := {
 	"furniture_water_injector": "water_injector", "furniture_oil_separator": "oil_separator", "furniture_distillery": "distillery",
 	"furniture_refinery": "refinery", "furniture_cracker": "cracker", "furniture_chemical_plant": "chemical_plant",
 	"power_gas_plant": "gas_plant", "power_diesel_generator": "diesel_generator", "logistics_pump": "pump",
-	"storage_tank": "tank", "logistics_road": "road",
+	"storage_tank": "tank", "logistics_road": "road", "furniture_truck_depot": "truck_depot", "furniture_scrubber": "scrubber",
 	"furniture_glassworks": "glassworks", "furniture_arc_furnace": "arc_furnace", "furniture_water_well": "water_well",
 	"furniture_desalinator": "desalinator", "furniture_drying_yard": "drying_yard", "furniture_cement_kiln": "cement_kiln",
 	"furniture_concrete_mixer": "concrete_mixer", "furniture_reed_fence": "reed_fence", "power_solar_panel": "solar_panel",
@@ -570,6 +570,10 @@ var _crevasse_source := 0
 var _bridge_source := 0
 ## Snow blown across the screen in a blizzard.
 var _snow: CPUParticles2D
+## Rain over the fields of fertile plots.
+var _rain: CPUParticles2D
+## The smog over the plot, when there is more than is harmless.
+var _smog: Label
 ## The blizzard and the aurora last seen, to notice when they begin and end.
 var _was_blizzard := false
 var _shadows: TileMapLayer
@@ -663,6 +667,12 @@ var _plan_corner := Vector2i(-1, -1)
 var _clear_to := Vector2i(-1, -1)
 ## The copied plan, kept while the game runs, also on other plots: [{ kind, dx, dy, rotation }] from its top left tile.
 static var _plan: Array[Dictionary] = []
+## The sketchbook (plan mode "sketch"): ghosts drawn on the plot without building anything, [{ kind, tileX, tileY, rotation }],
+## kept while the game runs; what the next click draws, and turned which way.
+static var _sketch: Array[Dictionary] = []
+var _sketch_kind := ""
+var _sketch_rotation := 0
+var _plans_window: PlansWindow
 ## What Ctrl+Z undoes, newest last: { placed: [ids] } to take back what was put up, or { picked: [objects] } to put back what was picked up.
 var _undo: Array[Dictionary] = []
 var _plan_button: Button
@@ -839,6 +849,23 @@ func _build_world() -> void:
 	_snow.color = Color(1, 1, 1, 0.8)
 	_snow.z_index = 100
 	_camera.add_child(_snow)
+	_rain = CPUParticles2D.new()
+	_rain.emitting = false
+	_rain.amount = 700
+	_rain.lifetime = 0.9
+	_rain.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	_rain.emission_rect_extents = Vector2(1100, 50)
+	_rain.position = Vector2(100, -650)
+	_rain.direction = Vector2(-0.15, 1)
+	_rain.spread = 3.0
+	_rain.gravity = Vector2(0, 600)
+	_rain.initial_velocity_min = 900.0
+	_rain.initial_velocity_max = 1200.0
+	_rain.scale_amount_min = 1.0
+	_rain.scale_amount_max = 2.0
+	_rain.color = Color(0.7, 0.8, 1.0, 0.55)
+	_rain.z_index = 100
+	_camera.add_child(_rain)
 
 
 ## The objects' and the shadows' tile sets with where each sprite lies on them, by whether they are the shadows.
@@ -2176,7 +2203,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_stop_work()
 			_path = PackedVector2Array()
 	elif event.is_action_pressed("rotate"):
-		if _placing != "":
+		if _plan_mode == "sketch":
+			_sketch_rotation = (_sketch_rotation + 1) % 4
+			_update_hint()
+		elif _placing != "":
 			_place_rotation = (_place_rotation + 1) % 4
 			_update_hint()
 		elif _turnable(_hovered):
@@ -3457,6 +3487,8 @@ func _plan_click(cell: Vector2i) -> void:
 			_ask_clear(Rect2i(_plan_corner, Vector2i.ZERO).expand(cell))
 	elif _plan_mode == "paste":
 		_paste_plan(cell)
+	elif _plan_mode == "sketch":
+		_sketch_click(cell)
 
 
 ## Copies what stands in the rectangle (both corners included): every object whose tile is inside it.
@@ -3685,6 +3717,8 @@ func _draw_plan(ground: Vector2i) -> void:
 			for object: Dictionary in _objects_in(area):
 				for at in _footprint(object["kind"], Vector2i(object["tileX"], object["tileY"])):
 					_marks.draw_rect(Rect2(Vector2(at) * TILE, TILE).grow(-2.0), Color(tint, 0.25))
+	elif _plan_mode == "sketch":
+		_draw_sketch(ground)
 	elif _plan_mode == "paste" and ground.x >= 0:
 		var tint := Color(0.56, 0.84, 0.35, 0.8) if _plan_fits(ground) else Color(1.0, 0.42, 0.35, 0.8)
 		for o: Dictionary in _plan_at(ground):
@@ -3695,6 +3729,103 @@ func _draw_plan(ground: Vector2i) -> void:
 				_marks.draw_rect(rect, Color(tint, 0.6), false, 1.5)
 			var size := 18.0 + 10.0 * (Footprints.size(o["kind"]) - 1)
 			_marks.draw_texture_rect(_logistics._icon(o["kind"]), Rect2(_object_centre(o["kind"], cell) - Vector2(size, size) / 2, Vector2(size, size)), false, Color(1, 1, 1, 0.75))
+
+
+func _toggle_plans_window() -> void:
+	if _visitor:
+		_show_toast("Na cudzej działce niczego nie postawisz.", UI.ERROR)
+		return
+	_plans_window.placeable = Array(_plot.get("placeable", []))
+	_plans_window.toggle()
+
+
+## Puts up a saved plan as a copied one is: its ghost follows the mouse until a click builds it.
+func _use_saved_plan(objects: Array) -> void:
+	var plan: Array[Dictionary] = []
+	for o: Dictionary in objects:
+		plan.append({"kind": str(o["kind"]), "dx": int(o["dx"]), "dy": int(o["dy"]), "rotation": int(o.get("rotation", 0))})
+	if plan.is_empty():
+		return
+	_stop_placing()
+	_set_planting(false)
+	_stop_releasing()
+	_plan = plan
+	_plan_mode = "paste"
+	_plans_window.hide_window()
+	_show_toast("Plan: %d obiektów. Kliknij, gdzie go postawić." % plan.size(), UI.GOOD)
+	_update_hint()
+
+
+## The sketchbook draws `kind` with the next clicks.
+func _start_sketch(kind: String) -> void:
+	_stop_placing()
+	_set_planting(false)
+	_stop_releasing()
+	_stop_work()
+	_plan_mode = "sketch"
+	_sketch_kind = kind
+	_update_hint()
+
+
+## The drawn object covering `cell`, or -1.
+func _sketch_at(cell: Vector2i) -> int:
+	for i in _sketch.size():
+		var o: Dictionary = _sketch[i]
+		if cell in _footprint(o["kind"], Vector2i(o["tileX"], o["tileY"])):
+			return i
+	return -1
+
+
+func _sketch_click(cell: Vector2i) -> void:
+	var at := _sketch_at(cell)
+	if at >= 0:
+		_sketch.remove_at(at)
+	elif _sketch_kind == "":
+		return
+	elif _sketch.size() >= MAX_PLAN:
+		_show_toast("Szkic może mieć najwyżej %d obiektów." % MAX_PLAN, UI.ERROR)
+		return
+	else:
+		for covered in _footprint(_sketch_kind, cell):
+			if covered.x < 0 or covered.y < 0 or covered.x >= _size or covered.y >= _size or _sketch_at(covered) >= 0:
+				_show_toast("Tu nie zmieści się rysunek: zachodzi na inny albo wychodzi poza działkę.", UI.ERROR)
+				return
+		_sketch.append({"kind": _sketch_kind, "tileX": cell.x, "tileY": cell.y, "rotation": _sketch_rotation})
+	_plans_window.render_sketch()
+	_marks.queue_redraw()
+
+
+## The sketch as a plan from its top left tile.
+func _sketch_plan() -> Array:
+	var left := _size
+	var top := _size
+	for o: Dictionary in _sketch:
+		for covered in _footprint(o["kind"], Vector2i(o["tileX"], o["tileY"])):
+			left = mini(left, covered.x)
+			top = mini(top, covered.y)
+	var plan: Array = []
+	for o: Dictionary in _sketch:
+		plan.append({"kind": o["kind"], "dx": int(o["tileX"]) - left, "dy": int(o["tileY"]) - top, "rotation": int(o["rotation"])})
+	return plan
+
+
+## The drawn objects in blue, and what the next click draws under the mouse.
+func _draw_sketch(ground: Vector2i) -> void:
+	var ghosts: Array[Dictionary] = _sketch.duplicate()
+	if ground.x >= 0 and _sketch_kind != "" and _sketch_at(ground) < 0:
+		ghosts.append({"kind": _sketch_kind, "tileX": ground.x, "tileY": ground.y, "rotation": _sketch_rotation, "cursor": true})
+	for o: Dictionary in ghosts:
+		var cell := Vector2i(o["tileX"], o["tileY"])
+		var tint := Color(0.98, 0.85, 0.4, 0.8) if o.get("cursor", false) else Color(0.4, 0.62, 1.0, 0.8)
+		for at in _footprint(o["kind"], cell):
+			var rect := Rect2(Vector2(at) * TILE, TILE).grow(-2.0)
+			_marks.draw_rect(rect, Color(tint, 0.18))
+			_marks.draw_rect(rect, Color(tint, 0.7), false, 1.5)
+		var size := 18.0 + 10.0 * (Footprints.size(o["kind"]) - 1)
+		var centre := _object_centre(o["kind"], cell)
+		_marks.draw_texture_rect(_logistics._icon(o["kind"]), Rect2(centre - Vector2(size, size) / 2, Vector2(size, size)), false, Color(1, 1, 1, 0.8))
+		var arrow := Vector2(PlotLogistics.facing(int(o["rotation"]))) * size * 0.6
+		_marks.draw_line(centre, centre + arrow, Color(tint, 0.9), 2.0)
 
 
 ## Notes a step Ctrl+Z can undo.
@@ -3916,7 +4047,7 @@ func _open_filter(object: Dictionary, role: String) -> void:
 	var only: Variant = _logistics.storage(object["id"]).get("only")
 	if only != null:
 		allowed = (only as Array).map(func(i: Dictionary) -> String: return i["id"])
-	_filter_window.open_at(_at, object["id"], object["name"], _logistics.filter(object["id"]), role, allowed)
+	_filter_window.open_at(_at, object["id"], object["name"], _logistics.filter(object["id"]), role, allowed, _logistics.condition(object["id"]))
 	if _filter_window.names.is_empty():
 		# Names come with the plot's logistics when asked for.
 		var reply := await Net.request("logistics.get", {"x": _at.x, "y": _at.y, "names": true})
@@ -4722,6 +4853,7 @@ func _update_weather() -> void:
 	if now < _next_weather or _plot.is_empty():
 		return
 	_next_weather = now + 1.0
+	_update_smog()
 	var server := _server_now()
 	var sun: Dictionary = _plot.get("sun", {})
 	var day := true
@@ -4750,6 +4882,8 @@ func _update_weather() -> void:
 				_weather.text = "%s · burza piaskowa za %s" % [light, _clock_text(start - server)]
 			break
 	_daylight_target = Color(1.0, 0.86, 0.62) if sandstorm else (Color.WHITE if day else Color(0.62, 0.66, 0.85))
+	if _update_field_weather(server):
+		return
 	if _biome() in POLAR:
 		_update_polar_weather(server, day, sun_change)
 		return
@@ -4769,6 +4903,58 @@ func _update_weather() -> void:
 			_weather.add_theme_color_override("font_color", UI.MUTED)
 		return
 	_weather.visible = false
+
+
+## The smog over the plot as it was on entering: from its own furnaces and generators and the plots around it.
+func _update_smog() -> void:
+	var smog: Dictionary = _plot.get("smog", {})
+	var level := float(smog.get("level", 0.0))
+	_smog.visible = level > float(smog.get("harmless", 20))
+	if not _smog.visible:
+		return
+	var speed := roundi(float(smog["cropSpeed"]) * 100.0)
+	_smog.text = "Smog %d (%d z tej działki, %d z sąsiednich): uprawy rosną w %d%% tempa. Filtr spalin zabiera %d." % [
+		roundi(level), int(smog["own"]), roundi(float(smog["neighbours"])), speed, int(smog["scrubberCleans"])]
+	_smog.add_theme_color_override("font_color", UI.ERROR if speed < 80 else Color(0.85, 0.75, 0.45))
+
+
+## Where crops grow: the rain (they grow faster, it pours across the screen) and the drought (slower, the light goes
+## yellow) now or the next one, on the line over the plot; on sand after the desert's own weather. False elsewhere.
+func _update_field_weather(server: float) -> bool:
+	var weather: Variant = _plot.get("fieldWeather")
+	_rain.emitting = false
+	if weather == null:
+		return false
+	var line := ""
+	var color := UI.MUTED
+	for spell: Dictionary in weather["spells"]:
+		var start := float(spell["start"])
+		var end := float(spell["end"])
+		if end <= server:
+			continue
+		var rain: bool = spell["kind"] == "rain"
+		if start <= server:
+			if rain:
+				line = "Deszcz: uprawy rosną %s razy szybciej (jeszcze %s)" % [str(weather["rainSpeed"]).replace(".", ","), _clock_text(end - server)]
+				color = Color(0.6, 0.8, 1.0)
+				_rain.emitting = Settings.effects
+				_daylight_target = _daylight_target * Color(0.82, 0.85, 0.92)
+			else:
+				line = "Susza: uprawy rosną dwa razy wolniej (jeszcze %s)" % _clock_text(end - server)
+				color = UI.ERROR
+				_daylight_target = _daylight_target * Color(1.0, 0.93, 0.78)
+		else:
+			line = "%s za %s" % ["Deszcz" if rain else "Susza", _clock_text(start - server)]
+		break
+	if line == "":
+		return false
+	_weather.visible = true
+	if _sandy():
+		_weather.text = "%s · %s" % [_weather.text, line]
+	else:
+		_weather.text = line
+		_weather.add_theme_color_override("font_color", color)
+	return true
 
 
 ## On the glacier the blizzards, and on the glacier and the tundra the aurora on some nights: the line over the plot,
@@ -4919,6 +5105,9 @@ func _build_hud() -> void:
 	_weather = UI.label("", UI.MUTED)
 	_weather.visible = false
 	box.add_child(_weather)
+	_smog = UI.label("", UI.MUTED)
+	_smog.visible = false
+	box.add_child(_smog)
 	# The name and level open the character: clothes and a new look.
 	var me := VBoxContainer.new()
 	me.add_theme_constant_override("separation", 2)
@@ -5045,6 +5234,7 @@ func _build_hud() -> void:
 	bar.add_child(_plan_button)
 	_clear_button = UI.toolbar_button("clear", "Usuń obszar  [X]\nZaznacz prostokąt i schowaj wszystko, co w nim stoi, do ekwipunku", _toggle_clear)
 	bar.add_child(_clear_button)
+	bar.add_child(UI.toolbar_button("sketchbook", "Plany i szkicownik\nZapisane plany budowy i rysowanie fabryki bez przedmiotów", _toggle_plans_window))
 	_undo_button = UI.toolbar_button("undo", "Cofnij  [Ctrl+Z]\nCofa ostatnie postawienie albo schowanie", _undo_last)
 	_undo_button.visible = false
 	bar.add_child(_undo_button)
@@ -5200,6 +5390,11 @@ func _update_hint() -> void:
 		return
 	if _plan_mode == "copy":
 		_hint.text = "Plan budowy: kliknij %s róg kawałka fabryki do skopiowania. Esc kończy." % ("pierwszy" if _plan_corner.x < 0 else "drugi, przeciwny")
+		return
+	if _plan_mode == "sketch":
+		_hint.text = ("Szkicownik: kliknij pole, aby narysować %s %s; kliknięcie rysunku go zmazuje. [R] obraca, Esc kończy. Nic tu nie powstaje naprawdę." % [
+			ItemInfo.name_of(_sketch_kind).to_lower(), DIRECTION_ARROWS[_sketch_rotation]]) if _sketch_kind != "" \
+			else "Szkicownik: wybierz w oknie, co rysować. Esc kończy."
 		return
 	if _plan_mode == "clear":
 		_hint.text = "Usuwanie obszaru: %s Esc kończy." % ("kliknij pierwszy róg prostokąta, z którego wszystko schować do ekwipunku." if _plan_corner.x < 0
@@ -5455,7 +5650,18 @@ func _build_windows() -> void:
 	_gallery_window = GalleryWindow.new()
 	_gallery_window.dock_right()
 	_gallery_window.failed.connect(_show_error)
+	_plans_window = PlansWindow.new()
+	_plans_window.dock_right()
+	_plans_window.failed.connect(_show_error)
+	_plans_window.current_plan = func() -> Array: return _sketch_plan() if not _sketch.is_empty() else Array(_plan)
+	_plans_window.sketch_size = func() -> int: return _sketch.size()
+	_plans_window.use_plan.connect(_use_saved_plan)
+	_plans_window.sketch_kind.connect(_start_sketch)
+	_plans_window.sketch_cleared.connect(func() -> void:
+		_sketch.clear()
+		_marks.queue_redraw())
 	var layer := _hud
+	layer.add_child(_plans_window)
 	layer.add_child(_stats_window)
 	layer.add_child(_gallery_window)
 	layer.add_child(_inventory_window)
@@ -5538,6 +5744,7 @@ func _refresh_station() -> void:
 	_station_window.sled = _biome() in POLAR and _placed.values().any(func(object: Dictionary) -> bool:
 		return object["kind"] in ["furniture_dog_kennel", "furniture_snowmobile_garage"])
 	_station_window.horse = not _biome() in POLAR and _placed.values().any(func(object: Dictionary) -> bool: return object["kind"] == STABLE)
+	_station_window.truck = _placed.values().any(func(object: Dictionary) -> bool: return object["kind"] == "furniture_truck_depot")
 	await _station_window.refresh()
 	_show_trains()
 

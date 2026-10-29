@@ -4,6 +4,7 @@ using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Abstractions.Contracts;
 using FactoryWorld.Modules.Crafting;
 using FactoryWorld.Modules.Market;
+using FactoryWorld.Modules.Research;
 using FactoryWorld.Modules.World;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -43,7 +44,8 @@ public sealed class CityTests(ServerFactory factory) : IClassFixture<ServerFacto
         Assert.All(today, n => Assert.Equal(0, CityRules.Goods.First(g => g.Item == n.Item).Level));
         var metropolis = CityRules.Needs(warsaw, 4, 100, Priced);
         Assert.Equal(7, metropolis.Count);
-        Assert.Contains(metropolis, n => CityRules.Goods.First(g => g.Item == n.Item).Level == 3);
+        // A metropolis wants cars, the one good of its own level.
+        Assert.Contains(metropolis, n => n.Item == Items.Car);
         Assert.All(CityRules.Goods, g => Assert.True(Priced(g.Item), g.Item));
 
         Assert.Equal(150, CityRules.NeedPriceCents(100, 0, false));
@@ -69,7 +71,23 @@ public sealed class CityTests(ServerFactory factory) : IClassFixture<ServerFacto
         Assert.Equal(motor.Time, Processing.For(Items.AssemblyHall, (int)Biome.Forest)!.Recipe(Items.ElectricMotor)!.Time);
         Assert.True(Items.IsCityOnly(Items.Shop));
         Assert.False(Items.IsCityOnly(Items.AssemblyHall));
-        Assert.All([Items.Bicycle, Items.Radio, Items.WashingMachine, Items.Car], i => Assert.Null(Processing.ByKind[Items.AssemblyHall].Recipe(i)));
+    }
+
+    [Fact]
+    public void The_assembly_hall_makes_the_goods_towns_want_and_the_trader_pays_less_than_they_cost_it_to_sell()
+    {
+        foreach (var item in new[] { Items.Bicycle, Items.Radio, Items.WashingMachine, Items.Car })
+        {
+            var recipe = Processing.ByKind[Items.AssemblyHall].Recipe(item)!;
+            var inputs = recipe.Ingredients.Sum(i => NpcPrices.Buys[i.Item] * i.Quantity);
+            // Putting the parts together pays, but not more than half again what they are worth.
+            Assert.InRange(NpcPrices.Buys[item], inputs + 1, inputs * 3 / 2);
+            Assert.Contains(CityRules.Goods, g => g.Item == item);
+        }
+
+        Assert.Contains(Items.Bicycle, TechTree.ById[TechTree.Assembly].Unlocks);
+        Assert.Contains(Items.Car, TechTree.ById[TechTree.Appliances].Unlocks);
+        Assert.Equal(4, CityRules.Goods.Single(g => g.Item == Items.Car).Level);
     }
 
     // --- In a town --------------------------------------------------------------------------------

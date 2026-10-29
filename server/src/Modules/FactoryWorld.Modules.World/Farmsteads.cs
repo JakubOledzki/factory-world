@@ -102,7 +102,8 @@ public static class Farmsteads
 /// <param name="store">The crops it keeps, by item.</param>
 /// <param name="manure">Manure it keeps for sowing.</param>
 /// <param name="busyUntil">When it is done with the field it reaps now, or could start the next one.</param>
-public sealed class FarmPatch(FarmLevel level, Crop crop, IReadOnlyDictionary<string, int> store, int manure, DateTimeOffset busyUntil)
+/// <param name="smog">How fast crops grow in the smog over the plot, 0.5 to 1.</param>
+public sealed class FarmPatch(FarmLevel level, Crop crop, IReadOnlyDictionary<string, int> store, int manure, DateTimeOffset busyUntil, double smog = 1)
 {
     public FarmLevel FarmLevel { get; } = level;
 
@@ -162,7 +163,8 @@ public sealed class FarmPatch(FarmLevel level, Crop crop, IReadOnlyDictionary<st
             Made.Add(ProductionEntry.Used(Items.Manure, 1, at));
         }
 
-        Fields[tile] = (Crop, at + Farmsteads.GrowTime(FarmLevel, Crop, manure));
+        // Rain makes it grow faster, a drought slower.
+        Fields[tile] = (Crop, FieldWeather.Ripe(at, Farmsteads.GrowTime(FarmLevel, Crop, manure) / smog));
         Sown.Add(tile);
     }
 
@@ -274,7 +276,7 @@ public sealed record FarmsteadOnPlot(PlotObject Object, FarmPatch Patch);
 
 public sealed class FarmsteadService(
     GameDb db, WorldMap map, PlotService plots, IPlotObjects objects, IInventory inventory, ICharacterProgress progress, IProductionStats stats,
-    TimeProvider time, ITechnologies technologies) : IPlacedHook, IPlotAutomation, IMachineContents, IMachinePorts, IMachineStatuses
+    TimeProvider time, ITechnologies technologies, SmogService smog) : IPlacedHook, IPlotAutomation, IMachineContents, IMachinePorts, IMachineStatuses
 {
     /// <summary>The plot's farmsteads worked up to now.</summary>
     public Task<IReadOnlyList<FarmsteadOnPlot>> StateAsync(Guid player, int x, int y, IEnumerable<IPlotAutomation> automation, CancellationToken cancellationToken) =>
@@ -559,6 +561,7 @@ public sealed class FarmsteadService(
         taken.Add(PlotLayout.Spawn);
         var areas = Farmsteads.Areas(farmsteads);
         var start = now ?? time.GetUtcNow();
+        var cropSpeed = farmsteads.Count > 0 ? (await smog.LevelAsync(x, y, cancellationToken)).CropSpeed : 1;
         var result = new List<FarmsteadOnPlot>();
         foreach (var o in farmsteads)
         {
@@ -570,7 +573,7 @@ public sealed class FarmsteadService(
             }
 
             var (crop, store, manure, busyUntil) = rows.GetValueOrDefault(o.Id, (Farming.Crops[0].Item, "{}", 0, start));
-            var patch = new FarmPatch(level, Farming.ById.GetValueOrDefault(crop) ?? Farming.Crops[0], ReadStore(store), manure, busyUntil);
+            var patch = new FarmPatch(level, Farming.ById.GetValueOrDefault(crop) ?? Farming.Crops[0], ReadStore(store), manure, busyUntil, cropSpeed);
             foreach (var tile in areas[o.Id])
             {
                 if (fields.TryGetValue(tile, out var field))

@@ -1166,5 +1166,13 @@
   "anchorY": 102,
   "wireX": 125,
   "wireY": 105
+ },
+ "truck_depot": {
+  "anchorX": 64,
+  "anchorY": 65
+ },
+ "scrubber": {
+  "anchorX": 56,
+  "anchorY": 57
  }
 }

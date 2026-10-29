@@ -100,6 +100,7 @@ public static class TechTree
     public const string PolarTourism = "polar_tourism";
     public const string PolarTransport = "polar_transport";
     public const string Assembly = "assembly";
+    public const string Appliances = "appliances";
     public const string Commerce = "commerce";
     public const string Assembling = "assembling";
     public const string FastAssembling = "fast_assembling";
@@ -210,6 +211,7 @@ public static class TechTree
     public const string FusionPlant = "fusion_plant";
     public const string PowerDistribution = "power_distribution";
     public const string ThermalPower = "thermal_power";
+    public const string EmissionControl = "emission_control";
     public const string EnergyStorage = "energy_storage";
     public const string NuclearPower = "nuclear_power";
 
@@ -410,9 +412,9 @@ public static class TechTree
         new(Combustion, "Silniki spalinowe", "Elektrownia gazowa i agregat spalinowy dają dużo prądu z gazu, oleju napędowego albo benzyny.",
             [Refining], [(Items.Diesel, 1_000), (Items.SteelIngot, 1_000), (Items.CopperIngot, 1_000)], TimeSpan.FromMinutes(200), 100,
             [Items.GasPlant, Items.DieselGenerator]),
-        new(Roads, "Drogi", "Z asfaltu i kamienia układa się drogę: po asfalcie chodzi się szybciej.",
+        new(Roads, "Drogi", "Z asfaltu i kamienia układa się drogę: po asfalcie chodzi się szybciej. Baza ciężarówek wozi towar na olej napędowy do stacji w pobliżu, bez opłaty za kolej.",
             [Refining], [(Items.Asphalt, 1_000), (Items.Stone, 2_000)], TimeSpan.FromMinutes(100), 40,
-            [Items.Road]),
+            [Items.Road, Items.TruckDepot]),
         new(OffshoreDrilling, "Wiercenia morskie", "Platforma wiertnicza na brzegu morza pompuje ropę spod dna, z dużego złoża.",
             [OilExtraction, Seafaring], [(Items.SteelIngot, 2_000), (Items.CrudeOil, 5_000), (Items.Beams, 1_000)], TimeSpan.FromHours(5), 150,
             [Items.OffshorePlatform]),
@@ -449,6 +451,9 @@ public static class TechTree
             "Transformator, podstacja zasilająca pole 9 × 9, słup wysokiego napięcia łączący się z innymi z 20 pól i przyłącze sieciowe: kabel do przyłącza na innej działce, także cudzej, za opłatą za prąd.",
             [Hydropower, Metallurgy], [(Items.CopperIngot, 60), (Items.SteelIngot, 20), (Items.IronIngot, 40)], TimeSpan.FromMinutes(4), 80,
             [Items.Transformer, Items.Substation, Items.Pylon, Items.GridTie]),
+        new(EmissionControl, "Filtry spalin", "Piece, generatory i elektrownie dymią, a smog spowalnia uprawy na działce i wokół niej. Filtr spalin zabiera część dymu.",
+            [BrickFurnaces], [(Items.Charcoal, 40), (Items.IronIngot, 40)], TimeSpan.FromMinutes(4), 50,
+            [Items.Scrubber]),
         new(ThermalPower, "Energetyka cieplna", "Elektrownia węglowa na 3 × 3 polach daje 1 MW z węgla.",
             [PowerDistribution, BuildingMaterials], [(Items.Coal, 200), (Items.SteelIngot, 60), (Items.Concrete, 30), (Items.Transformer, 2)],
             TimeSpan.FromMinutes(8), 150, [Items.CoalPlant]),
@@ -479,7 +484,10 @@ public static class TechTree
             [Items.DogKennel, Items.SnowmobileGarage, Items.TrackFoundation]),
         new(Assembly, "Montaż", "Hala montażowa na prąd składa płytki drukowane i silniki z towarów innych biomów; w mieście o 25% szybciej.",
             [Automation, Petrochemistry], [(Items.SteelIngot, 30), (Items.Plastic, 20), (Items.CopperIngot, 20)], TimeSpan.FromMinutes(4), 100,
-            [Items.AssemblyHall, Items.CircuitBoard, Items.ElectricMotor]),
+            [Items.AssemblyHall, Items.CircuitBoard, Items.ElectricMotor, Items.Bicycle, Items.Radio]),
+        new(Appliances, "AGD i motoryzacja", "Hala montażowa składa pralki dla dużych miast i samochody, na które czekają metropolie.",
+            [Assembly, Gearbox, PaintedSheet], [(Items.ElectricMotor, 20), (Items.CircuitBoard, 20), (Items.SteelIngot, 200)], TimeSpan.FromMinutes(10), 150,
+            [Items.WashingMachine, Items.Car]),
         new(Commerce, "Handel", "Sklep w mieście sprzedaje twoje towary mieszkańcom przez całą dobę, po cenach, które sam ustawisz.",
             [], [(Items.Planks, 20), (Items.Bread, 20), (Items.Glass, 10)], TimeSpan.FromMinutes(2), 40,
             [Items.Shop]),
@@ -832,7 +840,7 @@ public static class TechTree
              PigsAndGoats]),
         new("farming", "Rolnictwo", Items.Wheat, [Farmsteads, SugarBeets, Irrigation, FiberCrops, ManorFarms, MechanizedFarming]),
         new("energy", "Energia", Items.WindTurbine,
-            [Hydropower, HydroPlant, WindPower, LargeWind, PowerDistribution, ThermalPower, EnergyStorage, NuclearPower, BiomassPower, Cogeneration,
+            [Hydropower, HydroPlant, WindPower, LargeWind, PowerDistribution, EmissionControl, ThermalPower, EnergyStorage, NuclearPower, BiomassPower, Cogeneration,
              GeothermalPower, HydrogenPower]),
         new("oil", "Ropa i gaz", Items.CrudeOil,
             [OilExtraction, Refining, EnhancedRecovery, OffshoreDrilling, Cracking, Petrochemistry, Combustion, Roads]),
@@ -842,7 +850,7 @@ public static class TechTree
         new("glacier", "Lodowiec", Items.Ice,
             [Heating, PolarTransport, Refrigeration, Glaciology, PolarTourism, DataCenter]),
         new("city", "Miasta", Items.Shop,
-            [Commerce, CityServices, WasteManagement, FreightHub, ExportMarket, Assembly, UrbanConstruction, Headquarters, Tailoring]),
+            [Commerce, CityServices, WasteManagement, FreightHub, ExportMarket, Assembly, Appliances, UrbanConstruction, Headquarters, Tailoring]),
         new("materials", "Materiały", Items.CarbonComposite,
             [Lubricant, Paint, CaseinGlue, InsulationBoard, Firebrick, PrecastConcrete, GlassLaminate, Coolant, IridiumAlloy,
              ElectricWire, PaintedSheet, RefractoryLining, CarbonComposite, SuperconductingWire, RocketFuel]),

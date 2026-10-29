@@ -501,6 +501,12 @@ public static class Processing
     [
         new(Items.CircuitBoard, 2, TimeSpan.FromSeconds(15), [(Items.CopperIngot, 1), (Items.Plastic, 1), (Items.SiliconWafer, 1)], 2),
         new(Items.ElectricMotor, 1, TimeSpan.FromSeconds(20), [(Items.CopperIngot, 4), (Items.IronIngot, 2)], 2),
+        // Goods the towns want: bicycles and radios, then washing machines and cars for the big towns.
+        new(Items.Bicycle, 1, TimeSpan.FromSeconds(30), [(Items.SteelIngot, 3), (Items.SyntheticRubber, 2)], 4),
+        new(Items.Radio, 1, TimeSpan.FromSeconds(25), [(Items.CircuitBoard, 1), (Items.Plastic, 2), (Items.CopperIngot, 1)], 3),
+        new(Items.WashingMachine, 1, TimeSpan.FromSeconds(60), [(Items.SteelIngot, 4), (Items.ElectricMotor, 1), (Items.CircuitBoard, 1), (Items.Glass, 1)], 8),
+        new(Items.Car, 1, TimeSpan.FromSeconds(180),
+            [(Items.SteelIngot, 10), (Items.Tyres, 1), (Items.Glass, 4), (Items.ElectricMotor, 2), (Items.Radio, 1), (Items.Gearbox, 1), (Items.PaintedSheet, 4)], 20),
         // The crafting tree from level 3 up: parts, robots, rocket engines and the plasma chamber.
         new(Items.CompositePanel, 1, TimeSpan.FromSeconds(30), [(Items.CarbonComposite, 3), (Items.InsulationBoard, 1), (Items.CaseinGlue, 1)], 5),
         new(Items.Alternator, 1, TimeSpan.FromSeconds(45), [(Items.Rotor, 1), (Items.MachineHousing, 1), (Items.WiringHarness, 1)], 8),

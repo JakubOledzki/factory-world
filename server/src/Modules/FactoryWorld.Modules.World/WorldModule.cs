@@ -331,6 +331,9 @@ public sealed class TrainRouteRow
 
     public int EveryMinutes { get; set; }
 
+    /// <summary>Trucks from the plot's truck depot drive it instead of a train.</summary>
+    public bool ByTruck { get; set; }
+
     public DateTimeOffset NextDepartureAt { get; set; }
 
     public DateTimeOffset? LastDepartedAt { get; set; }
@@ -777,6 +780,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(r => r.ToY).HasColumnName("to_y");
             e.Property(r => r.Items).HasColumnName("items");
             e.Property(r => r.EveryMinutes).HasColumnName("every_minutes");
+            e.Property(r => r.ByTruck).HasColumnName("by_truck");
             e.Property(r => r.NextDepartureAt).HasColumnName("next_departure_at");
             e.Property(r => r.LastDepartedAt).HasColumnName("last_departed_at");
             e.Property(r => r.LastQuantity).HasColumnName("last_quantity");
@@ -978,6 +982,17 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.HasKey(t => t.OwnerId);
             e.Property(t => t.OwnerId).HasColumnName("owner_id");
             e.Property(t => t.PaidUntil).HasColumnName("paid_until");
+        });
+        model.Entity<SavedPlanRow>(e =>
+        {
+            e.ToTable("plans");
+            e.Property(p => p.Id).HasColumnName("id");
+            e.Property(p => p.OwnerId).HasColumnName("owner_id");
+            e.Property(p => p.Name).HasColumnName("name").HasMaxLength(PlanRules.MaxName);
+            e.Property(p => p.Objects).HasColumnName("objects").HasColumnType("jsonb");
+            e.Property(p => p.SavedAt).HasColumnName("saved_at");
+            // A player's plans have names of their own.
+            e.HasIndex(p => new { p.OwnerId, p.Name }).IsUnique();
         });
         model.Entity<PlotLikeRow>(e =>
         {
@@ -1661,6 +1676,7 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<BeachService>();
         services.AddScoped<StationService>();
         services.AddScoped<FarmService>();
+        services.AddScoped<SmogService>();
         services.AddScoped<ForestService>();
         services.AddScoped<ForestLedger>();
         services.AddScoped<IForestCertificate>(provider => provider.GetRequiredService<ForestLedger>());
@@ -1790,6 +1806,10 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, PlaceManyOnPlotHandler>();
         services.AddSingleton<PlotGallery>();
         services.AddScoped<LikeService>();
+        services.AddScoped<PlanService>();
+        services.AddSingleton<IMessageHandler, GetPlansHandler>();
+        services.AddSingleton<IMessageHandler, SavePlanHandler>();
+        services.AddSingleton<IMessageHandler, DeletePlanHandler>();
         services.AddSingleton<IMessageHandler, LikePlotHandler>();
         services.AddSingleton<IMessageHandler, GalleryHandler>();
         services.AddSingleton<IMessageHandler, PickUpManyFromPlotHandler>();

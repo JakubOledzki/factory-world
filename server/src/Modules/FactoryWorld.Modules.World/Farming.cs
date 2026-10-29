@@ -14,6 +14,7 @@ public sealed record Crop(string Item, TimeSpan Grow, int Yield, int Xp);
 /// and grows for its own time, then it is reaped by hand and the field can be sown again. A sprinkler waters the fields around it:
 /// crops sown there grow faster, and on the steppe and the desert the ground it reaches can be tilled at all. Sugar beets, flax and
 /// hemp are sown only once researched.
+/// Rain makes crops grow faster, a drought and smog slower (<see cref="FieldWeather"/>, <see cref="Smog"/>).
 /// </summary>
 public static class Farming
 {
@@ -68,7 +69,7 @@ public sealed record FieldChange(Field Field, IReadOnlyList<(string Item, int Qu
 
 public sealed class FarmService(
     GameDb db, PlotService plots, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats, TimeProvider time,
-    OilService oil, IPlotObjects objects, ITechnologies technologies)
+    OilService oil, IPlotObjects objects, ITechnologies technologies, SmogService smog)
 {
     public async Task<IReadOnlyList<Field>> FieldsAsync(int x, int y, CancellationToken cancellationToken)
     {
@@ -155,10 +156,12 @@ public sealed class FarmService(
             }
 
             // A fertilised crop counts as sown so long ago that it is ripe in half its time; a farmer's clothes take off more.
+            // Rain to come makes it ripe sooner, a drought later: it counts as sown as long before it is ripe as it grows in clear weather.
+            // Smog over the plot slows it down.
             var speed = (fertilize ? Farming.FertilizerSpeed : 1) * (manure ? Farming.ManureSpeed : 1)
                 * (Farming.Sprinkled(await objects.ObjectsAsync(x, y, cancellationToken), tileX, tileY) ? Farming.SprinklerSpeed : 1)
-                * await plots.SpeedAsync(player, Industries.Farming, cancellationToken);
-            var sown = now - Farming.ById[crop].Grow * (1 - 1 / speed);
+                * await plots.SpeedAsync(player, Industries.Farming, cancellationToken) * (await smog.LevelAsync(x, y, cancellationToken)).CropSpeed;
+            var sown = FieldWeather.Ripe(now, Farming.ById[crop].Grow / speed) - Farming.ById[crop].Grow;
             await using var update = await db.CommandAsync(
                 """
                 UPDATE world.plot_fields SET crop = @crop, planted_at = @now

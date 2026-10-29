@@ -857,6 +857,7 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
         var mines = await scope.ServiceProvider.GetRequiredService<MineService>().MinesAsync(request.X, request.Y, biome, cancellationToken);
         var objects = await scope.ServiceProvider.GetRequiredService<PlotObjectService>().ObjectsAsync(request.X, request.Y, cancellationToken);
         var pests = await scope.ServiceProvider.GetRequiredService<PestService>().StateAsync(request.X, request.Y, cancellationToken);
+        var smog = await scope.ServiceProvider.GetRequiredService<SmogService>().LevelAsync(request.X, request.Y, cancellationToken);
         var certificate = await scope.ServiceProvider.GetRequiredService<ForestLedger>().JsonAsync(client.RequireAccount(), cancellationToken);
         var (likes, liked) = await scope.ServiceProvider.GetRequiredService<LikeService>()
             .LikesAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
@@ -922,6 +923,8 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             irrigable = Farming.Irrigable(biome),
             sprinklerReach = Farming.SprinklerReach,
             sprinklerSpeed = Farming.SprinklerSpeed,
+            // The smog over the plot: its own smoke, what it breathes from the plots around, and how fast crops grow in it.
+            smog = SmogService.Json(smog),
             fields = fields.Select(FieldHandler.FieldJson),
             pasture = Husbandry.Pasture(biome),
             husbandryBonus = Husbandry.BonusPercent(biome),
@@ -950,6 +953,8 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
                 daylightMs = (long)Sun.Daylight.TotalMilliseconds,
             },
             sandstorms = Oasis.Sandy((int)biome) ? SandstormsJson(time.GetUtcNow(), 12) : [],
+            // Where crops grow: the rain (crops grow rainSpeed times as fast) and the droughts (droughtSpeed) to come.
+            fieldWeather = Farming.Fertile(biome) ? FieldWeatherJson(time.GetUtcNow(), 12) : null,
             // On the glacier: the blizzards to come (turbines stop, ice freezes again, avalanches leave snow), the last one's window
             // for working out where its snow lies, and the frost that slows machines no heater warms.
             blizzards = biome == Biome.Ice ? BlizzardsJson(time.GetUtcNow(), 8) : [],
@@ -980,6 +985,21 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
         }
 
         return storms;
+    }
+
+    /// <summary>The rain or the drought now (if any) and the next ones, <paramref name="count"/> in all, with how fast crops grow in them.</summary>
+    public static object FieldWeatherJson(DateTimeOffset now, int count)
+    {
+        var spells = new List<object>();
+        var at = now;
+        for (var i = 0; i < count; i++)
+        {
+            var (start, end, kind) = FieldWeather.Next(at);
+            spells.Add(new { start = start.ToUnixTimeMilliseconds(), end = end.ToUnixTimeMilliseconds(), kind = kind == FieldWeather.Kind.Rain ? "rain" : "drought" });
+            at = end;
+        }
+
+        return new { rainSpeed = FieldWeather.RainSpeed, droughtSpeed = FieldWeather.DroughtSpeed, spells };
     }
 
     /// <summary>The blizzard blowing now (if any) and the next ones, <paramref name="count"/> in all.</summary>

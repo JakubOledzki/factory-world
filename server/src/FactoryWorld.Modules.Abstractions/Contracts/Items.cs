@@ -269,6 +269,12 @@ public static class Items
     public const string Tank = "storage_tank";
     public const string Road = "logistics_road";
 
+    // A truck depot: its trucks drive goods on diesel from the plot's station to a station not far away, without the rail fee.
+    public const string TruckDepot = "furniture_truck_depot";
+
+    // A scrubber takes some of the smoke of the plot's furnaces, generators and kilns away (see the world's smog).
+    public const string Scrubber = "furniture_scrubber";
+
     // The desert: glass from sand, silicon and solar power, water drawn or made, sun-dried bricks and concrete,
     // dates from an oasis, camels, and fossils the dunes give up now and then.
     public const string Glass = "glass";
@@ -783,6 +789,8 @@ public static class Items
         [Pump] = "Pompa",
         [Tank] = "Zbiornik",
         [Road] = "Droga asfaltowa",
+        [TruckDepot] = "Baza ciężarówek",
+        [Scrubber] = "Filtr spalin",
         [Glass] = "Szkło",
         [WindowPane] = "Szyba",
         [GlassBottles] = "Butelki szklane",
