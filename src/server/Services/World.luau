@@ -24,6 +24,24 @@ function World.Start()
 	terrain:SetMaterialColor(Enum.Material.Grass, Color3.fromRGB(96, 140, 64))
 	terrain:SetMaterialColor(Enum.Material.Ground, Color3.fromRGB(120, 98, 72))
 	terrain:FillBlock(CFrame.new(0, -2, 0), Vector3.new(2 * PlotLayout.GroundHalf(), 4, 2 * PlotLayout.GroundHalf()), Enum.Material.Grass)
+	-- Terrain's surface is not exactly flat at y = 0 and its grass grows over the feet of what stands
+	-- on it, so things on the plots looked sunk in. Under every plot the terrain is cut out (along its
+	-- 4-stud voxels, a little wider than the plot) and a flat floor of grass parts has its top at y = 0.
+	for index = 1, PlotLayout.Count do
+		local cx, cz = PlotLayout.Center(index)
+		local half = PlotLayout.Size / 2 + 4
+		local x1, x2 = math.floor((cx - half) / 4) * 4, math.ceil((cx + half) / 4) * 4
+		local z1, z2 = math.floor((cz - half) / 4) * 4, math.ceil((cz + half) / 4) * 4
+		local middle = CFrame.new((x1 + x2) / 2, -2, (z1 + z2) / 2)
+		terrain:FillBlock(middle, Vector3.new(x2 - x1, 4, z2 - z1), Enum.Material.Air)
+		Build.Part(folder, {
+			Name = "PlotFloor",
+			Size = Vector3.new(x2 - x1, 4, z2 - z1),
+			CFrame = middle,
+			Color = Color3.fromRGB(96, 140, 64),
+			Material = Enum.Material.Grass,
+		})
+	end
 	-- Paving in two rings of stone.
 	Build.Part(folder, {
 		Name = "Paving",
