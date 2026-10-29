@@ -134,6 +134,14 @@ public static class Tally
                 }
 
                 break;
+            case "meteor.dig":
+                foreach (var (_, quantity) in Stacks(reply, "items"))
+                {
+                    Add(counts, Stats.Produced, quantity);
+                }
+
+                Add(counts, Stats.Meteorites, 1);
+                break;
             case "hive.take":
                 foreach (var (item, quantity) in Stacks(reply, "taken"))
                 {

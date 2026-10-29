@@ -1,6 +1,20 @@
 [
 	{
 		"date": "2026-10-29",
+		"title": "Rywalizacja między graczami",
+		"changes": [
+			"Nowa zakładka „Rywalizacja” w oknie osiągnięć (klawisz O): wyzwanie tygodnia, meteoryt, cuda świata i tytuły „Pierwszy na świecie”.",
+			"Wyzwanie tygodnia: co tydzień inna konkurencja, na przykład najwięcej sztabek, posadzonych drzew albo dostaw do miast. Trzej najlepsi dostają po tygodniu 2 000 $, 1 000 $ i 500 $ oraz trofeum. Boty nie biorą udziału.",
+			"Pierwsi na świecie: tylko jeden gracz na serwerze zostaje pierwszym milionerem, pierwszym z poziomem 25 albo pierwszym, który postawi elektrownię jądrową. Taki tytuł zostaje na zawsze, a czat ogłasza go wszystkim.",
+			"Nowy ranking „Najwydajniejsze fabryki”: wartość, którą twoja fabryka dodała w ostatniej godzinie, podzielona przez liczbę działek.",
+			"Przetargi w miastach: co tydzień miasto zamawia dużą partię jednego towaru. Właściciele działek w mieście przez 3 dni składają ukryte oferty i wygrywa najtańsza. Kto wygra i nie dostarczy całości do końca tygodnia, traci wadium.",
+			"Główny dostawca: kto w tygodniu dostarczy miastu najwięcej, ten przez następny tydzień nosi tytuł, a miasto płaci mu o 5% więcej. Ranking jest w zakładce „Rozwój”.",
+			"Meteoryty: co 8 godzin w pobliżu działki któregoś z graczy spada meteoryt. Kto ma kilof i działkę w promieniu 15 działek, kopie z niego żelazo meteorytowe i iryd, póki starczy.",
+			"Cuda świata dla spółek: Wielka Biblioteka, Światowy Węzeł Kolejowy i Kolos Przemysłu. Każdy z nich na serwerze zbuduje tylko jedna spółka, ta, która pierwsza zbierze wszystkie części. Pozostałe spółki dostaną swoje części z powrotem."
+		]
+	},
+	{
+		"date": "2026-10-29",
 		"title": "Prowizja rynku, podatek od działek i przeglądy maszyn",
 		"changes": [
 			"Rynek graczy zatrzymuje 3% każdej sprzedaży (zaokrąglone w górę). Płaci sprzedający: przy wystawianiu ogłoszenia widzisz, ile dostaniesz na rękę.",

@@ -532,4 +532,82 @@ public sealed class CompanyEconomyTests(ServerFactory factory) : IClassFixture<S
         Assert.Equal(name, last.GetProperty("name").GetString());
         Assert.Single(Economy(await owner.CompanyAsync("company.get")).GetProperty("trophies").EnumerateArray());
     }
+
+    [Fact]
+    public async Task Only_the_first_company_to_bring_every_part_builds_a_wonder_and_the_others_get_their_parts_back()
+    {
+        var (first, _, firstId, _) = await CompanyAsync();
+        var (second, _, secondId, secondName) = await CompanyAsync();
+        using var a = first;
+        using var b = second;
+        await ResearchedAsync(firstId, TechTree.Megaprojects);
+        await ResearchedAsync(secondId, TechTree.Megaprojects);
+        var wonder = BigProjects.ById[CompanyPerks.Library];
+        Assert.True(wonder.Wonder);
+        await a.CompanyAsync("company.project.start", new { project = wonder.Id });
+        await b.CompanyAsync("company.project.start", new { project = wonder.Id });
+
+        // The first company brings all but one piece.
+        var (lastItem, _) = wonder.Parts[^1];
+        foreach (var (item, quantity) in wonder.Parts)
+        {
+            var brought = item == lastItem ? quantity - 1 : quantity;
+            await GiveAsync(a, item, brought);
+            await a.CompanyAsync("company.project.give", new { project = wonder.Id, item, quantity = brought });
+        }
+
+        var race = (await b.SendAsync("company.wonders")).Payload().GetProperty("wonders").EnumerateArray().First(w => w.GetProperty("id").GetString() == wonder.Id);
+        Assert.Equal(JsonValueKind.Null, race.GetProperty("owner").ValueKind);
+        Assert.True(race.GetProperty("racers")[0].GetProperty("percent").GetDouble() > 99);
+        Assert.False(race.GetProperty("racers")[0].GetProperty("ours").GetBoolean());
+
+        // The second one brings everything first and claims it.
+        foreach (var (item, quantity) in wonder.Parts)
+        {
+            await GiveAsync(b, item, quantity);
+            await b.CompanyAsync("company.project.give", new { project = wonder.Id, item, quantity });
+        }
+
+        await GiveAsync(a, lastItem, 1);
+        Assert.Equal("wonder_taken", (await a.SendAsync("company.project.give", new { project = wonder.Id, item = lastItem, quantity = 1 })).ErrorCode());
+        Assert.Equal("wonder_taken", (await a.SendAsync("company.project.start", new { project = wonder.Id })).ErrorCode());
+        Assert.Equal(1, (await a.Client.InventoryAsync())[lastItem]);
+
+        var mine = await a.CompanyAsync("company.get");
+        var lost = Economy(mine).GetProperty("projects").EnumerateArray().First(p => p.GetProperty("id").GetString() == wonder.Id);
+        Assert.Equal(secondName, lost.GetProperty("takenBy").GetString());
+        Assert.False(lost.GetProperty("started").GetBoolean());
+        var warehouse = mine.GetProperty("warehouse").GetProperty("items").EnumerateArray()
+            .ToDictionary(i => i.GetProperty("id").GetString()!, i => i.GetProperty("quantity").GetInt64());
+        foreach (var (item, quantity) in wonder.Parts)
+        {
+            Assert.Equal(item == lastItem ? quantity - 1 : quantity, warehouse.GetValueOrDefault(item));
+        }
+
+        Assert.Equal("wonderLost", mine.GetProperty("log")[0].GetProperty("action").GetString());
+        var built = (await a.SendAsync("company.wonders")).Payload().GetProperty("wonders").EnumerateArray().First(w => w.GetProperty("id").GetString() == wonder.Id);
+        Assert.Equal(secondName, built.GetProperty("owner").GetString());
+        Assert.False(built.GetProperty("ours").GetBoolean());
+        Assert.Contains((await a.SendAsync("chat.get")).Payload().GetProperty("messages").EnumerateArray(),
+            m => m.GetProperty("text").GetString()!.Contains(secondName));
+
+        factory.Time.Advance(wonder.Build);
+        await using var scope = factory.Services.CreateAsyncScope();
+        var projects = await scope.ServiceProvider.GetRequiredService<ICompanies>().ProjectsAsync(b.Id, CancellationToken.None);
+        Assert.Equal(CompanyPerks.LibraryResearchFactor, CompanyPerks.ResearchFactor(projects), 6);
+        Assert.Empty(await scope.ServiceProvider.GetRequiredService<ICompanies>().ProjectsAsync(a.Id, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task The_colossus_gives_every_member_more_experience()
+    {
+        var (owner, _, id, _) = await CompanyAsync();
+        using var o = owner;
+        await using var scope = factory.Services.CreateAsyncScope();
+        var progress = scope.ServiceProvider.GetRequiredService<ICharacterProgress>();
+        var before = (await progress.AddXpAsync(owner.Id, 100, CancellationToken.None)).Xp;
+        await BuiltAsync(id, CompanyPerks.Colossus);
+        var after = (await progress.AddXpAsync(owner.Id, 100, CancellationToken.None)).Xp;
+        Assert.Equal(100 + CompanyPerks.ColossusXpPercent, after - before);
+    }
 }

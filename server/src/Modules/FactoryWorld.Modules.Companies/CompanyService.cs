@@ -121,7 +121,7 @@ public sealed record CompanyView(Guid Player, CompanyState? Company, IReadOnlyLi
 
 public sealed partial class CompanyService(
     GameDb db, IInventory inventory, ICharacterNames names, IPlotRegistry plots, IPlotObjects objects, IWallet wallet,
-    IMarketPrices prices, ITechnologies technologies, ICompanyTechnologies companyTechnologies, TimeProvider time)
+    IMarketPrices prices, ITechnologies technologies, ICompanyTechnologies companyTechnologies, IAnnouncements announcements, TimeProvider time)
 {
     /// <summary>Whether a headquarters stands on any of the company's plots.</summary>
     public async Task<bool> HasHqAsync(Guid company, CancellationToken cancellationToken)
