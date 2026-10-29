@@ -254,6 +254,17 @@ def bank():
     p.save("bank")
 
 
+def politics():
+    p = Pen()
+    p.rect(10, 6, 15, 58, SHADE, 2)  # the pole
+    p.dot(12.5, 6, 4, INK)
+    # A flag waving from the pole, with a star cut out.
+    p.poly([(15, 10), (28, 7), (40, 12), (54, 9), (54, 35), (40, 38), (28, 33), (15, 36)], INK)
+    p.poly(star(33, 22, 7, 3), CUT)
+    p.rect(5, 55, 20, 59, INK, 1)  # the base
+    p.save("politics")
+
+
 def blueprint():
     p = Pen()
     p.rect(8, 10, 50, 52, SHADE, 3)  # the sheet behind
@@ -337,7 +348,7 @@ def settings():
 
 def main() -> None:
     for draw in (backpack, garage, market, contracts, company, stats, achievements, world_map, logout,
-                 station, plant, mine_upgrade, garage_upgrade, city, bank, blueprint, undo, chat, gallery, like, bell, settings):
+                 station, plant, mine_upgrade, garage_upgrade, city, bank, politics, blueprint, undo, chat, gallery, like, bell, settings):
         draw()
 
 

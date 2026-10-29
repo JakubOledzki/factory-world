@@ -998,6 +998,96 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(p => p.MayorId).HasColumnName("mayor_id");
             e.Property(p => p.TaxPercent).HasColumnName("tax_percent");
             e.Property(p => p.Bonus).HasColumnName("bonus").HasMaxLength(16);
+            e.Property(p => p.Recalled).HasColumnName("recalled");
+        });
+        model.Entity<TownTreasuryRow>(e =>
+        {
+            e.ToTable("town_treasuries", t => t.HasCheckConstraint("ck_town_treasuries_cents", "cents >= 0"));
+            e.HasKey(t => new { t.TownX, t.TownY });
+            e.Property(t => t.TownX).HasColumnName("town_x");
+            e.Property(t => t.TownY).HasColumnName("town_y");
+            e.Property(t => t.Cents).HasColumnName("cents");
+        });
+        model.Entity<TownLedgerRow>(e =>
+        {
+            e.ToTable("town_ledger");
+            e.HasKey(l => l.Id);
+            e.Property(l => l.Id).HasColumnName("id");
+            e.Property(l => l.TownX).HasColumnName("town_x");
+            e.Property(l => l.TownY).HasColumnName("town_y");
+            e.Property(l => l.AmountCents).HasColumnName("amount_cents");
+            e.Property(l => l.BalanceAfterCents).HasColumnName("balance_after_cents");
+            e.Property(l => l.Reason).HasColumnName("reason").HasMaxLength(200);
+            e.Property(l => l.CreatedAt).HasColumnName("created_at");
+            e.HasIndex(l => new { l.TownX, l.TownY, l.Id });
+        });
+        model.Entity<TownInvestmentRow>(e =>
+        {
+            e.ToTable("town_investments");
+            e.HasKey(i => new { i.TownX, i.TownY, i.Kind });
+            e.Property(i => i.TownX).HasColumnName("town_x");
+            e.Property(i => i.TownY).HasColumnName("town_y");
+            e.Property(i => i.Kind).HasColumnName("kind").HasMaxLength(16);
+            e.Property(i => i.Level).HasColumnName("level");
+        });
+        model.Entity<TownRecallRow>(e =>
+        {
+            e.ToTable("town_recalls");
+            e.HasKey(r => new { r.TownX, r.TownY, r.Week, r.SignerId });
+            e.Property(r => r.TownX).HasColumnName("town_x");
+            e.Property(r => r.TownY).HasColumnName("town_y");
+            e.Property(r => r.Week).HasColumnName("week");
+            e.Property(r => r.SignerId).HasColumnName("signer_id");
+        });
+        model.Entity<TownCandidateRow>(e =>
+        {
+            e.ToTable("town_candidates");
+            e.HasKey(c => new { c.TownX, c.TownY, c.Week, c.PlayerId });
+            e.Property(c => c.TownX).HasColumnName("town_x");
+            e.Property(c => c.TownY).HasColumnName("town_y");
+            e.Property(c => c.Week).HasColumnName("week");
+            e.Property(c => c.PlayerId).HasColumnName("player_id");
+            e.Property(c => c.TaxPercent).HasColumnName("tax_percent");
+            e.Property(c => c.Bonus).HasColumnName("bonus").HasMaxLength(16);
+            e.Property(c => c.Slogan).HasColumnName("slogan").HasMaxLength(TownHallRules.MaxSloganLength);
+            e.Property(c => c.DepositCents).HasColumnName("deposit_cents");
+            e.Property(c => c.Settled).HasColumnName("settled");
+            e.HasIndex(c => c.PlayerId);
+        });
+        model.Entity<TownSponsorshipRow>(e =>
+        {
+            e.ToTable("town_sponsorships");
+            e.HasKey(s => s.Id);
+            e.Property(s => s.Id).HasColumnName("id");
+            e.Property(s => s.TownX).HasColumnName("town_x");
+            e.Property(s => s.TownY).HasColumnName("town_y");
+            e.Property(s => s.Week).HasColumnName("week");
+            e.Property(s => s.CandidateId).HasColumnName("candidate_id");
+            e.Property(s => s.Company).HasColumnName("company").HasMaxLength(64);
+            e.Property(s => s.Cents).HasColumnName("cents");
+            e.Property(s => s.CreatedAt).HasColumnName("created_at");
+            e.HasIndex(s => new { s.TownX, s.TownY, s.Week });
+        });
+        model.Entity<TownOrdinanceRow>(e =>
+        {
+            e.ToTable("town_ordinances");
+            e.HasKey(o => o.Id);
+            e.Property(o => o.Id).HasColumnName("id");
+            e.Property(o => o.TownX).HasColumnName("town_x");
+            e.Property(o => o.TownY).HasColumnName("town_y");
+            e.Property(o => o.Week).HasColumnName("week");
+            e.Property(o => o.Kind).HasColumnName("kind").HasMaxLength(16);
+            e.Property(o => o.ProposedBy).HasColumnName("proposed_by");
+            e.Property(o => o.VotingEnds).HasColumnName("voting_ends");
+            e.HasIndex(o => new { o.TownX, o.TownY, o.Week, o.Kind }).IsUnique();
+        });
+        model.Entity<TownOrdinanceVoteRow>(e =>
+        {
+            e.ToTable("town_ordinance_votes");
+            e.HasKey(v => new { v.OrdinanceId, v.VoterId });
+            e.Property(v => v.OrdinanceId).HasColumnName("ordinance_id");
+            e.Property(v => v.VoterId).HasColumnName("voter_id");
+            e.Property(v => v.Yes).HasColumnName("yes");
         });
         model.Entity<TownFestivalRow>(e =>
         {
@@ -1078,7 +1168,7 @@ public sealed record Purchase(PlotState Plot, long BalanceCents, XpGain Xp, stri
 
 public sealed class WorldService(
     GameDb db, WorldMap map, IWallet wallet, ICharacterProgress progress, ICharacterNames names, IEquipment equipment, SurveyService surveys,
-    IEnumerable<ICompanyPlots> companies, CityService cities, PlotTaxService taxes, TimeProvider time)
+    IEnumerable<ICompanyPlots> companies, CityService cities, PlotTaxService taxes, Countries countries, INationalPolicy nation, TimeProvider time)
 {
     /// <summary>Most owned plots one area request returns.</summary>
     public const int MaxAreaPlots = 5000;
@@ -1196,10 +1286,28 @@ public sealed class WorldService(
             return new PlotState(x, y, biome, new PlotOwner(owner, name), null, survey, company, owner == viewer || company?.Member == true || open, plotName, open);
         }
 
-        long? price = Biomes.All[biome].Buyable
-            ? (long)Math.Round(PlotPrices.For(await CountOwnedAsync(viewer, cancellationToken), biome) * await cities.PlotPriceFactorAsync(x, y, cancellationToken))
-            : null;
+        long? price = null;
+        if (Biomes.All[biome].Buyable)
+        {
+            try
+            {
+                price = (await PriceAsync(viewer, x, y, biome, cancellationToken)).Total;
+            }
+            catch (GameException e) when (e.Code == "embargo")
+            {
+                // The country sells no plots to the viewer's country.
+            }
+        }
+
         return new PlotState(x, y, biome, null, price);
+    }
+
+    /// <summary>What the player pays for a free plot: the price of their next plot in the biome, less in a town that makes plots
+    /// cheaper; the country's government makes it cheaper for its citizens or adds a fee for foreigners (which goes to its treasury).</summary>
+    private async Task<(long Total, long Fee)> PriceAsync(Guid buyer, int x, int y, Biome biome, CancellationToken cancellationToken)
+    {
+        var price = (long)Math.Round(PlotPrices.For(await CountOwnedAsync(buyer, cancellationToken), biome) * await cities.PlotPriceFactorAsync(x, y, cancellationToken));
+        return countries.At(x, y) is { } country ? await nation.PlotPriceAsync(buyer, country.Code, price, cancellationToken) : (price, 0);
     }
 
     /// <summary>Buys a free plot: money out, plot in, both or neither. The price depends on how many plots the player has.</summary>
@@ -1226,7 +1334,8 @@ public sealed class WorldService(
                 throw PlotTaxService.Due(tax);
             }
 
-            var price = (long)Math.Round(PlotPrices.For(await CountOwnedAsync(owner, cancellationToken), biome) * await cities.PlotPriceFactorAsync(x, y, cancellationToken));
+            var (total, fee) = await PriceAsync(owner, x, y, biome, cancellationToken);
+            var price = total - fee;
             await using (var insert = await db.CommandAsync(
                 """
                 INSERT INTO world.plots (x, y, owner_id, biome, price_cents, bought_at)
@@ -1247,6 +1356,12 @@ public sealed class WorldService(
             }
 
             var balance = await wallet.DebitAsync(owner, price, $"plot {x}:{y}", cancellationToken);
+            if (fee > 0)
+            {
+                await nation.ChargePlotFeeAsync(owner, countries.At(x, y)!.Code, fee, x, y, cancellationToken);
+                balance = await wallet.BalanceAsync(owner, cancellationToken);
+            }
+
             var xp = await progress.AddXpAsync(owner, PlotRules.XpPerPlot, cancellationToken);
             // A forest comes with an axe, a desert with a shovel, mountains with a pickaxe, the steppe with shears.
             var tool = PlotLayout.StarterTool(biome);
@@ -1440,6 +1555,8 @@ public sealed class WorldModule : IGameModule
     {
         services.AddModuleDbContext<WorldDbContext>(WorldDbContext.Schema);
         services.AddSingleton(_ => WorldMap.Load());
+        services.AddSingleton(_ => Countries.Load());
+        services.AddScoped<ICountryMap, CountryMap>();
         services.AddScoped<WorldService>();
         services.AddScoped<PlotService>();
         services.AddScoped<PlotTaxService>();
@@ -1588,6 +1705,12 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, CityServiceHandler>();
         services.AddSingleton<IMessageHandler, CityVoteHandler>();
         services.AddSingleton<IMessageHandler, CityPolicyHandler>();
+        services.AddSingleton<IMessageHandler, CityInvestHandler>();
+        services.AddSingleton<IMessageHandler, CityRecallHandler>();
+        services.AddSingleton<IMessageHandler, CityStandHandler>();
+        services.AddSingleton<IMessageHandler, CitySponsorHandler>();
+        services.AddSingleton<IMessageHandler, CityProposeHandler>();
+        services.AddSingleton<IMessageHandler, CityOrdinanceVoteHandler>();
         services.AddSingleton<IMessageHandler, CityFestivalHandler>();
         services.AddSingleton<IMessageHandler, GetShopHandler>();
         services.AddSingleton<IMessageHandler, StockShopHandler>();

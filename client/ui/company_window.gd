@@ -790,6 +790,8 @@ static func _log_text(entry: Dictionary) -> String:
 			return "%s wpłaca %s" % [who, UI.money(quantity)]
 		"withdraw":
 			return "%s wypłaca %s" % [who, UI.money(quantity)]
+		"lobby":
+			return "%s wydaje %s: %s" % [who, UI.money(quantity), entry["item"]]
 		"sell":
 			return "%s sprzedaje handlarzowi %d × %s" % [who, quantity, name]
 		"buy":

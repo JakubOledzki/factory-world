@@ -301,7 +301,7 @@ public sealed class CityTests(ServerFactory factory) : IClassFixture<ServerFacto
         var station = (await neighbour.SendAsync("station.get", new { x = second.X, y = second.Y })).Payload();
         Assert.Equal(CityRules.CityRail * CityRules.MayorRail, station.GetProperty("rates").GetProperty("feeFactor").GetDouble(), 6);
 
-        // The mayor takes a tenth of what the neighbour's shop sells.
+        // The town takes a tenth of what the neighbour's shop sells: a fifth of that is the mayor's pay, the rest goes into the treasury.
         await GiveAsync(neighbour, Items.Shop, 1);
         await GiveAsync(neighbour, Items.Bread, 500);
         var shop = await PlaceAsync(neighbour, second.X, second.Y, Items.Shop, PlotLayout.Spawn.X + 10, 30);
@@ -311,8 +311,11 @@ public sealed class CityTests(ServerFactory factory) : IClassFixture<ServerFacto
         factory.Time.Advance(TimeSpan.FromHours(1));
         var sold = (await neighbour.SendAsync("shop.get", new { id = shop })).Payload().GetProperty("soldCents").GetInt64();
         Assert.True(sold > 0);
-        Assert.Equal(ownerBefore + sold / 10, await owner.BalanceAsync());
-        Assert.Equal(neighbourBefore + sold - sold / 10, await neighbour.BalanceAsync());
+        var tax = sold / 10;
+        Assert.Equal(ownerBefore + tax * TownHallRules.MayorSharePercent / 100, await owner.BalanceAsync());
+        Assert.Equal(neighbourBefore + sold - tax, await neighbour.BalanceAsync());
+        hall = (await owner.SendAsync("city.get", new { x = first.X, y = first.Y })).Payload().GetProperty("state").GetProperty("hall");
+        Assert.Equal(tax - tax * TownHallRules.MayorSharePercent / 100, hall.GetProperty("politics").GetProperty("treasuryCents").GetInt64());
     }
 
     [Fact]

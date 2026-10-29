@@ -1,6 +1,18 @@
 [
 	{
 		"date": "2026-10-29",
+		"title": "Polityka: ratusze, państwa i partie",
+		"changes": [
+			"Mapa świata pokazuje granice prawdziwych państw i ich nazwy. Na działce widzisz, w jakim kraju leży, a przycisk „Państwa” otwiera ranking krajów.",
+			"Obywatelstwo: zostań obywatelem państwa, w którym masz działkę (zmiana raz na tydzień). Obywatele co 14 dni wybierają prezydenta, który mianuje ministrów finansów, przemysłu, transportu, spraw zagranicznych, spraw wewnętrznych i sprawiedliwości.",
+			"Podatek od działek ustala teraz państwo (od 0,3% do 0,7% dziennie, na start 0,5%), a połowa trafia do kasy państwa. Rząd może pobierać opłatę od cudzoziemców kupujących działki, cło od ich eksportu, dopłacać 10% do dostaw wybranych towarów do miast i budować kolej państwową oraz osiedla.",
+			"Kandydaci na prezydenta i burmistrza wpłacają kaucję i ogłaszają program z hasłem. Spółki mogą ich wspierać ze swojej kasy, a ratusz pokazuje, czy zwycięzca dotrzymał obietnic. Obywatele i mieszkańcy mogą zebrać podpisy i odwołać prezydenta lub burmistrza.",
+			"Kasa miasta: burmistrz dostaje 20% podatku od sklepów i usług, reszta idzie do kasy, z której buduje park, dworzec i halę targową. Burmistrz poddaje też pod głosowanie uchwały: tańsze działki, dłużej otwarte sklepy, więcej usług w biurach i dopłaty do recyklingu.",
+			"Dyplomacja: państwa zawierają sojusze (bez ceł i opłat dla obywateli sojusznika) i nakładają embarga (brak sprzedaży działek). Gracze mogą zakładać partie za 500 $ i do nich wstępować."
+		]
+	},
+	{
+		"date": "2026-10-29",
 		"title": "Prowizja rynku, podatek od działek i przeglądy maszyn",
 		"changes": [
 			"Rynek graczy zatrzymuje 3% każdej sprzedaży (zaokrąglone w górę). Płaci sprzedający: przy wystawianiu ogłoszenia widzisz, ile dostaniesz na rękę.",

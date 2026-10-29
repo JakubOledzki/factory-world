@@ -18,6 +18,8 @@
     <!-- Made by tools/build_world.py; the client has the same file in client/world/. -->
     <EmbeddedResource Include="Data\biomes.bin.gz" LogicalName="biomes.bin.gz" />
     <EmbeddedResource Include="Data\cities.tsv.gz" LogicalName="cities.tsv.gz" />
+    <!-- Made by tools/build_countries.py; the client has the same file in client/world/. -->
+    <EmbeddedResource Include="Data\countries.bin.gz" LogicalName="countries.bin.gz" />
   </ItemGroup>
 
 </Project>

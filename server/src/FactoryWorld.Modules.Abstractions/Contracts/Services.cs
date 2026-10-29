@@ -378,3 +378,60 @@ public static class ForestCertificate
     /// <summary>How much more the trader pays a certified player for timber, in percent.</summary>
     public const int BonusPercent = 15;
 }
+
+/// <summary>A country of the map; <paramref name="Plots"/> is how many plots of land it covers.</summary>
+public sealed record CountryInfo(string Code, string Name, int Plots);
+
+/// <summary>The countries of the map (Natural Earth's borders) and the plots players own in each.</summary>
+public interface ICountryMap
+{
+    /// <summary>By name.</summary>
+    IReadOnlyList<CountryInfo> All { get; }
+
+    /// <summary>The country the plot lies in; null for the sea, lakes and Antarctica.</summary>
+    CountryInfo? At(int x, int y);
+
+    CountryInfo? Find(string? code);
+
+    /// <summary>How many plots the player owns in each country.</summary>
+    Task<IReadOnlyDictionary<string, int>> PlotsAsync(Guid owner, CancellationToken cancellationToken);
+
+    /// <summary>How many plots are bought in each country.</summary>
+    Task<IReadOnlyDictionary<string, int>> BoughtPlotsAsync(CancellationToken cancellationToken);
+}
+
+/// <summary>What the government a country's players elect changes in the world: the plot tax, what foreigners pay for
+/// plots, rail fees, subsidies for goods delivered to towns. Money it takes goes into the country's treasury.</summary>
+public interface INationalPolicy
+{
+    /// <summary>The plot tax in the country, in thousandths of a plot's worth a day.</summary>
+    Task<int> PlotTaxPerMilleAsync(string country, CancellationToken cancellationToken);
+
+    /// <summary>Of the plot tax paid on plots in the country, puts the treasury's share into it (the rest is gone from the game).</summary>
+    Task CollectPlotTaxAsync(string country, long taxCents, CancellationToken cancellationToken);
+
+    /// <summary>What a plot in the country costs the buyer, from its usual price: cheaper for citizens with the housing programme,
+    /// dearer for foreigners by the fee the government set (that part goes into the treasury when <see cref="ChargePlotFeeAsync"/> takes it).
+    /// Fails with <c>embargo</c> when the country does not sell plots to the buyer's citizens.</summary>
+    Task<(long PriceCents, long FeeCents)> PlotPriceAsync(Guid buyer, string country, long priceCents, CancellationToken cancellationToken);
+
+    /// <summary>Takes the foreigner's fee of a plot bought from the buyer's wallet into the treasury.</summary>
+    Task ChargePlotFeeAsync(Guid buyer, string country, long feeCents, int x, int y, CancellationToken cancellationToken);
+
+    /// <summary>What rail fees from a plot of the country are multiplied by: less with the national railway.</summary>
+    Task<double> RailFactorAsync(string country, CancellationToken cancellationToken);
+
+    /// <summary>Pays the player the country's subsidy on goods delivered to a town, from the treasury while it has money; returns what it paid.</summary>
+    Task<long> SubsidizeAsync(Guid player, string country, string item, long cents, CancellationToken cancellationToken);
+
+    /// <summary>The parties of the players who are in one, by account id.</summary>
+    Task<IReadOnlyDictionary<Guid, string>> PartiesAsync(IReadOnlyCollection<Guid> players, CancellationToken cancellationToken);
+}
+
+/// <summary>A company's cash, spent by its owner or treasurer from other modules (e.g. to back a candidate).</summary>
+public interface ICompanyCash
+{
+    /// <summary>Takes money from the cash of the player's company; returns the company's name. Fails with <c>no_company</c>,
+    /// <c>not_allowed</c> (not the owner or the treasurer) or <c>company_short</c>.</summary>
+    Task<string> SpendAsync(Guid player, long cents, string reason, CancellationToken cancellationToken);
+}
