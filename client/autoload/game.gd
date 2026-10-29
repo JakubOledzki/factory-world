@@ -54,6 +54,8 @@ const ERRORS := {
 	"blocked": "To miejsce jest zajęte.",
 	"no_object": "Tego już tu nie ma.",
 	"bad_plan": "Plan budowy może mieć od 1 do 100 obiektów.",
+	"bad_area": "Zaznacz prostokąt na działce.",
+	"area_too_big": "Naraz schowasz najwyżej 400 obiektów: zaznacz mniejszy kawałek.",
 	"own_plot": "Własnej działki nie polubisz: poproś innych, żeby ją odwiedzili.",
 	"chat_too_fast": "Za szybko piszesz. Odczekaj chwilę.",
 	"empty_message": "Najpierw coś napisz.",

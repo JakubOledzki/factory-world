@@ -1578,6 +1578,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, LikePlotHandler>();
         services.AddSingleton<IMessageHandler, GalleryHandler>();
         services.AddSingleton<IMessageHandler, PickUpManyFromPlotHandler>();
+        services.AddSingleton<IMessageHandler, PickUpAreaFromPlotHandler>();
         services.AddSingleton<IMessageHandler, RotateOnPlotHandler>();
         services.AddSingleton(_ => Towns.Load());
         services.AddScoped<CityService>();

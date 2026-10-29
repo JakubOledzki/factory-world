@@ -269,6 +269,20 @@ def blueprint():
     p.save("blueprint")
 
 
+def clear():
+    p = Pen()
+    for x in range(8, 52, 10):  # a dashed marquee: the marked area
+        p.line([(x, 8), (x + 5, 8)], SHADE, 3)
+    for y in range(8, 34, 10):
+        p.line([(8, y), (8, y + 5)], SHADE, 3)
+        p.line([(56, y), (56, y + 5)], SHADE, 3)
+    p.rect(26, 14, 38, 30, INK, 1)  # what stood in it, going down
+    p.poly([(18, 28), (46, 28), (32, 42)], INK)
+    p.poly([(8, 40), (20, 40), (24, 46), (40, 46), (44, 40), (56, 40), (56, 58), (8, 58)], INK)  # into the backpack's tray
+    p.rect(14, 48, 50, 52, CUT, 1)
+    p.save("clear")
+
+
 def undo():
     p = Pen()
     p.arc(34, 36, 17, 200, 450, INK, 6)  # the way back
@@ -337,7 +351,7 @@ def settings():
 
 def main() -> None:
     for draw in (backpack, garage, market, contracts, company, stats, achievements, world_map, logout,
-                 station, plant, mine_upgrade, garage_upgrade, city, bank, blueprint, undo, chat, gallery, like, bell, settings):
+                 station, plant, mine_upgrade, garage_upgrade, city, bank, blueprint, clear, undo, chat, gallery, like, bell, settings):
         draw()
 
 

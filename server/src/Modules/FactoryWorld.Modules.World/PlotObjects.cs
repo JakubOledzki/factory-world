@@ -21,6 +21,9 @@ public static class PlotObjects
     /// <summary>The most objects one building plan puts up (or takes down) at once.</summary>
     public const int MaxPlan = 100;
 
+    /// <summary>The most objects taken off a marked area of the plot at once.</summary>
+    public const int MaxArea = 400;
+
     /// <summary>Items that can be put on a plot.</summary>
     public static readonly IReadOnlySet<string> Placeable = new HashSet<string>
     {
@@ -371,6 +374,82 @@ public sealed class PlotObjectService(
             await CatchUpAsync(x, y, cancellationToken);
         }
 
+        var kind = await TakeOffAsync(player, x, y, id, owner, cancellationToken)
+            ?? throw new GameException(owner ? "no_object" : "not_yours", "There is no such object of yours on this plot.");
+        await inventory.AddAsync(player, kind, 1, cancellationToken);
+    }
+
+    /// <summary>Takes everything off a rectangle of the plot (both corners included) that the player may pick up: on a
+    /// company's plot a member takes only what they put there, the owner everything. Objects snow buries stay. Each
+    /// object goes back into the inventory like one picked up by hand, even when that fills it past its tiles, so
+    /// nothing is lost; all of them or none. Returns what was taken and how many objects in the rectangle stayed.</summary>
+    public Task<(IReadOnlyList<PlacedOnPlot> Taken, int Left)> PickUpAreaAsync(
+        Guid player, int x, int y, int fromX, int fromY, int toX, int toY, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            if (!PlotLayout.Inside(fromX, fromY) || !PlotLayout.Inside(toX, toY))
+            {
+                throw new GameException("bad_area", "Mark a rectangle inside the plot.");
+            }
+
+            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            var owner = (await plots.RightsAsync(player, x, y, cancellationToken)).Contains(PlotRight.Owner);
+            var inside = new List<(PlacedOnPlot Object, Guid PutBy)>();
+            await using (var find = await db.CommandAsync(
+                """
+                SELECT id, kind, tile_x, tile_y, rotation, owner_id FROM world.plot_objects
+                WHERE x = @x AND y = @y AND tile_x BETWEEN @x0 AND @x1 AND tile_y BETWEEN @y0 AND @y1
+                ORDER BY tile_y, tile_x
+                FOR UPDATE
+                """, cancellationToken))
+            {
+                find.Parameters.AddWithValue("x", x);
+                find.Parameters.AddWithValue("y", y);
+                find.Parameters.AddWithValue("x0", Math.Min(fromX, toX));
+                find.Parameters.AddWithValue("x1", Math.Max(fromX, toX));
+                find.Parameters.AddWithValue("y0", Math.Min(fromY, toY));
+                find.Parameters.AddWithValue("y1", Math.Max(fromY, toY));
+                await using var reader = await find.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    inside.Add((new PlacedOnPlot(reader.GetGuid(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3), reader.GetInt32(4)),
+                        reader.GetGuid(5)));
+                }
+            }
+
+            var mine = new List<PlacedOnPlot>();
+            foreach (var (o, putBy) in inside)
+            {
+                if ((owner || putBy == player) && !await plots.BuriedAsync(x, y, o.TileX, o.TileY, cancellationToken))
+                {
+                    mine.Add(o);
+                }
+            }
+
+            if (mine.Count > PlotObjects.MaxArea)
+            {
+                throw new GameException("area_too_big", $"Pick up at most {PlotObjects.MaxArea} objects at once: mark a smaller area.");
+            }
+
+            if (mine.Count > 0)
+            {
+                await CatchUpAsync(x, y, cancellationToken);
+            }
+
+            foreach (var o in mine)
+            {
+                var kind = await TakeOffAsync(player, x, y, o.Id, owner, cancellationToken)
+                    ?? throw new GameException("no_object", "There is no such object of yours on this plot.");
+                await inventory.AddAsync(player, kind, 1, cancellationToken);
+            }
+
+            return ((IReadOnlyList<PlacedOnPlot>)mine, inside.Count - mine.Count);
+        }, cancellationToken);
+
+    /// <summary>Deletes the object (the player's own, or any when <paramref name="owner"/>) and gives the player back
+    /// what the machinery in it held; returns its kind, or null when there is no such object of theirs.</summary>
+    private async Task<string?> TakeOffAsync(Guid player, int x, int y, Guid id, bool owner, CancellationToken cancellationToken)
+    {
         await using var delete = await db.CommandAsync(
             """
             DELETE FROM world.plot_objects WHERE id = @id AND x = @x AND y = @y AND (owner_id = @player OR @owner)
@@ -381,16 +460,19 @@ public sealed class PlotObjectService(
         delete.Parameters.AddWithValue("y", y);
         delete.Parameters.AddWithValue("player", player);
         delete.Parameters.AddWithValue("owner", owner);
-        var deleted = await delete.ExecuteScalarAsync(cancellationToken) as string;
+        var kind = await delete.ExecuteScalarAsync(cancellationToken) as string;
         query.Forget();
-        var kind = deleted
-            ?? throw new GameException(owner ? "no_object" : "not_yours", "There is no such object of yours on this plot.");
+        if (kind is null)
+        {
+            return null;
+        }
+
         foreach (var machine in machines)
         {
             await machine.ReleaseAsync(player, id, cancellationToken);
         }
 
-        await inventory.AddAsync(player, kind, 1, cancellationToken);
+        return kind;
     }
 
     /// <summary>Any object on a plot the player may work on: their own, or one of their company's.</summary>
@@ -559,6 +641,23 @@ public sealed class PickUpManyFromPlotHandler(IServiceScopeFactory scopes) : IMe
         await scope.ServiceProvider.GetRequiredService<PlotObjectService>()
             .PickUpManyAsync(client.RequireAccount(), request.X, request.Y, ids, cancellationToken);
         return new Reply("plot.pickedUpMany", new { ids });
+    }
+}
+
+public sealed record PickUpAreaRequest(int X, int Y, int FromX, int FromY, int ToX, int ToY);
+
+/// <summary>Clears a marked rectangle of the plot: everything of the player's in it goes back into the inventory.</summary>
+public sealed class PickUpAreaFromPlotHandler(IServiceScopeFactory scopes) : IMessageHandler
+{
+    public string Type => "plot.pickupArea";
+
+    public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
+    {
+        var request = Payload.Read<PickUpAreaRequest>(payload);
+        await using var scope = scopes.CreateAsyncScope();
+        var (taken, left) = await scope.ServiceProvider.GetRequiredService<PlotObjectService>().PickUpAreaAsync(
+            client.RequireAccount(), request.X, request.Y, request.FromX, request.FromY, request.ToX, request.ToY, cancellationToken);
+        return new Reply("plot.pickedUpArea", new { objects = taken.Select(PlaceOnPlotHandler.ObjectJson), left });
     }
 }
 
