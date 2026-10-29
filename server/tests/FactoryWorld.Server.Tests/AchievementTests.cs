@@ -153,7 +153,7 @@ public sealed class AchievementTests(ServerFactory factory) : IClassFixture<Serv
         var reply = await poor.SendAsync("rankings.get", new { ranking = "money" });
         Assert.Equal("rankings", reply.Type());
         var ids = reply.Payload().GetProperty("rankings").EnumerateArray().Select(r => r.GetProperty("id").GetString()).ToList();
-        Assert.Equal(["money", "level", Stats.Produced, Stats.Badges, "greenest"], ids);
+        Assert.Equal(["money", "level", Stats.Produced, "efficiency", Stats.Badges, "greenest", "challenge"], ids);
 
         var top = reply.Payload().GetProperty("top").EnumerateArray().ToList();
         Assert.Equal(1, top[0].GetProperty("place").GetInt32());

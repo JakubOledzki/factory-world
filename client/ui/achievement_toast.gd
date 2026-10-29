@@ -36,7 +36,8 @@ func _next() -> void:
 	row.add_child(medal)
 	var text := VBoxContainer.new()
 	text.add_theme_constant_override("separation", 0)
-	text.add_child(UI.label("Nowa odznaka!", UI.MUTED))
+	# A first in the world comes the same way, with its own title.
+	text.add_child(UI.label(badge.get("title", "Nowa odznaka!"), UI.MUTED))
 	var title := UI.label(badge.get("name", ""), UI.GOLD)
 	title.add_theme_font_override("font", UI.bold())
 	title.add_theme_font_size_override("font_size", 20)

@@ -1007,6 +1007,74 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(f => f.TownY).HasColumnName("town_y");
             e.Property(f => f.Until).HasColumnName("until");
         });
+        model.Entity<MeteorRow>(e =>
+        {
+            e.ToTable("meteors", t => t.HasCheckConstraint("ck_meteors_left", "iron_left >= 0 AND iridium_left >= 0"));
+            e.HasKey(m => m.Slot);
+            e.Property(m => m.Slot).HasColumnName("slot").ValueGeneratedNever();
+            e.Property(m => m.X).HasColumnName("x");
+            e.Property(m => m.Y).HasColumnName("y");
+            e.Property(m => m.IronLeft).HasColumnName("iron_left");
+            e.Property(m => m.IridiumLeft).HasColumnName("iridium_left");
+            e.Property(m => m.FellAt).HasColumnName("fell_at");
+        });
+        model.Entity<MeteorDigRow>(e =>
+        {
+            e.ToTable("meteor_digs");
+            e.HasKey(d => new { d.Slot, d.PlayerId });
+            e.Property(d => d.Slot).HasColumnName("slot");
+            e.Property(d => d.PlayerId).HasColumnName("player_id");
+            e.Property(d => d.Pieces).HasColumnName("pieces");
+            e.Property(d => d.LastAt).HasColumnName("last_at");
+        });
+        model.Entity<TownWeekDeliveryRow>(e =>
+        {
+            e.ToTable("town_week_deliveries");
+            e.HasKey(d => new { d.TownX, d.TownY, d.Week, d.PlayerId });
+            e.Property(d => d.TownX).HasColumnName("town_x");
+            e.Property(d => d.TownY).HasColumnName("town_y");
+            e.Property(d => d.Week).HasColumnName("week");
+            e.Property(d => d.PlayerId).HasColumnName("player_id");
+            e.Property(d => d.DeliveredCents).HasColumnName("delivered_cents");
+            // The chief supplier is the best of a week.
+            e.HasIndex(d => new { d.TownX, d.TownY, d.Week, d.DeliveredCents });
+        });
+        model.Entity<TownTenderRow>(e =>
+        {
+            e.ToTable("town_tenders", t =>
+            {
+                t.HasCheckConstraint("ck_town_tenders_delivered", "delivered >= 0 AND delivered <= quantity");
+                t.HasCheckConstraint("ck_town_tenders_money", "price_cents >= 0 AND deposit_cents >= 0");
+            });
+            e.HasKey(t => new { t.TownX, t.TownY, t.Week });
+            e.Property(t => t.TownX).HasColumnName("town_x");
+            e.Property(t => t.TownY).HasColumnName("town_y");
+            e.Property(t => t.Week).HasColumnName("week");
+            e.Property(t => t.Item).HasColumnName("item").HasMaxLength(32);
+            e.Property(t => t.Quantity).HasColumnName("quantity");
+            e.Property(t => t.CapCents).HasColumnName("cap_cents");
+            e.Property(t => t.ClosesAt).HasColumnName("closes_at");
+            e.Property(t => t.EndsAt).HasColumnName("ends_at");
+            e.Property(t => t.State).HasColumnName("state").HasMaxLength(16);
+            e.Property(t => t.WinnerId).HasColumnName("winner_id");
+            e.Property(t => t.PriceCents).HasColumnName("price_cents");
+            e.Property(t => t.DepositCents).HasColumnName("deposit_cents");
+            e.Property(t => t.Delivered).HasColumnName("delivered");
+            // The tender clock looks for tenders that are due.
+            e.HasIndex(t => t.State);
+        });
+        model.Entity<TenderBidRow>(e =>
+        {
+            e.ToTable("tender_bids", t => t.HasCheckConstraint("ck_tender_bids_money", "price_cents > 0 AND deposit_cents > 0"));
+            e.HasKey(b => new { b.TownX, b.TownY, b.Week, b.BidderId });
+            e.Property(b => b.TownX).HasColumnName("town_x");
+            e.Property(b => b.TownY).HasColumnName("town_y");
+            e.Property(b => b.Week).HasColumnName("week");
+            e.Property(b => b.BidderId).HasColumnName("bidder_id");
+            e.Property(b => b.PriceCents).HasColumnName("price_cents");
+            e.Property(b => b.DepositCents).HasColumnName("deposit_cents");
+            e.Property(b => b.At).HasColumnName("at");
+        });
         model.Entity<PlotFireRow>(e =>
         {
             e.ToTable("plot_fires");
@@ -1274,6 +1342,19 @@ public sealed class PlotRegistry(GameDb db) : IPlotRegistry
         command.Parameters.AddWithValue("y", y);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? new OwnedPlot(x, y, reader.GetGuid(0), reader.GetInt16(1), reader.GetInt64(2)) : null;
+    }
+
+    public async Task<IReadOnlyDictionary<Guid, int>> CountsAsync(CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync("SELECT owner_id, count(*)::int FROM world.plots GROUP BY owner_id", cancellationToken);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var counts = new Dictionary<Guid, int>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            counts[reader.GetGuid(0)] = reader.GetInt32(1);
+        }
+
+        return counts;
     }
 }
 
@@ -1590,6 +1671,14 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, CityVoteHandler>();
         services.AddSingleton<IMessageHandler, CityPolicyHandler>();
         services.AddSingleton<IMessageHandler, CityFestivalHandler>();
+        services.AddSingleton<IMessageHandler, CityTenderBidHandler>();
+        services.AddSingleton<IMessageHandler, CityTenderWithdrawHandler>();
+        services.AddSingleton<IMessageHandler, CityTenderDeliverHandler>();
+        services.AddHostedService<TenderClock>();
+        services.AddScoped<MeteorService>();
+        services.AddSingleton<IMessageHandler, GetMeteorHandler>();
+        services.AddSingleton<IMessageHandler, DigMeteorHandler>();
+        services.AddHostedService<MeteorClock>();
         services.AddSingleton<IMessageHandler, GetShopHandler>();
         services.AddSingleton<IMessageHandler, StockShopHandler>();
         services.AddSingleton<IMessageHandler, TakeFromShopHandler>();

@@ -18,6 +18,8 @@ const KEPT := 60
 const PHRASES := ["Cześć!", "Dzięki!", "Super fabryka!", "Pomóc?", "Chodź tutaj!"]
 const WORLD_COLOR := Color("#9cc4dc")
 const PLOT_COLOR := Color("#8fd65a")
+## Who the server's own announcements come from (no player).
+const SERVER_ID := "00000000-0000-0000-0000-000000000000"
 
 ## The plot the player is on; its chat comes with everybody's.
 var plot := Vector2i(-1, -1)
@@ -181,6 +183,9 @@ func _render() -> void:
 			text = "wskazuje miejsce na działce"
 		label.text = "[color=#%s]%s[/color] [b]%s:[/b] %s" % [color.to_html(false), "[Świat]" if m["channel"] == "world" else "[Działka]",
 			_escape(str(m["name"])), _escape(text)]
+		# The server's own news (a first in the world, a meteorite, a tender) comes from nobody and stands out in gold.
+		if str(m.get("from", "")) == SERVER_ID:
+			label.text = "[color=#%s][b]%s:[/b] %s[/color]" % [UI.GOLD.to_html(false), _escape(str(m["name"])), _escape(text)]
 		label.set_meta("at", line["at"])
 		_list.add_child(label)
 	_scroll.custom_minimum_size.y = 220.0 if is_open else 0.0

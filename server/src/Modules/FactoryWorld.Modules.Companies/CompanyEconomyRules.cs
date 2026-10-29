@@ -54,9 +54,10 @@ public static class CompanyMoney
 /// <param name="Reward">What lands in the company's warehouse when it is built.</param>
 /// <param name="Perk">What it gives every member from then on (<see cref="CompanyPerks"/>), if anything.</param>
 /// <param name="Requires">The projects the company must have built before taking this one on.</param>
+/// <param name="Wonder">A wonder of the world: only one company on the server builds it, the first to bring every part.</param>
 public sealed record BigProject(
     string Id, string Name, string Description, IReadOnlyList<(string Item, long Quantity)> Parts, TimeSpan Build,
-    IReadOnlyList<(string Item, int Quantity)> Reward, string? Perk, IReadOnlyList<string>? Requires = null);
+    IReadOnlyList<(string Item, int Quantity)> Reward, string? Perk, IReadOnlyList<string>? Requires = null, bool Wonder = false);
 
 public static class BigProjects
 {
@@ -85,7 +86,20 @@ public static class BigProjects
         new(CompanyPerks.Station, "Stacja orbitalna", "Laboratorium na orbicie: badania członków spółki trwają o 20% krócej.",
             [(Items.LaunchRocket, 2), (Items.FusionReactor, 1), (Items.IndustrialRobot, 4), (Items.CryogenicTank, 4), (Items.Provisions, 1000)],
             TimeSpan.FromDays(7), [], CompanyPerks.Station, [CompanyPerks.Orbit]),
+
+        // Wonders of the world: a race between companies, as only the first to bring every part builds one. The others get their parts back.
+        new(CompanyPerks.Library, "Wielka Biblioteka", "Cud świata, jeden na serwerze: badania członków spółki trwają o 15% krócej.",
+            [(Items.Paper, 20_000), (Items.ResearchData, 500), (Items.Concrete, 5000), (Items.Beams, 3000), (Items.Provisions, 2000)],
+            TimeSpan.FromDays(3), [], CompanyPerks.Library, Wonder: true),
+        new(CompanyPerks.Hub, "Światowy Węzeł Kolejowy", "Cud świata, jeden na serwerze: członkowie spółki płacą o 15% mniej na każdej trasie.",
+            [(Items.SteelIngot, 10_000), (Items.Concrete, 8000), (Items.Beams, 5000), (Items.ElectricMotor, 500), (Items.Provisions, 3000)],
+            TimeSpan.FromDays(4), [], CompanyPerks.Hub, Wonder: true),
+        new(CompanyPerks.Colossus, "Kolos Przemysłu", "Cud świata, jeden na serwerze: członkowie spółki dostają o 10% więcej doświadczenia za wszystko.",
+            [(Items.SteelIngot, 15_000), (Items.PrecastConcrete, 5000), (Items.IndustrialRobot, 30), (Items.ControlModule, 50), (Items.Provisions, 5000)],
+            TimeSpan.FromDays(7), [], CompanyPerks.Colossus, Wonder: true),
     ];
+
+    public static readonly IReadOnlyList<BigProject> Wonders = All.Where(p => p.Wonder).ToList();
 
     public static readonly IReadOnlyDictionary<string, BigProject> ById = All.ToDictionary(p => p.Id);
 }
