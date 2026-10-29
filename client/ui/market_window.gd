@@ -23,6 +23,8 @@ const PLAYERS := 1
 const SELL := 2
 const MINE := 3
 const MAX_QUANTITY := 10000
+## The share of each sale between players the market keeps, as MarketRules.FeePercent on the server.
+const FEE_PERCENT := 3
 var _tab := 0
 var _tab_buttons: Array[Button] = []
 var _page := VBoxContainer.new()
@@ -510,6 +512,8 @@ func _offer_form(type: String, action: String, item: String, max_quantity: int, 
 	var update := func(_v: float = 0) -> void:
 		var cents := int(quantity.value) * roundi(price.value * 100)
 		total.text = "Razem: %s" % UI.money(cents)
+		if type == "market.list":
+			total.text += ", dostaniesz %s po prowizji %d%%" % [UI.money(after_fee(cents)), FEE_PERCENT]
 		if type == "market.order":
 			submit.disabled = cents > _balance
 			if submit.disabled:
@@ -638,6 +642,7 @@ func _render_sell_board() -> void:
 		_page.add_child(row)
 
 	_page.add_child(_heading("Gracze kupują (zlecenia)"))
+	_page.add_child(_note("Rynek zatrzymuje %d%% każdej sprzedaży między graczami." % FEE_PERCENT))
 	if orders.is_empty():
 		_page.add_child(_note("Nikt tego teraz nie zamawia."))
 	for offer: Dictionary in orders:
@@ -733,6 +738,11 @@ func _note(text: String) -> Label:
 	var l := UI.label(text, UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
 	l.custom_minimum_size.x = 380
 	return l
+
+
+## What the seller gets for a sale of [param cents]: the fee is rounded up, as on the server.
+static func after_fee(cents: int) -> int:
+	return cents - ceili(cents * FEE_PERCENT / 100.0)
 
 
 func _spin(low: int, high: int, value: int) -> SpinBox:

@@ -370,7 +370,7 @@ public sealed class ExportTests(ServerFactory factory) : ExportTestBase(factory)
         var balance = await seller.BalanceAsync();
         var bought = await buyer.SendAsync("market.purchase", new { id = listing.GetProperty("id").GetInt64(), quantity = 100 });
         Assert.True(bought.Type() == "market.done", bought.ToString());
-        Assert.Equal(balance + 100 * 250, await seller.BalanceAsync());
+        Assert.Equal(balance + MarketRules.AfterFee(100 * 250), await seller.BalanceAsync());
 
         // A train finds nothing priced in the chest, only the stone: it takes nothing.
         ToNextPickup();

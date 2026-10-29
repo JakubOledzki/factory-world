@@ -1,5 +1,6 @@
 using System.Text.Json;
 using FactoryWorld.Modules.Abstractions.Contracts;
+using FactoryWorld.Modules.Market;
 using FactoryWorld.Modules.Research;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -55,12 +56,31 @@ public sealed class PlayerMarketTests(ServerFactory factory) : IClassFixture<Ser
         Assert.Equal("market.done", bought.Type());
         Assert.Equal(10_000 - 1500, bought.Payload().GetProperty("balanceCents").GetInt64());
         Assert.Equal(5, Count(await buyer.InventoryAsync(), Items.Wood));
-        Assert.Equal(1500, await seller.BalanceAsync());
+        // The market keeps 3%: 45 of 1500.
+        Assert.Equal(1455, await seller.BalanceAsync());
         Assert.Equal(15, (await BoardAsync(buyer, Items.Wood)).GetProperty("listings")[0].GetProperty("quantity").GetInt64());
 
         var mine = (await seller.SendAsync("market.mine")).Payload().GetProperty("listings")[0];
         Assert.Equal(5, mine.GetProperty("done").GetInt64());
         Assert.True(mine.GetProperty("open").GetBoolean());
+    }
+
+    [Fact]
+    public async Task The_market_keeps_3_percent_of_every_sale_rounded_up_so_selling_piece_by_piece_saves_nothing()
+    {
+        using var seller = await PlayerAsync(item: Items.Clay, quantity: 3);
+        using var buyer = await PlayerAsync(cents: 10_000);
+        await seller.SendAsync("market.list", new { item = Items.Clay, quantity = 3, priceCents = 10 });
+        var id = (await BoardAsync(buyer, Items.Clay)).GetProperty("listings")[0].GetProperty("id").GetInt64();
+
+        await buyer.SendAsync("market.purchase", new { id, quantity = 1 });
+        await buyer.SendAsync("market.purchase", new { id, quantity = 1 });
+        await buyer.SendAsync("market.purchase", new { id, quantity = 1 });
+
+        Assert.Equal(10_000 - 30, await buyer.BalanceAsync());
+        Assert.Equal(3 * 9, await seller.BalanceAsync());
+        Assert.Equal(97_000, MarketRules.AfterFee(100_000));
+        Assert.Equal(0, MarketRules.AfterFee(1));
     }
 
     [Fact]
@@ -78,7 +98,7 @@ public sealed class PlayerMarketTests(ServerFactory factory) : IClassFixture<Ser
 
         Assert.Empty((await BoardAsync(buyer, Items.Stone)).GetProperty("listings").EnumerateArray());
         Assert.Equal(6, Count(await seller.InventoryAsync(), Items.Stone));
-        Assert.Equal(400, await seller.BalanceAsync());
+        Assert.Equal(388, await seller.BalanceAsync());
         var mine = (await seller.SendAsync("market.mine")).Payload().GetProperty("listings").EnumerateArray().ToList();
         Assert.All(mine, m => Assert.False(m.GetProperty("open").GetBoolean()));
         Assert.Equal("no_offer", (await buyer.SendAsync("market.purchase", new { id = listings[0].GetProperty("id").GetInt64(), quantity = 1 })).ErrorCode());
@@ -147,7 +167,7 @@ public sealed class PlayerMarketTests(ServerFactory factory) : IClassFixture<Ser
         var filled = await seller.SendAsync("market.fill", new { id, quantity = 8 });
 
         Assert.Equal("market.done", filled.Type());
-        Assert.Equal(5_600, filled.Payload().GetProperty("balanceCents").GetInt64());
+        Assert.Equal(5_600 - 168, filled.Payload().GetProperty("balanceCents").GetInt64());
         Assert.Equal(0, Count(await seller.InventoryAsync(), Items.IronOre));
         Assert.Equal(8, Count(await buyer.InventoryAsync(), Items.IronOre));
 
