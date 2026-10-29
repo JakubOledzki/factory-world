@@ -329,6 +329,7 @@ public sealed class CityTests(ServerFactory factory) : IClassFixture<ServerFacto
         await GiveAsync(client, Items.CompanyHq, 2);
         Assert.Equal("hq_off_company", (await client.SendAsync("plot.place",
             new { x = plot.X, y = plot.Y, kind = Items.CompanyHq, tileX = PlotLayout.Spawn.X - 10, tileY = 30, rotation = 0 })).ErrorCode());
+        await factory.CompanyLevelAsync(client.AccountId);
         Assert.Equal("company", (await client.SendAsync("company.addPlot", new { x = plot.X, y = plot.Y })).Type());
         await PlaceAsync(client, plot.X, plot.Y, Items.CompanyHq, PlotLayout.Spawn.X - 10, 30);
         Assert.Equal("has_one", (await client.SendAsync("plot.place",

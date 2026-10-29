@@ -10,6 +10,8 @@ const WORLD_MAP_SCENE := "res://scenes/world_map.tscn"
 const PLOT_SCENE := "res://scenes/plot.tscn"
 ## The highest level a character reaches, as on the server.
 const MAX_LEVEL := 100
+## The level a player needs to bring their plots into a company, as on the server.
+const COMPANY_PLOT_LEVEL := 10
 
 ## Server error codes shown to the player in Polish.
 const ERRORS := {
@@ -74,6 +76,7 @@ const ERRORS := {
 	"company_full": "Spółka ma już komplet członków.",
 	"no_invite": "Ta spółka cię nie zaprosiła.",
 	"no_company": "Nie należysz do spółki.",
+	"level_too_low": "Działkę wniesiesz do spółki dopiero od 10 poziomu postaci.",
 	"not_allowed": "Twoja rola w spółce na to nie pozwala.",
 	"hand_over_first": "Najpierw przekaż prezesurę innemu członkowi.",
 	"not_member": "Tego gracza nie ma w twojej spółce.",

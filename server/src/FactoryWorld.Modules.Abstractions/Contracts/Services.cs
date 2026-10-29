@@ -74,6 +74,9 @@ public interface ICharacterXp
     /// <summary>The character's XP, or null when the account has no character.</summary>
     Task<long?> XpAsync(Guid accountId, CancellationToken cancellationToken);
 
+    /// <summary>The character's level; 1 when the account has no character.</summary>
+    Task<int> LevelAsync(Guid accountId, CancellationToken cancellationToken);
+
     /// <summary>Takes experience away from a character that has more than <paramref name="maxXp"/>, so it has exactly that much.</summary>
     Task CapAsync(Guid accountId, long maxXp, CancellationToken cancellationToken);
 }

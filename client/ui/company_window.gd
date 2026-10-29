@@ -281,15 +281,25 @@ func _render_company(company: Dictionary) -> void:
 			b.tooltip_text = "Działka przestanie być wspólna. To, co postawili na niej inni, zostanie na miejscu."
 			line.add_child(b)
 		_body.add_child(line)
+	# New accounts can't bring plots in, so nobody buys cheap first plots on fresh accounts for the company.
+	var can_bring := int(Game.character.get("level", 1)) >= Game.COMPANY_PLOT_LEVEL
+	var shown_level_note := false
 	for plot: Dictionary in _my_plots:
 		var at := Vector2i(int(plot["x"]), int(plot["y"]))
 		if brought.has(at):
 			continue
+		if not can_bring and not shown_level_note:
+			_body.add_child(UI.label("Swoje działki wniesiesz do spółki od %d poziomu postaci." % Game.COMPANY_PLOT_LEVEL, UI.MUTED))
+			shown_level_note = true
 		var line := _row()
 		var text := UI.label("%s %d:%d  ·  tylko twoja" % [_biome_names.get(int(plot["biome"]), "Działka"), at.x, at.y], UI.MUTED)
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		line.add_child(text)
-		line.add_child(UI.button("Wnieś do spółki", _send.bind("company.addPlot", {"x": at.x, "y": at.y})))
+		var bring := UI.button("Wnieś do spółki", _send.bind("company.addPlot", {"x": at.x, "y": at.y}))
+		if not can_bring:
+			bring.disabled = true
+			bring.tooltip_text = "Od %d poziomu postaci." % Game.COMPANY_PLOT_LEVEL
+		line.add_child(bring)
 		_body.add_child(line)
 
 	# Warehouse.

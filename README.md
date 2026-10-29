@@ -234,7 +234,7 @@ Pierwsza wiadomość po połączeniu to `hello` z `{ "protocol": 1 }`, odpowied�
 | `company.takeover` | `{ company }` | `company`: gracz z ponad połową akcji zostaje prezesem spółki, a dotychczasowy prezes wspólnikiem |
 | `company.rankings` | | `company.rankings` `{ season, endsAt, richest, production, plots, lastSeason, prizesCents }`: po 10 spółek `{ place, name, value, yours }` |
 | `company.kick` / `company.leave` | `{ name }` / | `company`: prezes usuwa członka albo gracz odchodzi; działki odchodzącego przestają być wspólne. Prezes odchodzi dopiero po przekazaniu prezesury, a ostatni członek zamyka spółkę i dostaje to, co zostało w magazynie |
-| `company.addPlot` / `company.removePlot` | `{ x, y }` | `company`: właściciel wnosi swoją działkę do spółki albo ją zabiera |
+| `company.addPlot` / `company.removePlot` | `{ x, y }` | `company`: właściciel wnosi swoją działkę do spółki (od 10 poziomu postaci, inaczej `level_too_low`) albo ją zabiera |
 | `company.put` / `company.take` | `{ item, quantity }` | `company`: z ekwipunku do wspólnego magazynu (każdy członek) albo z magazynu do ekwipunku (każdy poza pracownikiem); magazyn mieści 50 000 sztuk |
 | `achievements.get` | | `achievements` `{ unlocked, total, groups: [{ name, badges: [{ id, name, description, goal, progress, text, unlockedAt }] }] }`: wszystkie odznaki z postępem (`text` np. „37 / 100”), `unlockedAt` to chwila zdobycia w ms uniksowych albo `null` |
 | `achievements.watch` | | `achievements.watching`: od teraz po odpowiedzi, która dała odznakę, serwer wysyła na to połączenie wiadomość bez `id`: `achievement.unlocked` `{ id, group, name, description }` |

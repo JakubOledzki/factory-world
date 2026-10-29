@@ -1,6 +1,9 @@
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
+using FactoryWorld.Modules.Abstractions.Contracts;
+using FactoryWorld.Modules.Characters;
+using FactoryWorld.Modules.Companies;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -53,6 +56,14 @@ public class ServerFactory : WebApplicationFactory<Program>
     {
         var socket = await Server.CreateWebSocketClient().ConnectAsync(new Uri(Server.BaseAddress, "ws"), CancellationToken.None);
         return new GameClient(socket);
+    }
+
+    /// <summary>Gives the account's character enough XP to bring plots into a company.</summary>
+    public async Task CompanyLevelAsync(Guid account)
+    {
+        await using var scope = Services.CreateAsyncScope();
+        await scope.ServiceProvider.GetRequiredService<ICharacterProgress>()
+            .AddXpAsync(account, Leveling.TotalXpForLevel(CompanyRules.PlotMinLevel), CancellationToken.None);
     }
 }
 

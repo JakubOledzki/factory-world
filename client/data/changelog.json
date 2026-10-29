@@ -1,6 +1,13 @@
 [
 	{
 		"date": "2026-10-29",
+		"title": "Działki w spółce od 10 poziomu",
+		"changes": [
+			"Swoją działkę wniesiesz do spółki dopiero od 10 poziomu postaci. Dzięki temu nikt nie zakłada nowych kont tylko po to, żeby kupić na nich tanie pierwsze działki i oddać je spółce. Działki już wniesione zostają w spółkach."
+		]
+	},
+	{
+		"date": "2026-10-29",
 		"title": "Prowizja rynku, podatek od działek i przeglądy maszyn",
 		"changes": [
 			"Rynek graczy zatrzymuje 3% każdej sprzedaży (zaokrąglone w górę). Płaci sprzedający: przy wystawianiu ogłoszenia widzisz, ile dostaniesz na rękę.",
