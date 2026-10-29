@@ -349,6 +349,8 @@ public sealed class StatisticsModule : IGameModule
         services.AddModuleDbContext<StatisticsDbContext>(StatisticsDbContext.Schema);
         services.AddScoped<IProductionStats, ProductionStats>();
         services.AddScoped<ProductionReports>();
+        services.AddSingleton<EfficiencyScores>();
+        services.AddScoped<IPlayerRanking, EfficiencyRanking>();
         services.AddSingleton<IMessageHandler, GetProductionHandler>();
         services.AddSingleton<IMessageHandler, GetPlotMachinesHandler>();
     }

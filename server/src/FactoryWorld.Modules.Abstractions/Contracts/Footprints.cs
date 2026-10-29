@@ -97,6 +97,14 @@ public static class Footprints
         [Items.MachineShop] = 2,
         [Items.MultistoreyFactory] = 2,
         [Items.Assembler] = 2,
+        [Items.SpinningMill] = 2,
+        [Items.Loom] = 2,
+        [Items.SugarFactory] = 2,
+        [Items.Jeweler] = 2,
+        [Items.Electrolyzer] = 2,
+        [Items.TreeNursery] = 2,
+        [Items.AutoBarn] = 2,
+        [Items.FuelCell] = 2,
         // The second level: 3 × 3.
         [Items.BrickFurnace] = 3,
         [Items.ElectricSawmill] = 3,
@@ -129,6 +137,10 @@ public static class Footprints
         [Items.ManorFarm] = 3,
         [Items.BuyMarket] = 3,
         [Items.BankBranch] = 3,
+        [Items.CokeOven] = 3,
+        [Items.BiomassPlant] = 3,
+        [Items.ChpPlant] = 3,
+        [Items.GeothermalPlant] = 3,
         // The best level: 4 × 4.
         [Items.BlastFurnace] = 4,
         [Items.IndustrialSawmill] = 4,
@@ -137,6 +149,7 @@ public static class Footprints
         [Items.OpenPitMine] = 4,
         [Items.OreProcessingPlant] = 4,
         [Items.NuclearPlant] = 4,
+        [Items.MechanizedFarm] = 4,
         // The largest buildings.
         [Items.SteelCombine] = 5,
         [Items.Megafactory] = 5,

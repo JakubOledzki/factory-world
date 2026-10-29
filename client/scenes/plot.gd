@@ -42,6 +42,7 @@ const ACTIONS := {
 	"hotbar_4": [KEY_4],
 	"hotbar_5": [KEY_5],
 	"plan": [KEY_V],
+	"clear": [KEY_X],
 	"pipette": [KEY_F],
 }
 
@@ -213,11 +214,17 @@ const PLACED_SPRITES := {
 	"furniture_bellows": "bellows", "furniture_feeder": "feeder", "furniture_farmstead": "farmstead", "furniture_manor_farm": "manor_farm",
 	"furniture_export_chest": "export_chest", "furniture_buy_market": "buy_market", "furniture_rail_port": "rail_port",
 	"furniture_bank": "bank", "furniture_bank_branch": "bank_branch",
+	"furniture_coke_oven": "coke_oven", "furniture_jeweler": "jeweler", "furniture_tree_nursery": "tree_nursery",
+	"furniture_spinning_mill": "spinning_mill", "furniture_loom": "loom", "furniture_auto_barn": "auto_barn",
+	"furniture_sugar_factory": "sugar_factory", "furniture_sprinkler": "sprinkler", "furniture_mechanized_farm": "mechanized_farm",
+	"power_biomass_plant": "biomass_plant", "power_chp_plant": "chp_plant", "power_geothermal_plant": "geothermal_plant",
+	"furniture_electrolyzer": "electrolyzer", "power_fuel_cell": "fuel_cell",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
 ## Animals let out on a pasture, and their sprites there.
 const ANIMAL_SPRITES := {"animal_chicken": "chicken", "animal_sheep": "sheep", "animal_cow": "cow", "animal_camel": "camel",
+	"animal_pig": "pig", "animal_goat": "goat",
 	"animal_horse": "horse"}
 ## Placed objects that open the machine window.
 const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_barrel", "furniture_bakery", "furniture_kitchen",
@@ -235,7 +242,8 @@ const MACHINES := ["furniture_mill", "furniture_oil_press", "furniture_pickling_
 	"furniture_laboratory", "furniture_service_workshop", "furniture_paper_mill", "furniture_carpentry", "furniture_charcoal_kiln",
 	"furniture_tar_kiln", "furniture_machine_shop", "furniture_robotic_hall", "furniture_oxygen_converter", "furniture_rolling_mill",
 	"furniture_continuous_caster", "furniture_steel_combine", "furniture_megafactory",
-	"furniture_slaughterhouse", "furniture_dairy", "furniture_potato_distillery", "furniture_biogas_plant"]
+	"furniture_slaughterhouse", "furniture_dairy", "furniture_potato_distillery", "furniture_biogas_plant",
+	"furniture_coke_oven", "furniture_jeweler", "furniture_spinning_mill", "furniture_loom", "furniture_sugar_factory", "furniture_electrolyzer"]
 ## A works canteen opens its own window and feeds the crews of the plot's machines; a stable lets horses out on the plot,
 ## a bellows blows the plot's furnaces: neither opens anything.
 const CANTEEN := "furniture_canteen"
@@ -245,6 +253,19 @@ const BELLOWS := "furniture_bellows"
 ## the plot, the animals are asked for every ANIMALS_POLL ms to show the ones it fed.
 const FEEDER := "furniture_feeder"
 const FEEDER_REACH := 3
+## An automatic barn is a bigger feeder (2 × 2) that collects what the animals give as well; it opens the feeder's window.
+const AUTO_BARN := "furniture_auto_barn"
+const FEEDERS := {FEEDER: FEEDER_REACH, AUTO_BARN: 4}
+## A sprinkler waters the fields this far from it (the steppe and the desert can be tilled there); a tree nursery raises the saplings
+## of the foresters this far from it; a combined heat and power plant warms the machines this far from it on the glacier.
+## None of them opens a window but the plant, which opens the generator's; hovered, each shows how far it reaches.
+const SPRINKLER := "furniture_sprinkler"
+const TREE_NURSERY := "furniture_tree_nursery"
+const CHP_PLANT := "power_chp_plant"
+const REACHES := {FEEDER: FEEDER_REACH, AUTO_BARN: 4, SPRINKLER: 4, TREE_NURSERY: 8, CHP_PLANT: 6}
+## A geothermal plant gives power without fuel, only in the mountains, on the tundra and the glacier.
+const GEOTHERMAL := "power_geothermal_plant"
+const GEOTHERMAL_BIOMES := [6, 7, 8]
 const ANIMALS_POLL := 5000.0
 ## A beehive opens its own window; a fire watchtower and a fire station only stand guard over the forest.
 const BEEHIVE := "furniture_beehive"
@@ -339,7 +360,7 @@ const FORESTERS := {"furniture_forester_hut": 5, "furniture_forester_lodge": 6, 
 const FOOTPRINT := 1
 ## Farmer's buildings of both levels and how far their fields reach, like the foresters'; they stand on fertile land only
 ## (farmland, oasis) and keep the same clearing and path free.
-const FARMSTEADS := {"furniture_farmstead": 4, "furniture_manor_farm": 5}
+const FARMSTEADS := {"furniture_farmstead": 4, "furniture_manor_farm": 5, "furniture_mechanized_farm": 6}
 const FERTILE := [3, 12]
 const FOREST_CLEARING := 2
 ## How often (ms) the foresters are asked for, to draw the trees they plant and cut.
@@ -359,11 +380,12 @@ const MACHINERY := [BELT, "logistics_fast_belt", "logistics_express_belt", INSER
 	"logistics_pipe", "logistics_pump"]
 const GENERATOR := "power_generator"
 ## Generators that burn fuel, which open the generator window.
-const GENERATORS := [GENERATOR, "power_coal_plant", "power_gas_plant", "power_diesel_generator", "power_nuclear_plant", "power_fusion_plant"]
+const GENERATORS := [GENERATOR, "power_coal_plant", "power_gas_plant", "power_diesel_generator", "power_nuclear_plant", "power_fusion_plant",
+	"power_biomass_plant", CHP_PLANT, "power_fuel_cell"]
 ## Placed objects with nothing to open: a click shows the menu to pick them up.
 const MENU_ONLY := ["power_pole", "power_substation", "power_pylon", "furniture_port", "furniture_lighthouse", "furniture_breakwater", ROAD, REED_FENCE,
 	"furniture_water_injector", "furniture_oil_separator", "furniture_dog_kennel", "furniture_snowmobile_garage", TRACK_FOUNDATION,
-	"furniture_freight_terminal", "furniture_company_hq", WATCHTOWER, FIRE_STATION, CONTROL_CENTER]
+	"furniture_freight_terminal", "furniture_company_hq", WATCHTOWER, FIRE_STATION, CONTROL_CENTER, SPRINKLER, TREE_NURSERY]
 const POLE := "power_pole"
 const STORAGES := ["storage_wooden_chest", "storage_iron_chest", "storage_wood_pile", "storage_heap", "storage_grain_silo", "storage_tank",
 	"storage_high_bay", "storage_automated_warehouse", "storage_logistics_depot", DRONE_PORT,
@@ -388,12 +410,14 @@ const NOT_IN_PLANS := ["furniture_drill", "furniture_heavy_drill", "furniture_pu
 	"furniture_lighthouse", "furniture_export_chest"]
 ## The most objects one plan holds (as the server's PlotObjects.MaxPlan), and the most steps Ctrl+Z undoes.
 const MAX_PLAN := 100
+## The most objects one cleared area takes back at once (PlotObjects.MaxArea on the server).
+const MAX_AREA := 400
 const MAX_UNDO := 20
 ## How far (px) the screen shakes at a felled tree or a broken rock, and how fast that dies down (px a second).
 const SHAKE := 5.0
 const SHAKE_FADE := 30.0
 ## Crops in the order of the art; the server sends their names and growing times.
-const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower"]
+const CROPS := ["wheat", "carrot", "cabbage", "corn", "potato", "sunflower", "sugar_beet", "flax", "hemp"]
 ## A crop shows as a sprout until this much of its growing time is left, then half grown.
 const SPROUT_UNTIL := 0.6
 ## Fertiliser sown with a crop makes it ripen this many times as fast; the crop menu numbers those choices from FERTILIZED.
@@ -447,6 +471,8 @@ var _visitor := false
 var _fields := {}
 var _crops := {}
 var _fertile := false
+## The steppe and the desert: tilled only where a sprinkler waters.
+var _irrigable := false
 ## Planted trees: Vector2i → readyAt (server milliseconds), and their kinds (the server's ids) where not a pine.
 var _trees := {}
 var _tree_species := {}
@@ -637,6 +663,8 @@ var _shake := 0.0
 ## Building plans: "copy" while the player marks the corners of what to copy, "paste" while the copy follows the mouse; "" otherwise.
 var _plan_mode := ""
 var _plan_corner := Vector2i(-1, -1)
+## When clearing an area: its far corner, which stays marked while the player is asked.
+var _clear_to := Vector2i(-1, -1)
 ## The copied plan, kept while the game runs, also on other plots: [{ kind, dx, dy, rotation }] from its top left tile.
 static var _plan: Array[Dictionary] = []
 ## The sketchbook (plan mode "sketch"): ghosts drawn on the plot without building anything, [{ kind, tileX, tileY, rotation }],
@@ -648,6 +676,7 @@ var _plans_window: PlansWindow
 ## What Ctrl+Z undoes, newest last: { placed: [ids] } to take back what was put up, or { picked: [objects] } to put back what was picked up.
 var _undo: Array[Dictionary] = []
 var _plan_button: Button
+var _clear_button: Button
 var _undo_button: Button
 ## The chat in the corner, and whether the next click on the plot points at a place for the others.
 var _chat: ChatBox
@@ -676,6 +705,7 @@ var _shop_window: ShopWindow
 var _export_window: ExportWindow
 var _export_post_window: ExportPostWindow
 var _bank_window: BankWindow
+var _police_window: PoliceWindow
 var _hive_window: HiveWindow
 var _feeder_window: FeederWindow
 var _city_window: CityWindow
@@ -1043,6 +1073,7 @@ func _apply_plot(plot: Dictionary) -> void:
 	_tiles = packed.decompress_dynamic(-1, FileAccess.COMPRESSION_GZIP)
 	_sync_tool_bar()
 	_fertile = plot.get("fertile", false)
+	_irrigable = plot.get("irrigable", false)
 	for crop: Dictionary in plot.get("crops", []):
 		_crops[crop["id"]] = crop
 	_pasture = plot.get("pasture", false)
@@ -1619,10 +1650,18 @@ func _ground_cell() -> Vector2i:
 	return Vector2i((get_global_mouse_position() / TILE).floor())
 
 
-## Whether the hoe can turn this tile into a field.
+## Whether the hoe can turn this tile into a field: on fertile soil, or on the steppe and the desert where a sprinkler waters.
 func _can_till(cell: Vector2i) -> bool:
-	return _placing == "" and _releasing == "" and _fertile and Game.holds("tool_hoe") and _tile(cell) == NONE \
+	return _placing == "" and _releasing == "" and (_fertile or _irrigable and _sprinkled(cell)) and Game.holds("tool_hoe") and _tile(cell) == NONE \
 		and not _fields.has(cell) and not _placed.has(cell) and not _animals.has(cell)
+
+
+## Whether a sprinkler waters the tile.
+func _sprinkled(cell: Vector2i) -> bool:
+	for at: Vector2i in _placed:
+		if _placed[at]["kind"] == SPRINKLER and absi(at.x - cell.x) <= REACHES[SPRINKLER] and absi(at.y - cell.y) <= REACHES[SPRINKLER]:
+			return true
+	return false
 
 
 ## Whether a sapling can be planted on this tile now.
@@ -1669,6 +1708,8 @@ func _can_place(cell: Vector2i) -> bool:
 		return (biome == only if only >= 0 else biome in [COAST, LAKESHORE]) and _footprint(_placing, cell).any(_by_water)
 	if _placing in HYDRO:
 		return biome in WATER_BIOMES
+	if _placing == GEOTHERMAL:
+		return biome in GEOTHERMAL_BIOMES
 	if _placing == SOLAR_TOWER:
 		return biome in SANDY
 	if _placing in GLACIER_ONLY:
@@ -1883,6 +1924,12 @@ func _placed_label(cell: Vector2i) -> String:
 		return "%s: po asfalcie chodzisz szybciej. Kliknij, aby schować" % object["name"]
 	if object["kind"] in HYDRO:
 		return "%s (woda kręci nim bez opału): kliknij po więcej" % object["name"]
+	if object["kind"] == GEOTHERMAL:
+		return "%s (ciepło ziemi daje prąd bez opału): kliknij po więcej" % object["name"]
+	if object["kind"] == SPRINKLER:
+		return "%s (podlewa pola %d pól wokół): kliknij, aby schować" % [object["name"], REACHES[SPRINKLER]]
+	if object["kind"] == TREE_NURSERY:
+		return "%s (sadzonki dla leśników %d pól wokół): kliknij, aby schować" % [object["name"], REACHES[TREE_NURSERY]]
 	if object["kind"] in SOLAR:
 		return "%s (słońce daje prąd za dnia, bez opału): kliknij po więcej" % object["name"]
 	if object["kind"] in BATTERIES:
@@ -1948,13 +1995,13 @@ func _draw_marks() -> void:
 			_draw_ring(_cell_centre(_hovered), Color(0.96, 0.69, 0.25, 0.8))
 		if big and (FORESTERS.has(_placed[_hovered]["kind"]) or FARMSTEADS.has(_placed[_hovered]["kind"])):
 			_draw_forest(_placed[_hovered]["kind"], _hovered, int(_placed[_hovered].get("rotation", 0)))
-		elif _placed.has(_hovered) and _placed[_hovered]["kind"] == FEEDER:
-			_draw_reach(_hovered, FEEDER_REACH)
+		elif _placed.has(_hovered) and REACHES.has(_placed[_hovered]["kind"]):
+			_draw_reach(_anchor(_hovered), REACHES[_placed[_hovered]["kind"]])
 	if _placing != "" and ground.x >= 0:
 		if FORESTERS.has(_placing) or FARMSTEADS.has(_placing):
 			_draw_forest(_placing, ground, _place_rotation)
-		elif _placing == FEEDER:
-			_draw_reach(ground, FEEDER_REACH)
+		elif REACHES.has(_placing):
+			_draw_reach(ground, REACHES[_placing])
 		var tint := Color(0.56, 0.84, 0.35, 0.8) if _can_place(ground) else Color(1.0, 0.42, 0.35, 0.8)
 		_draw_footprint(_placing, ground, tint)
 		_draw_ring(_object_centre(_placing, ground), tint, _ring_size(_placing))
@@ -2138,15 +2185,17 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_Z and (event.ctrl_pressed or event.meta_pressed):
 		_undo_last()
 	elif event.is_action_pressed("cancel"):
-		if _plan_mode != "":
+		if ConfirmDialog.asking():
+			ConfirmDialog.close()
+		elif _plan_mode != "":
 			_stop_plan()
 		elif _placing != "":
 			_stop_placing()
 		elif _releasing != "":
 			_stop_releasing()
 		elif _gallery_window.visible or _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _achievements_window.visible \
-				or _mine_window.visible or _character_window.visible or _bank_window.visible or _using_window_open():
-			for window: GameWindow in [_gallery_window, _station_window, _inventory_window, _crafting_window, _research_window, _furnace_window, _machine_window, _forester_window, _farmstead_window, _canteen_window, _generator_window, _storage_window, _splitter_window, _filter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window, _bank_window]:
+				or _mine_window.visible or _character_window.visible or _bank_window.visible or _police_window.visible or _using_window_open():
+			for window: GameWindow in [_gallery_window, _station_window, _inventory_window, _crafting_window, _research_window, _furnace_window, _machine_window, _forester_window, _farmstead_window, _canteen_window, _generator_window, _storage_window, _splitter_window, _filter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window, _bank_window, _police_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -2209,6 +2258,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		Game.open_garage()
 	elif event.is_action_pressed("plan"):
 		_toggle_plan()
+	elif event.is_action_pressed("clear"):
+		_toggle_clear()
 	elif event.is_action_pressed("pipette"):
 		_update_hover()
 		_pipette(_hovered)
@@ -2265,7 +2316,7 @@ func _visitor_input(event: InputEvent) -> bool:
 				_walk_to(cell)
 		get_viewport().set_input_as_handled()
 		return true
-	for action: String in ["interact", "rotate", "plant", "upgrade_mine", "station", "market", "plan", "pipette"]:
+	for action: String in ["interact", "rotate", "plant", "upgrade_mine", "station", "market", "plan", "clear", "pipette"]:
 		if event.is_action_pressed(action):
 			_show_toast("To nie twoja działka: możesz tu tylko chodzić i oglądać.", UI.MUTED)
 			return true
@@ -3171,6 +3222,16 @@ func _place_object(cell: Vector2i) -> void:
 		_show_toast("%s stoi na działce: drzewa do %d pól wokół niej nigdy nie spłoną." % [object["name"], int(_plot.get("fires", {}).get("stationReach", 12))])
 	elif kind == FEEDER:
 		_show_toast("%s stoi na działce: wsyp paszę (albo postaw podajnik), a sam nakarmi głodne zwierzęta do %d pól wokół. Kliknij go, aby go napełnić." % [object["name"], FEEDER_REACH])
+	elif kind == AUTO_BARN:
+		_show_toast("%s stoi na działce: wsyp paszę, a nakarmi zwierzęta do %d pól wokół i sama zbierze, co dają. Wyjmiesz to ręcznie albo podajnikiem." % [object["name"], REACHES[AUTO_BARN]])
+	elif kind == SPRINKLER:
+		_show_toast("%s stoi na działce: uprawy do %d pól wokół rosną szybciej, a na stepie i pustyni można tam orać." % [object["name"], REACHES[SPRINKLER]])
+	elif kind == TREE_NURSERY:
+		_show_toast("%s stoi na działce: lasy leśników do %d pól od niej rosną o połowę szybciej." % [object["name"], REACHES[TREE_NURSERY]])
+	elif kind == GEOTHERMAL:
+		_show_toast("%s stoi na działce i daje prąd bez opału, dzień i noc. Postaw obok słup energetyczny." % object["name"])
+	elif kind == CHP_PLANT:
+		_show_toast("%s stoi na działce: dołóż opału i podłącz ją słupem, a na lodowcu ogrzeje też maszyny do %d pól wokół." % [object["name"], REACHES[CHP_PLANT]])
 	elif kind == BEEHIVE:
 		_show_toast("%s stoi na działce: pszczoły same robią miód i wosk, szybciej przy kwitnących lipach. Kliknij go, aby wybrać miód." % object["name"])
 	elif kind == REED_FENCE:
@@ -3228,7 +3289,7 @@ func _use_placed(cell: Vector2i) -> void:
 	elif object["kind"] == ResearchWindow.TABLE:
 		_research_window.open_at(object["id"])
 	elif object["kind"] in GENERATORS or object["kind"] in HYDRO or object["kind"] in SOLAR or object["kind"] in BATTERIES \
-			or object["kind"] in WIND or object["kind"] == HEATER:
+			or object["kind"] in WIND or object["kind"] == HEATER or object["kind"] == GEOTHERMAL:
 		_generator_window.open_at(_at, object["id"])
 		# Only generators that burn fuel take anything in.
 		if object["kind"] in GENERATORS:
@@ -3244,7 +3305,7 @@ func _use_placed(cell: Vector2i) -> void:
 		_shop_window.open_at(object["id"])
 	elif object["kind"] == BEEHIVE:
 		_hive_window.open_at(object["id"])
-	elif object["kind"] == FEEDER:
+	elif FEEDERS.has(object["kind"]):
 		_feeder_window.feeds = _feed
 		_feeder_window.set_items(_items)
 		_feeder_window.open_at(_at, object["id"])
@@ -3406,6 +3467,7 @@ func _toggle_plan() -> void:
 
 
 func _stop_plan() -> void:
+	ConfirmDialog.close()
 	_plan_mode = ""
 	_plan_corner = Vector2i(-1, -1)
 	_marks.queue_redraw()
@@ -3413,12 +3475,16 @@ func _stop_plan() -> void:
 
 
 func _plan_click(cell: Vector2i) -> void:
-	if _plan_mode == "copy":
+	if ConfirmDialog.asking():
+		return
+	if _plan_mode in ["copy", "clear"]:
 		if _plan_corner.x < 0:
 			_plan_corner = cell
 			_update_hint()
-		else:
+		elif _plan_mode == "copy":
 			_copy_plan(Rect2i(_plan_corner, Vector2i.ZERO).expand(cell))
+		else:
+			_ask_clear(Rect2i(_plan_corner, Vector2i.ZERO).expand(cell))
 	elif _plan_mode == "paste":
 		_paste_plan(cell)
 	elif _plan_mode == "sketch":
@@ -3456,6 +3522,117 @@ func _copy_plan(area: Rect2i) -> void:
 	_show_toast("Skopiowano: %d obiektów%s. Kliknij, gdzie postawić kopię." % [copied.size(),
 		" (bez %d, które stoją tylko w jednym miejscu)" % skipped if skipped > 0 else ""], UI.GOOD)
 	_update_hint()
+
+
+# --- Clearing an area ------------------------------------------------------------------------
+
+func _toggle_clear() -> void:
+	if _visitor:
+		_show_toast("Na cudzej działce niczego nie schowasz.", UI.ERROR)
+		return
+	if _plan_mode == "clear":
+		_stop_plan()
+		return
+	_stop_placing()
+	_set_planting(false)
+	_stop_releasing()
+	_stop_work()
+	_plan_mode = "clear"
+	_plan_corner = Vector2i(-1, -1)
+	_show_toast("Usuwanie obszaru: kliknij dwa przeciwne rogi prostokąta. Wszystko, co w nim stoi, wróci do ekwipunku.")
+	_update_hint()
+
+
+## The objects standing in the rectangle (both corners included): every one whose tile is inside it, once each.
+func _objects_in(area: Rect2i) -> Array[Dictionary]:
+	var found: Array[Dictionary] = []
+	var seen := {}
+	for cell: Vector2i in _placed:
+		var object: Dictionary = _placed[cell]
+		if seen.has(object["id"]) or not area.has_point(_anchor(cell)):
+			continue
+		seen[object["id"]] = true
+		found.append(object)
+	return found
+
+
+## Says what stands in the marked rectangle and asks before it all goes back into the inventory.
+func _ask_clear(area: Rect2i) -> void:
+	var corner := _plan_corner
+	area.size += Vector2i.ONE
+	var objects := _objects_in(area)
+	if objects.is_empty():
+		_plan_corner = Vector2i(-1, -1)
+		_show_toast("W zaznaczonym miejscu nic nie stoi.", UI.ERROR)
+		_update_hint()
+		return
+	if objects.size() > MAX_AREA:
+		_plan_corner = Vector2i(-1, -1)
+		_show_toast("Naraz schowasz najwyżej %d obiektów, a tu jest %d. Zaznacz mniejszy kawałek." % [MAX_AREA, objects.size()], UI.ERROR)
+		_update_hint()
+		return
+	var counts := {}
+	for object: Dictionary in objects:
+		counts[object["kind"]] = int(counts.get(object["kind"], 0)) + 1
+	var kinds: Array = counts.keys()
+	kinds.sort_custom(func(a: String, b: String) -> bool: return counts[a] > counts[b])
+	var lines: Array[String] = []
+	for kind: String in kinds.slice(0, 6):
+		lines.append("%s × %d" % [_item_name(kind), counts[kind]])
+	if kinds.size() > 6:
+		lines.append("i %d innych rodzajów" % (kinds.size() - 6))
+	var text := "%s.\n\nTo, co jest w środku (w skrzyniach, maszynach, na taśmach), też wróci do ekwipunku." % ", ".join(lines)
+	# A kind the inventory does not have yet needs a free tile; it still comes back without one, but then nothing new fits.
+	var have := {}
+	for stack: Dictionary in _items:
+		if int(stack["quantity"]) > 0:
+			have[stack["id"]] = true
+	var new_kinds := kinds.filter(func(kind: String) -> bool: return not have.has(kind)).size()
+	var free := maxi(0, _slots.slots - have.size())
+	if new_kinds > free:
+		text += "\n\nUwaga: w ekwipunku są tylko %d wolne miejsca, a to %d nowych rodzajów przedmiotów. Nic nie przepadnie, ale ekwipunek się przepełni i nic nowego do niego nie trafi, dopóki nie zrobisz miejsca." % [free, new_kinds]
+	_clear_to = Vector2i(area.position.x + area.end.x - 1 - corner.x, area.position.y + area.end.y - 1 - corner.y)
+	ConfirmDialog.ask(_hud, "Schować %d obiektów do ekwipunku?" % objects.size(), text, "Schowaj wszystko", func() -> void: _clear_area(area))
+
+
+## Takes everything of the player's off the rectangle in one go.
+func _clear_area(area: Rect2i) -> void:
+	_plan_corner = Vector2i(-1, -1)
+	_update_hint()
+	var reply := await Net.request("plot.pickupArea", {"x": _at.x, "y": _at.y,
+		"fromX": area.position.x, "fromY": area.position.y, "toX": area.end.x - 1, "toY": area.end.y - 1})
+	if reply["type"] != "plot.pickedUpArea":
+		_show_error(reply)
+		return
+	var taken: Array = reply["payload"]["objects"]
+	var left := int(reply["payload"]["left"])
+	var forester := false
+	var farm := false
+	var picked: Array[Dictionary] = []
+	for object: Dictionary in taken:
+		var id := str(object["id"])
+		forester = forester or _foresters.has(id)
+		farm = farm or _farmsteads.has(id)
+		_forget_placed(id)
+		picked.append(object)
+	_placed_changed()
+	_hide_placed_windows()
+	_update_market_button()
+	_using = Vector2i(-1, -1)
+	# Ctrl+Z puts it all back up, as long as it fits in one building plan.
+	if not picked.is_empty() and picked.size() <= MAX_PLAN:
+		_remember({"picked": picked})
+	if taken.is_empty():
+		_show_toast("Nic stąd nie schowano%s." % (": to, co tu stoi, postawił ktoś inny albo zasypał je śnieg" if left > 0 else ""), UI.ERROR)
+	else:
+		_show_toast("Schowano do ekwipunku: %d obiektów%s." % [taken.size(),
+			" (%d zostało: postawił je ktoś inny albo zasypał je śnieg)" % left if left > 0 else ""], UI.GOOD)
+	_reload_inventory()
+	_poll_logistics()
+	if forester:
+		_poll_forestry()
+	if farm:
+		_poll_farmsteads()
 
 
 ## The plan's objects as they would stand with its top left tile on `corner`.
@@ -3525,13 +3702,21 @@ func _paste_plan(corner: Vector2i) -> void:
 
 ## Ghost of the copy under the mouse in green where it fits, red where it does not; in copy mode, the marked rectangle.
 func _draw_plan(ground: Vector2i) -> void:
-	if _plan_mode == "copy" and ground.x >= 0:
-		var from := _plan_corner if _plan_corner.x >= 0 else ground
-		var area := Rect2i(from, Vector2i.ZERO).expand(ground)
+	if _plan_mode in ["copy", "clear"] and ground.x >= 0:
+		# While the question is asked, the rectangle stays where it was marked.
+		var to: Vector2i = _clear_to if _plan_mode == "clear" and ConfirmDialog.asking() else ground
+		var from := _plan_corner if _plan_corner.x >= 0 else to
+		var area := Rect2i(from, Vector2i.ZERO).expand(to)
 		area.size += Vector2i.ONE
+		var tint := Color(0.36, 0.7, 0.9) if _plan_mode == "copy" else Color(1.0, 0.42, 0.35)
 		var rect := Rect2(Vector2(area.position) * TILE, Vector2(area.size) * TILE)
-		_marks.draw_rect(rect, Color(0.36, 0.7, 0.9, 0.12))
-		_marks.draw_rect(rect, Color(0.36, 0.7, 0.9, 0.85), false, 2.0)
+		_marks.draw_rect(rect, Color(tint, 0.12))
+		_marks.draw_rect(rect, Color(tint, 0.85), false, 2.0)
+		if _plan_mode == "clear":
+			# What would go: every object standing in the rectangle, outlined.
+			for object: Dictionary in _objects_in(area):
+				for at in _footprint(object["kind"], Vector2i(object["tileX"], object["tileY"])):
+					_marks.draw_rect(Rect2(Vector2(at) * TILE, TILE).grow(-2.0), Color(tint, 0.25))
 	elif _plan_mode == "sketch":
 		_draw_sketch(ground)
 	elif _plan_mode == "paste" and ground.x >= 0:
@@ -4599,7 +4784,7 @@ func _process(delta: float) -> void:
 		_poll_forestry()
 	if not _visitor and (_has_farmsteads() or not _farm_fields.is_empty()) and Time.get_ticks_msec() >= _next_farm_poll:
 		_poll_farmsteads()
-	if not _visitor and _kinds.has(FEEDER) and not _animals.is_empty() and Time.get_ticks_msec() >= _next_animals_poll:
+	if not _visitor and (_kinds.has(FEEDER) or _kinds.has(AUTO_BARN)) and not _animals.is_empty() and Time.get_ticks_msec() >= _next_animals_poll:
 		_poll_animals()
 	if not _visitor:
 		_poll_station()
@@ -5023,6 +5208,7 @@ func _build_hud() -> void:
 	bar.add_child(_market_button)
 	bar.add_child(UI.toolbar_button("company", "Spółka  [K]", func() -> void: _company_window.toggle()))
 	bar.add_child(UI.toolbar_button("bank", "Banki  [B]\nKonta, wpłaty, wypłaty i przelewy", func() -> void: _bank_window.toggle()))
+	bar.add_child(UI.toolbar_button("police", "Policja\nPrawo twojego kraju, służba, sąd i paser", func() -> void: _police_window.toggle()))
 	_city_button = UI.toolbar_button("city", "Miasto\nPotrzeby, rozwój, śmieci, usługi i ratusz", _toggle_city)
 	_city_button.visible = false
 	bar.add_child(_city_button)
@@ -5046,6 +5232,8 @@ func _build_hud() -> void:
 	bar.add_child(UI.toolbar_button("stats", "Statystyki  [L]", func() -> void: _stats_window.toggle()))
 	_plan_button = UI.toolbar_button("blueprint", "Plany budowy  [V]\nZaznacz kawałek fabryki i postaw jego kopię gdzie indziej", _toggle_plan)
 	bar.add_child(_plan_button)
+	_clear_button = UI.toolbar_button("clear", "Usuń obszar  [X]\nZaznacz prostokąt i schowaj wszystko, co w nim stoi, do ekwipunku", _toggle_clear)
+	bar.add_child(_clear_button)
 	bar.add_child(UI.toolbar_button("sketchbook", "Plany i szkicownik\nZapisane plany budowy i rysowanie fabryki bez przedmiotów", _toggle_plans_window))
 	_undo_button = UI.toolbar_button("undo", "Cofnij  [Ctrl+Z]\nCofa ostatnie postawienie albo schowanie", _undo_last)
 	_undo_button.visible = false
@@ -5053,7 +5241,7 @@ func _build_hud() -> void:
 	bar.add_child(UI.toolbar_button("world_map", "Mapa świata  [N]", Game.open_world_map))
 	bar.add_child(UI.toolbar_button("gallery", "Galeria fabryk\nNajczęściej lubiane działki: odwiedź je", func() -> void: _gallery_window.toggle()))
 	bar.add_child(UI.toolbar_button("chat", "Czat  [Enter]\nDo graczy na działce albo do wszystkich", func() -> void: _chat.toggle()))
-	bar.add_child(UI.toolbar_button("achievements", "Osiągnięcia  [O]", func() -> void: _achievements_window.toggle()))
+	bar.add_child(UI.toolbar_button("achievements", "Osiągnięcia, rankingi i rywalizacja  [O]", func() -> void: _achievements_window.toggle()))
 	bar.add_child(UI.toolbar_button("garage", "Garaż  [G]", Game.open_garage))
 	_hud.add_child(bar)
 	bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 10)
@@ -5193,7 +5381,8 @@ func _update_hint() -> void:
 		"tool_steel_pickaxe": "Kliknij kopalnię albo skałę: kilof stalowy kopie o 50% szybciej niż żelazny.",
 		"tool_meteorite_pickaxe": "Kliknij kopalnię, skałę albo lód: kilof z meteorytu kopie dwa razy szybciej niż żelazny.",
 		"tool_shovel": "Kliknij zaspę, aby ją odkopać łopatą." if _biome() == GLACIER else "Kliknij wydmę, aby ją przekopać łopatą.",
-		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile else "Motyką orze się tylko żyzne gleby.",
+		"tool_hoe": "Kliknij wolną ziemię, aby ją zaorać motyką, a pole, aby zasiać." if _fertile \
+			else ("Motyką zaorzesz tu ziemię tylko tam, gdzie podlewa zraszacz." if _irrigable else "Motyką orze się tylko żyzne gleby."),
 		"tool_shears": "Kliknij owcę, aby ją ostrzyc nożycami, albo inne zwierzę, aby je nakarmić." if _pasture else "Na tej działce nie da się trzymać zwierząt.",
 	}
 	if _visitor:
@@ -5206,6 +5395,10 @@ func _update_hint() -> void:
 		_hint.text = ("Szkicownik: kliknij pole, aby narysować %s %s; kliknięcie rysunku go zmazuje. [R] obraca, Esc kończy. Nic tu nie powstaje naprawdę." % [
 			ItemInfo.name_of(_sketch_kind).to_lower(), DIRECTION_ARROWS[_sketch_rotation]]) if _sketch_kind != "" \
 			else "Szkicownik: wybierz w oknie, co rysować. Esc kończy."
+		return
+	if _plan_mode == "clear":
+		_hint.text = "Usuwanie obszaru: %s Esc kończy." % ("kliknij pierwszy róg prostokąta, z którego wszystko schować do ekwipunku." if _plan_corner.x < 0
+			else "kliknij drugi, przeciwny róg.")
 		return
 	if _plan_mode == "paste":
 		_hint.text = "Plan budowy (%d obiektów): kliknij, gdzie postawić kopię; lewy górny róg jest pod myszą. [V] kopiuje inny kawałek, Esc kończy." % _plan.size()
@@ -5504,9 +5697,17 @@ func _build_windows() -> void:
 	_bank_window.balance_changed.connect(_reload_balance)
 	_bank_window.failed.connect(_show_error)
 	layer.add_child(_bank_window)
+	_police_window = PoliceWindow.new()
+	_police_window.dock_right()
+	_police_window.balance_changed.connect(_reload_balance)
+	_police_window.inventory_changed.connect(_reload_inventory)
+	_police_window.failed.connect(_show_error)
+	layer.add_child(_police_window)
 	layer.add_child(_city_window)
 	_achievements_window = AchievementsWindow.new()
 	_achievements_window.failed.connect(_show_error)
+	_achievements_window.toast.connect(func(text: String) -> void: _show_toast(text, UI.GOLD))
+	_achievements_window.inventory_changed.connect(_reload_inventory)
 	layer.add_child(_achievements_window)
 	_character_window = CharacterWindow.new()
 	_character_window.position = Vector2(280, 60)
@@ -5612,6 +5813,7 @@ func _load() -> void:
 		_subtitle.text += "  ·  zwiedzanie"
 		_plant_button.visible = false
 		_plan_button.visible = false
+		_clear_button.visible = false
 		_show_toast("Działka publiczna: możesz po niej chodzić i oglądać.", UI.MUTED)
 	_update_hint()
 	_loading.queue_free()

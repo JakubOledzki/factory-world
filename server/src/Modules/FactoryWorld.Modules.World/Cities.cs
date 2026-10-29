@@ -131,6 +131,9 @@ public static class CityRules
         // Husbandry and gastronomy: cheese and butter from the dairy, meat and the fine dishes of banquets.
         (Items.Cheese, 0, 20), (Items.Butter, 0, 20), (Items.Meat, 1, 30), (Items.WorkersLunch, 1, 15), (Items.LeatherBoots, 2, 4),
         (Items.RoastBeef, 2, 10), (Items.Cheesecake, 2, 10),
+        // The raw-material branches grown further: sugar and donuts, cloth, linen and rope, silver tableware and jewellery.
+        (Items.Sugar, 0, 30), (Items.Donuts, 1, 15), (Items.Cloth, 1, 15), (Items.Linen, 1, 15), (Items.Rope, 1, 20),
+        (Items.Silverware, 2, 4), (Items.Jewelry, 3, 2),
     ];
 
     /// <summary>A town pays this many times the trader's price for what it wants, and more at each level.</summary>
@@ -243,6 +246,17 @@ public static class CityRules
 
     public const double CheapPlots = 0.8;
 
+    /// <summary>The chief supplier: who delivered the most to a town in a week (at least <see cref="SupplierMinCents"/>) holds the
+    /// title the next week, and the town pays them <see cref="SupplierBonusPercent"/> more for what it wants.</summary>
+    public const int SupplierBonusPercent = 5;
+
+    public const long SupplierMinCents = 500_00;
+
+    /// <summary>How many of this week's best suppliers the town window lists.</summary>
+    public const int SupplierRaceShown = 3;
+
+    public static long SupplierPriceCents(long priceCents) => priceCents * (100 + SupplierBonusPercent) / 100;
+
     /// <summary>Plots between two, around the globe's seam too.</summary>
     public static double Distance(int width, int x, int y, int toX, int toY)
     {
@@ -350,9 +364,12 @@ public sealed class TownPolicyRow
     public int TaxPercent { get; set; }
 
     public string? Bonus { get; set; }
+
+    /// <summary>Two thirds of the townsfolk recalled the mayor before the week was out.</summary>
+    public bool Recalled { get; set; }
 }
 
-public sealed record TownPolicy(Guid? Mayor, int TaxPercent, string? Bonus);
+public sealed record TownPolicy(Guid? Mayor, int TaxPercent, string? Bonus, bool Recalled = false);
 
 /// <summary>A town's festival, which the mayor holds with fine dishes: it wants goods dearer until <see cref="Until"/>.</summary>
 public sealed class TownFestivalRow
@@ -364,9 +381,10 @@ public sealed class TownFestivalRow
     public DateTimeOffset Until { get; set; }
 }
 
-public sealed class CityService(
+public sealed partial class CityService(
     GameDb db, WorldMap map, Towns towns, PlotService plots, IInventory inventory, IWallet wallet, ICharacterProgress progress,
-    ICharacterNames names, IMarketPrices prices, BeachService beach, TimeProvider time) : IMachineContents
+    ICharacterNames names, IMarketPrices prices, BeachService beach, IAnnouncements announcements, Countries countries,
+    INationalPolicy nation, IServiceProvider services, TimeProvider time) : IMachineContents
 {
     /// <summary>The town of a city plot; fails for any other plot.</summary>
     public Town RequireTown(int x, int y)
@@ -412,32 +430,39 @@ public sealed class CityService(
             mayor = await count.ExecuteScalarAsync(cancellationToken) as Guid?;
         }
 
-        await using (var insert = await db.CommandAsync(
-            """
-            INSERT INTO world.town_policies (town_x, town_y, week, mayor_id, tax_percent, bonus) VALUES (@x, @y, @week, @mayor, 0, NULL)
-            ON CONFLICT DO NOTHING
-            """, cancellationToken))
+        // The first look in a new week also counts the votes of the weeks before for those who stood, so their deposits are settled.
+        return await db.InTransactionAsync(async () =>
         {
-            insert.Parameters.AddWithValue("x", town.X);
-            insert.Parameters.AddWithValue("y", town.Y);
-            insert.Parameters.AddWithValue("week", week);
-            insert.Parameters.AddWithValue("mayor", (object?)mayor ?? DBNull.Value);
-            await insert.ExecuteNonQueryAsync(cancellationToken);
-        }
+            await using (var insert = await db.CommandAsync(
+                """
+                INSERT INTO world.town_policies (town_x, town_y, week, mayor_id, tax_percent, bonus, recalled) VALUES (@x, @y, @week, @mayor, 0, NULL, FALSE)
+                ON CONFLICT DO NOTHING
+                """, cancellationToken))
+            {
+                insert.Parameters.AddWithValue("x", town.X);
+                insert.Parameters.AddWithValue("y", town.Y);
+                insert.Parameters.AddWithValue("week", week);
+                insert.Parameters.AddWithValue("mayor", (object?)mayor ?? DBNull.Value);
+                if (await insert.ExecuteNonQueryAsync(cancellationToken) > 0)
+                {
+                    await SettleCandidatesAsync(town, week, cancellationToken);
+                }
+            }
 
-        return (await ReadPolicyAsync(town, week, cancellationToken))!;
+            return (await ReadPolicyAsync(town, week, cancellationToken))!;
+        }, cancellationToken);
     }
 
     private async Task<TownPolicy?> ReadPolicyAsync(Town town, int week, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync(
-            "SELECT mayor_id, tax_percent, bonus FROM world.town_policies WHERE town_x = @x AND town_y = @y AND week = @week", cancellationToken);
+            "SELECT mayor_id, tax_percent, bonus, recalled FROM world.town_policies WHERE town_x = @x AND town_y = @y AND week = @week", cancellationToken);
         command.Parameters.AddWithValue("x", town.X);
         command.Parameters.AddWithValue("y", town.Y);
         command.Parameters.AddWithValue("week", week);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken)
-            ? new TownPolicy(reader.IsDBNull(0) ? null : reader.GetGuid(0), reader.GetInt32(1), reader.IsDBNull(2) ? null : reader.GetString(2))
+            ? new TownPolicy(reader.IsDBNull(0) ? null : reader.GetGuid(0), reader.GetInt32(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetBoolean(3))
             : null;
     }
 
@@ -448,9 +473,10 @@ public sealed class CityService(
         var day = CityRules.DayOf(time.GetUtcNow());
         var delivered = await DayDeliveriesAsync(town, day, cancellationToken);
         var festival = await FestivalUntilAsync(town, cancellationToken) > time.GetUtcNow();
+        var hall = 1 + TownHallRules.MarketHallPremium * await InvestmentAsync(town, "market_hall", cancellationToken);
         return CityRules.Needs(town, level, day, item => prices.BuysCents(item) is not null)
             .Select(n => (n.Item, n.Wanted, delivered.GetValueOrDefault(n.Item),
-                CityRules.NeedPriceCents(prices.BuysCents(n.Item)!.Value, level, policy.Bonus == "demand", festival)))
+                (long)Math.Round(CityRules.NeedPriceCents(prices.BuysCents(n.Item)!.Value, level, policy.Bonus == "demand", festival) * hall)))
             .ToList();
     }
 
@@ -550,7 +576,7 @@ public sealed class CityService(
 
     /// <summary>Delivers goods the town wants, from the inventory or from the station of the city plot: the town pays for as many as it still
     /// wants today, grows on them, and the player gets experience.</summary>
-    public Task<(long Quantity, long Cents, XpGain Xp, int Level)> DeliverAsync(
+    public Task<(long Quantity, long Cents, long Subsidy, XpGain Xp, int Level)> DeliverAsync(
         Guid player, int x, int y, string item, long quantity, bool fromStation, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
@@ -585,26 +611,18 @@ public sealed class CityService(
                 await inventory.RemoveAsync(player, item, taken, cancellationToken);
             }
 
-            var cents = taken * need.PriceCents;
+            // The town's chief supplier of last week gets a little more for everything it wants.
+            var price = await SupplierAsync(town, CityRules.WeekOf(time.GetUtcNow()), cancellationToken) == player
+                ? CityRules.SupplierPriceCents(need.PriceCents)
+                : need.PriceCents;
+            var cents = taken * price;
             await AddDayDeliveryAsync(town, CityRules.DayOf(time.GetUtcNow()), item, taken, cancellationToken);
-            await using (var grow = await db.CommandAsync(
-                """
-                INSERT INTO world.town_progress (town_x, town_y, delivered_cents) VALUES (@x, @y, @cents)
-                ON CONFLICT (town_x, town_y) DO UPDATE SET delivered_cents = world.town_progress.delivered_cents + excluded.delivered_cents;
-                INSERT INTO world.town_contributions (town_x, town_y, player_id, delivered_cents) VALUES (@x, @y, @player, @cents)
-                ON CONFLICT (town_x, town_y, player_id) DO UPDATE SET delivered_cents = world.town_contributions.delivered_cents + excluded.delivered_cents
-                """, cancellationToken))
-            {
-                grow.Parameters.AddWithValue("x", town.X);
-                grow.Parameters.AddWithValue("y", town.Y);
-                grow.Parameters.AddWithValue("cents", cents);
-                grow.Parameters.AddWithValue("player", player);
-                await grow.ExecuteNonQueryAsync(cancellationToken);
-            }
-
+            await GrowAsync(town, player, cents, cancellationToken);
             await wallet.CreditAsync(player, cents, $"town {town.Name}: {taken} {item}", cancellationToken);
             var xp = await progress.AddXpAsync(player, Math.Max(1, cents / 1000), cancellationToken);
-            return (taken, cents, xp, CityRules.Level(await DeliveredAsync(town, cancellationToken)));
+            // The country's subsidy for the goods, if its government pays one, from its treasury.
+            var subsidy = countries.At(x, y) is { } country ? await nation.SubsidizeAsync(player, country.Code, item, cents, cancellationToken) : 0;
+            return (taken, cents, subsidy, xp, CityRules.Level(await DeliveredAsync(town, cancellationToken)));
         }, cancellationToken);
 
     /// <summary>Takes rubbish away from the town into the city plot's station, for a fee the town pays; the town has only so much a day.</summary>
@@ -631,6 +649,14 @@ public sealed class CityService(
             await AddDayDeliveryAsync(town, day, Items.Trash, taken, cancellationToken);
             await StationStock.ChangeAsync(db, x, y, Items.Trash, taken, cancellationToken);
             var cents = taken * CityRules.TrashFeeCents;
+            // With the recycling ordinance the treasury adds half again, as far as it has money.
+            if (await InForceAsync(town, "recycling", cancellationToken))
+            {
+                var extra = Math.Min(cents * TownHallRules.RecyclingPercent / 100, await TreasuryAsync(town, cancellationToken));
+                await ChangeTreasuryAsync(town, -extra, "program recyklingu", cancellationToken);
+                cents += extra;
+            }
+
             await wallet.CreditAsync(player, cents, $"town {town.Name}: {taken} rubbish taken away", cancellationToken);
             return (taken, cents);
         }, cancellationToken);
@@ -665,7 +691,8 @@ public sealed class CityService(
         return await command.ExecuteScalarAsync(cancellationToken) is int count ? count : 0;
     }
 
-    /// <summary>Pays an owner what came in, less the mayor's tax, which goes to the mayor (unless the mayor is the one who paid).</summary>
+    /// <summary>Pays an owner what came in, less the mayor's tax (unless the mayor is the one who paid or got paid), which goes into
+    /// the treasury, all but the mayor's pay.</summary>
     private async Task PayAsync(Town town, Guid owner, Guid? payer, long cents, string reason, CancellationToken cancellationToken)
     {
         if (cents <= 0)
@@ -676,10 +703,13 @@ public sealed class CityService(
         var policy = await PolicyAsync(town, cancellationToken);
         var tax = policy.Mayor is { } mayor && mayor != owner && mayor != payer ? cents * policy.TaxPercent / 100 : 0;
         await wallet.CreditAsync(owner, cents - tax, reason, cancellationToken);
-        if (tax > 0)
+        var pay = tax * TownHallRules.MayorSharePercent / 100;
+        if (pay > 0)
         {
-            await wallet.CreditAsync(policy.Mayor!.Value, tax, $"tax of {town.Name}: {reason}", cancellationToken);
+            await wallet.CreditAsync(policy.Mayor!.Value, pay, $"mayor's pay in {town.Name}: {reason}", cancellationToken);
         }
+
+        await ChangeTreasuryAsync(town, tax - pay, $"podatek: {reason}", cancellationToken);
     }
 
     /// <summary>Buys an office's service: the buyer pays its owner (and the mayor's tax) and gets what it makes.</summary>
@@ -705,9 +735,10 @@ public sealed class CityService(
                 await lockRow.ExecuteNonQueryAsync(cancellationToken);
             }
 
-            if (await SalesTodayAsync(id, cancellationToken) >= CityRules.ServiceSalesPerDay)
+            var limit = await ServiceSalesPerDayAsync(town, cancellationToken);
+            if (await SalesTodayAsync(id, cancellationToken) >= limit)
             {
-                throw new GameException("service_busy", $"An office serves {CityRules.ServiceSalesPerDay} customers a day; come back tomorrow.");
+                throw new GameException("service_busy", $"An office serves {limit} customers a day; come back tomorrow.");
             }
 
             var (item, quantity, price) = CityRules.Services[office.Kind];
@@ -727,6 +758,9 @@ public sealed class CityService(
 
             return (item, quantity, price);
         }, cancellationToken);
+
+    private async Task<int> ServiceSalesPerDayAsync(Town town, CancellationToken cancellationToken) =>
+        await InForceAsync(town, "busy_offices", cancellationToken) ? TownHallRules.BusyOfficeSales : CityRules.ServiceSalesPerDay;
 
     /// <summary>The owners of plots in a town: who may vote and be elected there.</summary>
     private async Task<IReadOnlyList<Guid>> TownsfolkAsync(Town town, CancellationToken cancellationToken)
@@ -851,6 +885,7 @@ public sealed class CityService(
         }
 
         var offices = await ServicesOfAsync(town, cancellationToken);
+        var salesLimit = await ServiceSalesPerDayAsync(town, cancellationToken);
         var sales = new Dictionary<Guid, int>();
         foreach (var office in offices)
         {
@@ -878,11 +913,16 @@ public sealed class CityService(
             }
         }
 
+        var week = CityRules.WeekOf(now);
+        var supplier = await SupplierAsync(town, week, cancellationToken);
+        var race = await WeekSuppliersAsync(town, week, CityRules.SupplierRaceShown, cancellationToken);
+        var myWeek = await WeekDeliveredAsync(town, week, player, cancellationToken);
+        var tender = await TenderViewAsync(town, level, player, folk.Contains(player), cancellationToken);
         var named = await names.NamesAsync(
-            contributors.Select(c => c.Id).Concat(offices.Select(o => o.Owner)).Concat(folk).Concat(policy.Mayor is { } m ? [m] : []).Distinct().ToList(),
+            contributors.Select(c => c.Id).Concat(offices.Select(o => o.Owner)).Concat(folk).Concat(policy.Mayor is { } m ? [m] : [])
+                .Concat(supplier is { } s ? [s] : []).Concat(race.Select(r => r.Player)).Concat(tender.People).Distinct().ToList(),
             cancellationToken);
         string Name(Guid id) => named.GetValueOrDefault(id, "?");
-        var week = CityRules.WeekOf(now);
         return new
         {
             town = new
@@ -909,6 +949,18 @@ public sealed class CityService(
             }),
             contributors = contributors.Select(c => new { name = Name(c.Id), cents = c.Cents, mine = c.Id == player }),
             myCents = mine,
+            // The chief supplier: who delivered the most last week holds the title this week and gets supplierPercent more for deliveries.
+            supplier = new
+            {
+                name = supplier is { } chief ? Name(chief) : null,
+                isMe = supplier == player,
+                percent = CityRules.SupplierBonusPercent,
+                minCents = CityRules.SupplierMinCents,
+                weekEndsAt = CityRules.WeekStart(week + 1).ToUnixTimeMilliseconds(),
+                race = race.Select((r, i) => new { place = i + 1, name = Name(r.Player), cents = r.Cents, mine = r.Player == player }),
+                myCents = myWeek,
+            },
+            tender = tender.Json(Name),
             trash = new
             {
                 perDay = CityRules.TrashPerDay(town, level),
@@ -926,7 +978,7 @@ public sealed class CityService(
                 itemName = Items.Names[CityRules.Services[o.Kind].Item],
                 quantity = CityRules.Services[o.Kind].Quantity,
                 priceCents = CityRules.Services[o.Kind].PriceCents,
-                left = CityRules.ServiceSalesPerDay - sales[o.Id],
+                left = salesLimit - sales[o.Id],
             }),
             hall = new
             {
@@ -947,6 +999,7 @@ public sealed class CityService(
                 myVote = myVote is { } v ? Name(v) : null,
                 candidates = folk.Select(f => new { name = Name(f), votes = votes.GetValueOrDefault(f), me = f == player })
                     .OrderByDescending(c => c.votes).ThenBy(c => c.name),
+                politics = await HallPoliticsAsync(player, town, policy, folk, votes, cancellationToken),
             },
         };
     }
@@ -1004,7 +1057,9 @@ public sealed class CityService(
         var town = towns.Of(x, y);
         var level = CityRules.Level(await DeliveredAsync(town, cancellationToken));
         var shoppers = (await PolicyAsync(town, cancellationToken)).Bonus == "shoppers";
-        return CityRules.Customers(town, level, CityRules.Distance(map.Width, x, y, town.X, town.Y), shoppers);
+        var hall = (1 + TownHallRules.ParkCustomers * await InvestmentAsync(town, "park", cancellationToken))
+            * (await InForceAsync(town, "late_shops", cancellationToken) ? TownHallRules.LateShops : 1);
+        return CityRules.Customers(town, level, CityRules.Distance(map.Width, x, y, town.X, town.Y), shoppers) * hall;
     }
 
     /// <summary>Works out what the townspeople bought in the shop since it was last looked at: each customer picks one of its
@@ -1211,15 +1266,17 @@ public sealed class CityService(
 
     // --- What cities change elsewhere -----------------------------------------------------------------
 
-    /// <summary>What rail fees from a plot are multiplied by: less in a city, with a freight terminal and with the mayor's bonus.</summary>
+    /// <summary>What rail fees from a plot are multiplied by: less with the country's railway, in a city, with a freight terminal,
+    /// the town's station and the mayor's bonus.</summary>
     public async Task<double> RailFactorAsync(int x, int y, CancellationToken cancellationToken)
     {
+        var national = countries.At(x, y) is { } country ? await nation.RailFactorAsync(country.Code, cancellationToken) : 1;
         if (TownOf(x, y) is not { } town)
         {
-            return 1;
+            return national;
         }
 
-        var factor = CityRules.CityRail;
+        var factor = national * CityRules.CityRail * (1 - TownHallRules.StationRail * await InvestmentAsync(town, "station", cancellationToken));
         if (await beach.HasAsync(x, y, Items.FreightTerminal, 0, cancellationToken))
         {
             factor *= CityRules.TerminalRail;
@@ -1236,9 +1293,12 @@ public sealed class CityService(
     public async Task<int> MaxRoutesAsync(int x, int y, CancellationToken cancellationToken) =>
         TownOf(x, y) is not null && await beach.HasAsync(x, y, Items.FreightTerminal, 0, cancellationToken) ? CityRules.TerminalRoutes : RailRules.MaxRoutes;
 
-    /// <summary>What a city plot's price is multiplied by: less with the mayor's "plots" bonus.</summary>
+    /// <summary>What a city plot's price is multiplied by: less with the mayor's "plots" bonus and with the settlers' ordinance.</summary>
     public async Task<double> PlotPriceFactorAsync(int x, int y, CancellationToken cancellationToken) =>
-        TownOf(x, y) is { } town && (await PolicyAsync(town, cancellationToken)).Bonus == "plots" ? CityRules.CheapPlots : 1;
+        TownOf(x, y) is { } town
+            ? ((await PolicyAsync(town, cancellationToken)).Bonus == "plots" ? CityRules.CheapPlots : 1)
+                * (await InForceAsync(town, "settlers", cancellationToken) ? TownHallRules.SettlersPlots : 1)
+            : 1;
 }
 
 public sealed record CityRequest(int X, int Y);
@@ -1287,8 +1347,8 @@ public sealed class DeliverToCityHandler(IServiceScopeFactory scopes) : CityHand
     protected override async Task<object?> RunAsync(CityService cities, Guid player, JsonElement? payload, CancellationToken cancellationToken)
     {
         var r = Payload.Read<DeliverRequest>(payload);
-        var (quantity, cents, xp, level) = await cities.DeliverAsync(player, r.X, r.Y, r.Item ?? "", r.Quantity, r.FromStation, cancellationToken);
-        return new { item = r.Item, quantity, cents, level, xp = new { xp = xp.Xp, level = xp.Level, leveledUp = xp.LeveledUp } };
+        var (quantity, cents, subsidy, xp, level) = await cities.DeliverAsync(player, r.X, r.Y, r.Item ?? "", r.Quantity, r.FromStation, cancellationToken);
+        return new { item = r.Item, quantity, cents, subsidyCents = subsidy, level, xp = new { xp = xp.Xp, level = xp.Level, leveledUp = xp.LeveledUp } };
     }
 }
 

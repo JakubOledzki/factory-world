@@ -1,6 +1,7 @@
 extends Control
-## The world map: the Earth in plots of 5 × 5 km, coloured by biome, with town names. Drag to move
-## it, scroll or pinch to zoom, click a plot to see its biome, owner and price, and buy it.
+## The world map: the Earth in plots of 5 × 5 km, coloured by biome, with the borders of the countries and
+## town names. Drag to move it, scroll or pinch to zoom, click a plot to see its biome, country, owner and
+## price, and buy it. The countries' governments open from here (CountryWindow).
 
 ## Keyboard actions of this screen: name and keys.
 const ACTIONS := {
@@ -23,6 +24,10 @@ const PAN_SPEED := 700.0
 const CLICK_SLOP := 6.0
 ## At most this many town names on screen at once.
 const MAX_LABELS := 160
+## Country names show when the country covers at least this many square pixels of the screen, and below
+## this zoom (closer in, the towns say where you are).
+const COUNTRY_LABEL_AREA := 2500.0
+const COUNTRY_LABEL_ZOOM := 6.0
 const MINE := Color("#f5b041")
 const OTHERS := Color("#d4553f")
 ## The exclamation mark over a bot's plot when it asks players for help.
@@ -85,6 +90,7 @@ var _plot_box: VBoxContainer
 var _buy: Button
 var _plot := {}
 var _confirming := false
+var _country_window: CountryWindow
 
 
 func _ready() -> void:
@@ -141,6 +147,7 @@ func _build_map() -> void:
 		material.set_shader_parameter("colors", colors)
 		material.set_shader_parameter("strip_size", Vector2(columns, _data.height))
 		material.set_shader_parameter("strip_from", part * strip)
+		material.set_shader_parameter("countries", _data.country_texture(part * strip, columns))
 		_materials.append(material)
 		for copy in [-1, 0, 1]:
 			var sprite := Sprite2D.new()
@@ -313,6 +320,9 @@ func _hover(screen: Vector2) -> void:
 	var town := _data.nearest_town(plot)
 	if town >= 0:
 		parts.append("okolice: %s" % _data.town_names[town])
+	var country := _data.country(plot)
+	if country >= 0:
+		parts.append(_data.country_names[country])
 	if _owned.has(plot):
 		parts.append("Twoja działka" if _owned[plot] else "działka zajęta")
 	_status.text = "  ·  ".join(parts)
@@ -353,6 +363,7 @@ func _draw_overlay() -> void:
 			_overlay.draw_arc(centre, 9.0, 0.0, TAU, 24, Color.BLACK, 4.0)
 			_overlay.draw_arc(centre, 9.0, 0.0, TAU, 24, UI.GOLD, 2.0)
 
+	_draw_countries()
 	_draw_towns()
 	_draw_scale()
 
@@ -374,6 +385,39 @@ func _draw_pin(at: Vector2, color: Color) -> void:
 	_overlay.draw_colored_polygon(points, color)
 	points.append(points[0])
 	_overlay.draw_polyline(points, Color.BLACK, 1.5)
+
+
+## Country names in wide pale letters, where the country is big enough on the screen to hold one.
+func _draw_countries() -> void:
+	if _zoom >= COUNTRY_LABEL_ZOOM:
+		return
+	var font := UI.bold()
+	var screen := Rect2(Vector2.ZERO, size)
+	var drawn: Array[Rect2] = []
+	var order := range(_data.country_codes.size())
+	order.sort_custom(func(a: int, b: int) -> bool: return _data.country_plots[a] > _data.country_plots[b])
+	for i: int in order:
+		var area := _data.country_plots[i] * _zoom * _zoom
+		if area < COUNTRY_LABEL_AREA:
+			break
+		var at := _to_screen(_data.country_labels[i] + Vector2(0.5, 0.5))
+		if not screen.has_point(at):
+			continue
+		var name := _data.country_names[i].to_upper()
+		var font_size := clampi(int(sqrt(area) / 14.0), 11, 22)
+		var text_size := font.get_string_size(name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+		var box := Rect2(at - text_size / 2.0, text_size)
+		var clear := true
+		for other in drawn:
+			if other.intersects(box):
+				clear = false
+				break
+		if not clear:
+			continue
+		drawn.append(box)
+		var baseline := at + Vector2(-text_size.x / 2.0, font.get_ascent(font_size) - text_size.y / 2.0)
+		_overlay.draw_string_outline(font, baseline, name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, 4, Color(0, 0, 0, 0.6))
+		_overlay.draw_string(font, baseline, name, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(0.96, 0.88, 0.66, 0.75))
 
 
 ## Town names, biggest first, skipping any that would cover one already drawn.
@@ -469,6 +513,9 @@ func _build_hud() -> void:
 	_mine_button = UI.button("Moje działki", _next_mine)
 	_mine_button.tooltip_text = "Pokaż kolejną swoją działkę"
 	top.add_child(_mine_button)
+	var nations := UI.button("Państwa", func() -> void: _country_window.open_ranking())
+	nations.tooltip_text = "Państwa graczy: obywatelstwo, wybory, rząd, partie"
+	top.add_child(nations)
 
 	var money_parts := UI.panel(0)
 	var money_panel: PanelContainer = money_parts[0]
@@ -502,6 +549,17 @@ func _build_hud() -> void:
 
 	_build_legend()
 	_build_panel()
+	_country_window = CountryWindow.new()
+	_country_window.dock_right()
+	for i in _data.country_codes.size():
+		_country_window.codes_by_name[_data.country_names[i].to_lower()] = _data.country_codes[i]
+	_country_window.failed.connect(_show_error)
+	_country_window.toast.connect(func(text: String) -> void: _show_toast(text, UI.GOLD))
+	_country_window.balance_changed.connect(func() -> void:
+		var wallet := await Net.request("wallet.get")
+		if wallet["type"] == "wallet":
+			_set_balance(int(wallet["payload"]["balanceCents"])))
+	add_child(_country_window)
 	_hud.assign([top, corner, bottom, _status, _panel, _legend])
 
 
@@ -608,6 +666,15 @@ func _show_plot() -> void:
 	where.append("powierzchnia 5 × 5 km (25 km²)")
 	for line in where:
 		_plot_box.add_child(_small(line, UI.MUTED))
+	var country := _data.country(plot)
+	if country >= 0:
+		var country_row := HBoxContainer.new()
+		country_row.add_theme_constant_override("separation", 6)
+		var country_name := UI.label("Kraj: %s" % _data.country_names[country])
+		country_name.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		country_row.add_child(country_name)
+		country_row.add_child(UI.button("Państwo", _country_window.open_country.bind(_data.country_codes[country])))
+		_plot_box.add_child(country_row)
 	_plot_box.add_child(HSeparator.new())
 
 	var bonuses: Array = info.get("bonuses", [])

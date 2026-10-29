@@ -1,7 +1,8 @@
 class_name FeederWindow
 extends GameWindow
 ## A feeder on the plot: the feed in it, a button per feed the player has to pour some in, and a button to take it all out.
-## It feeds the hungry animals around it by itself, while the player is away too; an inserter next to it fills it.
+## It feeds the hungry animals around it by itself, while the player is away too; an inserter next to it fills it. An automatic
+## barn opens the same window: it also collects what the animals around it give, which shows here and comes out with the feed.
 
 ## Feed came out or went in: [{id, name, quantity}] taken.
 signal inventory_changed(taken: Array)
@@ -24,6 +25,7 @@ var _items: Array = []
 var _state := {}
 var _summary: Label
 var _store: Label
+var _output: Label
 var _fill_bar: ProgressBar
 var _pour: HFlowContainer
 var _take: Button
@@ -41,6 +43,8 @@ func _init() -> void:
 	_fill_bar.show_percentage = false
 	_fill_bar.custom_minimum_size.y = 10
 	content.add_child(_fill_bar)
+	_output = UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
+	content.add_child(_output)
 	content.add_child(UI.label("Wsyp z ekwipunku:", UI.GOLD))
 	_pour = HFlowContainer.new()
 	_pour.add_theme_constant_override("h_separation", 4)
@@ -83,10 +87,23 @@ func _render() -> void:
 		return
 	var animals := int(_state["animals"])
 	var hungry := int(_state["hungry"])
-	var around := "W zasięgu %d pól nie ma zwierząt: wypuść je obok karmnika." % int(_state["reach"]) if animals == 0 \
+	var barn: bool = _state.get("collects", false)
+	set_title("Obora automatyczna" if barn else "Karmnik")
+	var around := "W zasięgu %d pól nie ma zwierząt: wypuść je obok." % int(_state["reach"]) if animals == 0 \
 		else "Zwierząt w zasięgu %d pól: %d, głodnych: %d." % [int(_state["reach"]), animals, hungry]
-	_summary.text = "Sam karmi głodne zwierzęta wokół siebie, %d sztuki paszy na posiłek: od razu po wypuszczeniu, po każdym zbiorze i gdy dostanie paszę. Podajnik obok też go napełni. %s" \
-		% [int(_state["feedPerMeal"]), around]
+	if barn:
+		_summary.text = "Sama karmi zwierzęta wokół siebie, %d sztuki paszy na posiłek, i zbiera, co dają: jajka, wełnę, mleko, mięso, obornik i młode. Podajnik obok napełni ją paszą i wyjmie zbiory. %s" \
+			% [int(_state["feedPerMeal"]), around]
+	else:
+		_summary.text = "Sam karmi głodne zwierzęta wokół siebie, %d sztuki paszy na posiłek: od razu po wypuszczeniu, po każdym zbiorze i gdy dostanie paszę. Podajnik obok też go napełni. %s" \
+			% [int(_state["feedPerMeal"]), around]
+	var collected := PackedStringArray()
+	var count := 0
+	for stack: Dictionary in _state.get("output", []):
+		collected.append("%s × %d" % [stack["name"], int(stack["quantity"])])
+		count += int(stack["quantity"])
+	_output.visible = barn
+	_output.text = "Zebrane: %d/%d%s" % [count, int(_state.get("maxOutput", 0)), (": " + ", ".join(collected)) if not collected.is_empty() else ""]
 	var parts := PackedStringArray()
 	for stack: Dictionary in _state["store"]:
 		parts.append("%s × %d" % [stack["name"], int(stack["quantity"])])
@@ -95,7 +112,8 @@ func _render() -> void:
 	_store.text = "Pasza: %d/%d%s" % [feed, capacity, (": " + ", ".join(parts)) if not parts.is_empty() else " (pusty, głodne zwierzęta czekają)" if hungry > 0 else ""]
 	_fill_bar.max_value = capacity
 	_fill_bar.value = feed
-	_take.disabled = feed == 0
+	_take.text = "Wyjmij paszę i zbiory" if barn else "Wyjmij paszę"
+	_take.disabled = feed == 0 and count == 0
 	for child in _pour.get_children():
 		child.queue_free()
 	var room := capacity - feed
@@ -113,7 +131,7 @@ func _render() -> void:
 		button.tooltip_text = "Masz %d" % have
 		_pour.add_child(button)
 	if not any:
-		_pour.add_child(UI.label("Nie masz paszy: pszenicy, kukurydzy, marchwi, kapusty, mączki rybnej, daktyli ani paszy treściwej.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		_pour.add_child(UI.label("Nie masz paszy: pszenicy, kukurydzy, marchwi, kapusty, mączki rybnej, daktyli, wysłodków ani paszy treściwej.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	_fit.call_deferred()
 
 

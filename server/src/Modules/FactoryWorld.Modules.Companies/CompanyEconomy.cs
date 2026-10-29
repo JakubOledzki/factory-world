@@ -6,7 +6,8 @@ namespace FactoryWorld.Modules.Companies;
 
 /// <param name="Started">Whether the company took it on; members bring parts only then.</param>
 /// <param name="BuiltAt">When it is (or was) finished: set once every part is in.</param>
-public sealed record ProjectState(BigProject Project, bool Started, IReadOnlyDictionary<string, long> Delivered, DateTimeOffset? BuiltAt);
+/// <param name="TakenBy">For a wonder of the world another company built first: that company's name.</param>
+public sealed record ProjectState(BigProject Project, bool Started, IReadOnlyDictionary<string, long> Delivered, DateTimeOffset? BuiltAt, string? TakenBy = null);
 
 public sealed record OrderState(CompanyOrder Order, long Delivered);
 
@@ -53,7 +54,7 @@ public sealed record CompanyRankings(
     int Season, DateTimeOffset EndsAt, IReadOnlyList<RankedCompany> Richest, IReadOnlyList<RankedCompany> Production,
     IReadOnlyList<RankedCompany> Plots, IReadOnlyList<RankedCompany> LastSeason, Guid? Yours);
 
-public sealed partial class CompanyService
+public sealed partial class CompanyService : ICompanyCash
 {
     // ---- Cash ----
 
@@ -82,6 +83,20 @@ public sealed partial class CompanyService
             await wallet.CreditAsync(player, cents, $"company {company} withdrawal", cancellationToken);
             await LogAsync(company, player, "withdraw", cancellationToken, quantity: cents);
             return await ReadAsync(player, cancellationToken);
+        }, cancellationToken);
+
+    /// <summary>The owner or the treasurer spends money from the cash outside the company, e.g. to back a candidate in an election;
+    /// <paramref name="reason"/> goes into the company's log.</summary>
+    public Task<string> SpendAsync(Guid player, long cents, string reason, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            CheckCents(cents);
+            var company = await RequireMoneyAsync(player, cancellationToken);
+            await ChangeMoneyAsync(company, -cents, 0, cancellationToken);
+            await LogAsync(company, player, "lobby", cancellationToken, reason.Length > 64 ? reason[..64] : reason, cents);
+            await using var command = await db.CommandAsync("SELECT name FROM companies.companies WHERE id = @company", cancellationToken);
+            command.Parameters.AddWithValue("company", company);
+            return (string)(await command.ExecuteScalarAsync(cancellationToken))!;
         }, cancellationToken);
 
     /// <summary>Sells from the warehouse to the trader at its usual price; the money goes into the cash as earnings.</summary>
@@ -354,6 +369,11 @@ public sealed partial class CompanyService
             }
 
             var states = await ProjectsAsync(company, cancellationToken);
+            if (states.First(p => p.Project.Id == project.Id).TakenBy is not null)
+            {
+                throw new GameException("wonder_taken", "Another company built this wonder of the world first.");
+            }
+
             var now = time.GetUtcNow();
             if (project.Requires?.Any(r => states.FirstOrDefault(p => p.Project.Id == r)?.BuiltAt is not { } built || built > now) == true)
             {
@@ -386,6 +406,11 @@ public sealed partial class CompanyService
             var project = BigProjects.ById.GetValueOrDefault(id ?? "") ?? throw new GameException("no_project", "There is no such project.");
             var (company, role) = await RequireMemberAsync(player, cancellationToken);
             var state = (await ProjectsAsync(company, cancellationToken)).First(p => p.Project.Id == project.Id);
+            if (state.TakenBy is not null)
+            {
+                throw new GameException("wonder_taken", "Another company built this wonder of the world first.");
+            }
+
             if (!state.Started || state.BuiltAt is not null)
             {
                 throw new GameException("project_closed", "The company is not collecting parts for this project.");
@@ -428,6 +453,11 @@ public sealed partial class CompanyService
             var delivered = new Dictionary<string, long>(state.Delivered) { [item!] = state.Delivered.GetValueOrDefault(item!) + used };
             if (project.Parts.All(p => delivered.GetValueOrDefault(p.Item) >= p.Quantity))
             {
+                if (project.Wonder)
+                {
+                    await ClaimWonderAsync(company, project, cancellationToken);
+                }
+
                 await using var build = await db.CommandAsync(
                     "UPDATE companies.projects SET built_at = @at WHERE company_id = @company AND project = @project", cancellationToken);
                 build.Parameters.AddWithValue("company", company);
@@ -934,6 +964,7 @@ public sealed partial class CompanyService
 
     private async Task FinishProjectsAsync(Guid company, CancellationToken cancellationToken)
     {
+        await ReturnLostWondersAsync(company, cancellationToken);
         var built = new List<string>();
         await using (var select = await db.CommandAsync(
             """
@@ -1052,8 +1083,9 @@ public sealed partial class CompanyService
             }
         }
 
+        var taken = (await WonderOwnersAsync(cancellationToken)).Where(w => w.Value.Company != company).ToDictionary(w => w.Key, w => w.Value.Name);
         return BigProjects.All.Select(p => new ProjectState(p, started.ContainsKey(p.Id),
-            parts.GetValueOrDefault(p.Id) ?? new Dictionary<string, long>(), started.GetValueOrDefault(p.Id))).ToList();
+            parts.GetValueOrDefault(p.Id) ?? new Dictionary<string, long>(), started.GetValueOrDefault(p.Id), taken.GetValueOrDefault(p.Id))).ToList();
     }
 
     private async Task<IReadOnlyList<OrderState>> OrdersAsync(Guid company, CancellationToken cancellationToken)

@@ -24,16 +24,21 @@ public static class PowerRules
 
     /// <summary>Generators of every kind: what each gives at most (kW) and what it burns. The steam generator burns
     /// wood and coal, the coal power plant coal, the gas power plant natural gas, the diesel generator diesel, petrol or ethanol,
-    /// the nuclear plant fuel rods, the fusion plant coolant.</summary>
+    /// the nuclear plant fuel rods, the fusion plant coolant; the biomass plant wood, pellets and charcoal, the combined heat and power
+    /// plant coal, coke and wood, and the fuel cell hydrogen.</summary>
     public static readonly IReadOnlyDictionary<string, (double Kw, IReadOnlySet<string> Burns)> Generators =
         new Dictionary<string, (double, IReadOnlySet<string>)>
         {
-            [Items.Generator] = (GeneratorKw, new HashSet<string> { Items.Coal, Items.Charcoal, Items.Wood, Items.WoodPellets }),
-            [Items.CoalPlant] = (1000, new HashSet<string> { Items.Coal, Items.Charcoal }),
+            [Items.Generator] = (GeneratorKw, new HashSet<string> { Items.Coal, Items.Charcoal, Items.Coke, Items.Wood, Items.WoodPellets }),
+            [Items.CoalPlant] = (1000, new HashSet<string> { Items.Coal, Items.Charcoal, Items.Coke }),
             [Items.NuclearPlant] = (2500, new HashSet<string> { Items.FuelRod }),
             [Items.GasPlant] = (300, new HashSet<string> { Items.NaturalGas }),
             [Items.DieselGenerator] = (150, new HashSet<string> { Items.Diesel, Items.Gasoline, Items.Ethanol }),
             [Items.FusionPlant] = (5000, new HashSet<string> { Items.Coolant }),
+            [Items.BiomassPlant] = (500, new HashSet<string> { Items.Wood, Items.WoodPellets, Items.Charcoal }),
+            // Gives less than a coal power plant, but its waste heat warms the machines around it (see ChpReach).
+            [Items.ChpPlant] = (700, new HashSet<string> { Items.Coal, Items.Charcoal, Items.Coke, Items.Wood, Items.WoodPellets }),
+            [Items.FuelCell] = (200, new HashSet<string> { Items.Hydrogen }),
         };
 
     /// <summary>What a generator of <paramref name="kind"/> gives at most (kW).</summary>
@@ -42,8 +47,11 @@ public static class PowerRules
     public static bool Burns(string kind, string fuel) =>
         Generators.TryGetValue(kind, out var g) ? g.Burns.Contains(fuel) : Items.IsHeater(kind) && HeaterFuels.Contains(fuel);
 
-    /// <summary>What a heater burns: wood, coal and pellets, like a steam generator.</summary>
-    public static readonly IReadOnlySet<string> HeaterFuels = new HashSet<string> { Items.Coal, Items.Charcoal, Items.Wood, Items.WoodPellets };
+    /// <summary>What a heater burns: wood, coal, coke and pellets, like a steam generator.</summary>
+    public static readonly IReadOnlySet<string> HeaterFuels = new HashSet<string> { Items.Coal, Items.Charcoal, Items.Coke, Items.Wood, Items.WoodPellets };
+
+    /// <summary>A combined heat and power plant warms the machines this many tiles from it each way while it burns, as a heater does nearer.</summary>
+    public const int ChpReach = 6;
 
     /// <summary>What each water power plant gives (kW), before the biome's bonus.</summary>
     public static readonly IReadOnlyDictionary<string, double> Hydro = new Dictionary<string, double>
@@ -78,7 +86,7 @@ public static class PowerRules
     public const double DrySteam = 0.7;
 
     /// <summary>Whether a generator of <paramref name="kind"/> turns water into steam, and so gives less on sand.</summary>
-    public static bool Steam(string kind) => kind is Items.Generator or Items.CoalPlant or Items.NuclearPlant;
+    public static bool Steam(string kind) => kind is Items.Generator or Items.CoalPlant or Items.NuclearPlant or Items.BiomassPlant or Items.ChpPlant;
 
     /// <summary>The energy a battery stores at most (kJ): an hour of its full power, and more.</summary>
     public const double BatteryKj = 360_000;
@@ -126,7 +134,8 @@ public static class PowerRules
 
     /// <summary>What generators burn, and the energy (kJ) in one piece: coal lasts 200 s at full power in a steam generator,
     /// wood 50 s, a pellet 40 s; a unit of gas 200 s in a gas power plant, of diesel 400 s and of petrol 300 s in a diesel generator;
-    /// a fuel rod 10 minutes in a nuclear plant; a fusion plant uses up a unit of coolant a minute at full power.</summary>
+    /// a fuel rod 10 minutes in a nuclear plant; a fusion plant uses up a unit of coolant a minute at full power. Coke burns a little longer
+    /// than coal; hydrogen gives back in a fuel cell 70% of what the electrolyzer put into it.</summary>
     public static readonly IReadOnlyDictionary<string, double> Fuels = new Dictionary<string, double>
     {
         [Items.Coal] = 20_000,
@@ -140,6 +149,8 @@ public static class PowerRules
         [Items.Ethanol] = 36_000,
         [Items.Coolant] = 300_000,
         [Items.FuelRod] = 1_500_000,
+        [Items.Coke] = 26_000,
+        [Items.Hydrogen] = 840,
     };
 
     /// <summary>Machines that run on power, and what they draw (kW).</summary>
@@ -194,6 +205,8 @@ public static class PowerRules
         [Items.ContinuousCaster] = 150,
         [Items.SteelCombine] = 600,
         [Items.Megafactory] = 1000,
+        [Items.SpinningMill] = 25,
+        [Items.Electrolyzer] = 150,
     };
 
     public static bool Covers(PlotObject pole, int tileX, int tileY) =>
@@ -271,7 +284,7 @@ public static class PowerRules
             {
                 generators[component[pole]].Add(o.Id);
             }
-            else if (Items.IsHydro(o.Kind))
+            else if (Items.IsHydro(o.Kind) || Items.IsGeothermal(o.Kind))
             {
                 hydro[component[pole]].Add(o.Id);
             }
@@ -313,8 +326,10 @@ public static class PowerRules
             .ToList();
     }
 
-    /// <summary>What a water power plant of <paramref name="kind"/> gives on a plot of <paramref name="biome"/> (kW); 0 where no water flows.</summary>
-    public static double HydroKw(string kind, int biome) => Hydro.GetValueOrDefault(kind) * WaterPower.Biomes.GetValueOrDefault(biome);
+    /// <summary>What a water power plant of <paramref name="kind"/> gives on a plot of <paramref name="biome"/> (kW); 0 where no water flows.
+    /// A geothermal plant counts with them, as it too gives the same all the time.</summary>
+    public static double HydroKw(string kind, int biome) =>
+        Items.IsGeothermal(kind) ? Geothermal.KwIn(biome) : Hydro.GetValueOrDefault(kind) * WaterPower.Biomes.GetValueOrDefault(biome);
 
     /// <summary>What a solar power plant of <paramref name="kind"/> gives in clear sun on a plot of <paramref name="biome"/> (kW).</summary>
     public static double SolarKw(string kind, int biome) => Solar.GetValueOrDefault(kind) * (Oasis.Sandy(biome) ? SandySun : 1);
@@ -753,9 +768,17 @@ public sealed class PowerGrid : IPowerGrid
     /// <summary>The machines on power that are cold at <paramref name="at"/>, for the client to show.</summary>
     public IEnumerable<Guid> ColdMachines(DateTimeOffset at) => _coldFrom.Where(c => at >= c.Value).Select(c => c.Key);
 
-    /// <summary>Whether a heater warms the tile.</summary>
-    public bool Warms(PlotObject heater, int tileX, int tileY) =>
-        Math.Abs(heater.TileX - tileX) <= Frost.HeaterReach && Math.Abs(heater.TileY - tileY) <= Frost.HeaterReach;
+    /// <summary>Whether a heater, or a combined heat and power plant with its longer reach, warms the tile.</summary>
+    public bool Warms(PlotObject heater, int tileX, int tileY)
+    {
+        var reach = heater.Kind == Items.ChpPlant ? PowerRules.ChpReach : Frost.HeaterReach;
+        return Math.Abs(heater.TileX - tileX) <= reach && Math.Abs(heater.TileY - tileY) <= reach;
+    }
+
+    /// <summary>Until when a combined heat and power plant surely burns, or null when it is not burning: as long as its fuel lasts at full power.
+    /// It may burn longer on a lighter load; the grid is worked out again whenever the plot is.</summary>
+    public DateTimeOffset? ChpWarmsUntil(Guid id) =>
+        Data.Generators.GetValueOrDefault(id) is { Running: true } plant && KwOf(id) > 0 ? Settled + Ticks(plant.Total / KwOf(id)) : null;
 
     /// <summary>Ticks a machine has gone without power by <paramref name="at"/>.</summary>
     public long Lag(Guid id, DateTimeOffset at)
@@ -937,7 +960,8 @@ public sealed class PowerGrid : IPowerGrid
         _coldFrom.Clear();
         if (Icy)
         {
-            var heaters = _objects.Where(o => Items.IsHeater(o.Kind)).Select(h => (Heater: h, Out: HeaterOutAt(h.Id))).ToList();
+            var heaters = _objects.Where(o => Items.IsHeater(o.Kind) || o.Kind == Items.ChpPlant)
+                .Select(h => (Heater: h, Out: Items.IsHeater(h.Kind) ? HeaterOutAt(h.Id) : ChpWarmsUntil(h.Id))).ToList();
             foreach (var o in _objects.Where(o => PowerRules.Demand.ContainsKey(o.Kind)))
             {
                 var warm = heaters.Where(h => h.Out is not null && Warms(h.Heater, o.TileX, o.TileY)).Select(h => h.Out!.Value).DefaultIfEmpty(Settled).Max();

@@ -16,9 +16,11 @@ signal pick_up_requested(id: String)
 
 ## How often (ms) the window asks again while it is open: inserters may put fuel in.
 const POLL := 2000.0
-const HYDRO_NAMES := {"power_water_wheel": "Koło wodne", "power_hydro_plant": "Mała elektrownia wodna", "power_tidal_plant": "Elektrownia pływowa"}
+const HYDRO_NAMES := {"power_water_wheel": "Koło wodne", "power_hydro_plant": "Mała elektrownia wodna", "power_tidal_plant": "Elektrownia pływowa",
+	"power_geothermal_plant": "Elektrownia geotermalna"}
 const FUEL_NAMES := {"power_gas_plant": "Elektrownia gazowa", "power_diesel_generator": "Agregat spalinowy", "power_fusion_plant": "Elektrownia fuzyjna",
-	"power_coal_plant": "Elektrownia węglowa", "power_nuclear_plant": "Elektrownia jądrowa"}
+	"power_coal_plant": "Elektrownia węglowa", "power_nuclear_plant": "Elektrownia jądrowa", "power_biomass_plant": "Elektrownia na biomasę",
+	"power_chp_plant": "Elektrociepłownia", "power_fuel_cell": "Ogniwo paliwowe"}
 const FREE_NAMES := {"power_solar_panel": "Panel słoneczny", "power_solar_tower": "Elektrownia słoneczna z lustrami", "power_battery": "Akumulator", "power_energy_store": "Magazyn energii",
 	"power_wind_turbine": "Turbina wiatrowa", "power_large_wind_turbine": "Duża turbina wiatrowa", "power_heater": "Kocioł grzewczy"}
 
@@ -229,8 +231,9 @@ func _render() -> void:
 		var names: Array[String] = []
 		for option: Dictionary in _state.get("fuels", []):
 			names.append(String(option["name"]).to_lower())
-		var hint := "Drewno daje ścinanie drzew, węgiel skały i kopalnie w górach." if _state.get("kind", "") == "power_generator" \
-			else "Gaz pompuje głowica gazowa, paliwa robi rafineria."
+		var burner: String = _state.get("kind", "")
+		var hint := "Drewno daje ścinanie drzew, węgiel skały i kopalnie w górach." if burner in ["power_generator", "power_biomass_plant", "power_chp_plant"] \
+			else ("Wodór robi z wody elektrolizer na prąd." if burner == "power_fuel_cell" else "Gaz pompuje głowica gazowa, paliwa robi rafineria.")
 		_load.add_child(UI.label("Nie masz opału, który ten generator spala (%s). %s" % [", ".join(names), hint],
 			UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 
@@ -264,6 +267,13 @@ func _render() -> void:
 			"Magazyn energii" if _state.get("kind", "") == "power_energy_store" else "Akumulator", kw(capacity)]
 		_fit.call_deferred()
 		return
+	if hydro and _state.get("geothermal", false):
+		var heat := float(_state.get("hydroBonus", 1.0))
+		_help.text = "Ciepło ziemi kręci turbiną bez przerwy i nie trzeba dokładać opału. Daje prąd od razu, przed generatorami parowymi.%s" % [
+			" Pod lodowcem skała jest gorętsza: +%d%% mocy." % roundi((heat - 1.0) * 100.0) if heat > 1.0
+			else (" Na tundrze skała jest chłodniejsza: %d%% mocy." % roundi(heat * 100.0) if heat < 1.0 else "")]
+		_fit.call_deferred()
+		return
 	if hydro:
 		var bonus := float(_state.get("hydroBonus", 1.0))
 		_help.text = "Woda kręci nim bez przerwy i nie trzeba dokładać opału. Daje prąd od razu, przed generatorami parowymi: one dopalają tylko to, czego brakuje.%s" % [
@@ -276,6 +286,8 @@ func _render() -> void:
 	lines.append("Podajnik może dokładać opał z taśmy albo ze skrzyni.")
 	if _state.get("dry", false):
 		lines.append("Na piasku brak wody do chłodzenia: daje tylko 70% mocy.")
+	if _state.get("chp", false):
+		lines.append("Na lodowcu, póki pali, ogrzewa maszyny do %d pól wokół (teraz %d), jak kocioł grzewczy." % [int(_state.get("chpReach", 6)), int(_state.get("warmed", 0))])
 	_help.text = "\n".join(lines)
 	_update_runs_out()
 	_fit.call_deferred()

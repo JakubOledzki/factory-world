@@ -829,6 +829,7 @@ public sealed class LogisticsModule : IGameModule
         services.AddScoped<IPlotAutomation>(provider => provider.GetRequiredService<LogisticsService>());
         services.AddScoped<IMachineContents, LogisticsContents>();
         services.AddScoped<IFreightChests, FreightChests>();
+        services.AddScoped<IPlotStorage, PlotStorage>();
         services.AddSingleton<IMessageHandler, GetLogisticsHandler>();
         services.AddSingleton<IMessageHandler, SetSplitterHandler>();
         services.AddSingleton<IMessageHandler, SetFilterHandler>();

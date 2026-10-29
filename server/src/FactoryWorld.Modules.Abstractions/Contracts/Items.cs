@@ -550,6 +550,49 @@ public static class Items
     public const string Farmstead = "furniture_farmstead";
     public const string ManorFarm = "furniture_manor_farm";
 
+    // The raw-material branches grown further. Mining: coke of coal and the precious metals crushed and worked into jewellery.
+    public const string Coke = "coke";
+    public const string CrushedSilverOre = "crushed_silver_ore";
+    public const string CrushedGoldOre = "crushed_gold_ore";
+    public const string Jewelry = "jewelry";
+    public const string Silverware = "silverware";
+    public const string CokeOven = "furniture_coke_oven";
+    public const string Jeweler = "furniture_jeweler";
+
+    // Forestry: a tree nursery raises the saplings of the foresters around it.
+    public const string TreeNursery = "furniture_tree_nursery";
+
+    // Husbandry: wool spun into yarn and woven into cloth, hemp twisted into rope and flax woven into linen; an automatic barn that
+    // feeds the animals and collects what they give; pigs and goats.
+    public const string Yarn = "yarn";
+    public const string Cloth = "cloth";
+    public const string Linen = "linen";
+    public const string Rope = "rope";
+    public const string Pig = "animal_pig";
+    public const string Goat = "animal_goat";
+    public const string SpinningMill = "furniture_spinning_mill";
+    public const string Loom = "furniture_loom";
+    public const string AutoBarn = "furniture_auto_barn";
+
+    // Farming: new crops (sugar beets, flax, hemp) and sugar of the beets, a sprinkler and the mechanized farm, the farmstead's third level.
+    public const string SugarBeet = "sugar_beet";
+    public const string Flax = "flax";
+    public const string Hemp = "hemp";
+    public const string Sugar = "sugar";
+    public const string BeetPulp = "beet_pulp";
+    public const string Donuts = "donuts";
+    public const string SugarFactory = "furniture_sugar_factory";
+    public const string Sprinkler = "furniture_sprinkler";
+    public const string MechanizedFarm = "furniture_mechanized_farm";
+
+    // Energy: power of biomass, a combined heat and power plant, geothermal power, and hydrogen made of water and burnt in a fuel cell.
+    public const string Hydrogen = "hydrogen";
+    public const string BiomassPlant = "power_biomass_plant";
+    public const string ChpPlant = "power_chp_plant";
+    public const string GeothermalPlant = "power_geothermal_plant";
+    public const string Electrolyzer = "furniture_electrolyzer";
+    public const string FuelCell = "power_fuel_cell";
+
     /// <summary>Display names in Polish, keyed by id.</summary>
     public static readonly IReadOnlyDictionary<string, string> Names = new Dictionary<string, string>
     {
@@ -980,6 +1023,38 @@ public static class Items
         [Bellows] = "Miech skórzany",
         [Farmstead] = "Zagroda rolnika",
         [ManorFarm] = "Folwark",
+        [Coke] = "Koks",
+        [CrushedSilverOre] = "Kruszona ruda srebra",
+        [CrushedGoldOre] = "Kruszona ruda złota",
+        [Jewelry] = "Biżuteria",
+        [Silverware] = "Srebrna zastawa",
+        [CokeOven] = "Koksownia",
+        [Jeweler] = "Pracownia jubilerska",
+        [TreeNursery] = "Szkółka leśna",
+        [Yarn] = "Przędza",
+        [Cloth] = "Sukno",
+        [Linen] = "Płótno lniane",
+        [Rope] = "Lina konopna",
+        [Pig] = "Świnia",
+        [Goat] = "Koza",
+        [SpinningMill] = "Przędzalnia",
+        [Loom] = "Krosno",
+        [AutoBarn] = "Obora automatyczna",
+        [SugarBeet] = "Burak cukrowy",
+        [Flax] = "Len",
+        [Hemp] = "Konopie",
+        [Sugar] = "Cukier",
+        [BeetPulp] = "Wysłodki",
+        [Donuts] = "Pączki",
+        [SugarFactory] = "Cukrownia",
+        [Sprinkler] = "Zraszacz",
+        [MechanizedFarm] = "Gospodarstwo zmechanizowane",
+        [Hydrogen] = "Wodór",
+        [BiomassPlant] = "Elektrownia na biomasę",
+        [ChpPlant] = "Elektrociepłownia",
+        [GeothermalPlant] = "Elektrownia geotermalna",
+        [Electrolyzer] = "Elektrolizer",
+        [FuelCell] = "Ogniwo paliwowe",
     };
 
     public static bool Exists(string id) => Names.ContainsKey(id);
@@ -1045,7 +1120,7 @@ public static class Items
     public static bool IsForester(string id) => id is ForesterHut or ForesterLodge or ForestryStation;
 
     /// <summary>Farmer's buildings of every level: the farmstead and the manor farm.</summary>
-    public static bool IsFarmstead(string id) => id is Farmstead or ManorFarm;
+    public static bool IsFarmstead(string id) => id is Farmstead or ManorFarm or MechanizedFarm;
 
     /// <summary>Fine dishes: what banquets, a company's listing, a mayor's festival and the restaurants of hotels need.</summary>
     public static bool IsFineDish(string id) => id is RoastBeef or Cheesecake;
@@ -1091,7 +1166,8 @@ public static class Items
 
     /// <summary>Generators that burn fuel: the steam generator, the coal and gas power plants, the diesel generator, the nuclear plant,
     /// which burns fuel rods, and the fusion plant, which uses up coolant.</summary>
-    public static bool IsGenerator(string id) => id is Generator or CoalPlant or GasPlant or DieselGenerator or NuclearPlant or FusionPlant;
+    public static bool IsGenerator(string id) => id is Generator or CoalPlant or GasPlant or DieselGenerator or NuclearPlant or FusionPlant or BiomassPlant
+        or ChpPlant or FuelCell;
 
     /// <summary>What carries power on a plot: the pole, the substation, which powers more around it, and the high-voltage pylon, which is wired farther.</summary>
     public static bool IsPole(string id) => id is Pole or Substation or Pylon;
@@ -1105,8 +1181,11 @@ public static class Items
     /// <summary>What turns the wind into power: as much as the wind blows, nothing in a blizzard.</summary>
     public static bool IsWind(string id) => id is WindTurbine or LargeWindTurbine;
 
-    /// <summary>What gives power without fuel: water power, the sun and the wind.</summary>
-    public static bool IsRenewable(string id) => IsHydro(id) || IsSolar(id) || IsWind(id);
+    /// <summary>What gives power without fuel: water power, the sun, the wind and the heat of the earth.</summary>
+    public static bool IsRenewable(string id) => IsHydro(id) || IsSolar(id) || IsWind(id) || IsGeothermal(id);
+
+    /// <summary>A geothermal plant gives its power all the time from the heat under the mountains and the ice.</summary>
+    public static bool IsGeothermal(string id) => id == GeothermalPlant;
 
     /// <summary>A heater burns fuel to warm the machines around it against the frost of the glacier; it gives no power.</summary>
     public static bool IsHeater(string id) => id == Heater;

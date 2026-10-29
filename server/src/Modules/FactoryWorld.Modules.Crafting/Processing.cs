@@ -56,6 +56,8 @@ public static class Processing
         [Items.Charcoal] = 4,
         [Items.Wood] = 1,
         [Items.WoodPellets] = 2,
+        // Coke of the coke oven burns as hot as two coal.
+        [Items.Coke] = 8,
     };
 
     public static readonly IReadOnlyList<ProcessingMachine> Machines =
@@ -96,6 +98,7 @@ public static class Processing
             new(Items.CornBread, 1, TimeSpan.FromSeconds(20), [(Items.CornFlour, 2)], 3),
             new(Items.CarrotCake, 1, TimeSpan.FromSeconds(30), [(Items.Flour, 2), (Items.Carrot, 3), (Items.SunflowerOil, 1)], 6),
             new(Items.Gingerbread, 2, TimeSpan.FromSeconds(30), [(Items.Flour, 2), (Items.Honey, 1)], 5),
+            new(Items.Donuts, 2, TimeSpan.FromSeconds(25), [(Items.Flour, 2), (Items.Sugar, 1), (Items.Egg, 1), (Items.SunflowerOil, 1)], 5),
             // Of the dairy's cheese and butter: sandwiches for the road, cheesecake for banquets and provisions that keep.
             new(Items.CheeseSandwich, 2, TimeSpan.FromSeconds(10), [(Items.Bread, 1), (Items.Cheese, 1)], 3),
             new(Items.Cheesecake, 2, TimeSpan.FromSeconds(30), [(Items.Cheese, 2), (Items.Egg, 2), (Items.Flour, 1), (Items.Butter, 1)], 6),
@@ -168,6 +171,8 @@ public static class Processing
             new(Items.CrushedIronOre, 3, TimeSpan.FromSeconds(5), [(Items.IronOre, 2)], 2),
             new(Items.CrushedCopperOre, 3, TimeSpan.FromSeconds(5), [(Items.CopperOre, 2)], 2),
             new(Items.CrushedTinOre, 3, TimeSpan.FromSeconds(6), [(Items.TinOre, 2)], 3),
+            new(Items.CrushedSilverOre, 3, TimeSpan.FromSeconds(8), [(Items.SilverOre, 2)], 4),
+            new(Items.CrushedGoldOre, 3, TimeSpan.FromSeconds(10), [(Items.GoldOre, 2)], 6),
         ], Powered: true),
         // The crusher's higher levels: the cone crusher about three times the pace, with seven of crushed ore from four, and the
         // ore processing plant about six times, with two from one.
@@ -177,6 +182,8 @@ public static class Processing
             new(Items.CrushedIronOre, 7, TimeSpan.FromSeconds(4), [(Items.IronOre, 4)], 2),
             new(Items.CrushedCopperOre, 7, TimeSpan.FromSeconds(4), [(Items.CopperOre, 4)], 2),
             new(Items.CrushedTinOre, 7, TimeSpan.FromSeconds(4.5), [(Items.TinOre, 4)], 3),
+            new(Items.CrushedSilverOre, 7, TimeSpan.FromSeconds(6), [(Items.SilverOre, 4)], 4),
+            new(Items.CrushedGoldOre, 7, TimeSpan.FromSeconds(7.5), [(Items.GoldOre, 4)], 6),
         ], Powered: true),
         new(Items.OreProcessingPlant, false,
         [
@@ -184,6 +191,8 @@ public static class Processing
             new(Items.CrushedIronOre, 4, TimeSpan.FromSeconds(1.2), [(Items.IronOre, 2)], 2),
             new(Items.CrushedCopperOre, 4, TimeSpan.FromSeconds(1.2), [(Items.CopperOre, 2)], 2),
             new(Items.CrushedTinOre, 4, TimeSpan.FromSeconds(1.4), [(Items.TinOre, 2)], 3),
+            new(Items.CrushedSilverOre, 4, TimeSpan.FromSeconds(1.8), [(Items.SilverOre, 2)], 4),
+            new(Items.CrushedGoldOre, 4, TimeSpan.FromSeconds(2.2), [(Items.GoldOre, 2)], 6),
         ], Powered: true),
         new(Items.Stonemason, false,
         [
@@ -453,6 +462,38 @@ public static class Processing
         [
             new(Items.NaturalGas, 2, TimeSpan.FromSeconds(30), [(Items.Manure, 4), (Items.Water, 1)], 2) { Extras = [(Items.Fertilizer, 1)] },
         ]),
+        // The raw-material branches grown further. A coke oven bakes coal into coke, which burns as hot as two coal, and gives tar besides.
+        new(Items.CokeOven, false,
+        [
+            new(Items.Coke, 3, TimeSpan.FromSeconds(20), [(Items.Coal, 4)], 3) { Extras = [(Items.Tar, 1)] },
+        ]),
+        // A jeweller works the precious metals: gold and amber into jewellery, silver into tableware, both for the towns.
+        new(Items.Jeweler, false,
+        [
+            new(Items.Jewelry, 1, TimeSpan.FromSeconds(40), [(Items.GoldIngot, 1), (Items.Amber, 1)], 15),
+            new(Items.Silverware, 1, TimeSpan.FromSeconds(30), [(Items.SilverIngot, 2)], 6),
+        ]),
+        // A spinning mill on power spins wool into yarn and twists hemp into rope; a loom weaves yarn into cloth and flax into linen.
+        new(Items.SpinningMill, false,
+        [
+            new(Items.Yarn, 2, TimeSpan.FromSeconds(10), [(Items.Wool, 2)], 1),
+            new(Items.Rope, 1, TimeSpan.FromSeconds(10), [(Items.Hemp, 3)], 2),
+        ], Powered: true),
+        new(Items.Loom, false,
+        [
+            new(Items.Cloth, 1, TimeSpan.FromSeconds(15), [(Items.Yarn, 3)], 3),
+            new(Items.Linen, 1, TimeSpan.FromSeconds(15), [(Items.Flax, 4)], 3),
+        ]),
+        // A fired sugar factory boils sugar out of beets; the pulp left goes to the animals.
+        new(Items.SugarFactory, true,
+        [
+            new(Items.Sugar, 2, TimeSpan.FromSeconds(20), [(Items.SugarBeet, 4)], 2) { Extras = [(Items.BeetPulp, 2)] },
+        ]),
+        // An electrolyzer on power splits water into hydrogen, which a fuel cell turns back into power.
+        new(Items.Electrolyzer, false,
+        [
+            new(Items.Hydrogen, 1, TimeSpan.FromSeconds(8), [(Items.Water, 1)], 1),
+        ], Powered: true),
     ];
 
     /// <summary>What an assembly hall puts together.</summary>

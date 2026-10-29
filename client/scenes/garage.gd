@@ -127,6 +127,8 @@ var _crafting_window: CraftingWindow
 var _research_window: ResearchWindow
 var _company_window: CompanyWindow
 var _bank_window: BankWindow
+var _country_window: CountryWindow
+var _police_window: PoliceWindow
 var _furnace_window: FurnaceWindow
 var _sorter_window: SorterWindow
 var _stats_window: StatsWindow
@@ -869,9 +871,15 @@ func _build_hud() -> void:
 	bar.add_child(UI.toolbar_button("contracts", "Zlecenia  [J]", func() -> void: _contracts_window.toggle()))
 	bar.add_child(UI.toolbar_button("company", "Spółka  [K]", func() -> void: _company_window.toggle()))
 	bar.add_child(UI.toolbar_button("bank", "Banki  [B]\nKonta, wpłaty, wypłaty i przelewy", func() -> void: _bank_window.toggle()))
+	bar.add_child(UI.toolbar_button("politics", "Państwa\nObywatelstwo, wybory, rząd, partie", func() -> void:
+		if _country_window.visible:
+			_country_window.hide_window()
+		else:
+			_country_window.open_ranking()))
+	bar.add_child(UI.toolbar_button("police", "Policja\nPrawo twojego kraju, służba, sąd i paser", func() -> void: _police_window.toggle()))
 	bar.add_child(UI.toolbar_button("garage_upgrade", "Ulepszenia garażu  [U]", func() -> void: _upgrades_window.toggle()))
 	bar.add_child(UI.toolbar_button("stats", "Statystyki  [L]", func() -> void: _stats_window.toggle()))
-	bar.add_child(UI.toolbar_button("achievements", "Osiągnięcia  [O]", func() -> void: _achievements_window.toggle()))
+	bar.add_child(UI.toolbar_button("achievements", "Osiągnięcia, rankingi i rywalizacja  [O]", func() -> void: _achievements_window.toggle()))
 	bar.add_child(UI.toolbar_button("world_map", "Mapa świata  [N]", Game.open_world_map))
 	bar.add_child(UI.toolbar_button("logout", "Wyloguj", Game.logout))
 	add_child(bar)
@@ -949,11 +957,23 @@ func _build_windows() -> void:
 	_bank_window.dock_right()
 	_bank_window.balance_changed.connect(_reload_balance)
 	_bank_window.failed.connect(_show_error)
+	_country_window = CountryWindow.new()
+	_country_window.dock_right()
+	_country_window.failed.connect(_show_error)
+	_country_window.toast.connect(func(text: String) -> void: _show_toast(text, UI.GOLD))
+	_country_window.balance_changed.connect(_reload_balance)
+	_police_window = PoliceWindow.new()
+	_police_window.dock_right()
+	_police_window.balance_changed.connect(_reload_balance)
+	_police_window.inventory_changed.connect(_reload_inventory)
+	_police_window.failed.connect(_show_error)
 	_stats_window = StatsWindow.new()
 	_stats_window.dock_right()
 	_stats_window.failed.connect(_show_error)
 	_achievements_window = AchievementsWindow.new()
 	_achievements_window.failed.connect(_show_error)
+	_achievements_window.toast.connect(func(text: String) -> void: _show_toast(text, UI.GOLD))
+	_achievements_window.inventory_changed.connect(_reload_inventory)
 	_upgrades_window = UpgradesWindow.new()
 	_upgrades_window.dock_right()
 	_upgrades_window.upgraded.connect(_on_upgraded)
@@ -982,7 +1002,7 @@ func _build_windows() -> void:
 
 ## The windows of this screen (but the character's), for Esc to close them all.
 func _windows() -> Array[GameWindow]:
-	var windows: Array[GameWindow] = [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _research_window, _furnace_window, _sorter_window, _stats_window, _company_window, _bank_window, _achievements_window, _upgrades_window, _storage_window, _wardrobe_window]
+	var windows: Array[GameWindow] = [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _research_window, _furnace_window, _sorter_window, _stats_window, _company_window, _bank_window, _country_window, _police_window, _achievements_window, _upgrades_window, _storage_window, _wardrobe_window]
 	return windows
 
 

@@ -9,11 +9,14 @@ using FactoryWorld.Modules.Contracts;
 using FactoryWorld.Modules.Companies;
 using FactoryWorld.Modules.Crafting;
 using FactoryWorld.Modules.Inventory;
+using FactoryWorld.Modules.Law;
 using FactoryWorld.Modules.Logistics;
 using FactoryWorld.Modules.Market;
+using FactoryWorld.Modules.Politics;
 using FactoryWorld.Modules.Power;
 using FactoryWorld.Modules.Recycling;
 using FactoryWorld.Modules.Research;
+using FactoryWorld.Modules.Rivalry;
 using FactoryWorld.Modules.Session;
 using FactoryWorld.Modules.Tutorial;
 using FactoryWorld.Modules.Statistics;
@@ -41,9 +44,12 @@ IGameModule[] modules =
     new StatisticsModule(),
     new ContractsModule(),
     new CompaniesModule(),
+    new PoliticsModule(),
     new ResearchModule(),
     new AchievementsModule(),
+    new RivalryModule(),
     new BotsModule(),
+    new LawModule(),
     new ChatModule(),
 ];
 

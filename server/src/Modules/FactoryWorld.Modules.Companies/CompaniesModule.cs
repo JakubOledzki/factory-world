@@ -140,6 +140,9 @@ public abstract class CompanyHandler(IServiceScopeFactory scopes) : IMessageHand
                     delivered = p.Delivered.GetValueOrDefault(part.Item),
                 }),
                 reward = p.Project.Reward.Select(r => new { id = r.Item, name = ItemName(r.Item), quantity = r.Quantity }),
+                // A wonder of the world: one on the server; takenBy names the company that built it first, when that is another one.
+                wonder = p.Project.Wonder,
+                takenBy = p.TakenBy,
             }),
             orders = e.Orders.Select(o => new
             {
@@ -382,6 +385,7 @@ public sealed class CompaniesModule : IGameModule
     {
         services.AddModuleDbContext<CompaniesDbContext>(CompaniesDbContext.Schema);
         services.AddScoped<CompanyService>();
+        services.AddScoped<ICompanyCash>(provider => provider.GetRequiredService<CompanyService>());
         services.AddScoped<CompanyPlots>();
         services.AddScoped<ICompanyPlots>(provider => provider.GetRequiredService<CompanyPlots>());
         services.AddScoped<ICompanies>(provider => provider.GetRequiredService<CompanyPlots>());
@@ -399,6 +403,8 @@ public sealed class CompaniesModule : IGameModule
         services.AddSingleton<IMessageHandler, PutHandler>();
         services.AddSingleton<IMessageHandler, TakeHandler>();
         services.AddSingleton<IMessageHandler, RankingsHandler>();
+        services.AddSingleton<IMessageHandler, WondersHandler>();
+        services.AddScoped<IPlayerBonuses, WonderBonuses>();
 
         void Action<T>(string type, Func<CompanyService, Guid, T, CancellationToken, Task<CompanyView>> run)
             where T : class =>

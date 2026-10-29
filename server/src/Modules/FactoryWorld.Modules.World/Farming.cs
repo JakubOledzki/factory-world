@@ -11,8 +11,10 @@ public sealed record Crop(string Item, TimeSpan Grow, int Yield, int Xp);
 
 /// <summary>
 /// Fertile plots can be farmed: the hoe tills a free tile into a field, a crop is sown on the field
-/// and grows for its own time, then it is reaped by hand and the field can be sown again.
-/// Rain makes crops grow faster and a drought slower (<see cref="FieldWeather"/>).
+/// and grows for its own time, then it is reaped by hand and the field can be sown again. A sprinkler waters the fields around it:
+/// crops sown there grow faster, and on the steppe and the desert the ground it reaches can be tilled at all. Sugar beets, flax and
+/// hemp are sown only once researched.
+/// Rain makes crops grow faster, a drought and smog slower (<see cref="FieldWeather"/>, <see cref="Smog"/>).
 /// </summary>
 public static class Farming
 {
@@ -25,6 +27,10 @@ public static class Farming
         new(Items.Corn, TimeSpan.FromMinutes(10), 3, 5),
         new(Items.Potato, TimeSpan.FromMinutes(15), 5, 7),
         new(Items.Sunflower, TimeSpan.FromMinutes(20), 3, 9),
+        // Crops of the farming branch, sown once researched.
+        new(Items.SugarBeet, TimeSpan.FromMinutes(12), 4, 6),
+        new(Items.Flax, TimeSpan.FromMinutes(10), 3, 5),
+        new(Items.Hemp, TimeSpan.FromMinutes(14), 4, 6),
     ];
 
     public static readonly IReadOnlyDictionary<string, Crop> ById = Crops.ToDictionary(c => c.Item);
@@ -39,6 +45,19 @@ public static class Farming
 
     /// <summary>A crop sown on manure grows a quarter faster: in 75% of its time.</summary>
     public const double ManureSpeed = 4.0 / 3;
+
+    /// <summary>A sprinkler waters the fields this many tiles from it each way.</summary>
+    public const int SprinklerReach = 4;
+
+    /// <summary>A crop sown where a sprinkler waters grows this many times faster.</summary>
+    public const double SprinklerSpeed = 1.3;
+
+    /// <summary>Dry land that can be tilled where a sprinkler waters it: the steppe and the desert.</summary>
+    public static bool Irrigable(Biome biome) => biome is Biome.Grassland or Biome.Desert;
+
+    /// <summary>Whether a sprinkler among <paramref name="objects"/> waters the tile.</summary>
+    public static bool Sprinkled(IEnumerable<PlotObject> objects, int tileX, int tileY) =>
+        objects.Any(o => o.Kind == Items.Sprinkler && Math.Abs(o.TileX - tileX) <= SprinklerReach && Math.Abs(o.TileY - tileY) <= SprinklerReach);
 }
 
 /// <param name="Crop">Null on a tilled field nothing grows on yet.</param>
@@ -50,7 +69,7 @@ public sealed record FieldChange(Field Field, IReadOnlyList<(string Item, int Qu
 
 public sealed class FarmService(
     GameDb db, PlotService plots, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats, TimeProvider time,
-    OilService oil, SmogService smog)
+    OilService oil, IPlotObjects objects, ITechnologies technologies, SmogService smog)
 {
     public async Task<IReadOnlyList<Field>> FieldsAsync(int x, int y, CancellationToken cancellationToken)
     {
@@ -78,9 +97,10 @@ public sealed class FarmService(
         db.InTransactionAsync(async () =>
         {
             var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
-            if (!Farming.Fertile(biome))
+            if (!Farming.Fertile(biome)
+                && !(Farming.Irrigable(biome) && Farming.Sprinkled(await objects.ObjectsAsync(x, y, cancellationToken), tileX, tileY)))
             {
-                throw new GameException("not_fertile", "Only fertile soil can be tilled.");
+                throw new GameException("not_fertile", "Only fertile soil can be tilled, or the steppe and the desert where a sprinkler waters it.");
             }
 
             if (!(await equipment.ToolsAsync(player, cancellationToken)).Contains(Items.Hoe))
@@ -120,6 +140,7 @@ public sealed class FarmService(
             }
 
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
+            await technologies.RequireUnlockedAsync(player, crop, cancellationToken);
             await oil.RequireCleanAsync(x, y, tileX, tileY, cancellationToken);
             var now = time.GetUtcNow();
             if (fertilize)
@@ -138,6 +159,7 @@ public sealed class FarmService(
             // Rain to come makes it ripe sooner, a drought later: it counts as sown as long before it is ripe as it grows in clear weather.
             // Smog over the plot slows it down.
             var speed = (fertilize ? Farming.FertilizerSpeed : 1) * (manure ? Farming.ManureSpeed : 1)
+                * (Farming.Sprinkled(await objects.ObjectsAsync(x, y, cancellationToken), tileX, tileY) ? Farming.SprinklerSpeed : 1)
                 * await plots.SpeedAsync(player, Industries.Farming, cancellationToken) * (await smog.LevelAsync(x, y, cancellationToken)).CropSpeed;
             var sown = FieldWeather.Ripe(now, Farming.ById[crop].Grow / speed) - Farming.ById[crop].Grow;
             await using var update = await db.CommandAsync(

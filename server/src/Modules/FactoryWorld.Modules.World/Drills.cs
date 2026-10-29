@@ -205,7 +205,7 @@ public sealed record DrillOnPlot(PlotObject Object, MineSite Mine, DrillPatch Pa
 
 public sealed class DrillService(
     GameDb db, WorldMap map, PlotService plots, IPlotObjects objects, IInventory inventory, ICharacterProgress progress, IProductionStats stats,
-    IPlotPower power, TimeProvider time) : IPlacedHook, IPlotAutomation, IMachineContents, IMachinePorts, IMachineStatuses
+    IPlotPower power, TimeProvider time, ITechnologies technologies) : IPlacedHook, IPlotAutomation, IMachineContents, IMachinePorts, IMachineStatuses
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
@@ -404,7 +404,10 @@ public sealed class DrillService(
             }
 
             var (used, emptyAt, level) = await MineRows.LockAsync(db, x, y, row.Mine, cancellationToken);
-            var patch = new DrillPatch(Drills.Level(o.Kind)!, Mining.Speed(biome), Mining.Level(level), mineral, used, emptyAt, row.Ores, row.StartedAt, row.Waiting);
+            // The drill's owner's geology makes the mineral come up more often.
+            var rich = (await technologies.ResearchedAsync(o.Owner, cancellationToken)).Contains(GeologyTech.Id);
+            var patch = new DrillPatch(
+                Drills.Level(o.Kind)!, Mining.Speed(biome), Mining.Level(level), mineral with { Rich = rich }, used, emptyAt, row.Ores, row.StartedAt, row.Waiting);
             result.Add(new DrillOnPlot(o, site, patch, await power.ClockAsync(o.Id, cancellationToken)));
         }
 
