@@ -1,4 +1,5 @@
 using System.Text.Json;
+using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Abstractions.Contracts;
 using FactoryWorld.Modules.World;
 using Microsoft.Extensions.DependencyInjection;
@@ -125,19 +126,42 @@ public sealed class WorldTests(ServerFactory factory) : IClassFixture<ServerFact
     }
 
     [Fact]
-    public async Task Every_plot_but_the_first_is_taxed_daily_and_who_owes_the_tax_builds_and_buys_nothing()
+    public async Task Every_plot_but_the_first_is_taxed_daily_on_its_price_and_what_stands_on_it_and_who_owes_the_tax_builds_and_buys_nothing()
     {
         using var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
-        await GiveMoneyAsync(client, 11_000_00 + 100_00);
+        await GiveMoneyAsync(client, 11_000_00);
         var plots = PlotsOf(Biome.Forest, 20).Take(3).ToList();
         Assert.Equal("world.bought", (await client.SendAsync("world.buy", new { x = plots[0].X, y = plots[0].Y })).Type());
         Assert.Equal("world.bought", (await client.SendAsync("world.buy", new { x = plots[1].X, y = plots[1].Y })).Type());
 
-        // The second plot cost 10 000 $, so 0.5% of it, 50 $, is due every day; the first is free.
+        // Two chests stand on the second plot and one on the first, which is not taxed.
+        long chest;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            chest = scope.ServiceProvider.GetRequiredService<IMarketPrices>().BuysCents(Items.WoodenChest)!.Value;
+            var db = scope.ServiceProvider.GetRequiredService<GameDb>();
+            foreach (var (plot, tile) in new[] { (plots[1], 10), (plots[1], 12), (plots[0], 10) })
+            {
+                await using var insert = await db.CommandAsync(
+                    "INSERT INTO world.plot_objects (id, x, y, tile_x, tile_y, owner_id, kind, rotation) VALUES (@id, @x, @y, @t, @t, @owner, @kind, 0)",
+                    CancellationToken.None);
+                insert.Parameters.AddWithValue("id", Guid.NewGuid());
+                insert.Parameters.AddWithValue("x", plot.X);
+                insert.Parameters.AddWithValue("y", plot.Y);
+                insert.Parameters.AddWithValue("t", tile);
+                insert.Parameters.AddWithValue("owner", client.AccountId);
+                insert.Parameters.AddWithValue("kind", Items.WoodenChest);
+                await insert.ExecuteNonQueryAsync(CancellationToken.None);
+            }
+        }
+
+        // 0.5% a day of the 10 000 $ the second plot cost and of the two chests on it.
+        var daily = (10_000_00 + 2 * chest) * 5 / 1000;
+        await GiveMoneyAsync(client, 2 * daily);
         factory.Time.Advance(TimeSpan.FromDays(2) + TimeSpan.FromHours(1));
         var tax = (await client.SendAsync("world.info")).Payload().GetProperty("tax");
-        Assert.Equal(50_00, tax.GetProperty("dailyCents").GetInt64());
+        Assert.Equal(daily, tax.GetProperty("dailyCents").GetInt64());
         Assert.Equal(0, tax.GetProperty("owedCents").GetInt64());
         Assert.Equal(0, await client.BalanceAsync());
 
@@ -145,12 +169,12 @@ public sealed class WorldTests(ServerFactory factory) : IClassFixture<ServerFact
         factory.Time.Advance(TimeSpan.FromDays(1));
         Assert.Equal("plot", (await client.SendAsync("plot.enter", new { x = plots[1].X, y = plots[1].Y })).Type());
         Assert.Equal("plot_tax_due", (await client.SendAsync("plot.place",
-            new { x = plots[1].X, y = plots[1].Y, kind = Items.WoodenChest, tileX = 10, tileY = 10, rotation = 0 })).ErrorCode());
+            new { x = plots[1].X, y = plots[1].Y, kind = Items.WoodenChest, tileX = 20, tileY = 20, rotation = 0 })).ErrorCode());
         Assert.Equal("plot_tax_due", (await client.SendAsync("world.buy", new { x = plots[2].X, y = plots[2].Y })).ErrorCode());
-        Assert.Equal(50_00, (await client.SendAsync("world.info")).Payload().GetProperty("tax").GetProperty("owedCents").GetInt64());
+        Assert.Equal(daily, (await client.SendAsync("world.info")).Payload().GetProperty("tax").GetProperty("owedCents").GetInt64());
 
         // Money that comes in pays the debt the next time the plots are looked at.
-        await GiveMoneyAsync(client, 60_00);
+        await GiveMoneyAsync(client, daily + 10_00);
         Assert.Equal(0, (await client.SendAsync("world.info")).Payload().GetProperty("tax").GetProperty("owedCents").GetInt64());
         Assert.Equal(10_00, await client.BalanceAsync());
     }

@@ -13,12 +13,12 @@ public sealed class PlotTaxRow
 
 public static class PlotTaxRules
 {
-    /// <summary>Every plot but the first one bought costs this many thousandths of its price a day.</summary>
+    /// <summary>Every plot but the first one bought costs this many thousandths of its worth a day: its price and what stands on it.</summary>
     public const int PerMillePerDay = 5;
 
     public static readonly TimeSpan Day = TimeSpan.FromDays(1);
 
-    /// <summary>The tax a day on plots that cost <paramref name="taxedCents"/> together.</summary>
+    /// <summary>The tax a day on plots worth <paramref name="taxedCents"/> together.</summary>
     public static long DailyCents(long taxedCents) => taxedCents * PerMillePerDay / 1000;
 }
 
@@ -36,7 +36,7 @@ public sealed record PlotTax(long DailyCents, DateTimeOffset PaidUntil, int Days
 /// The daily tax on plots. Nothing runs in the background: whenever a player's plot is entered or built on, or they open
 /// the map or buy a plot, the whole days since <see cref="PlotTaxRow.PaidUntil"/> are paid from their wallet, as many as it covers.
 /// </summary>
-public sealed class PlotTaxService(GameDb db, IWallet wallet, TimeProvider time)
+public sealed class PlotTaxService(GameDb db, IWallet wallet, IMarketPrices prices, TimeProvider time)
 {
     public Task<PlotTax> SettleAsync(Guid owner, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -105,15 +105,27 @@ public sealed class PlotTaxService(GameDb db, IWallet wallet, TimeProvider time)
     public static GameException Due(PlotTax tax) =>
         new("plot_tax_due", $"The plot tax of {tax.OwedCents / 100.0:0.00} $ is due; nothing can be built until it is paid.");
 
-    /// <summary>What the player paid for their plots, all but the first one they bought.</summary>
+    /// <summary>What the player's plots are worth, all but the first one they bought: what they paid for each plot, and for
+    /// everything standing on it what the trader pays for one (or, for what it does not buy, asks).</summary>
     private async Task<long> TaxedCentsAsync(Guid owner, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync(
             """
-            SELECT COALESCE(SUM(price_cents), 0)::bigint FROM (
-                SELECT price_cents FROM world.plots WHERE owner_id = @owner ORDER BY bought_at, x, y OFFSET 1) taxed
+            WITH taxed AS (SELECT x, y, price_cents FROM world.plots WHERE owner_id = @owner ORDER BY bought_at, x, y OFFSET 1)
+            SELECT NULL, COALESCE(SUM(price_cents), 0)::bigint FROM taxed
+            UNION ALL
+            SELECT o.kind, COUNT(*) FROM world.plot_objects o JOIN taxed t ON o.x = t.x AND o.y = t.y GROUP BY o.kind
             """, cancellationToken);
         command.Parameters.AddWithValue("owner", owner);
-        return (long)(await command.ExecuteScalarAsync(cancellationToken))!;
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var cents = 0L;
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            cents += reader.IsDBNull(0)
+                ? reader.GetInt64(1)
+                : reader.GetInt64(1) * (prices.BuysCents(reader.GetString(0)) ?? prices.SellsCents(reader.GetString(0)) ?? 0);
+        }
+
+        return cents;
     }
 }

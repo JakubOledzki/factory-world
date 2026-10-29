@@ -4,7 +4,7 @@
 		"title": "Prowizja rynku, podatek od działek i przeglądy maszyn",
 		"changes": [
 			"Rynek graczy zatrzymuje 3% każdej sprzedaży (zaokrąglone w górę). Płaci sprzedający: przy wystawianiu ogłoszenia widzisz, ile dostaniesz na rękę.",
-			"Podatek od działek: każda działka poza pierwszą kupioną kosztuje dziennie 0,5% swojej ceny. Schodzi z portfela sam, gdy wchodzisz na działkę, budujesz albo otwierasz mapę świata. Przy zakupie działki widzisz, ile wyniesie.",
+			"Podatek od działek: każda działka poza pierwszą kupioną kosztuje dziennie 0,5% swojej wartości, czyli ceny, za jaką ją kupiłeś, i wszystkiego, co na niej stoi (po cenie skupu u handlarza). Schodzi z portfela sam, gdy wchodzisz na działkę, budujesz albo otwierasz mapę świata. Przy zakupie działki widzisz, ile wyniesie.",
 			"Gdy na podatek zabraknie pieniędzy, nic nie zbudujesz na swoich działkach i nie kupisz następnej, póki zaległość nie zejdzie z portfela. Maszyny, rynek i pociągi działają dalej.",
 			"Maszyny przetwórcze się zużywają: 3 dni po uruchomieniu pracują o 20% wolniej. W oknie maszyny kliknij „Przegląd”: kosztuje 10% ceny maszyny u handlarza i przywraca pełną szybkość na kolejne 3 dni."
 		]

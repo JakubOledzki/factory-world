@@ -662,8 +662,8 @@ func _show_plot() -> void:
 			if _owned.is_empty():
 				_plot_box.add_child(_small("Pierwsza działka jest bez podatku.", UI.MUTED))
 			else:
-				_plot_box.add_child(_small("Podatek: %s dziennie (%s%% ceny)." % [UI.money(floori(price * _tax_per_mille / 1000.0)),
-						str(_tax_per_mille / 10.0).replace(".", ",")], UI.MUTED))
+				_plot_box.add_child(_small("Podatek: %s dziennie (%s%% ceny) i tyle samo od wartości wszystkiego, co na niej postawisz." % [
+						UI.money(floori(price * _tax_per_mille / 1000.0)), str(_tax_per_mille / 10.0).replace(".", ",")], UI.MUTED))
 			_buy = UI.button("Potwierdź zakup" if _confirming else "Kup działkę", _on_buy, true)
 			_buy.disabled = _balance < price
 			_plot_box.add_child(_buy)
