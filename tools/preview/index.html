@@ -5,18 +5,22 @@
 html,body{margin:0;height:100%;overflow:hidden;background:#87b8e8;font-family:"Montserrat","Segoe UI",Arial,sans-serif}
 canvas{display:block}
 .ui{position:absolute;inset:0;pointer-events:none}
-.money{position:absolute;right:16px;top:16px;width:200px;height:44px;background:rgba(34,38,46,.92);border-radius:10px;color:#ffd65a;font-weight:800;font-size:22px;display:flex;align-items:center;justify-content:center}
-.invbtn{position:absolute;right:16px;top:68px;width:200px;height:36px;background:#506082;border-radius:6px;color:#fff;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center}
-.board{position:absolute;right:16px;top:116px;width:200px;background:rgba(20,22,28,.55);border-radius:6px;color:#fff;font-size:13px;padding:6px 10px}
+.money{position:absolute;right:16px;top:16px;width:210px;height:46px;box-sizing:border-box;background:rgba(30,34,42,.95);border:1.5px solid rgba(232,182,76,.75);border-radius:12px;color:#ffd65a;font-weight:800;font-size:22px;display:flex;align-items:center;justify-content:space-between;padding:0 14px 0 12px}
+.money i{width:24px;height:24px;border-radius:50%;background:#ffd65a;border:2px solid #b0801e;box-sizing:border-box;color:#966414;font-style:normal;font-size:14px;font-weight:900;display:flex;align-items:center;justify-content:center}
+.menu{position:absolute;right:16px;top:70px;width:210px;box-sizing:border-box;padding:8px;background:rgba(30,34,42,.85);border:1.5px solid rgba(78,86,104,.7);border-radius:12px;display:flex;flex-direction:column;gap:6px}
+.menu div{height:36px;border-radius:7px;background:linear-gradient(#4f6a9f,#3a4e76);box-shadow:inset 0 0 0 1px rgba(0,0,0,.45);color:#fff;font-weight:700;font-size:15px;display:flex;align-items:center;gap:8px;padding:0 8px}
+.menu em{font-style:normal;width:26px;text-align:center;font-size:17px}.menu kbd{margin-left:auto;width:24px;height:22px;border-radius:5px;background:rgba(24,27,34,.8);color:#e8b64c;font:700 13px inherit;display:flex;align-items:center;justify-content:center}
+.board{position:absolute;right:240px;top:16px;width:200px;background:rgba(20,22,28,.55);border-radius:6px;color:#fff;font-size:13px;padding:6px 10px}
 .board div{display:flex;justify-content:space-between;padding:2px 0}
 .board .h{font-weight:700;color:#ddd;border-bottom:1px solid rgba(255,255,255,.2);margin-bottom:3px}
-.win{position:absolute;background:#22262e;border:1.5px solid #5a6273;border-radius:10px;color:#ebecf0}
-.win .hd{height:40px;background:#343a46;border-radius:10px 10px 0 0;display:flex;align-items:center;padding:0 14px;font-weight:800;font-size:20px;position:relative}
-.win .x{position:absolute;right:6px;top:5px;width:30px;height:30px;background:#96463c;border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:16px}
+.win{position:absolute;background:linear-gradient(#1e222a,#181b22);border:2px solid #4e5668;border-radius:12px;color:#eeeff3}
+.win .hd{height:44px;background:linear-gradient(#2c323e,#21262f);border-radius:10px 10px 0 0;border-bottom:2px solid #e8b64c;display:flex;align-items:center;padding:0 14px 0 28px;font-weight:800;font-size:21px;position:relative}
+.win .hd:before{content:"";position:absolute;left:14px;top:13px;width:6px;height:18px;border-radius:3px;background:#e8b64c}
+.win .x{position:absolute;right:6px;top:6px;width:32px;height:32px;background:linear-gradient(#c4584a,#8e3a30);box-shadow:inset 0 0 0 1px rgba(0,0,0,.45);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:16px}
 .win .bd{padding:10px 12px;display:flex;flex-direction:column;gap:6px}
-.row{background:#2c313b;border-radius:6px;height:36px;display:flex;align-items:center;gap:8px;padding:0 8px;font-size:15px}
+.row{background:#2a2f3a;box-shadow:inset 0 0 0 1px rgba(78,86,104,.4);border-radius:8px;height:36px;display:flex;align-items:center;gap:8px;padding:0 8px;font-size:15px}
 .sw{width:20px;height:20px;border-radius:4px;box-shadow:inset 0 0 0 1px rgba(0,0,0,.4)}
-.btn{background:#46825a;border-radius:6px;color:#fff;font-weight:700;font-size:13px;padding:6px 10px;white-space:nowrap}
+.btn{background:#46825a;background-image:linear-gradient(rgba(255,255,255,.08),rgba(0,0,0,.18));box-shadow:inset 0 0 0 1px rgba(0,0,0,.45);border-radius:7px;color:#fff;font-weight:700;font-size:13px;padding:6px 10px;white-space:nowrap}
 .alt{background:#506082}.red{background:#96463c}.off{background:#2c313b}
 .muted{color:#a0a6b2}.gold{color:#ffd65a}
 .bar{height:12px;background:#2c313b;border-radius:6px;overflow:hidden}.bar i{display:block;height:100%;background:#ff8c32;border-radius:6px}
@@ -25,7 +29,7 @@ canvas{display:block}
 .prompt .key svg{position:absolute;inset:-4px}
 .prompt .txt{background:rgba(20,20,20,.6);color:#fff;border-radius:6px;padding:4px 10px;font-size:13px;line-height:1.25}
 .prompt .txt b{font-size:16px;display:block}
-.toast{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);background:rgba(34,38,46,.88);color:#ebecf0;border-radius:8px;padding:6px 12px;font-size:18px;font-weight:600}
+.toast{position:absolute;left:50%;bottom:150px;transform:translateX(-50%);background:rgba(30,34,42,.92);border:1.5px solid rgba(232,182,76,.7);color:#ebecf0;border-radius:10px;padding:7px 14px;font-size:18px;font-weight:600}
 .label{position:absolute;transform:translate(-50%,-50%);color:#fff;font-weight:800;text-shadow:0 0 3px #000,0 0 3px #000;white-space:nowrap}
 .topbar{position:absolute;left:12px;top:12px;display:flex;gap:6px}
 .topbar span{width:32px;height:32px;border-radius:8px;background:rgba(20,20,20,.55)}
@@ -229,7 +233,8 @@ for (const p of S.prompts || []) {
 }
 if (S.hud) {
   add(`<div class="topbar"><span></span><span></span></div>`);
-  add(`<div class="money">${S.hud}</div><div class="invbtn">Ekwipunek [I]</div>`);
+  add(`<div class="money"><i>$</i>${S.hud}</div><div class="menu">${[["🎒", "Ekwipunek", "I"], ["🔨", "Budowanie", "B"], ["🔬", "Badania", "T"], ["📜", "Zlecenia", "J"], ["⚖", "Rynek graczy", "M"], ["🗺", "Moje działki", "L"], ["🏢", "Spółka", "K"]]
+    .map(([e, t, k]) => `<div><em>${e}</em>${t}<kbd>${k}</kbd></div>`).join("")}</div>`);
   add(`<div class="board"><div class="h"><span>Gracz</span><span>Pieniądze</span></div><div><span>Jakub</span><span>1 284</span></div><div><span>Ola_Buduje</span><span>412</span></div><div><span>kopacz77</span><span>96</span></div></div>`);
 }
 add(S.overlay || "");

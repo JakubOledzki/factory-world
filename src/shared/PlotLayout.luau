@@ -26,6 +26,48 @@ PlotLayout.WildTrees = {
 	{ x = 20, z = 10 }, { x = 20, z = 13 }, { x = 20, z = 16 }, { x = 20, z = 19 },
 }
 
+-- The grove a new home plot starts with besides those trees: a band of forest along the west, north
+-- and south fences, left open in the middle of each side (the gates) and around the mine and the
+-- station, with a free tile between trunks. Always the same tiles, so old plots get the same (Data).
+function PlotLayout.Grove()
+	local g = PlotLayout.Grid
+	local state = 48271
+	local function random(n)
+		state = (state * 16807) % 2147483647
+		return state % n
+	end
+	local out, taken = {}, {}
+	for _, t in ipairs(PlotLayout.WildTrees) do
+		taken[t.x .. "," .. t.z] = true
+	end
+	local band = 9
+	local lane = 4
+	local mid = g.width / 2
+	for z = 1, g.depth - 2 do
+		for x = 1, g.width - 2 do
+			local edge = x <= band or z <= band or z >= g.depth - 1 - band
+			local gate = math.abs(x + 0.5 - mid) <= lane or math.abs(z + 0.5 - mid) <= lane
+			local station = x >= PlotLayout.Station.x - 6
+			local free = edge and not gate and not station and not PlotLayout.Blocked(x, z)
+			-- Off the mine's way and a little open, so it reads as a wood and not a wall.
+			if free and random(100) < 13 then
+				for ax = -1, 1 do
+					for az = -1, 1 do
+						if taken[(x + ax) .. "," .. (z + az)] then
+							free = false
+						end
+					end
+				end
+				if free then
+					taken[x .. "," .. z] = true
+					table.insert(out, { x = x, z = z })
+				end
+			end
+		end
+	end
+	return out
+end
+
 -- Furnaces stood on four slots before they went on the grid; a furnace saved on slot i is put on
 -- the grid with its corner on tile FurnaceSlotTiles[i].
 PlotLayout.FurnaceSlotTiles = {

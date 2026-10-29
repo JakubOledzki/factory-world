@@ -1328,3 +1328,52 @@ test("The tutorial goes step by step, counts only its own events and ends", func
 	eq(Tutorial.View(skipped), nil)
 	checkModel("NoticeBoard", Models.NoticeBoard(), { "Board" })
 end)
+
+test("The research tree: every requirement exists and comes first, roots need nothing, and each step lies one deeper", function()
+	local Research = load_shared("Research")
+	local seen, roots = {}, 0
+	for _, t in ipairs(Research.Technologies) do
+		for _, need in ipairs(t.requires) do
+			assert(seen[need], t.id .. " needs " .. need .. " listed before it")
+			assert(Research.Depth(t.id) > Research.Depth(need), t.id)
+		end
+		if #t.requires == 0 then
+			roots = roots + 1
+			eq(Research.Depth(t.id), 0)
+		end
+		seen[t.id] = true
+	end
+	assert(roots >= 3, "three roots")
+	-- A requirement not done keeps a technology locked.
+	eq(Research.Status({}, "crushing", 0), "locked")
+	eq(Research.Status({}, "electrification", 0), "available")
+	local r = { stonemasonry = { startsAt = 0, finishesAt = 1 }, electrification = { startsAt = 1, finishesAt = 2 } }
+	eq(Research.Status(r, "crushing", 3), "available")
+	eq(Research.Unlocked({}, Items.Generator, 0), false, "generators need electrification")
+	eq(Research.Unlocked(r, Items.Pole, 3), true)
+end)
+
+test("The home plot's grove stands on free tiles off the gates, the mine and the station, a tile apart", function()
+	local PlotLayout = load_shared("PlotLayout")
+	local Logistics = load_shared("Logistics")
+	local grove = PlotLayout.Grove()
+	assert(#grove >= 50, "many trees: " .. #grove)
+	local objects = {}
+	local taken = {}
+	for _, t in ipairs(PlotLayout.WildTrees) do
+		taken[t.x .. "," .. t.z] = true
+	end
+	for i, t in ipairs(grove) do
+		eq(PlotLayout.Blocked(t.x, t.z), false, "mine")
+		eq(PlotLayout.StationTile(t.x, t.z), false, "station")
+		assert(not taken[t.x .. "," .. t.z], "two trees on one tile")
+		eq(Logistics.CanPlace(objects, {}, Items.Sapling, t.x, t.z), true, "free tile")
+		table.insert(objects, Logistics.New(i, Items.WoodenChest, t.x, t.z, 0))
+		taken[t.x .. "," .. t.z] = true
+	end
+	local sx, sz = PlotLayout.TileAt(PlotLayout.Spawn.x, PlotLayout.Spawn.z)
+	assert(not taken[sx .. "," .. sz], "the spawn is clear")
+	-- The same tiles every time, so old plots get the same grove.
+	eq(#PlotLayout.Grove(), #grove)
+	eq(PlotLayout.Grove()[10].x, grove[10].x)
+end)

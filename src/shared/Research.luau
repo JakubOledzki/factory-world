@@ -1,7 +1,9 @@
 -- The technology tree (Research.cs TechTree on main), the part that fits this stage: each
 -- technology unlocks machines the player may then make at the workbench and buy. Research uses up
 -- its cost at once and takes time, one technology at a time, and goes on while the player is away.
--- Belts, inserters and chests came before research did and stay unlocked.
+-- Belts, inserters and chests came before research did and stay unlocked. Technologies need
+-- others first (`requires`), which makes the tree the research window draws: three roots (wood,
+-- stone and power) branching into crushing and metallurgy, and into milling and baking.
 --
 -- A player's research is saved as { [technology id] = { startsAt, finishesAt } }.
 local Items = require(script.Parent.Items)
@@ -29,11 +31,21 @@ Research.Technologies = {
 		unlocks = { Items.Stonemason, Items.StoneBlocks },
 	},
 	{
+		-- Generators and poles were open to all before; Data marks it done for players from then.
+		id = "electrification",
+		name = "Elektryfikacja",
+		description = "Generator parowy i słupy energetyczne dają prąd kruszarce i młynowi.",
+		requires = {},
+		cost = { { Items.IronIngot, 10 }, { Items.CopperIngot, 5 }, { Items.Coal, 20 } },
+		time = 60,
+		unlocks = { Items.Generator, Items.Pole },
+	},
+	{
 		-- On main it follows mining automation, which this game does not have yet.
 		id = "crushing",
 		name = "Kruszenie",
 		description = "Kruszarka mieli kamień na piasek, a rudę na kruszywo, z którego wytopisz więcej sztabek.",
-		requires = {},
+		requires = { "stonemasonry", "electrification" },
 		cost = { { Items.Stone, 100 }, { Items.IronIngot, 30 } },
 		time = 180,
 		unlocks = { Items.Crusher, Items.Sand, Items.CrushedIronOre, Items.CrushedCopperOre, Items.CrushedTinOre },
@@ -42,7 +54,7 @@ Research.Technologies = {
 		id = "metallurgy",
 		name = "Metalurgia",
 		description = "Odlewnia stapia brąz i stal i wypala cegły.",
-		requires = {},
+		requires = { "crushing" },
 		cost = { { Items.CopperIngot, 30 }, { Items.TinIngot, 10 }, { Items.IronIngot, 30 }, { Items.Coal, 30 } },
 		time = 180,
 		unlocks = { Items.Foundry, Items.BronzeIngot, Items.SteelIngot, Items.Bricks },
@@ -51,7 +63,7 @@ Research.Technologies = {
 		id = "milling",
 		name = "Młynarstwo",
 		description = "Młyn miele pszenicę i kukurydzę na mąkę. Działa na prąd.",
-		requires = {},
+		requires = { "electrification" },
 		cost = { { Items.Wheat, 40 }, { Items.Stone, 20 } },
 		time = 60,
 		unlocks = { Items.Mill, Items.Flour, Items.CornFlour },
@@ -142,6 +154,15 @@ function Research.Start(research, id, now)
 	end
 	after[id] = { startsAt = now, finishesAt = now + t.time }
 	return after
+end
+
+-- How deep technology `id` stands in the tree: 0 for a root, else one more than its deepest requirement.
+function Research.Depth(id)
+	local deepest = -1
+	for _, need in ipairs(Research.ById[id].requires) do
+		deepest = math.max(deepest, Research.Depth(need))
+	end
+	return deepest + 1
 end
 
 return Research

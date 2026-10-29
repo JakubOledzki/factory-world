@@ -100,6 +100,12 @@ function Net.Near(player, position, range)
 	return root ~= nil and (root.Position - position).Magnitude <= range
 end
 
+-- Calls `callback(player, profile)` after every push of the player's state (e.g. to show their tools).
+local pushHooks = {}
+function Net.OnPush(callback)
+	table.insert(pushHooks, callback)
+end
+
 -- Pushes the player's balance, inventory and its tiles and their tutorial task to their client and the leaderboard.
 function Net.PushState(player)
 	local profile = Data.Get(player)
@@ -116,6 +122,9 @@ function Net.PushState(player)
 	local money = stats and stats:FindFirstChild("Pieniądze")
 	if money then
 		money.Value = math.floor(profile.balanceCents / 100)
+	end
+	for _, hook in ipairs(pushHooks) do
+		task.spawn(hook, player, profile)
 	end
 end
 

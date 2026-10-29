@@ -1,4 +1,4 @@
--- Always on screen: the money, the buttons of the windows, the tutorial's task and messages from the game.
+-- Always on screen: the money, a panel with the windows' buttons and their keys, the tutorial's task and messages from the game.
 local Shared = game:GetService("ReplicatedStorage"):WaitForChild("Shared")
 local Items = require(Shared.Items)
 local Money = require(Shared.Money)
@@ -8,67 +8,106 @@ local Game = require(script.Parent.Parent.Game)
 local Hud = {}
 
 function Hud.Mount(screen, openInventory, toggleBuild, openResearch, openMarket, openLands, openCompany, openContracts)
+	-- The money, on a dark plate with a gold coin.
 	local money = Kit.New("Frame", {
 		AnchorPoint = Vector2.new(1, 0),
 		Position = UDim2.new(1, -16, 0, 16),
-		Size = UDim2.fromOffset(200, 44),
+		Size = UDim2.fromOffset(210, 46),
 		BackgroundColor3 = Kit.Colors.Panel,
-		BackgroundTransparency = 0.1,
+		BackgroundTransparency = 0.05,
 		Parent = screen,
-	}, { Kit.Corner(10) })
+	}, {
+		Kit.Corner(12),
+		Kit.New("UIStroke", { Color = Kit.Colors.Accent, Thickness = 1.5, Transparency = 0.25 }),
+	})
+	Kit.New("Frame", {
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 12, 0.5, 0),
+		Size = UDim2.fromOffset(24, 24),
+		BackgroundColor3 = Kit.Colors.Money,
+		Parent = money,
+	}, {
+		Kit.Corner(12),
+		Kit.New("UIStroke", { Color = Color3.fromRGB(176, 128, 30), Thickness = 2 }),
+		Kit.New("TextLabel", {
+			BackgroundTransparency = 1,
+			Size = UDim2.fromScale(1, 1),
+			Font = Enum.Font.GothamBlack,
+			Text = "$",
+			TextSize = 15,
+			TextColor3 = Color3.fromRGB(150, 100, 20),
+		}),
+	})
 	local moneyLabel = Kit.Label(money, Money.Format(0), {
 		Font = Enum.Font.GothamBold,
 		TextSize = 22,
 		TextColor3 = Kit.Colors.Money,
-		TextXAlignment = Enum.TextXAlignment.Center,
-		Size = UDim2.fromScale(1, 1),
+		TextXAlignment = Enum.TextXAlignment.Right,
+		Position = UDim2.fromOffset(44, 0),
+		Size = UDim2.new(1, -58, 1, 0),
 	})
 	Game.Changed.Event:Connect(function()
 		moneyLabel.Text = Money.Format(Game.BalanceCents)
 	end)
 
-	Kit.Button(screen, "Ekwipunek [I]", openInventory, {
+	-- The windows' buttons in one panel under it, each with its key on a small plate.
+	local menu = Kit.New("Frame", {
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -16, 0, 68),
-		Size = UDim2.fromOffset(200, 36),
-		BackgroundColor3 = Kit.Colors.ButtonAlt,
+		Position = UDim2.new(1, -16, 0, 70),
+		Size = UDim2.fromOffset(210, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundColor3 = Kit.Colors.Panel,
+		BackgroundTransparency = 0.15,
+		Parent = screen,
+	}, {
+		Kit.Corner(12),
+		Kit.New("UIStroke", { Color = Kit.Colors.Stroke, Thickness = 1.5, Transparency = 0.3 }),
+		Kit.New("UIPadding", {
+			PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8),
+			PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8),
+		}),
+		Kit.New("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }),
 	})
-	Kit.Button(screen, "Budowanie [B]", toggleBuild, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -16, 0, 110),
-		Size = UDim2.fromOffset(200, 36),
-		BackgroundColor3 = Kit.Colors.ButtonAlt,
-	})
-	Kit.Button(screen, "Badania [T]", openResearch, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -16, 0, 152),
-		Size = UDim2.fromOffset(200, 36),
-		BackgroundColor3 = Kit.Colors.ButtonAlt,
-	})
-	Kit.Button(screen, "Rynek graczy [M]", openMarket, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -16, 0, 194),
-		Size = UDim2.fromOffset(200, 36),
-		BackgroundColor3 = Kit.Colors.ButtonAlt,
-	})
-	Kit.Button(screen, "Moje działki [L]", openLands, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -16, 0, 236),
-		Size = UDim2.fromOffset(200, 36),
-		BackgroundColor3 = Kit.Colors.ButtonAlt,
-	})
-	Kit.Button(screen, "Spółka [K]", openCompany, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -16, 0, 278),
-		Size = UDim2.fromOffset(200, 36),
-		BackgroundColor3 = Kit.Colors.ButtonAlt,
-	})
-	Kit.Button(screen, "Zlecenia [J]", openContracts, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -16, 0, 320),
-		Size = UDim2.fromOffset(200, 36),
-		BackgroundColor3 = Kit.Colors.ButtonAlt,
-	})
+	local entries = {
+		{ "🎒", "Ekwipunek", "I", openInventory },
+		{ "🔨", "Budowanie", "B", toggleBuild },
+		{ "🔬", "Badania", "T", openResearch },
+		{ "📜", "Zlecenia", "J", openContracts },
+		{ "⚖", "Rynek graczy", "M", openMarket },
+		{ "🗺", "Moje działki", "L", openLands },
+		{ "🏢", "Spółka", "K", openCompany },
+	}
+	for i, entry in ipairs(entries) do
+		local button = Kit.Button(menu, "", entry[4], {
+			LayoutOrder = i,
+			Size = UDim2.new(1, 0, 0, 36),
+			BackgroundColor3 = Kit.Colors.ButtonAlt,
+		})
+		Kit.Label(button, entry[1], {
+			Position = UDim2.fromOffset(8, 0),
+			Size = UDim2.fromOffset(26, 36),
+			TextSize = 18,
+			TextXAlignment = Enum.TextXAlignment.Center,
+		})
+		Kit.Label(button, entry[2], {
+			Position = UDim2.fromOffset(40, 0),
+			Size = UDim2.new(1, -80, 1, 0),
+			Font = Enum.Font.GothamBold,
+			TextSize = 15,
+		})
+		Kit.New("TextLabel", {
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, -8, 0.5, 0),
+			Size = UDim2.fromOffset(24, 22),
+			BackgroundColor3 = Color3.fromRGB(24, 27, 34),
+			BackgroundTransparency = 0.2,
+			Font = Enum.Font.GothamBold,
+			Text = entry[3],
+			TextSize = 13,
+			TextColor3 = Kit.Colors.Accent,
+			Parent = button,
+		}, { Kit.Corner(5) })
+	end
 
 	Hud.MountTutorial(screen)
 
@@ -89,16 +128,20 @@ function Hud.Mount(screen, openInventory, toggleBuild, openResearch, openMarket,
 		local toast = Kit.New("TextLabel", {
 			AutomaticSize = Enum.AutomaticSize.XY,
 			BackgroundColor3 = Kit.Colors.Panel,
-			BackgroundTransparency = 0.15,
+			BackgroundTransparency = 0.08,
 			Font = Enum.Font.GothamMedium,
 			TextSize = 18,
 			TextColor3 = Kit.Colors.Text,
 			Text = text,
 			Parent = toasts,
-		}, { Kit.Corner(8), Kit.New("UIPadding", {
-			PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
-			PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6),
-		}) })
+		}, {
+			Kit.Corner(10),
+			Kit.New("UIStroke", { Color = Kit.Colors.Accent, Thickness = 1.5, Transparency = 0.3, ApplyStrokeMode = Enum.ApplyStrokeMode.Border }),
+			Kit.New("UIPadding", {
+				PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14),
+				PaddingTop = UDim.new(0, 7), PaddingBottom = UDim.new(0, 7),
+			}),
+		})
 		task.delay(3, function()
 			toast:Destroy()
 		end)

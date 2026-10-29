@@ -20,6 +20,7 @@ local Railway = require(Services.Railway)
 local Companies = require(Services.Companies)
 local Contracts = require(Services.Contracts)
 local Tutorial = require(Services.Tutorial)
+local Gear = require(Services.Gear)
 
 -- Remote events exist before any client looks for them.
 Net.Event("State")
@@ -39,6 +40,7 @@ Railway.Start()
 Companies.Start()
 Contracts.Start()
 Tutorial.Start()
+Gear.Start()
 
 local function addStats(player)
 	local stats = Instance.new("Folder")

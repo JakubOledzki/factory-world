@@ -68,6 +68,8 @@ local function newProfile()
 		contracts = nil,
 		-- The tutorial's task at hand (Shared.Tutorial).
 		tutorial = Tutorial.New(),
+		-- Made with the research tree, so nothing from before it is to be given (migrate).
+		researchTree = true,
 		nextId = 1,
 		lock = nil,
 	}
@@ -222,6 +224,21 @@ local function migrate(profile)
 		profile.wildTrees = true
 		profile.trees = nil
 	end
+	-- The grove along the home plot's fences, once, on the tiles still free (old plots get it too).
+	if not profile.grove then
+		local home = { grid = grid, furnaces = profile.furnaces }
+		if profile.active then
+			home = profile.home
+		end
+		if home and home.grid then
+			for _, t in ipairs(PlotLayout.Grove()) do
+				if Logistics.CanPlace(home.grid.objects, home.furnaces or {}, Items.Sapling, t.x, t.z) then
+					table.insert(home.grid.objects, Forestry.New(Data.NextId(profile), t.x, t.z, nil))
+				end
+			end
+		end
+		profile.grove = true
+	end
 	-- Plots bought besides the home plot (Shared.Lands).
 	profile.lands = profile.lands or {}
 	-- A railway station on every plot, once: what stood on its tiles goes back to the inventory.
@@ -237,6 +254,13 @@ local function migrate(profile)
 	profile.rail = profile.rail or {}
 	if profile.research == nil then
 		profile.research = {}
+	end
+	-- Generators and poles came under research with the tree; players from before keep them.
+	if not profile.researchTree then
+		if profile.research.electrification == nil then
+			profile.research.electrification = { startsAt = 0, finishesAt = 0 }
+		end
+		profile.researchTree = true
 	end
 	-- Plots had three mines in a row; the middle one stands where the plot's one mine is now.
 	if #profile.mines > #PlotLayout.Mines then

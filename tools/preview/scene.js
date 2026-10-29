@@ -77,7 +77,7 @@ function plot(index, opts = {}) {
   // CFrame.lookAt(at, at + toSquare): the front (-z) faces the square.
   objects.push({ at: sign, yaw: Math.atan2(-tx, -tz), parts: lua.call(`Models.Signpost(${index})`) });
   L.Mines.forEach((m, k) => objects.push({ at: [cx + m.x, 0, cz + m.z], yaw: Math.PI, parts: lua.call(`Models.Mine(${index * 10 + k + 1})`) }));
-  const wild = opts.biome ? lua.call(`Lands.WildTrees("${opts.biome}")`) : L.WildTrees;
+  const wild = opts.biome ? lua.call(`Lands.WildTrees("${opts.biome}")`) : L.WildTrees.concat(lua.call("PlotLayout.Grove()"));
   const snow = opts.biome ? !!lua.call(`Lands.Biomes.${opts.biome}.snow`) : false;
   wild.forEach((t, k) => {
     const id = index * 20 + k + 1;
@@ -416,19 +416,53 @@ function views() {
         objects.push({ at, yaw, parts: lua.call("Models.WoodenChest()") });
       }
     }
+    // The research tree as client/Ui/Research.luau lays it out: columns by depth, rows between requirements.
     const techs = lua.call("Research.Technologies");
-    const status = ["✓ Zbadane", "Bada się: 1 min 12 s", null, null];
-    const tech = (t, i) => `<div class="card" style="height:174px">
-      <div style="position:absolute;left:10px;top:10px">${slot(t.unlocks[0], "", { size: 64 })}</div>
-      <div style="position:absolute;left:86px;top:6px;right:134px;font-size:14px;line-height:1.3"><b>${t.name}</b> (${t.time >= 60 ? Math.floor(t.time / 60) + " min " + (t.time % 60) + " s" : t.time + " s"})<br>${t.description}</div>
-      <div class="muted" style="position:absolute;left:86px;top:62px;font-size:12px">Koszt:</div>
-      <div style="position:absolute;left:86px;top:80px">${ingredients(t.cost, 36)}</div>
-      <div class="muted" style="position:absolute;left:86px;top:140px;right:10px;font-size:12px">Odblokowuje: ${t.unlocks.map(name).join(", ")}</div>
-      <div style="position:absolute;right:10px;top:12px;width:120px">${status[i] ? `<b style="font-size:14px;color:${i ? "#ebecf0" : GREEN}">${status[i]}</b>`
-        : `<span class="btn" style="display:block;text-align:center;padding:9px 0;font-size:15px;background:${t.cost.every(([id, n]) => (have[id] || 0) >= n) ? "#46825a" : "#4e5460"}">Badaj</span>`}</div></div>`;
+    const states = { forestry_industry: "done", electrification: "done", stonemasonry: "active", milling: "available" };
+    const tint = { done: "#6ec86e", active: "#ffcd5a", available: "#6ea0f0", locked: "#5a606e" };
+    const statusOf = (t) => states[t.id] || (t.requires.every((n) => states[n] === "done") ? "available" : "locked");
+    const clock = (s) => s >= 60 ? `${Math.floor(s / 60)} min ${s % 60} s` : `${s} s`;
+    const label = (t) => ({ done: "✓ Zbadane", active: "Bada się: 1 min 12 s", locked: "🔒 Zablokowane" })[statusOf(t)] || "Dostępne · " + clock(t.time);
+    const spots = {}, columns = {};
+    let rows = 0;
+    for (const t of techs) {
+      const column = lua.call(`Research.Depth("${t.id}")`);
+      let row = t.requires.length ? t.requires.reduce((a, n) => a + spots[n].row, 0) / t.requires.length : 0;
+      const taken = columns[column] = columns[column] || [];
+      for (let moved = true; moved;) { moved = false; for (const o of taken) if (Math.abs(o - row) < 1) { row = o + 1; moved = true; } }
+      taken.push(row); spots[t.id] = { column, row }; rows = Math.max(rows, row + 1);
+    }
+    const W = 220, H = 74, CG = 86, RG = 20;
+    const at = (id) => [18 + spots[id].column * (W + CG), RG + spots[id].row * (H + RG)];
+    let lines = "", nodes = "";
+    const seg = (x1, y1, x2, y2, c) => `<div style="position:absolute;left:${Math.min(x1, x2) - 1.5}px;top:${Math.min(y1, y2) - 1.5}px;width:${Math.abs(x2 - x1) + 3}px;height:${Math.abs(y2 - y1) + 3}px;background:${c}"></div>`;
+    const selected = "milling";
+    for (const t of techs) {
+      const [x2, y] = at(t.id), y2 = y + H / 2;
+      for (const n of t.requires) {
+        const [nx, ny] = at(n), x1 = nx + W, y1 = ny + H / 2, mid = x1 + CG / 2, c = states[n] === "done" ? tint.done : tint.locked;
+        lines += seg(x1, y1, mid, y1, c) + seg(mid, y1, mid, y2, c) + seg(mid, y2, x2, y2, c);
+      }
+      const st = statusOf(t), chosen = t.id === selected;
+      nodes += `<div style="position:absolute;left:${x2}px;top:${y}px;width:${W}px;height:${H}px;box-sizing:border-box;border-radius:10px;background:${chosen ? "#3e4658" : "#2a2f3a"};border:${chosen ? 2.5 : 1.5}px solid ${chosen ? GOLD : tint[st]}">
+        <div style="position:absolute;left:8px;top:8px">${slot(t.unlocks[0], "", { size: 56 })}</div>
+        <b style="position:absolute;left:73px;top:12px;font-size:15px">${t.name}</b><span style="position:absolute;left:73px;top:40px;font-size:13px;color:${tint[st]}">${label(t)}</span></div>`;
+    }
+    const sel = techs.find((t) => t.id === selected);
+    const ready = sel.cost.every(([id, n]) => (have[id] || 0) >= n);
     out["7-przetworstwo"] = { objects, camera: { pos: [cx - 6, 30, cz - 28], look: [cx + 2, 0, cz - 62], fov: 55 }, shadowRadius: 60, hud: "1 284,50 $", caption,
-      overlay: `<div class="win" style="width:560px;right:16px;top:12px;bottom:40px;overflow:hidden"><div class="hd">Badania<span class="x">✕</span></div><div class="bd">
-        ${techs.map(tech).join("")}</div></div>` };
+      overlay: `<div class="win" style="width:900px;left:50%;transform:translateX(-50%);top:30px"><div class="hd">Drzewko badań<span class="x">✕</span></div><div class="bd">
+        <div class="muted" style="font-size:14px">Badanie zużywa surowce od razu i trwa swój czas, także gdy cię nie ma. Bada się jedno naraz; kliknij technologię, aby zobaczyć szczegóły.</div>
+        <div style="position:relative;height:${rows * (H + RG) + RG}px;background:#1a1d24;border-radius:10px">${lines}${nodes}</div>
+        <div class="card" style="height:196px;border:1.5px solid ${tint[statusOf(sel)]}">
+          <div style="position:absolute;left:14px;top:14px">${slot(sel.unlocks[0], "", { size: 84 })}</div>
+          <div style="position:absolute;left:112px;top:10px;right:290px;font-size:15px;line-height:1.35"><b style="font-size:20px">${sel.name}</b> &nbsp;<span class="muted">${clock(sel.time)}</span><br>${sel.description}</div>
+          <div class="muted" style="position:absolute;left:112px;top:68px;font-size:12px">Koszt</div>
+          <div style="position:absolute;left:112px;top:86px">${ingredients(sel.cost, 44)}</div>
+          <div class="muted" style="position:absolute;right:176px;top:68px;width:240px;font-size:12px">Odblokowuje</div>
+          <div style="position:absolute;right:176px;top:86px;width:240px;display:flex;gap:6px">${sel.unlocks.map((id) => slot(id, "", { size: 44 })).join("")}</div>
+          <span class="btn" style="position:absolute;right:14px;top:14px;width:150px;text-align:center;padding:11px 0;font-size:17px;box-sizing:border-box;background:${ready ? "#40965c" : "#4e5460"}">Badaj</span></div>
+      </div></div>` };
   }
   // 8. The pictures of items (Shared.Icons) side by side on dark tiles, as the inventory shows them.
   {

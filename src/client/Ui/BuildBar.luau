@@ -322,7 +322,11 @@ function BuildBar.Mount(screen)
 		BackgroundTransparency = 0.1,
 		Visible = false,
 		Parent = screen,
-	}, { Kit.Corner(10), Kit.New("UISizeConstraint", { MaxSize = Vector2.new(1180, 86) }) })
+	}, {
+		Kit.Corner(12),
+		Kit.New("UISizeConstraint", { MaxSize = Vector2.new(1180, 86) }),
+		Kit.New("UIStroke", { Color = Kit.Colors.Accent, Thickness = 1.5, Transparency = 0.35 }),
+	})
 	local row = Kit.New("Frame", {
 		Position = UDim2.fromOffset(10, 8),
 		Size = UDim2.new(1, -20, 0, 40),
