@@ -182,6 +182,10 @@ namespace FactoryWorld.Modules.Crafting.Migrations
                         .HasColumnType("character varying(32)")
                         .HasColumnName("recipe");
 
+                    b.Property<DateTimeOffset?>("ServiceDue")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("service_due");
+
                     b.Property<DateTimeOffset?>("StartedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("started_at");
@@ -189,6 +193,36 @@ namespace FactoryWorld.Modules.Crafting.Migrations
                     b.HasKey("ObjectId");
 
                     b.ToTable("machines", "crafting");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Crafting.MachineWearRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<DateTimeOffset>("ServiceDue")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("service_due");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId", "Kind");
+
+                    b.ToTable("machine_wear", "crafting");
                 });
 #pragma warning restore 612, 618
         }

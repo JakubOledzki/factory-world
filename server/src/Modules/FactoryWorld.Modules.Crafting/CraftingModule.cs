@@ -81,6 +81,21 @@ public sealed class MachineRow
     public int Output { get; set; }
 
     public DateTimeOffset? StartedAt { get; set; }
+
+    /// <summary>When the machine needs a service, in its own time.</summary>
+    public DateTimeOffset? ServiceDue { get; set; }
+}
+
+/// <summary>When a machine that was picked up needed its service, so the owner's next machine of its kind put down takes the wear over.</summary>
+public sealed class MachineWearRow
+{
+    public long Id { get; set; }
+
+    public Guid OwnerId { get; set; }
+
+    public string Kind { get; set; } = "";
+
+    public DateTimeOffset ServiceDue { get; set; }
 }
 
 public sealed class CraftingDbContext(DbContextOptions<CraftingDbContext> options, GameDb gameDb) : ModuleDbContext(options, gameDb)
@@ -139,6 +154,17 @@ public sealed class CraftingDbContext(DbContextOptions<CraftingDbContext> option
             e.Property(m => m.Output).HasColumnName("output");
             e.Property(m => m.Extras).HasColumnName("extras").HasDefaultValueSql("'{}'");
             e.Property(m => m.StartedAt).HasColumnName("started_at");
+            e.Property(m => m.ServiceDue).HasColumnName("service_due");
+        });
+        model.Entity<MachineWearRow>(e =>
+        {
+            e.ToTable("machine_wear");
+            e.HasKey(w => w.Id);
+            e.Property(w => w.Id).HasColumnName("id");
+            e.Property(w => w.OwnerId).HasColumnName("owner_id");
+            e.Property(w => w.Kind).HasColumnName("kind").HasMaxLength(32);
+            e.Property(w => w.ServiceDue).HasColumnName("service_due");
+            e.HasIndex(w => new { w.OwnerId, w.Kind });
         });
     }
 }
@@ -168,6 +194,7 @@ public sealed class CraftingModule : IGameModule
         services.AddSingleton<IMessageHandler, SetMachineRecipeHandler>();
         services.AddSingleton<IMessageHandler, LoadMachineHandler>();
         services.AddSingleton<IMessageHandler, TakeMachineHandler>();
+        services.AddSingleton<IMessageHandler, ServiceMachineHandler>();
         services.AddScoped<CanteenService>();
         services.AddScoped<IMachinePorts, CanteenPorts>();
         services.AddScoped<IMachineContents, CanteenContents>();

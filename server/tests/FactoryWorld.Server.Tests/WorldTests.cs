@@ -125,6 +125,37 @@ public sealed class WorldTests(ServerFactory factory) : IClassFixture<ServerFact
     }
 
     [Fact]
+    public async Task Every_plot_but_the_first_is_taxed_daily_and_who_owes_the_tax_builds_and_buys_nothing()
+    {
+        using var client = await factory.ConnectAsync();
+        await client.RegisterWithCharacterAsync();
+        await GiveMoneyAsync(client, 11_000_00 + 100_00);
+        var plots = PlotsOf(Biome.Forest, 20).Take(3).ToList();
+        Assert.Equal("world.bought", (await client.SendAsync("world.buy", new { x = plots[0].X, y = plots[0].Y })).Type());
+        Assert.Equal("world.bought", (await client.SendAsync("world.buy", new { x = plots[1].X, y = plots[1].Y })).Type());
+
+        // The second plot cost 10 000 $, so 0.5% of it, 50 $, is due every day; the first is free.
+        factory.Time.Advance(TimeSpan.FromDays(2) + TimeSpan.FromHours(1));
+        var tax = (await client.SendAsync("world.info")).Payload().GetProperty("tax");
+        Assert.Equal(50_00, tax.GetProperty("dailyCents").GetInt64());
+        Assert.Equal(0, tax.GetProperty("owedCents").GetInt64());
+        Assert.Equal(0, await client.BalanceAsync());
+
+        // A day with no money for it: entering the plot still works, building and buying do not.
+        factory.Time.Advance(TimeSpan.FromDays(1));
+        Assert.Equal("plot", (await client.SendAsync("plot.enter", new { x = plots[1].X, y = plots[1].Y })).Type());
+        Assert.Equal("plot_tax_due", (await client.SendAsync("plot.place",
+            new { x = plots[1].X, y = plots[1].Y, kind = Items.WoodenChest, tileX = 10, tileY = 10, rotation = 0 })).ErrorCode());
+        Assert.Equal("plot_tax_due", (await client.SendAsync("world.buy", new { x = plots[2].X, y = plots[2].Y })).ErrorCode());
+        Assert.Equal(50_00, (await client.SendAsync("world.info")).Payload().GetProperty("tax").GetProperty("owedCents").GetInt64());
+
+        // Money that comes in pays the debt the next time the plots are looked at.
+        await GiveMoneyAsync(client, 60_00);
+        Assert.Equal(0, (await client.SendAsync("world.info")).Payload().GetProperty("tax").GetProperty("owedCents").GetInt64());
+        Assert.Equal(10_00, await client.BalanceAsync());
+    }
+
+    [Fact]
     public async Task A_plot_has_only_one_owner()
     {
         using var first = await factory.ConnectAsync();

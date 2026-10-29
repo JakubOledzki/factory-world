@@ -318,7 +318,8 @@ public sealed record Harvest(TileObject Object, IReadOnlyList<(string Item, int 
 
 public sealed class PlotService(
     GameDb db, WorldMap map, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats,
-    IEnumerable<ICompanyPlots> companies, BeachService beach, PestService pests, ForestLedger ledger, IOutfit outfit, TimeProvider time)
+    IEnumerable<ICompanyPlots> companies, BeachService beach, PestService pests, ForestLedger ledger, IOutfit outfit, PlotTaxService taxes,
+    TimeProvider time)
 {
     /// <summary>The tiles of a plot as they are now; only its owner and members of its company may enter, or anyone when it is public.</summary>
     public async Task<byte[]> TilesAsync(Guid player, int x, int y, CancellationToken cancellationToken)
@@ -745,6 +746,16 @@ public sealed class PlotService(
         if (!(await RightsAsync(player, x, y, cancellationToken)).Contains(right))
         {
             throw new GameException("not_owner", "This is not your plot.");
+        }
+
+        // The owner's plot tax is paid whenever the plot is entered; while it is owed, nothing is built there.
+        if (right == PlotRight.Build)
+        {
+            await taxes.RequirePaidAsync(x, y, cancellationToken);
+        }
+        else if (right == PlotRight.Visit)
+        {
+            await taxes.SettlePlotAsync(x, y, cancellationToken);
         }
 
         return map.BiomeAt(x, y);

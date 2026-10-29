@@ -9,6 +9,8 @@ signal updated(machine: Dictionary)
 ## Items came back from the machine: [{id, name, quantity}] taken out, and the XP gain or null.
 signal inventory_changed(taken: Array, xp: Variant)
 signal failed(reply: Dictionary)
+## The player paid for a service of the machine.
+signal balance_changed
 ## The player asked to put the machine back into the inventory.
 signal pick_up_requested(id: String)
 
@@ -27,6 +29,8 @@ var _slots := VBoxContainer.new()
 var _status: Label
 var _progress: ProgressBar
 var _help: Label
+var _service: Label
+var _service_button: Button
 
 
 func _init() -> void:
@@ -50,6 +54,15 @@ func _init() -> void:
 	content.add_child(_progress)
 	_help = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
 	content.add_child(_help)
+	var service_row := HBoxContainer.new()
+	service_row.add_theme_constant_override("separation", 6)
+	_service = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
+	_service.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	service_row.add_child(_service)
+	_service_button = UI.button("Przegląd", _do_service)
+	_service_button.tooltip_text = "Po przeglądzie maszyna przez 3 dni pracuje z pełną szybkością"
+	service_row.add_child(_service_button)
+	content.add_child(service_row)
 	var pick_up := UI.button("Schowaj do ekwipunku", func() -> void: pick_up_requested.emit(machine))
 	pick_up.tooltip_text = "Wszystko, co jest w środku, wróci do ekwipunku"
 	content.add_child(pick_up)
@@ -191,8 +204,26 @@ func _render() -> void:
 	if _state.get("powered", false):
 		help.append("Działa na prąd: postaw generator parowy z opałem i słup energetyczny najwyżej 2 pola od maszyny.")
 	_help.text = " ".join(help)
+	_render_service()
 	_update_status()
 	_fit.call_deferred()
+
+
+## Machines wear: some days after they first work they go slower until the player pays for a service.
+func _render_service() -> void:
+	var due: Variant = _state.get("serviceDue")
+	var cents := int(_state.get("serviceCents", 0))
+	_service_button.text = "Przegląd (%s)" % UI.money(cents)
+	if _state.get("worn", false):
+		_service.text = "Maszyna potrzebuje przeglądu: pracuje o %d%% wolniej." % int(_state.get("slowerPercent", 20))
+		_service.add_theme_color_override("font_color", UI.ERROR)
+	elif due != null:
+		var hours := maxi(0, floori((float(due) - _server_now()) / 3600000.0))
+		_service.text = "Przegląd za %s." % ("%d dni" % floori(hours / 24.0) if hours >= 48 else "%d godz." % hours)
+		_service.add_theme_color_override("font_color", UI.MUTED)
+	else:
+		_service.text = "Przegląd co 3 dni pracy, pierwszy liczony od uruchomienia."
+		_service.add_theme_color_override("font_color", UI.MUTED)
 
 
 func _formula_text(recipe: Dictionary) -> String:
@@ -300,6 +331,13 @@ func _put(item: String, quantity: int, fuel: bool) -> void:
 
 func _take(what: String) -> void:
 	_changed(await Net.request("machine.take", {"machine": machine, "what": what}))
+
+
+func _do_service() -> void:
+	var reply := await Net.request("machine.service", {"machine": machine})
+	_apply(reply)
+	if reply["type"] == "machine":
+		balance_changed.emit()
 
 
 func _changed(reply: Dictionary) -> void:

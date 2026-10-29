@@ -38,21 +38,24 @@ internal static class MachineProduction
             return entries;
         }
 
-        var first = started + recipe.Time;
-        entries.AddRange(ProductionEntry.Batches(recipe.Id, recipe.Quantity, true, first, recipe.Time, n));
+        // Spread evenly over the time they took, slower ones of a machine waiting for its service included.
+        var step = (after.StartedAt ?? started + MachineServicing.BatchTime(recipe, before, started) * n) - started;
+        step = step > TimeSpan.Zero ? step / n : recipe.Time;
+        var first = started + step;
+        entries.AddRange(ProductionEntry.Batches(recipe.Id, recipe.Quantity, true, first, step, n));
         foreach (var (item, quantity) in recipe.Extras)
         {
-            entries.AddRange(ProductionEntry.Batches(item, quantity, true, first, recipe.Time, n));
+            entries.AddRange(ProductionEntry.Batches(item, quantity, true, first, step, n));
         }
 
         foreach (var (item, quantity) in recipe.Ingredients)
         {
-            entries.AddRange(ProductionEntry.Batches(item, quantity, false, first, recipe.Time, n));
+            entries.AddRange(ProductionEntry.Batches(item, quantity, false, first, step, n));
         }
 
         if (machine.Fired && before.FuelItem is { } fuel && Processing.Fuels.TryGetValue(fuel, out var perFuel))
         {
-            entries.AddRange(Burnt(fuel, before.Heat, perFuel, first, recipe.Time, n));
+            entries.AddRange(Burnt(fuel, before.Heat, perFuel, first, step, n));
         }
 
         return entries;
@@ -116,7 +119,7 @@ public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, IPlotOb
         var stored = new List<(Guid Id, ProcessingMachine Machine, MachineState State)>();
         await using (var machines = await db.CommandAsync(
             $"""
-            SELECT object_id, kind, recipe, inputs, fuel_item, fuel, heat, output, started_at, extras
+            SELECT object_id, kind, recipe, inputs, fuel_item, fuel, heat, output, started_at, extras, service_due
             FROM crafting.machines WHERE {where}
             """, cancellationToken))
         {
@@ -132,7 +135,8 @@ public sealed class CraftingMachineStatuses(GameDb db, IPlotPower power, IPlotOb
                 stored.Add((reader.GetGuid(0), machine, new MachineState(
                     reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetFieldValue<int[]>(3),
                     reader.IsDBNull(4) ? null : reader.GetString(4), reader.GetInt32(5), reader.GetInt32(6), reader.GetInt32(7),
-                    reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8), reader.GetFieldValue<int[]>(9))));
+                    reader.IsDBNull(8) ? null : reader.GetFieldValue<DateTimeOffset>(8), reader.GetFieldValue<int[]>(9),
+                    reader.IsDBNull(10) ? null : reader.GetFieldValue<DateTimeOffset>(10))));
             }
         }
 

@@ -1055,6 +1055,22 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plot_sprays", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.PlotTaxRow", b =>
+                {
+                    b.Property<Guid>("OwnerId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<DateTimeOffset>("PaidUntil")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_until");
+
+                    b.HasKey("OwnerId");
+
+                    b.ToTable("plot_taxes", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.PlotTree", b =>
                 {
                     b.Property<int>("X")

@@ -5176,6 +5176,7 @@ func _build_windows() -> void:
 	_machine_window.dock_right()
 	_machine_window.inventory_changed.connect(_on_furnace_changed)
 	_machine_window.failed.connect(_show_error)
+	_machine_window.balance_changed.connect(_reload_balance)
 	_machine_window.pick_up_requested.connect(_pick_up_placed)
 	_forester_window = ForesterWindow.new()
 	_forester_window.dock_right()

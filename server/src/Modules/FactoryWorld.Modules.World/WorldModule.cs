@@ -960,6 +960,13 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(s => s.Day).HasColumnName("day");
             e.Property(s => s.Count).HasColumnName("count");
         });
+        model.Entity<PlotTaxRow>(e =>
+        {
+            e.ToTable("plot_taxes");
+            e.HasKey(t => t.OwnerId);
+            e.Property(t => t.OwnerId).HasColumnName("owner_id");
+            e.Property(t => t.PaidUntil).HasColumnName("paid_until");
+        });
         model.Entity<PlotLikeRow>(e =>
         {
             e.ToTable("plot_likes");
@@ -1071,10 +1078,13 @@ public sealed record Purchase(PlotState Plot, long BalanceCents, XpGain Xp, stri
 
 public sealed class WorldService(
     GameDb db, WorldMap map, IWallet wallet, ICharacterProgress progress, ICharacterNames names, IEquipment equipment, SurveyService surveys,
-    IEnumerable<ICompanyPlots> companies, CityService cities, TimeProvider time)
+    IEnumerable<ICompanyPlots> companies, CityService cities, PlotTaxService taxes, TimeProvider time)
 {
     /// <summary>Most owned plots one area request returns.</summary>
     public const int MaxAreaPlots = 5000;
+
+    /// <summary>The player's plot tax, with the days since it was last paid paid now.</summary>
+    public Task<PlotTax> TaxAsync(Guid owner, CancellationToken cancellationToken) => taxes.SettleAsync(owner, cancellationToken);
 
     public async Task<long> CountOwnedAsync(Guid owner, CancellationToken cancellationToken)
     {
@@ -1210,6 +1220,12 @@ public sealed class WorldService(
                 await lockOwner.ExecuteNonQueryAsync(cancellationToken);
             }
 
+            // The days before are taxed by the plots the player had then; who owes the tax buys nothing more.
+            if (await taxes.SettleAsync(owner, cancellationToken) is { Due: true } tax)
+            {
+                throw PlotTaxService.Due(tax);
+            }
+
             var price = (long)Math.Round(PlotPrices.For(await CountOwnedAsync(owner, cancellationToken), biome) * await cities.PlotPriceFactorAsync(x, y, cancellationToken));
             await using (var insert = await db.CommandAsync(
                 """
@@ -1303,6 +1319,7 @@ public sealed class InfoHandler(IServiceScopeFactory scopes, WorldMap map) : Wor
     {
         var mine = await world.OwnedAsync(player, cancellationToken);
         var shared = await world.SharedAsync(player, cancellationToken);
+        var tax = await world.TaxAsync(player, cancellationToken);
         return new Reply("world.info", new
         {
             width = map.Width,
@@ -1320,6 +1337,9 @@ public sealed class InfoHandler(IServiceScopeFactory scopes, WorldMap map) : Wor
             nextBasePriceCents = PlotPrices.Base(mine.Count),
             plots = mine.Select(p => new { x = p.X, y = p.Y, biome = (int)p.Biome, name = p.Name }),
             sharedPlots = shared.Select(p => new { x = p.X, y = p.Y, biome = (int)p.Biome }),
+            // Every plot but the first costs this many thousandths of its price a day.
+            taxPerMille = PlotTaxRules.PerMillePerDay,
+            tax = new { dailyCents = tax.DailyCents, paidUntil = tax.PaidUntil.ToUnixTimeMilliseconds(), owedCents = tax.OwedCents },
         });
     }
 }
@@ -1422,6 +1442,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton(_ => WorldMap.Load());
         services.AddScoped<WorldService>();
         services.AddScoped<PlotService>();
+        services.AddScoped<PlotTaxService>();
         services.AddScoped<BeachService>();
         services.AddScoped<StationService>();
         services.AddScoped<FarmService>();
