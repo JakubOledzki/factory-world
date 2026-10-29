@@ -77,6 +77,16 @@ public sealed class ProjectPartRow
     public long Delivered { get; set; }
 }
 
+/// <summary>A wonder of the world and the one company that brought every part for it first.</summary>
+public sealed class WonderRow
+{
+    public required string Project { get; set; }
+
+    public Guid CompanyId { get; set; }
+
+    public DateTimeOffset ClaimedAt { get; set; }
+}
+
 /// <summary>How much the company delivered towards one of a week's orders.</summary>
 public sealed class OrderRow
 {
@@ -285,6 +295,14 @@ public sealed class CompaniesDbContext(DbContextOptions<CompaniesDbContext> opti
             e.Property(p => p.Project).HasColumnName("project").HasMaxLength(32);
             e.Property(p => p.Item).HasColumnName("item").HasMaxLength(64);
             e.Property(p => p.Delivered).HasColumnName("delivered");
+        });
+        model.Entity<WonderRow>(e =>
+        {
+            e.ToTable("wonders");
+            e.HasKey(w => w.Project);
+            e.Property(w => w.Project).HasColumnName("project").HasMaxLength(32);
+            e.Property(w => w.CompanyId).HasColumnName("company_id");
+            e.Property(w => w.ClaimedAt).HasColumnName("claimed_at");
         });
         model.Entity<OrderRow>(e =>
         {
