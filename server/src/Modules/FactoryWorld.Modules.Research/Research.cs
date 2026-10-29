@@ -136,6 +136,21 @@ public static class TechTree
     public const string Farmsteads = "farmsteads";
     public const string ManorFarms = "manor_farms";
     public const string Feeders = "feeders";
+    public const string Geology = GeologyTech.Id;
+    public const string Coking = "coking";
+    public const string PreciousMetals = "precious_metals";
+    public const string TreeNursery = "tree_nursery";
+    public const string Textiles = "textiles";
+    public const string AutoBarns = "auto_barns";
+    public const string PigsAndGoats = "pigs_and_goats";
+    public const string Irrigation = "irrigation";
+    public const string MechanizedFarming = "mechanized_farming";
+    public const string SugarBeets = "sugar_beets";
+    public const string FiberCrops = "fiber_crops";
+    public const string BiomassPower = "biomass_power";
+    public const string Cogeneration = "cogeneration";
+    public const string GeothermalPower = "geothermal_power";
+    public const string HydrogenPower = "hydrogen_power";
 
     // The crafting tree: one technology for each of its items, named after it.
     public const string Lubricant = "lubricant";
@@ -553,6 +568,71 @@ public static class TechTree
         new(Feeders, "Karmniki", "Karmnik sam karmi głodne zwierzęta do 3 pól wokół siebie paszą wsypaną ręcznie albo podajnikiem.",
             [], [(Items.Wheat, 30), (Items.Planks, 20)], TimeSpan.FromSeconds(90), 30,
             [Items.Feeder]),
+        // The raw-material branches grown further. Mining: geology (a lasting bonus), coke and the precious metals.
+        new(Geology, "Geologia złożowa",
+            "Geolodzy czytają skały twoich działek: minerał działki (siarka, sól, marmur albo kwarc) trafia się w kopalniach i wiertłach dwa razy częściej, a badanie geologiczne kosztuje połowę.",
+            [MiningAutomation], [(Items.Stone, 200), (Items.IronIngot, 40), (Items.StoneBlocks, 20)], TimeSpan.FromMinutes(3), 60,
+            [], Icon: Items.Quartz),
+        new(Coking, "Koksownictwo",
+            "Koksownia (3 × 3 pola) wypala z 4 węgli 3 koksu i smołę. Koks grzeje jak dwa węgle: w piecach, odlewni, maszynach na opał i elektrowniach.",
+            [BlastFurnaces], [(Items.Coal, 200), (Items.Bricks, 40), (Items.SteelIngot, 20)], TimeSpan.FromMinutes(4), 80,
+            [Items.CokeOven, Items.Coke]),
+        new(PreciousMetals, "Metale szlachetne",
+            "Kruszarki kruszą też rudę srebra i złota, z której wytopisz więcej sztabek, a pracownia jubilerska robi biżuterię ze złota i bursztynu i srebrną zastawę.",
+            [ConeCrushing], [(Items.SilverOre, 20), (Items.GoldOre, 2), (Items.SteelIngot, 30)], TimeSpan.FromMinutes(6), 120,
+            [Items.CrushedSilverOre, Items.CrushedGoldOre, Items.Jeweler, Items.Jewelry, Items.Silverware]),
+        // Forestry.
+        new(TreeNursery, "Szkółka leśna",
+            "Szkółka (2 × 2 pola) hoduje sadzonki dla leśników wokół siebie: las chaty, leśniczówki albo nadleśnictwa do 8 pól od niej rośnie o połowę szybciej.",
+            [Silviculture], [(Items.Sapling, 40), (Items.Planks, 30)], TimeSpan.FromMinutes(2), 40,
+            [Items.TreeNursery]),
+        // Husbandry.
+        new(Textiles, "Przędzalnia i tkalnia",
+            "Przędzalnia na prąd przędzie wełnę na przędzę, a krosno tka z przędzy sukno, na które czekają miasta.",
+            [Breeding], [(Items.Wool, 40), (Items.Planks, 20), (Items.IronIngot, 20)], TimeSpan.FromMinutes(3), 60,
+            [Items.SpinningMill, Items.Loom, Items.Yarn, Items.Cloth]),
+        new(AutoBarns, "Obora automatyczna",
+            "Obora automatyczna (2 × 2 pola) karmi zwierzęta do 4 pól wokół siebie jak karmnik i sama zbiera, co dają: jajka, wełnę, mleko, obornik i młode. Podajnik je wyjmuje.",
+            [Feeders, Automation], [(Items.Feeder, 4), (Items.Inserter, 4), (Items.Milk, 20)], TimeSpan.FromMinutes(4), 80,
+            [Items.AutoBarn]),
+        new(PigsAndGoats, "Świnie i kozy",
+            "Świnie jedzą ziemniaki, kukurydzę, wywar i wysłodki i dają mięso bez rzeźni; kozy dają mleko szybciej niż krowy, choć mniej naraz.",
+            [Breeding], [(Items.Potato, 60), (Items.Corn, 40), (Items.Planks, 30)], TimeSpan.FromMinutes(3), 60,
+            [Items.Pig, Items.Goat]),
+        // Farming.
+        new(Irrigation, "Nawadnianie",
+            "Zraszacz podlewa pola do 4 pól wokół siebie: uprawy rosną na nich o 30% szybciej, także w zagrodzie, której pola sięga, a na stepie i pustyni da się tam w ogóle orać.",
+            [Farmsteads, WaterSupply], [(Items.Water, 50), (Items.Pipe, 20), (Items.Wheat, 100)], TimeSpan.FromMinutes(3), 60,
+            [Items.Sprinkler]),
+        new(MechanizedFarming, "Mechanizacja rolnictwa",
+            "Gospodarstwo zmechanizowane (4 × 4 pola) obrabia największe pole, a ciągniki i kombajny sieją i zbierają dwa razy szybciej niż w zagrodzie.",
+            [ManorFarms, Combustion], [(Items.Diesel, 40), (Items.SteelIngot, 60), (Items.ElectricMotor, 4)], TimeSpan.FromMinutes(8), 150,
+            [Items.MechanizedFarm]),
+        new(SugarBeets, "Buraki cukrowe",
+            "Nowa uprawa: burak cukrowy. Cukrownia warzy z niego cukier, a wysłodki idą na paszę; z cukru piec piekarski piecze pączki.",
+            [Farmsteads], [(Items.Potato, 40), (Items.Carrot, 40), (Items.Bricks, 10)], TimeSpan.FromMinutes(2), 40,
+            [Items.SugarBeet, Items.SugarFactory, Items.Sugar, Items.BeetPulp, Items.Donuts]),
+        new(FiberCrops, "Len i konopie",
+            "Nowe uprawy: len, z którego krosno tka płótno, i konopie, z których przędzalnia skręca liny.",
+            [Farmsteads, Textiles], [(Items.Wheat, 60), (Items.Yarn, 20)], TimeSpan.FromMinutes(3), 60,
+            [Items.Flax, Items.Hemp, Items.Linen, Items.Rope]),
+        // Energy.
+        new(BiomassPower, "Elektrownia na biomasę",
+            "Elektrownia na biomasę (3 × 3 pola) daje 500 kW z drewna, pelletu albo węgla drzewnego.",
+            [ThermalPower, ForestryIndustry], [(Items.WoodPellets, 200), (Items.SteelIngot, 40), (Items.Transformer, 2)], TimeSpan.FromMinutes(8), 150,
+            [Items.BiomassPlant]),
+        new(Cogeneration, "Kogeneracja",
+            "Elektrociepłownia (3 × 3 pola) daje 700 kW z węgla, koksu albo drewna, a na lodowcu grzeje przy tym maszyny do 6 pól od siebie.",
+            [ThermalPower, Heating], [(Items.Coal, 200), (Items.Pipe, 30), (Items.Heater, 2), (Items.SteelIngot, 40)], TimeSpan.FromMinutes(8), 150,
+            [Items.ChpPlant]),
+        new(GeothermalPower, "Geotermia",
+            "Elektrownia geotermalna (3 × 3 pola) w górach, na tundrze albo lodowcu daje bez paliwa 250 kW dzień i noc, na lodowcu więcej.",
+            [DeepMining, PowerDistribution], [(Items.MineSupport, 20), (Items.SteelIngot, 60), (Items.Transformer, 2)], TimeSpan.FromMinutes(10), 180,
+            [Items.GeothermalPlant]),
+        new(HydrogenPower, "Wodór",
+            "Elektrolizer na prąd robi z wody wodór, a ogniwo paliwowe oddaje z niego 70% tego prądu, kiedy trzeba. Wodór wozi się jak każdy towar.",
+            [EnergyStorage, WaterSupply], [(Items.Water, 100), (Items.Battery, 10), (Items.SilverIngot, 10), (Items.CopperIngot, 60)], TimeSpan.FromMinutes(10), 180,
+            [Items.Electrolyzer, Items.FuelCell, Items.Hydrogen]),
         // The crafting tree, level by level: each technology unlocks one item and needs the technologies of its ingredients first.
         new(Lubricant, "Smar techniczny", "Smaruje łożyska, przekładnie i siłowniki.",
             [Refining], [(Items.Kerosene, 10), (Items.Wax, 5)], TimeSpan.FromMinutes(2), 20,
@@ -741,15 +821,19 @@ public static class TechTree
              IndustrialGrippers, LogisticsDepot, CableTransport, ExpressCable, Drones, RailFerry, RailFreight, RailFreight2, RailFreight3, RailFreight4, Assembling, FastAssembling, ExpressAssembling]),
         new("mining", "Górnictwo", Items.IronOre,
             [Stonemasonry, BrickFurnaces, Metallurgy, BlastFurnaces, MiningAutomation, Crushing, MechanizedQuarrying, ConeCrushing, Explosives,
-             DeepMining, OpenPitMining, OreProcessing, MeteoriteTools]),
+             DeepMining, OpenPitMining, OreProcessing, MeteoriteTools, Geology, Coking, PreciousMetals]),
         new("forestry", "Leśnictwo", Items.Wood,
-            [ForestryIndustry, Silviculture, Woodworking, IndustrialForestry, Sawing, Harvesters, MeteoriteSaws, Papermaking, Furniture, Charring, FireProtection, Beekeeping, ForestFoods]),
+            [ForestryIndustry, Silviculture, Woodworking, IndustrialForestry, Sawing, Harvesters, MeteoriteSaws, Papermaking, Furniture, Charring, FireProtection, Beekeeping, ForestFoods,
+             TreeNursery]),
         new("food", "Przetwórstwo", Items.Bread,
             [Milling, OilPressing, Pickling, Baking, RollerMilling, GrainStorage, Cooking, Provisions, FlourIndustry, Confectionery]),
         new("husbandry", "Hodowla", Items.Cow,
-            [Breeding, Feeders, Dairying, Distilling, Farmsteads, Butchery, Biogas, WorksCanteens, WorkMeals, BioLab, Horsemanship, FineCuisine, ManorFarms]),
+            [Breeding, Feeders, Dairying, Distilling, Butchery, Biogas, WorksCanteens, WorkMeals, BioLab, Horsemanship, FineCuisine, Textiles, AutoBarns,
+             PigsAndGoats]),
+        new("farming", "Rolnictwo", Items.Wheat, [Farmsteads, SugarBeets, Irrigation, FiberCrops, ManorFarms, MechanizedFarming]),
         new("energy", "Energia", Items.WindTurbine,
-            [Hydropower, HydroPlant, WindPower, LargeWind, PowerDistribution, ThermalPower, EnergyStorage, NuclearPower]),
+            [Hydropower, HydroPlant, WindPower, LargeWind, PowerDistribution, ThermalPower, EnergyStorage, NuclearPower, BiomassPower, Cogeneration,
+             GeothermalPower, HydrogenPower]),
         new("oil", "Ropa i gaz", Items.CrudeOil,
             [OilExtraction, Refining, EnhancedRecovery, OffshoreDrilling, Cracking, Petrochemistry, Combustion, Roads]),
         new("coast", "Nabrzeże", Items.Herring, [Fishing, SaltWorks, FishProcessing, Seafaring, Aquaculture, TidalPower]),

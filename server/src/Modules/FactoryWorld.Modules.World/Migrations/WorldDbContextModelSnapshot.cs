@@ -756,6 +756,13 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("object_id");
 
+                    b.Property<string>("Output")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("{}")
+                        .HasColumnName("output");
+
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");

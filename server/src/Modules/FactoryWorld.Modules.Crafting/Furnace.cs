@@ -64,6 +64,8 @@ public static class Smelting
         new(Items.CrushedIronOre, Items.IronIngot, TimeSpan.FromSeconds(8)),
         new(Items.CrushedCopperOre, Items.CopperIngot, TimeSpan.FromSeconds(8)),
         new(Items.CrushedTinOre, Items.TinIngot, TimeSpan.FromSeconds(8)),
+        new(Items.CrushedSilverOre, Items.SilverIngot, TimeSpan.FromSeconds(12)),
+        new(Items.CrushedGoldOre, Items.GoldIngot, TimeSpan.FromSeconds(16)),
     ];
 
     private static readonly Dictionary<string, SmeltingRecipe> ByInput = Recipes.ToDictionary(r => r.Input);
@@ -102,6 +104,14 @@ public static class Smelting
     }
 
     /// <summary>Lights an idle furnace that has both ore and coal.</summary>
+    /// <summary>Smelts one piece of coke gives a furnace of <paramref name="level"/>: as many as two coal. It catches fire at once, so it
+    /// cannot be taken out again.</summary>
+    public static int CokeHeat(FurnaceLevel level) => 2 * level.SmeltsPerCoal;
+
+    /// <summary>Whether <paramref name="quantity"/> coke still fits: a furnace holds as much heat as a full load of coal.</summary>
+    public static bool CokeFits(FurnaceState s, FurnaceLevel level, int quantity) =>
+        s.Heat + (long)quantity * CokeHeat(level) <= (long)level.MaxFuel * level.SmeltsPerCoal;
+
     public static FurnaceState Start(FurnaceState s, DateTimeOffset now) =>
         s.StartedAt is null && s.InputQuantity > 0 && s.Heat + s.Fuel > 0 ? s with { StartedAt = now } : s;
 }
@@ -256,6 +266,15 @@ public sealed class FurnaceService(
                 }
 
                 state = state with { Fuel = state.Fuel + quantity };
+            }
+            else if (item == Items.Coke)
+            {
+                if (!Smelting.CokeFits(state, level, quantity))
+                {
+                    throw new GameException("furnace_full", $"The furnace holds at most as much coke as {level.MaxFuel} coal burns.");
+                }
+
+                state = state with { Heat = state.Heat + quantity * Smelting.CokeHeat(level) };
             }
             else if (Smelting.For(item) is { } recipe)
             {
@@ -451,6 +470,11 @@ public sealed class FurnacePorts(GameDb db, IProductionStats stats, IPlotObjects
                 return state.Fuel < level.MaxFuel;
             }
 
+            if (item == Items.Coke)
+            {
+                return Smelting.CokeFits(state, level, 1);
+            }
+
             // Ingots of another metal must be taken out before another ore goes in.
             return Smelting.For(item) is { } recipe
                 && (state.Input is null || state.Input == item) && state.InputQuantity < level.MaxInput
@@ -459,8 +483,8 @@ public sealed class FurnacePorts(GameDb db, IProductionStats stats, IPlotObjects
 
         public void Put(string item, DateTimeOffset now)
         {
-            state = Items.IsCoal(item)
-                ? state with { Fuel = state.Fuel + 1 }
+            state = Items.IsCoal(item) ? state with { Fuel = state.Fuel + 1 }
+                : item == Items.Coke ? state with { Heat = state.Heat + Smelting.CokeHeat(level) }
                 : state with { Input = item, InputQuantity = state.InputQuantity + 1 };
             state = Smelting.Start(state, now);
             _changed = true;

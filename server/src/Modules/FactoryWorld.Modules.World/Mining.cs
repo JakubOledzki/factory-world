@@ -106,7 +106,7 @@ public static class Mining
     {
         // Ranked by how rare each is in a plain mine, so a deep mine still keeps silver over tin.
         var drops = Drops.Select(d => (d.Item, d.PerMille, Rank: d.PerMille)).ToList();
-        if (mineral.Item is { } item && MineralPerMille(mineral.Size) is > 0 and var chance)
+        if (mineral.Item is { } item && MineralPerMille(mineral.Size) * (mineral.Rich ? GeologyTech.MineralFactor : 1) is > 0 and var chance)
         {
             drops.Add((item, chance, chance));
         }
@@ -148,7 +148,8 @@ public sealed record MineLoad(MineState Mine, IReadOnlyList<(string Item, int Qu
 public sealed record MineUpgrade(MineState Mine, XpGain Xp);
 
 public sealed class MineService(
-    GameDb db, PlotService plots, IInventory inventory, ICharacterProgress progress, IProductionStats stats, DrillService drills, TimeProvider time)
+    GameDb db, PlotService plots, IInventory inventory, ICharacterProgress progress, IProductionStats stats, DrillService drills, TimeProvider time,
+    ITechnologies technologies)
 {
     /// <summary>The mines of a plot and how many loads each has left.</summary>
     public async Task<IReadOnlyList<MineState>> MinesAsync(int x, int y, Biome biome, CancellationToken cancellationToken)
@@ -226,7 +227,10 @@ public sealed class MineService(
         DateTimeOffset? emptyAt = used == units ? time.GetUtcNow() : null;
         await MineRows.WriteAsync(db, x, y, before.Site.Id, used, emptyAt, before.Level.Level, cancellationToken);
 
-        var mineral = Deposits.MineralIn(x, y, biome);
+        var mineral = Deposits.MineralIn(x, y, biome) with
+        {
+            Rich = (await technologies.ResearchedAsync(player, cancellationToken)).Contains(GeologyTech.Id),
+        };
         var items = Enumerable.Range(0, loads)
             .SelectMany(_ => Mining.Load(before.Level, mineral))
             .GroupBy(i => i.Item)
