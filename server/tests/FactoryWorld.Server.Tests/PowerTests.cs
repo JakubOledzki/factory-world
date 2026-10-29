@@ -3,6 +3,7 @@ using System.Text.Json;
 using FactoryWorld.Modules.Abstractions.Contracts;
 using FactoryWorld.Modules.Logistics;
 using FactoryWorld.Modules.Power;
+using FactoryWorld.Modules.Research;
 using FactoryWorld.Modules.World;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -218,6 +219,101 @@ public sealed class PowerTests(ServerFactory factory) : IClassFixture<ServerFact
         Assert.InRange(contents[chest.Id].Items![0].Quantity, 835, 850);
     }
 
+    [Fact]
+    public void A_substation_powers_a_wider_square_and_pylons_are_wired_from_far_apart()
+    {
+        var substation = Obj(Items.Substation, 0, 0);
+        var near = Obj(Items.Mill, 4, 4);
+        var pylon = Obj(Items.Pylon, 10, 0);
+        var far = Obj(Items.Pylon, 30, 0);
+        var pole = Obj(Items.Pole, 37, 0);
+        var beyond = Obj(Items.Pole, 45, 0);
+        // A pylon powers only the tiles next to it.
+        var byPylon = Obj(Items.Mill, 31, 1);
+        var outOfReach = Obj(Items.Mill, 32, 2);
+        var networks = PowerRules.Networks([substation, near, pylon, far, pole, beyond, byPylon, outOfReach]);
+
+        // The substation and the pylon 10 tiles from it, the pylon 20 tiles on and the pole 7 tiles past it are one network;
+        // a pole 8 tiles past another pole is not wired to it.
+        Assert.Equal(2, networks.Count);
+        Assert.Equal([substation.Id, pylon.Id, far.Id, pole.Id], networks[0].Poles);
+        Assert.Equal([near.Id, byPylon.Id], networks[0].Consumers);
+        Assert.Equal([beyond.Id], networks[1].Poles);
+        Assert.Empty(networks[1].Consumers);
+    }
+
+    [Fact]
+    public void A_coal_power_plant_gives_a_megawatt_from_coal_and_less_on_sand()
+    {
+        Assert.Equal(1000, PowerRules.KwOf(Items.CoalPlant, (int)Biome.Grassland));
+        Assert.Equal(1000 * PowerRules.DrySteam, PowerRules.KwOf(Items.CoalPlant, (int)Biome.Desert));
+        Assert.True(PowerRules.Burns(Items.CoalPlant, Items.Coal));
+        Assert.False(PowerRules.Burns(Items.CoalPlant, Items.Wood));
+
+        // Five mills draw 150 kW: one coal (20 MJ) lasts 133 s and the plant gives each its full power.
+        var pole = Obj(Items.Pole, 0, 0);
+        var plant = Obj(Items.CoalPlant, 0, 2);
+        var mills = Enumerable.Range(-2, 5).Select(x => Obj(Items.Mill, x, -1)).ToList();
+        var grid = Grid([pole, plant, .. mills], Fuelled(plant, Items.Coal, 1));
+        Assert.Equal(1, grid.Clock(mills[0].Id).Speed(Start));
+        Assert.Equal(150, grid.Output(plant.Id, Start));
+        Assert.InRange((grid.RunsOutAt(plant.Id)!.Value - Start).TotalSeconds, 133.3, 133.4);
+    }
+
+    [Fact]
+    public void A_nuclear_plant_burns_a_fuel_rod_in_ten_minutes_at_full_power()
+    {
+        Assert.Equal(2500, PowerRules.KwOf(Items.NuclearPlant));
+        Assert.Equal(600, PowerRules.Fuels[Items.FuelRod] / PowerRules.KwOf(Items.NuclearPlant));
+        Assert.False(PowerRules.Burns(Items.NuclearPlant, Items.Coal));
+
+        // A megafactory draws 1 MW: one rod keeps it going for 25 minutes.
+        var pole = Obj(Items.Pole, 0, 0);
+        var megafactory = Obj(Items.Megafactory, 2, 2);
+        var plant = Obj(Items.NuclearPlant, -2, -2);
+        var grid = Grid([pole, megafactory, plant], Fuelled(plant, Items.FuelRod, 1));
+        Assert.Equal(1, grid.Clock(megafactory.Id).Speed(Start));
+        Assert.Equal(1000, grid.Output(plant.Id, Start));
+        Assert.Equal(1500, (grid.RunsOutAt(plant.Id)!.Value - Start).TotalSeconds, 3);
+    }
+
+    [Fact]
+    public void An_energy_store_holds_ten_batteries_worth_and_empties_together_with_a_battery()
+    {
+        var pole = Obj(Items.Pole, 0, 0);
+        var store = Obj(Items.EnergyStore, 1, 1);
+        var battery = Obj(Items.Battery, -1, 0);
+        var mill = Obj(Items.Mill, 0, -2);
+        var grid = Grid([pole, store, battery, mill], new GridData { Batteries = { [store.Id] = 3_600_000, [battery.Id] = 360_000 } });
+        var network = Assert.Single(grid.Networks);
+        Assert.Equal(3_960_000, network.BankKj);
+        Assert.Equal(450, network.BankKw);
+
+        // The mill's 30 kW comes out of both, each by its size: the store gives ten times what the battery gives.
+        Assert.Equal(1, grid.Clock(mill.Id).Speed(Start));
+        Assert.Equal(-30, grid.BankRate(network, Start));
+        Assert.Equal(30.0 * 10 / 11, grid.Output(store.Id, Start), 6);
+        Assert.Equal(30.0 / 11, grid.Output(battery.Id, Start), 6);
+        var later = Start + TimeSpan.FromSeconds(1100);
+        Assert.Equal(3_600_000 - 30_000, grid.Charge(store.Id, later), 3);
+        Assert.Equal(360_000 - 3000, grid.Charge(battery.Id, later), 3);
+
+        grid.Settle(later);
+        Assert.Equal(3_570_000, grid.Data.Batteries[store.Id], 3);
+    }
+
+    [Fact]
+    public void Only_the_deep_levels_of_a_mine_turn_up_uranium_ore()
+    {
+        int? Uranium(int level) => Mining.DropsFor(Mining.Level(level), Mineral.None).Where(d => d.Item == Items.UraniumOre).Select(d => (int?)d.PerMille).FirstOrDefault();
+        Assert.Null(Uranium(1));
+        Assert.Null(Uranium(3));
+        Assert.Equal(10, Uranium(4));
+        Assert.Equal(20, Uranium(5));
+        // It is rarer than silver, so a full load keeps it over the commoner ores.
+        Assert.Equal(Items.UraniumOre, Mining.DropsFor(Mining.Level(5), Mineral.None)[1].Item);
+    }
+
     // --- In the game ---------------------------------------------------------------------------
 
     private async Task GiveAsync(GameClient client, string item, long quantity)
@@ -352,6 +448,47 @@ public sealed class PowerTests(ServerFactory factory) : IClassFixture<ServerFact
         Assert.Equal(12, inventory.GetValueOrDefault(Items.Coal));
         Assert.Equal(1, inventory.GetValueOrDefault(Items.Generator));
         Assert.Equal("no_object", (await client.SendAsync("generator.get", new { x, y, id = generator })).ErrorCode());
+    }
+
+    [Fact]
+    public async Task An_energy_store_on_a_pylon_stores_power_and_takes_no_fuel()
+    {
+        var (client, x, y, tx, ty) = await PlotAsync();
+        using var _ = client;
+        var store = await PlaceAsync(client, x, y, Items.EnergyStore, tx, ty);
+        await PlaceAsync(client, x, y, Items.Pylon, tx + 2, ty);
+
+        var state = (await client.SendAsync("generator.get", new { x, y, id = store })).Payload();
+        Assert.True(state.GetProperty("battery").GetBoolean());
+        Assert.Equal(3_600_000, state.GetProperty("capacityKj").GetDouble());
+        Assert.Equal(400, state.GetProperty("capacityKw").GetDouble());
+        Assert.Equal(1, state.GetProperty("network").GetProperty("batteries").GetInt32());
+        Assert.Equal(3_600_000, state.GetProperty("network").GetProperty("bankCapacityKj").GetDouble());
+
+        await GiveAsync(client, Items.Coal, 1);
+        Assert.Equal("no_fuel_needed", (await client.SendAsync("generator.load", new { x, y, id = store, item = Items.Coal, quantity = 1 })).ErrorCode());
+
+        var power = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("power");
+        Assert.Equal(20, power.GetProperty("poleKinds").GetProperty(Items.Pylon).GetProperty("reach").GetDouble());
+        Assert.Equal(4, power.GetProperty("poleKinds").GetProperty(Items.Substation).GetProperty("supply").GetInt32());
+    }
+
+    [Fact]
+    public async Task The_new_power_plants_are_locked_until_they_are_researched()
+    {
+        var (client, _, _, _, _) = await PlotAsync();
+        using var _ = client;
+        var locked = (await client.SendAsync("compendium.get")).Payload().GetProperty("locked");
+        foreach (var item in new[] { Items.Transformer, Items.Substation, Items.Pylon, Items.CoalPlant, Items.EnergyStore, Items.NuclearPlant, Items.FuelRod })
+        {
+            Assert.Equal(JsonValueKind.String, locked.GetProperty(item).ValueKind);
+        }
+
+        Assert.Equal(TechTree.PowerDistribution, TechTree.ByItem[Items.Pylon].Id);
+        Assert.Equal(TechTree.ThermalPower, TechTree.ByItem[Items.CoalPlant].Id);
+        Assert.Equal(TechTree.EnergyStorage, TechTree.ByItem[Items.EnergyStore].Id);
+        Assert.Equal(TechTree.NuclearPower, TechTree.ByItem[Items.NuclearPlant].Id);
+        Assert.Contains(TechTree.DeepMining, TechTree.ById[TechTree.NuclearPower].Requires);
     }
 
     [Fact]

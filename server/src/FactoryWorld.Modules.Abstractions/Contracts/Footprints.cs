@@ -70,6 +70,7 @@ public static class Footprints
         // The first level of a machine: 2 × 2.
         [Items.Furnace] = 2,
         [Items.Mill] = 2,
+        [Items.EnergyStore] = 2,
         [Items.OilPress] = 2,
         [Items.PicklingBarrel] = 2,
         [Items.Bakery] = 2,
@@ -121,6 +122,7 @@ public static class Footprints
         [Items.ContinuousCaster] = 3,
         [Items.AutomatedWarehouse] = 3,
         [Items.FusionPlant] = 3,
+        [Items.CoalPlant] = 3,
         [Items.Canteen] = 3,
         [Items.BiogasPlant] = 3,
         [Items.Farmstead] = 3,
@@ -134,6 +136,7 @@ public static class Footprints
         [Items.FlourWorks] = 4,
         [Items.OpenPitMine] = 4,
         [Items.OreProcessingPlant] = 4,
+        [Items.NuclearPlant] = 4,
         // The largest buildings.
         [Items.SteelCombine] = 5,
         [Items.Megafactory] = 5,

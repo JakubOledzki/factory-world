@@ -13,17 +13,22 @@ namespace FactoryWorld.Modules.Power;
 /// without any they stop. A water wheel, a hydro plant and a tidal plant on the coast give their power all the time without fuel, on
 /// plots by a river, a lake or the sea; the generators of their network burn only for what they lack. Solar power gives by day,
 /// wind turbines as much as the wind blows. On the glacier machines that no heater warms work at half their pace.
+/// A substation powers a wider square than a pole, and high-voltage pylons are wired to each other from far apart, so one network
+/// reaches across a whole plot; two poles of different kinds are wired as far as the shorter reach of the two.
 /// </summary>
 public static class PowerRules
 {
     public const double GeneratorKw = 100;
 
     /// <summary>Generators of every kind: what each gives at most (kW) and what it burns. The steam generator burns
-    /// wood and coal, the gas power plant natural gas, the diesel generator diesel, petrol or ethanol, the fusion plant coolant.</summary>
+    /// wood and coal, the coal power plant coal, the gas power plant natural gas, the diesel generator diesel, petrol or ethanol,
+    /// the nuclear plant fuel rods, the fusion plant coolant.</summary>
     public static readonly IReadOnlyDictionary<string, (double Kw, IReadOnlySet<string> Burns)> Generators =
         new Dictionary<string, (double, IReadOnlySet<string>)>
         {
             [Items.Generator] = (GeneratorKw, new HashSet<string> { Items.Coal, Items.Charcoal, Items.Wood, Items.WoodPellets }),
+            [Items.CoalPlant] = (1000, new HashSet<string> { Items.Coal, Items.Charcoal }),
+            [Items.NuclearPlant] = (2500, new HashSet<string> { Items.FuelRod }),
             [Items.GasPlant] = (300, new HashSet<string> { Items.NaturalGas }),
             [Items.DieselGenerator] = (150, new HashSet<string> { Items.Diesel, Items.Gasoline, Items.Ethanol }),
             [Items.FusionPlant] = (5000, new HashSet<string> { Items.Coolant }),
@@ -67,14 +72,31 @@ public static class PowerRules
     /// <summary>A reed fence shelters solar power this many tiles from it each way from a sandstorm.</summary>
     public const int FenceReach = 3;
 
-    /// <summary>What a steam generator gives on sand, of its full power: there is no water to cool it.</summary>
+    /// <summary>What a steam generator, a coal or a nuclear power plant gives on sand, of its full power: there is no water to cool it.</summary>
     public const double DrySteam = 0.7;
+
+    /// <summary>Whether a generator of <paramref name="kind"/> turns water into steam, and so gives less on sand.</summary>
+    public static bool Steam(string kind) => kind is Items.Generator or Items.CoalPlant or Items.NuclearPlant;
 
     /// <summary>The energy a battery stores at most (kJ): an hour of its full power, and more.</summary>
     public const double BatteryKj = 360_000;
 
     /// <summary>What a battery takes in or gives out at most (kW).</summary>
     public const double BatteryKw = 50;
+
+    /// <summary>What each kind of store keeps at most (kJ) and takes in or gives out at most (kW): a battery, and an energy store
+    /// that keeps ten batteries' worth and moves eight times their power.</summary>
+    public static readonly IReadOnlyDictionary<string, (double Kj, double Kw)> Stores = new Dictionary<string, (double, double)>
+    {
+        [Items.Battery] = (BatteryKj, BatteryKw),
+        [Items.EnergyStore] = (3_600_000, 400),
+    };
+
+    /// <summary>What a store of <paramref name="kind"/> keeps at most (kJ).</summary>
+    public static double StoreKj(string kind) => Stores.TryGetValue(kind, out var s) ? s.Kj : 0;
+
+    /// <summary>What a store of <paramref name="kind"/> takes in or gives out at most (kW).</summary>
+    public static double StoreKw(string kind) => Stores.TryGetValue(kind, out var s) ? s.Kw : 0;
 
     /// <summary>Pieces of fuel a generator holds.</summary>
     public const int MaxFuel = 50;
@@ -85,9 +107,24 @@ public static class PowerRules
     /// <summary>Poles at most this many tiles apart are wired together.</summary>
     public const double WireReach = 7;
 
+    /// <summary>What each kind of pole powers (tiles each way from it) and how far it is wired (tiles): a pole 5 × 5 and 7,
+    /// a substation 9 × 9 and 10, a high-voltage pylon only 3 × 3 but 20.</summary>
+    public static readonly IReadOnlyDictionary<string, (int Supply, double Reach)> Poles = new Dictionary<string, (int, double)>
+    {
+        [Items.Pole] = (SupplyRadius, WireReach),
+        [Items.Substation] = (4, 10),
+        [Items.Pylon] = (1, 20),
+    };
+
+    /// <summary>How many tiles each way a pole of <paramref name="kind"/> powers.</summary>
+    public static int SupplyOf(string kind) => Poles.TryGetValue(kind, out var p) ? p.Supply : SupplyRadius;
+
+    /// <summary>How far a pole of <paramref name="kind"/> is wired (tiles).</summary>
+    public static double ReachOf(string kind) => Poles.TryGetValue(kind, out var p) ? p.Reach : WireReach;
+
     /// <summary>What generators burn, and the energy (kJ) in one piece: coal lasts 200 s at full power in a steam generator,
     /// wood 50 s, a pellet 40 s; a unit of gas 200 s in a gas power plant, of diesel 400 s and of petrol 300 s in a diesel generator;
-    /// a fusion plant uses up a unit of coolant a minute at full power.</summary>
+    /// a fuel rod 10 minutes in a nuclear plant; a fusion plant uses up a unit of coolant a minute at full power.</summary>
     public static readonly IReadOnlyDictionary<string, double> Fuels = new Dictionary<string, double>
     {
         [Items.Coal] = 20_000,
@@ -100,6 +137,7 @@ public static class PowerRules
         // Ethanol from the potato distillery: 0.8 of petrol.
         [Items.Ethanol] = 36_000,
         [Items.Coolant] = 300_000,
+        [Items.FuelRod] = 1_500_000,
     };
 
     /// <summary>Machines that run on power, and what they draw (kW).</summary>
@@ -157,7 +195,7 @@ public static class PowerRules
     };
 
     public static bool Covers(PlotObject pole, int tileX, int tileY) =>
-        Math.Abs(pole.TileX - tileX) <= SupplyRadius && Math.Abs(pole.TileY - tileY) <= SupplyRadius;
+        Math.Abs(pole.TileX - tileX) <= SupplyOf(pole.Kind) && Math.Abs(pole.TileY - tileY) <= SupplyOf(pole.Kind);
 
     /// <summary>Whether a pole powers an object: it reaches any tile the object covers.</summary>
     public static bool Covers(PlotObject pole, PlotObject o) =>
@@ -166,7 +204,8 @@ public static class PowerRules
     public static bool Wired(PlotObject a, PlotObject b)
     {
         var (dx, dy) = (a.TileX - b.TileX, a.TileY - b.TileY);
-        return dx * dx + dy * dy <= WireReach * WireReach;
+        var reach = Math.Min(ReachOf(a.Kind), ReachOf(b.Kind));
+        return dx * dx + dy * dy <= reach * reach;
     }
 
     /// <summary>The networks of a plot: poles wired together, with the generators and machines they power.
@@ -174,7 +213,7 @@ public static class PowerRules
     public static IReadOnlyList<Network> Networks(IEnumerable<PlotObject> objects)
     {
         var all = objects.ToList();
-        var poles = all.Where(o => o.Kind == Items.Pole).OrderBy(o => o.TileY).ThenBy(o => o.TileX).ToList();
+        var poles = all.Where(o => Items.IsPole(o.Kind)).OrderBy(o => o.TileY).ThenBy(o => o.TileX).ToList();
         var component = new int[poles.Count];
         Array.Fill(component, -1);
         var count = 0;
@@ -209,10 +248,12 @@ public static class PowerRules
         var batteries = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
         var consumers = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
         var demand = new double[count];
+        var bankKj = new double[count];
+        var bankKw = new double[count];
         foreach (var o in all)
         {
             var isGenerator = Items.IsGenerator(o.Kind);
-            if (!isGenerator && !Items.IsRenewable(o.Kind) && o.Kind != Items.Battery && !Demand.ContainsKey(o.Kind))
+            if (!isGenerator && !Items.IsRenewable(o.Kind) && !Items.IsBattery(o.Kind) && !Demand.ContainsKey(o.Kind))
             {
                 continue;
             }
@@ -239,9 +280,11 @@ public static class PowerRules
             {
                 wind[component[pole]].Add(o.Id);
             }
-            else if (o.Kind == Items.Battery)
+            else if (Items.IsBattery(o.Kind))
             {
                 batteries[component[pole]].Add(o.Id);
+                bankKj[component[pole]] += StoreKj(o.Kind);
+                bankKw[component[pole]] += StoreKw(o.Kind);
             }
             else
             {
@@ -256,6 +299,8 @@ public static class PowerRules
                 Solar = solar[n],
                 Wind = wind[n],
                 Batteries = batteries[n],
+                BankKj = bankKj[n],
+                BankKw = bankKw[n],
             })
             .ToList();
     }
@@ -270,7 +315,7 @@ public static class PowerRules
     public static double WindKw(string kind, int biome) => Wind.GetValueOrDefault(kind) * Abstractions.Contracts.Wind.Bonus(biome);
 
     /// <summary>What a generator of <paramref name="kind"/> gives at most on a plot of <paramref name="biome"/> (kW).</summary>
-    public static double KwOf(string kind, int biome) => KwOf(kind) * (kind == Items.Generator && Oasis.Sandy(biome) ? DrySteam : 1);
+    public static double KwOf(string kind, int biome) => KwOf(kind) * (Steam(kind) && Oasis.Sandy(biome) ? DrySteam : 1);
 
     /// <summary>Whether a reed fence stands near enough to shelter solar power at the tile from a sandstorm.</summary>
     public static bool Sheltered(IEnumerable<PlotObject> objects, int tileX, int tileY) =>
@@ -288,14 +333,14 @@ public sealed record Network(
     /// <summary>Wind turbines on it, which give as much as the wind blows, without fuel.</summary>
     public IReadOnlyList<Guid> Wind { get; init; } = [];
 
-    /// <summary>Batteries on it: they store what the free power has to spare and give it back when it falls short.</summary>
+    /// <summary>Batteries and energy stores on it: they store what the free power has to spare and give it back when it falls short.</summary>
     public IReadOnlyList<Guid> Batteries { get; init; } = [];
 
-    /// <summary>What a network of its batteries stores at most (kJ).</summary>
-    public double BankKj => Batteries.Count * PowerRules.BatteryKj;
+    /// <summary>What its batteries store at most together (kJ).</summary>
+    public double BankKj { get; init; }
 
     /// <summary>What its batteries take in or give out at most together (kW).</summary>
-    public double BankKw => Batteries.Count * PowerRules.BatteryKw;
+    public double BankKw { get; init; }
 }
 
 /// <param name="FuelItem">What lies by the fire, or null.</param>
@@ -524,11 +569,11 @@ public sealed class PowerGrid : IPowerGrid
     public double BankKj(Network network, DateTimeOffset at) =>
         SegmentAt(network, at) is { } s ? Math.Clamp(s.Bank + s.Rate * Seconds(s.Start, Max(at, Settled)), 0, network.BankKj) : 0;
 
-    /// <summary>kJ in a battery at <paramref name="at"/>: a network's batteries fill and empty together.</summary>
+    /// <summary>kJ in a battery at <paramref name="at"/>: a network's batteries fill and empty together, each by its size.</summary>
     public double Charge(Guid id, DateTimeOffset at) =>
-        _networkOf.TryGetValue(id, out var network) && network.Batteries.Count > 0
-            ? BankKj(network, at) / network.Batteries.Count
-            : Math.Min(PowerRules.BatteryKj, Data.Batteries.GetValueOrDefault(id));
+        _networkOf.TryGetValue(id, out var network) && network.BankKj > 0
+            ? BankKj(network, at) * PowerRules.StoreKj(KindOf(id)) / network.BankKj
+            : Math.Min(PowerRules.StoreKj(KindOf(id)), Data.Batteries.GetValueOrDefault(id));
 
     /// <summary>What goes into a network's batteries at <paramref name="at"/> (kW), less than 0 while they give power out.</summary>
     public double BankRate(Network network, DateTimeOffset at) => SegmentAt(network, at)?.Rate ?? 0;
@@ -550,7 +595,7 @@ public sealed class PowerGrid : IPowerGrid
 
         if (network.Batteries.Contains(id))
         {
-            return -segment.Rate / network.Batteries.Count;
+            return network.BankKj > 0 ? -segment.Rate * PowerRules.StoreKj(KindOf(id)) / network.BankKj : 0;
         }
 
         return segment.States.GetValueOrDefault(id)?.Running == true ? segment.Share * KwOf(id) : 0;
@@ -724,7 +769,7 @@ public sealed class PowerGrid : IPowerGrid
             {
                 data.Generators[o.Id] = generator;
             }
-            else if (o.Kind == Items.Battery && Charge(o.Id, at) is > 0 and var charge)
+            else if (Items.IsBattery(o.Kind) && Charge(o.Id, at) is > 0 and var charge)
             {
                 data.Batteries[o.Id] = charge;
             }
@@ -796,7 +841,7 @@ public sealed class PowerGrid : IPowerGrid
             .Select(n => new Timeline(
                 Settled,
                 n.Generators.ToDictionary(g => g, g => Data.Generators.GetValueOrDefault(g) ?? GeneratorState.Empty),
-                n.Batteries.Sum(b => Math.Min(PowerRules.BatteryKj, Data.Batteries.GetValueOrDefault(b)))))
+                n.Batteries.Sum(b => Math.Min(PowerRules.StoreKj(KindOf(b)), Data.Batteries.GetValueOrDefault(b)))))
             .ToArray();
 
         // On the glacier a machine stays warm while a heater near it burns: each burns at its own steady pace.

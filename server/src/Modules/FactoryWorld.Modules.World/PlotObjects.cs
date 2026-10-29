@@ -51,6 +51,7 @@ public static class PlotObjects
         Items.PaperMill, Items.Carpentry, Items.CharcoalKiln, Items.TarKiln, Items.Beehive, Items.Watchtower, Items.FireStation,
         Items.MachineShop, Items.RoboticHall, Items.OxygenConverter, Items.RollingMill, Items.ControlCenter, Items.ContinuousCaster,
         Items.AutomatedWarehouse, Items.SteelCombine, Items.Megafactory, Items.FusionPlant,
+        Items.Substation, Items.Pylon, Items.CoalPlant, Items.EnergyStore, Items.NuclearPlant,
         Items.Canteen, Items.Slaughterhouse, Items.Dairy, Items.PotatoDistillery, Items.BiogasPlant, Items.Stable, Items.Bellows,
         Items.Feeder, Items.Farmstead, Items.ManorFarm,
         Items.ExportChest, Items.BuyMarket, Items.RailPort, Items.Bank, Items.BankBranch,

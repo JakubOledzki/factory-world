@@ -1,5 +1,17 @@
 [
 	{
+		"date": "2026-10-29",
+		"title": "Większe elektrownie i przesył prądu",
+		"changes": [
+			"Nowe badanie „Przesył energii”: transformator, podstacja, która zasila maszyny 4 pola wokół (9 × 9) i łączy się ze słupami do 10 pól, oraz słup wysokiego napięcia. Słupy wysokiego napięcia łączą się ze sobą z 20 pól, więc jedną siecią obejmiesz całą działkę.",
+			"Elektrownia węglowa (badanie „Energetyka cieplna”): na 3 × 3 polach daje 1 MW z węgla albo węgla drzewnego, dziesięć razy tyle co generator parowy. Podajnik dokłada węgiel sam.",
+			"Magazyn energii (badanie „Magazynowanie energii”): na 2 × 2 polach mieści tyle co dziesięć akumulatorów i oddaje do 400 kW. Ładuje się i rozładowuje razem z akumulatorami w tej samej sieci.",
+			"Elektrownia jądrowa (badanie „Energetyka jądrowa”): na 4 × 4 polach daje 2,5 MW. Pali pręty paliwowe z zakładu chemicznego, jeden na 10 minut pełnej mocy.",
+			"Ruda uranu: trafia się w głębokich kopalniach w górach, na 4. poziomie w 1% urobków, na 5. w 2%, także z wiertła. Handlarz płaci za nią 80 $.",
+			"Elektrownie parowe, węglowe i jądrowe na piasku dają 70% mocy: brakuje wody do chłodzenia."
+		]
+	},
+	{
 		"date": "2026-10-27",
 		"title": "Boty budują fabryki i proszą o pomoc",
 		"changes": [

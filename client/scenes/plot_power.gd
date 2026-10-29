@@ -6,13 +6,14 @@ extends Node2D
 ## new pole is wired at once; how well each network is powered comes with the plot's logistics.
 
 const GENERATOR := "power_generator"
-## Generators that burn fuel: the steam generator, the gas power plant, the diesel generator and the fusion plant (on coolant).
-const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator", "power_fusion_plant"]
+## Generators that burn fuel: the steam generator, the coal and gas power plants, the diesel generator, the nuclear plant (on fuel rods)
+## and the fusion plant (on coolant).
+const GENERATORS := [GENERATOR, "power_coal_plant", "power_gas_plant", "power_diesel_generator", "power_nuclear_plant", "power_fusion_plant"]
 ## Water power: wired to a pole like a generator, but burns nothing.
 const HYDRO := ["power_water_wheel", "power_hydro_plant", "power_tidal_plant"]
 ## Solar power and batteries: wired to a pole too; the sun gives power by day, a battery stores it.
 const SOLAR := ["power_solar_panel", "power_solar_tower"]
-const BATTERY := "power_battery"
+const BATTERIES := ["power_battery", "power_energy_store"]
 ## Wind power: wired to a pole too, it gives as much as the wind blows. A heater gives no power, it warms machines on the glacier.
 const WIND := ["power_wind_turbine", "power_large_wind_turbine"]
 const HEATER := "power_heater"
@@ -20,7 +21,9 @@ const HEATER := "power_heater"
 const WIRE_SPRITES := {"power_generator": "generator", "power_water_wheel": "water_wheel", "power_hydro_plant": "hydro_plant",
 	"power_tidal_plant": "tidal_plant", "power_gas_plant": "gas_plant", "power_diesel_generator": "diesel_generator",
 	"power_solar_panel": "solar_panel", "power_solar_tower": "solar_tower", "power_battery": "battery",
-	"power_wind_turbine": "wind_turbine", "power_large_wind_turbine": "large_wind_turbine", "power_fusion_plant": "fusion_plant"}
+	"power_wind_turbine": "wind_turbine", "power_large_wind_turbine": "large_wind_turbine", "power_fusion_plant": "fusion_plant",
+	"power_coal_plant": "coal_plant", "power_nuclear_plant": "nuclear_plant", "power_energy_store": "energy_store",
+	"power_pole": "pole", "power_substation": "substation", "power_pylon": "pylon"}
 const POLE := "power_pole"
 const WIRE := Color(0.08, 0.07, 0.06, 0.9)
 const WIRE_SHINE := Color(0.62, 0.42, 0.25, 0.55)
@@ -33,6 +36,8 @@ var layout := {}
 ## A pole powers tiles this far from it each way; poles this far apart (in tiles) are wired.
 var supply_radius := 2
 var wire_reach := 7.0
+## Every kind of pole: the tiles it powers each way and how far it is wired; two kinds are wired as far as the shorter reach.
+var pole_kinds := {POLE: {"supply": 2, "reach": 7.0}, "power_substation": {"supply": 4, "reach": 10.0}, "power_pylon": {"supply": 1, "reach": 20.0}}
 ## What every machine that runs on power draws (kW), by kind.
 var demand := {"logistics_inserter": 5.0, "furniture_mill": 30.0, "furniture_oil_press": 30.0}
 
@@ -86,6 +91,8 @@ func apply(summary: Dictionary) -> void:
 		return
 	supply_radius = int(summary.get("supplyRadius", supply_radius))
 	wire_reach = float(summary.get("wireReach", wire_reach))
+	if summary.get("poleKinds") is Dictionary:
+		pole_kinds = summary["poleKinds"]
 	if summary.get("demand") != null:
 		demand = summary["demand"]
 	_network_of = {}
@@ -109,7 +116,22 @@ func has_power() -> bool:
 
 ## Whether an object of `kind` gives power to a network: a generator, water or solar power or a battery.
 func _source(kind: String) -> bool:
-	return kind in GENERATORS or kind in HYDRO or kind in SOLAR or kind == BATTERY or kind in WIND
+	return kind in GENERATORS or kind in HYDRO or kind in SOLAR or kind in BATTERIES or kind in WIND
+
+
+## Whether an object of `kind` carries power: a pole, a substation or a high-voltage pylon.
+func is_pole(kind: String) -> bool:
+	return pole_kinds.has(kind)
+
+
+## How many tiles each way a pole of `kind` powers.
+func supply_of(kind: String) -> int:
+	return int(pole_kinds.get(kind, {}).get("supply", supply_radius))
+
+
+## How far a pole of `kind` is wired (tiles).
+func reach_of(kind: String) -> float:
+	return float(pole_kinds.get(kind, {}).get("reach", wire_reach))
 
 
 ## Whether a machine on the glacier stands in the cold, no heater warming it.
@@ -148,12 +170,20 @@ func poles() -> Array[Vector2i]:
 	return _poles.duplicate()
 
 
-func covers(pole: Vector2i, cell: Vector2i) -> bool:
-	return absi(pole.x - cell.x) <= supply_radius and absi(pole.y - cell.y) <= supply_radius
+## Whether a pole on a tile powers a cell; `kind` is the pole's when it is not placed yet.
+func covers(pole: Vector2i, cell: Vector2i, kind := "") -> bool:
+	var r := supply_of(kind if kind != "" else _kind_at(pole))
+	return absi(pole.x - cell.x) <= r and absi(pole.y - cell.y) <= r
 
 
-func wired(a: Vector2i, b: Vector2i) -> bool:
-	return Vector2(a - b).length() <= wire_reach + 0.001
+## Whether poles on two tiles are wired; a kind given is the pole's when it is not placed yet.
+func wired(a: Vector2i, b: Vector2i, kind_a := "", kind_b := "") -> bool:
+	var reach := minf(reach_of(kind_a if kind_a != "" else _kind_at(a)), reach_of(kind_b if kind_b != "" else _kind_at(b)))
+	return Vector2(a - b).length() <= reach + 0.001
+
+
+func _kind_at(cell: Vector2i) -> String:
+	return _placed[cell]["kind"] if _placed.has(cell) else POLE
 
 
 ## Whether any pole reaches a tile.
@@ -179,7 +209,7 @@ func describe(id: String) -> String:
 ## Where the wires meet an object standing on a tile, on the screen of the plot.
 func _wire_point(cell: Vector2i) -> Vector2:
 	var kind: String = _placed[cell]["kind"]
-	var sprite: String = "pole" if kind == POLE else WIRE_SPRITES.get(kind, "generator")
+	var sprite: String = WIRE_SPRITES.get(kind, "generator")
 	var at: Dictionary = layout.get(sprite, {})
 	var centre := (Vector2(cell) + Vector2(0.5, 0.5)) * tile
 	return centre + Vector2(float(at.get("wireX", 0)) - float(at.get("anchorX", 0)), float(at.get("wireY", 0)) - float(at.get("anchorY", 0)))
@@ -209,11 +239,17 @@ func _refresh() -> void:
 	_powered = false
 	for cell: Vector2i in _placed:
 		var kind: String = _placed[cell]["kind"]
-		if kind == POLE:
+		if is_pole(kind):
 			_poles.append(cell)
-		if not _powered and (kind == POLE or _source(kind) or demand.has(kind) or kind == HEATER):
+		if not _powered and (is_pole(kind) or _source(kind) or demand.has(kind) or kind == HEATER):
 			_powered = true
-	var square := maxi(1, ceili(wire_reach))
+	var longest := wire_reach
+	for pole in _poles:
+		longest = maxf(longest, reach_of(_kind_at(pole)))
+	var square := maxi(1, ceili(longest))
+	var widest := supply_radius
+	for pole_kind: String in pole_kinds:
+		widest = maxi(widest, supply_of(pole_kind))
 	var near := {}
 	for pole in _poles:
 		var key := Vector2i(floori(pole.x / float(square)), floori(pole.y / float(square)))
@@ -236,7 +272,7 @@ func _refresh() -> void:
 		var kind: String = object["kind"]
 		var centre := (Vector2(cell) + Vector2(0.5, 0.5) + Footprints.shift(kind)) * tile
 		if _source(kind):
-			var reach := supply_radius + Footprints.size(kind)
+			var reach := widest + Footprints.size(kind)
 			for pole in _poles:
 				if absi(pole.x - cell.x) <= reach and absi(pole.y - cell.y) <= reach \
 						and Footprints.tiles(kind, cell).any(func(t: Vector2i) -> bool: return covers(pole, t)):

@@ -193,6 +193,10 @@ public static class TechTree
     public const string SteelCombine = "steel_combine";
     public const string Megafactory = "megafactory";
     public const string FusionPlant = "fusion_plant";
+    public const string PowerDistribution = "power_distribution";
+    public const string ThermalPower = "thermal_power";
+    public const string EnergyStorage = "energy_storage";
+    public const string NuclearPower = "nuclear_power";
 
     public const string Megaprojects = CompanyTechs.Megaprojects;
     public const string CorporateFinance = CompanyTechs.CorporateFinance;
@@ -426,6 +430,19 @@ public static class TechTree
         new(LargeWind, "Duże turbiny wiatrowe", "Duża turbina na 3 × 3 kafelkach daje w pełnym wietrze 400 kW.",
             [WindPower, BuildingMaterials], [(Items.SteelIngot, 40), (Items.Concrete, 20), (Items.Iridium, 2)], TimeSpan.FromMinutes(6), 150,
             [Items.LargeWindTurbine]),
+        new(PowerDistribution, "Przesył energii", "Transformator, podstacja zasilająca pole 9 × 9 i słup wysokiego napięcia łączący się z innymi z 20 pól.",
+            [Hydropower, Metallurgy], [(Items.CopperIngot, 60), (Items.SteelIngot, 20), (Items.IronIngot, 40)], TimeSpan.FromMinutes(4), 80,
+            [Items.Transformer, Items.Substation, Items.Pylon]),
+        new(ThermalPower, "Energetyka cieplna", "Elektrownia węglowa na 3 × 3 polach daje 1 MW z węgla.",
+            [PowerDistribution, BuildingMaterials], [(Items.Coal, 200), (Items.SteelIngot, 60), (Items.Concrete, 30), (Items.Transformer, 2)],
+            TimeSpan.FromMinutes(8), 150, [Items.CoalPlant]),
+        new(EnergyStorage, "Magazynowanie energii", "Magazyn energii mieści tyle co dziesięć akumulatorów i oddaje do 400 kW.",
+            [PowerDistribution, SolarPower], [(Items.Battery, 10), (Items.SteelIngot, 40), (Items.Transformer, 4)], TimeSpan.FromMinutes(8), 150,
+            [Items.EnergyStore]),
+        new(NuclearPower, "Energetyka jądrowa", "Elektrownia jądrowa na 4 × 4 polach daje 2,5 MW z prętów paliwowych z rudy uranu, która trafia się w głębokich kopalniach.",
+            [ThermalPower, DeepMining, Petrochemistry, Alternator, PressureVessel, ControlModule],
+            [(Items.UraniumOre, 40), (Items.PrecastConcrete, 40), (Items.SteelIngot, 200), (Items.ControlModule, 2)], TimeSpan.FromMinutes(30), 220,
+            [Items.NuclearPlant, Items.FuelRod]),
         new(Heating, "Ogrzewanie", "Kocioł grzewczy na drewno, węgiel albo pellet grzeje maszyny wokół siebie, a topielnik zamienia lód w wodę.",
             [], [(Items.IronIngot, 15), (Items.Stone, 30), (Items.Coal, 20)], TimeSpan.FromSeconds(90), 30,
             [Items.Heater, Items.IceMelter]),
@@ -730,7 +747,8 @@ public static class TechTree
             [Milling, OilPressing, Pickling, Baking, RollerMilling, GrainStorage, Cooking, Provisions, FlourIndustry, Confectionery]),
         new("husbandry", "Hodowla", Items.Cow,
             [Breeding, Feeders, Dairying, Distilling, Farmsteads, Butchery, Biogas, WorksCanteens, WorkMeals, BioLab, Horsemanship, FineCuisine, ManorFarms]),
-        new("energy", "Energia", Items.WindTurbine, [Hydropower, HydroPlant, WindPower, LargeWind]),
+        new("energy", "Energia", Items.WindTurbine,
+            [Hydropower, HydroPlant, WindPower, LargeWind, PowerDistribution, ThermalPower, EnergyStorage, NuclearPower]),
         new("oil", "Ropa i gaz", Items.CrudeOil,
             [OilExtraction, Refining, EnhancedRecovery, OffshoreDrilling, Cracking, Petrochemistry, Combustion, Roads]),
         new("coast", "Nabrzeże", Items.Herring, [Fishing, SaltWorks, FishProcessing, Seafaring, Aquaculture, TidalPower]),

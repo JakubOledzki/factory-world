@@ -219,6 +219,15 @@ public static class Workshop
         new(Items.SteelCombine, 1, TimeSpan.FromSeconds(300), [(Items.OxygenConverter, 2), (Items.RollingMill, 2), (Items.ContinuousCaster, 1), (Items.ControlCenter, 1)], 150),
         new(Items.Megafactory, 1, TimeSpan.FromSeconds(300), [(Items.RoboticHall, 2), (Items.ControlCenter, 1), (Items.AutomatedWarehouse, 1), (Items.PrecastConcrete, 100)], 150),
         new(Items.FusionPlant, 1, TimeSpan.FromSeconds(300), [(Items.FusionReactor, 1), (Items.PrecastConcrete, 50), (Items.Alternator, 4), (Items.IndustrialRobot, 2)], 240),
+        // Bigger power: transformers for the substation, the pylon and the plants, the coal and nuclear power plants and the energy store.
+        new(Items.Transformer, 1, TimeSpan.FromSeconds(30), [(Items.CopperIngot, 6), (Items.IronIngot, 4), (Items.SteelIngot, 1)], 8),
+        new(Items.Substation, 1, TimeSpan.FromSeconds(40), [(Items.Transformer, 1), (Items.SteelIngot, 4), (Items.CopperIngot, 6), (Items.Bricks, 5)], 15),
+        new(Items.Pylon, 1, TimeSpan.FromSeconds(30), [(Items.SteelIngot, 6), (Items.CopperIngot, 4), (Items.Stone, 10)], 10),
+        new(Items.CoalPlant, 1, TimeSpan.FromSeconds(180),
+            [(Items.SteelIngot, 40), (Items.Bricks, 60), (Items.Concrete, 20), (Items.Transformer, 2), (Items.ElectricMotor, 2)], 120),
+        new(Items.EnergyStore, 1, TimeSpan.FromSeconds(120), [(Items.Battery, 8), (Items.SteelIngot, 20), (Items.Transformer, 2), (Items.Concrete, 10)], 80),
+        new(Items.NuclearPlant, 1, TimeSpan.FromSeconds(300),
+            [(Items.PrecastConcrete, 60), (Items.SteelIngot, 80), (Items.PressureVessel, 2), (Items.Alternator, 2), (Items.ControlModule, 2), (Items.Transformer, 4)], 200),
         // Husbandry and gastronomy: the canteen, the slaughterhouse, the dairy, the potato distillery, the biogas plant, the stable, the feeder,
         // the farmer's farmstead and manor farm, and what is made of hides.
         new(Items.Canteen, 1, TimeSpan.FromSeconds(120), [(Items.Kitchen, 1), (Items.Planks, 20), (Items.IronIngot, 10), (Items.Glass, 10)], 40),

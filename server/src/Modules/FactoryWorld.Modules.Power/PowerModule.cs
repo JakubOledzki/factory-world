@@ -134,7 +134,7 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IPlotRegistry re
             }
 
             var grid = await GeneratorGridAsync(player, x, y, id, cancellationToken);
-            if (grid.Objects.Any(o => o.Id == id && (Items.IsRenewable(o.Kind) || o.Kind == Items.Battery)))
+            if (grid.Objects.Any(o => o.Id == id && (Items.IsRenewable(o.Kind) || Items.IsBattery(o.Kind))))
             {
                 throw new GameException("no_fuel_needed", "Water, the sun, the wind or stored power drives it; it burns nothing.");
             }
@@ -166,7 +166,7 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IPlotRegistry re
     {
         // Objects are taken off only after the plot was caught up, which opened its grid.
         if (_grids.Values.FirstOrDefault(g => g.Data.Generators.ContainsKey(id) || g.Data.Batteries.ContainsKey(id)
-            || g.Objects.Any(o => o.Id == id && (Items.IsGenerator(o.Kind) || Items.IsHeater(o.Kind) || o.Kind == Items.Battery))) is not { } grid)
+            || g.Objects.Any(o => o.Id == id && (Items.IsGenerator(o.Kind) || Items.IsHeater(o.Kind) || Items.IsBattery(o.Kind)))) is not { } grid)
         {
             return;
         }
@@ -195,7 +195,7 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IPlotRegistry re
         }
 
         var grid = await OpenAsync(x, y, cancellationToken);
-        if (!grid.Objects.Any(o => o.Id == id && (Items.IsGenerator(o.Kind) || Items.IsRenewable(o.Kind) || Items.IsHeater(o.Kind) || o.Kind == Items.Battery)))
+        if (!grid.Objects.Any(o => o.Id == id && (Items.IsGenerator(o.Kind) || Items.IsRenewable(o.Kind) || Items.IsHeater(o.Kind) || Items.IsBattery(o.Kind))))
         {
             throw new GameException("no_object", "There is no such generator on this plot.");
         }
@@ -243,7 +243,7 @@ public static class PowerJson
     /// and generators each powers and how well; sent along with the plot's logistics.</summary>
     public static object Grid(PowerGrid grid, DateTimeOffset now)
     {
-        var poles = grid.Objects.Where(o => o.Kind == Items.Pole).ToList();
+        var poles = grid.Objects.Where(o => Items.IsPole(o.Kind)).ToList();
         var wires = new List<Guid[]>();
         for (var i = 0; i < poles.Count; i++)
         {
@@ -260,6 +260,8 @@ public static class PowerJson
         {
             supplyRadius = PowerRules.SupplyRadius,
             wireReach = PowerRules.WireReach,
+            // Every kind of pole: the tiles it powers each way and how far it is wired; two kinds are wired as far as the shorter reach.
+            poleKinds = PowerRules.Poles.ToDictionary(p => p.Key, p => new { supply = p.Value.Supply, reach = p.Value.Reach }),
             wires,
             networks = grid.Networks.Select(n => new
             {
@@ -321,7 +323,7 @@ public static class PowerJson
         var kind = grid.Objects.FirstOrDefault(o => o.Id == reply.Id)?.Kind ?? Items.Generator;
         var hydro = Items.IsHydro(kind);
         var solar = Items.IsSolar(kind);
-        var battery = kind == Items.Battery;
+        var battery = Items.IsBattery(kind);
         var wind = Items.IsWind(kind);
         var heater = Items.IsHeater(kind);
         return new
@@ -351,16 +353,16 @@ public static class PowerJson
             // A battery stores chargeKj of capacityKj; outputKw is less than 0 while it charges.
             battery,
             chargeKj = battery ? grid.Charge(reply.Id, now) : 0,
-            capacityKj = battery ? PowerRules.BatteryKj : 0,
+            capacityKj = battery ? PowerRules.StoreKj(kind) : 0,
             fuel = state.FuelItem is { } fuel && state.Fuel > 0 ? new { id = fuel, name = Items.Names[fuel], quantity = state.Fuel } : null,
             // kJ left in the piece burning now and in all the fuel.
             energy = state.Energy,
             total = state.Total,
             outputKw = heater ? 0 : grid.Output(reply.Id, now),
             capacityKw = hydro ? grid.HydroKw(reply.Id) : solar ? grid.SolarPeakKw(reply.Id) : wind ? grid.WindPeakKw(reply.Id)
-                : battery ? PowerRules.BatteryKw : heater ? 0 : grid.KwOf(reply.Id),
-            // A steam generator gives less on sand, where there is no water to cool it.
-            dry = kind == Items.Generator && grid.Sandy,
+                : battery ? PowerRules.StoreKw(kind) : heater ? 0 : grid.KwOf(reply.Id),
+            // A steam generator, a coal and a nuclear power plant give less on sand, where there is no water to cool them.
+            dry = PowerRules.Steam(kind) && grid.Sandy,
             hydroBonus = hydro ? WaterPower.Biomes.GetValueOrDefault(grid.Biome) : 0,
             runsOutAt = grid.RunsOutAt(reply.Id)?.ToUnixTimeMilliseconds(),
             serverTime = now.ToUnixTimeMilliseconds(),
@@ -436,7 +438,7 @@ public sealed class TakeGeneratorHandler(IServiceScopeFactory scopes) : Generato
     }
 }
 
-/// <summary>Generators that burn wood or coal, and poles that carry their power to machines on plots. Owns the <c>power</c> schema.</summary>
+/// <summary>Generators and power plants, poles, substations and pylons that carry their power to machines on plots, and batteries. Owns the <c>power</c> schema.</summary>
 public sealed class PowerModule : IGameModule
 {
     public string Name => "Power";

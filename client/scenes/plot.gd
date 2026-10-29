@@ -206,6 +206,8 @@ const PLACED_SPRITES := {
 	"storage_receiving_chest": "receiving_chest", "storage_receiving_chest_2": "receiving_chest_2",
 	"storage_receiving_chest_3": "receiving_chest_3", "storage_receiving_chest_4": "receiving_chest_4",
 	"furniture_megafactory": "megafactory", "power_fusion_plant": "fusion_plant",
+	"power_substation": "substation", "power_pylon": "pylon", "power_coal_plant": "coal_plant", "power_energy_store": "energy_store",
+	"power_nuclear_plant": "nuclear_plant",
 	"furniture_canteen": "canteen", "furniture_slaughterhouse": "slaughterhouse", "furniture_dairy": "dairy",
 	"furniture_potato_distillery": "potato_distillery", "furniture_biogas_plant": "biogas_plant", "furniture_stable": "stable",
 	"furniture_bellows": "bellows", "furniture_feeder": "feeder", "furniture_farmstead": "farmstead", "furniture_manor_farm": "manor_farm",
@@ -287,7 +289,8 @@ const PALMS := ["palm_0", "palm_1"]
 ## Solar power, which burns nothing and gives power by day; the tower with mirrors stands on 3 × 3 tiles of sand only.
 const SOLAR := ["power_solar_panel", "power_solar_tower"]
 const SOLAR_TOWER := "power_solar_tower"
-const BATTERY := "power_battery"
+## Batteries and the energy store, which keep what free power has to spare.
+const BATTERIES := ["power_battery", "power_energy_store"]
 const REED_FENCE := "furniture_reed_fence"
 ## The glacier and the tundra: wind blows stronger, blizzards sweep the glacier and the aurora shines on some nights.
 const TUNDRA := 7
@@ -354,9 +357,9 @@ const MACHINERY := [BELT, "logistics_fast_belt", "logistics_express_belt", INSER
 	"logistics_pipe", "logistics_pump"]
 const GENERATOR := "power_generator"
 ## Generators that burn fuel, which open the generator window.
-const GENERATORS := [GENERATOR, "power_gas_plant", "power_diesel_generator", "power_fusion_plant"]
+const GENERATORS := [GENERATOR, "power_coal_plant", "power_gas_plant", "power_diesel_generator", "power_nuclear_plant", "power_fusion_plant"]
 ## Placed objects with nothing to open: a click shows the menu to pick them up.
-const MENU_ONLY := ["power_pole", "furniture_port", "furniture_lighthouse", "furniture_breakwater", ROAD, REED_FENCE,
+const MENU_ONLY := ["power_pole", "power_substation", "power_pylon", "furniture_port", "furniture_lighthouse", "furniture_breakwater", ROAD, REED_FENCE,
 	"furniture_water_injector", "furniture_oil_separator", "furniture_dog_kennel", "furniture_snowmobile_garage", TRACK_FOUNDATION,
 	"furniture_freight_terminal", "furniture_company_hq", WATCHTOWER, FIRE_STATION, CONTROL_CENTER]
 const POLE := "power_pole"
@@ -1838,8 +1841,8 @@ func _placed_label(cell: Vector2i) -> String:
 		return "%s: kliknij, aby wydać jedzenie załogom" % object["name"]
 	if object["kind"] in [STABLE, BELLOWS]:
 		return object["name"]
-	if object["kind"] == POLE:
-		return "Słup energetyczny (%s): kliknij po więcej" % _power.describe(object["id"])
+	if _power.is_pole(object["kind"]):
+		return "%s (%s): kliknij po więcej" % [object["name"], _power.describe(object["id"])]
 	if object["kind"] in GENERATORS:
 		return "%s%s: kliknij, aby dołożyć opału" % [object["name"], _power_note(object["id"])]
 	if object["kind"] in WELLS:
@@ -1850,7 +1853,7 @@ func _placed_label(cell: Vector2i) -> String:
 		return "%s (woda kręci nim bez opału): kliknij po więcej" % object["name"]
 	if object["kind"] in SOLAR:
 		return "%s (słońce daje prąd za dnia, bez opału): kliknij po więcej" % object["name"]
-	if object["kind"] == BATTERY:
+	if object["kind"] in BATTERIES:
 		return "%s (%s): kliknij po więcej" % [object["name"], _power.describe_battery(object["id"])]
 	if object["kind"] in WIND:
 		return "%s (wiatr daje prąd bez opału): kliknij po więcej" % object["name"]
@@ -1954,26 +1957,27 @@ func _draw_in_use() -> void:
 ## The tiles poles power, on the ground: of every pole while a pole, a generator or a machine that
 ## runs on power is being placed (with the wires a new pole would get), and of a pole under the mouse.
 func _draw_power_reach() -> void:
-	var placing_power: bool = _placing == POLE or _placing in GENERATORS or _placing in HYDRO or _power.runs_on_power(_placing)
-	var hovered_pole: bool = _hovered.x >= 0 and _placed.has(_hovered) and _placed[_hovered]["kind"] == POLE
+	var placing_pole := _power.is_pole(_placing)
+	var placing_power: bool = placing_pole or _placing in GENERATORS or _placing in HYDRO or _power.runs_on_power(_placing)
+	var hovered_pole: bool = _hovered.x >= 0 and _placed.has(_hovered) and _power.is_pole(_placed[_hovered]["kind"])
 	if not placing_power and not hovered_pole:
 		return
 	var areas: Array[Vector2i] = _power.poles()
 	if not placing_power:
 		areas = [_hovered]
 	var ground := _ground_cell()
-	if _placing == POLE and ground.x >= 0:
+	if placing_pole and ground.x >= 0:
 		areas.append(ground)
 	var fill := Color(1.0, 0.82, 0.3, 0.07)
 	for pole in areas:
-		var r := _power.supply_radius
+		var r := _power.supply_of(_placing if pole == ground and placing_pole else _placed[pole]["kind"] if _placed.has(pole) else POLE)
 		var rect := Rect2(Vector2(pole - Vector2i(r, r)) * TILE, Vector2(2 * r + 1, 2 * r + 1) * TILE)
 		var strong := pole == ground or pole == _hovered
 		_marks.draw_rect(rect, Color(fill, 0.13) if strong else fill)
 		_marks.draw_rect(rect, Color(1.0, 0.82, 0.3, 0.75 if strong else 0.3), false, 2.0)
-	if _placing == POLE and ground.x >= 0:
+	if placing_pole and ground.x >= 0:
 		for pole in _power.poles():
-			if _power.wired(pole, ground):
+			if _power.wired(pole, ground, "", _placing):
 				_marks.draw_dashed_line(_cell_centre(ground), _cell_centre(pole), Color(1.0, 0.82, 0.3, 0.8), 2.0, 8.0)
 
 
@@ -3101,11 +3105,17 @@ func _place_object(cell: Vector2i) -> void:
 		_show_toast("%s stoi na działce: piece i odlewnia pracują tu o 15%% szybciej." % object["name"])
 	elif kind in DRILLS:
 		_show_toast("%s stoi przy kopalni. Podłącz je słupem do prądu, a samo zacznie wydobywać." % object["name"])
+	elif kind == "power_substation":
+		_show_toast("%s stoi na działce: zasila maszyny do 4 pól wokół i łączy się ze słupami do 10 pól od siebie." % object["name"])
+	elif kind == "power_pylon":
+		_show_toast("%s stoi na działce: łączy się z innymi słupami wysokiego napięcia do 20 pól od siebie i ciągnie prąd przez całą działkę." % object["name"])
+	elif kind == "power_nuclear_plant":
+		_show_toast("%s stoi na działce: włóż pręty paliwowe i podłącz ją słupem, a da 2,5 MW." % object["name"])
 	elif kind in HYDRO:
 		_show_toast("%s stoi na działce i daje prąd bez opału. Postaw obok słup energetyczny." % object["name"])
 	elif kind in SOLAR:
 		_show_toast("%s stoi na działce i za dnia daje prąd bez opału. Postaw obok słup, a nadwyżkę zbierze akumulator." % object["name"])
-	elif kind == BATTERY:
+	elif kind in BATTERIES:
 		_show_toast("%s stoi na działce: postaw obok słup, a zbierze nadwyżkę prądu ze słońca i wody i odda ją, gdy zabraknie." % object["name"])
 	elif kind in WIND:
 		_show_toast("%s stoi na działce i daje prąd, gdy wieje. Postaw obok słup; w zamieć staje." % object["name"])
@@ -3180,7 +3190,7 @@ func _use_placed(cell: Vector2i) -> void:
 		_crafting_window.open_at(object["id"], object["kind"])
 	elif object["kind"] == ResearchWindow.TABLE:
 		_research_window.open_at(object["id"])
-	elif object["kind"] in GENERATORS or object["kind"] in HYDRO or object["kind"] in SOLAR or object["kind"] == BATTERY \
+	elif object["kind"] in GENERATORS or object["kind"] in HYDRO or object["kind"] in SOLAR or object["kind"] in BATTERIES \
 			or object["kind"] in WIND or object["kind"] == HEATER:
 		_generator_window.open_at(_at, object["id"])
 		# Only generators that burn fuel take anything in.
