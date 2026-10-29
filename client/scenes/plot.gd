@@ -180,7 +180,7 @@ const PLACED_SPRITES := {
 	"furniture_water_injector": "water_injector", "furniture_oil_separator": "oil_separator", "furniture_distillery": "distillery",
 	"furniture_refinery": "refinery", "furniture_cracker": "cracker", "furniture_chemical_plant": "chemical_plant",
 	"power_gas_plant": "gas_plant", "power_diesel_generator": "diesel_generator", "logistics_pump": "pump",
-	"storage_tank": "tank", "logistics_road": "road", "furniture_truck_depot": "truck_depot",
+	"storage_tank": "tank", "logistics_road": "road", "furniture_truck_depot": "truck_depot", "furniture_scrubber": "scrubber",
 	"furniture_glassworks": "glassworks", "furniture_arc_furnace": "arc_furnace", "furniture_water_well": "water_well",
 	"furniture_desalinator": "desalinator", "furniture_drying_yard": "drying_yard", "furniture_cement_kiln": "cement_kiln",
 	"furniture_concrete_mixer": "concrete_mixer", "furniture_reed_fence": "reed_fence", "power_solar_panel": "solar_panel",
@@ -546,6 +546,8 @@ var _bridge_source := 0
 var _snow: CPUParticles2D
 ## Rain over the fields of fertile plots.
 var _rain: CPUParticles2D
+## The smog over the plot, when there is more than is harmless.
+var _smog: Label
 ## The blizzard and the aurora last seen, to notice when they begin and end.
 var _was_blizzard := false
 var _shadows: TileMapLayer
@@ -4556,6 +4558,7 @@ func _update_weather() -> void:
 	if now < _next_weather or _plot.is_empty():
 		return
 	_next_weather = now + 1.0
+	_update_smog()
 	var server := _server_now()
 	var sun: Dictionary = _plot.get("sun", {})
 	var day := true
@@ -4605,6 +4608,19 @@ func _update_weather() -> void:
 			_weather.add_theme_color_override("font_color", UI.MUTED)
 		return
 	_weather.visible = false
+
+
+## The smog over the plot as it was on entering: from its own furnaces and generators and the plots around it.
+func _update_smog() -> void:
+	var smog: Dictionary = _plot.get("smog", {})
+	var level := float(smog.get("level", 0.0))
+	_smog.visible = level > float(smog.get("harmless", 20))
+	if not _smog.visible:
+		return
+	var speed := roundi(float(smog["cropSpeed"]) * 100.0)
+	_smog.text = "Smog %d (%d z tej działki, %d z sąsiednich): uprawy rosną w %d%% tempa. Filtr spalin zabiera %d." % [
+		roundi(level), int(smog["own"]), roundi(float(smog["neighbours"])), speed, int(smog["scrubberCleans"])]
+	_smog.add_theme_color_override("font_color", UI.ERROR if speed < 80 else Color(0.85, 0.75, 0.45))
 
 
 ## Where crops grow: the rain (they grow faster, it pours across the screen) and the drought (slower, the light goes
@@ -4794,6 +4810,9 @@ func _build_hud() -> void:
 	_weather = UI.label("", UI.MUTED)
 	_weather.visible = false
 	box.add_child(_weather)
+	_smog = UI.label("", UI.MUTED)
+	_smog.visible = false
+	box.add_child(_smog)
 	# The name and level open the character: clothes and a new look.
 	var me := VBoxContainer.new()
 	me.add_theme_constant_override("separation", 2)

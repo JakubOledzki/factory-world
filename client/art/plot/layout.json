@@ -1074,5 +1074,9 @@
  "truck_depot": {
   "anchorX": 64,
   "anchorY": 65
+ },
+ "scrubber": {
+  "anchorX": 56,
+  "anchorY": 57
  }
 }

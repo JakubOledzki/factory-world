@@ -851,6 +851,7 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
         var mines = await scope.ServiceProvider.GetRequiredService<MineService>().MinesAsync(request.X, request.Y, biome, cancellationToken);
         var objects = await scope.ServiceProvider.GetRequiredService<PlotObjectService>().ObjectsAsync(request.X, request.Y, cancellationToken);
         var pests = await scope.ServiceProvider.GetRequiredService<PestService>().StateAsync(request.X, request.Y, cancellationToken);
+        var smog = await scope.ServiceProvider.GetRequiredService<SmogService>().LevelAsync(request.X, request.Y, cancellationToken);
         var certificate = await scope.ServiceProvider.GetRequiredService<ForestLedger>().JsonAsync(client.RequireAccount(), cancellationToken);
         var (likes, liked) = await scope.ServiceProvider.GetRequiredService<LikeService>()
             .LikesAsync(client.RequireAccount(), request.X, request.Y, cancellationToken);
@@ -912,6 +913,8 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             objects = objects.Select(PlaceOnPlotHandler.ObjectJson),
             placeable = PlotObjects.Placeable,
             fertile = Farming.Fertile(biome),
+            // The smog over the plot: its own smoke, what it breathes from the plots around, and how fast crops grow in it.
+            smog = SmogService.Json(smog),
             fields = fields.Select(FieldHandler.FieldJson),
             pasture = Husbandry.Pasture(biome),
             husbandryBonus = Husbandry.BonusPercent(biome),

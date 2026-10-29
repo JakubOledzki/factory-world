@@ -50,7 +50,7 @@ const CATEGORIES := [
 			"furniture_cracker", "furniture_chemical_plant", "furniture_glassworks", "furniture_arc_furnace", "furniture_water_well",
 			"furniture_desalinator", "furniture_drying_yard", "furniture_cement_kiln", "furniture_concrete_mixer", "furniture_reed_fence",
 			"furniture_ice_melter", "furniture_cold_store", "furniture_server_room", "furniture_ice_core_drill", "furniture_polar_station",
-			"furniture_ice_hotel", "furniture_viewpoint", "furniture_dog_kennel", "furniture_snowmobile_garage", "furniture_track_foundation", "furniture_truck_depot",
+			"furniture_ice_hotel", "furniture_viewpoint", "furniture_dog_kennel", "furniture_snowmobile_garage", "furniture_track_foundation", "furniture_truck_depot", "furniture_scrubber",
 			"furniture_assembly_hall", "furniture_multistorey_factory", "furniture_shop", "furniture_city_sorter", "furniture_freight_terminal",
 			"furniture_export_chest", "furniture_buy_market", "furniture_rail_port", "furniture_bank", "furniture_bank_branch", "furniture_company_hq", "furniture_design_office", "furniture_laboratory", "furniture_service_workshop",
 			"furniture_tailor", "furniture_paper_mill", "furniture_carpentry", "furniture_charcoal_kiln", "furniture_tar_kiln", "furniture_beehive",
@@ -427,6 +427,8 @@ const ITEMS := {
 			"Stół warsztatowy: 2 × asfalt + 2 × kamień → 4 szt. (10 s). Wymaga badania: Drogi."],
 	"furniture_truck_depot": ["Baza ciężarówek", "Ciężarówki wiozą towar ze stacji tej działki do stacji do 60 km dalej, bez opłaty za kolej, dwa razy szybciej niż pociąg: do 1000 sztuk naraz, za 1 × olej napędowy ze stacji na każde 25 km. Także jako stały kurs.",
 			"Stół warsztatowy: 20 × sztabka stali + 2 × opony + 10 × beton + 1 × silnik elektryczny (120 s). Wymaga badania: Drogi."],
+	"furniture_scrubber": ["Filtr spalin", "Piece, generatory, elektrownie i piece do wypału dymią, a smog powyżej 20 spowalnia uprawy na działce i połowę tego dymu na każdej sąsiedniej. Filtr zabiera 20 dymu ze swojej działki.",
+			"Stół warsztatowy: 10 × sztabka stali + 20 × węgiel drzewny + 5 × sztabka miedzi (60 s). Wymaga badania: Filtry spalin."],
 	# The desert.
 	"glass": ["Szkło", "Na szyby, lustra, światłowód i panele słoneczne; handlarz płaci 3 $.",
 			"Huta szkła: 3 × piasek → 2 szt. (10 s, na pustyni i w oazie o 30% szybciej)."],

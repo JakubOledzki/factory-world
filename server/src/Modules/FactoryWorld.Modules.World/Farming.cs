@@ -50,7 +50,7 @@ public sealed record FieldChange(Field Field, IReadOnlyList<(string Item, int Qu
 
 public sealed class FarmService(
     GameDb db, PlotService plots, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats, TimeProvider time,
-    OilService oil)
+    OilService oil, SmogService smog)
 {
     public async Task<IReadOnlyList<Field>> FieldsAsync(int x, int y, CancellationToken cancellationToken)
     {
@@ -136,8 +136,9 @@ public sealed class FarmService(
 
             // A fertilised crop counts as sown so long ago that it is ripe in half its time; a farmer's clothes take off more.
             // Rain to come makes it ripe sooner, a drought later: it counts as sown as long before it is ripe as it grows in clear weather.
+            // Smog over the plot slows it down.
             var speed = (fertilize ? Farming.FertilizerSpeed : 1) * (manure ? Farming.ManureSpeed : 1)
-                * await plots.SpeedAsync(player, Industries.Farming, cancellationToken);
+                * await plots.SpeedAsync(player, Industries.Farming, cancellationToken) * (await smog.LevelAsync(x, y, cancellationToken)).CropSpeed;
             var sown = FieldWeather.Ripe(now, Farming.ById[crop].Grow / speed) - Farming.ById[crop].Grow;
             await using var update = await db.CommandAsync(
                 """

@@ -265,6 +265,7 @@ public static class NpcPrices
         [Items.Tank] = 37_000,
         [Items.Road] = 200,
         [Items.TruckDepot] = 135_000,
+        [Items.Scrubber] = 50_000,
         [Items.Glass] = 300,
         [Items.WindowPane] = 3100,
         [Items.GlassBottles] = 250,

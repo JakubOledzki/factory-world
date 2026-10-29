@@ -1450,6 +1450,7 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<BeachService>();
         services.AddScoped<StationService>();
         services.AddScoped<FarmService>();
+        services.AddScoped<SmogService>();
         services.AddScoped<ForestService>();
         services.AddScoped<ForestLedger>();
         services.AddScoped<IForestCertificate>(provider => provider.GetRequiredService<ForestLedger>());

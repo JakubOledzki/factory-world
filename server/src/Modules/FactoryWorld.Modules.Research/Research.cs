@@ -196,6 +196,7 @@ public static class TechTree
     public const string FusionPlant = "fusion_plant";
     public const string PowerDistribution = "power_distribution";
     public const string ThermalPower = "thermal_power";
+    public const string EmissionControl = "emission_control";
     public const string EnergyStorage = "energy_storage";
     public const string NuclearPower = "nuclear_power";
 
@@ -435,6 +436,9 @@ public static class TechTree
             "Transformator, podstacja zasilająca pole 9 × 9, słup wysokiego napięcia łączący się z innymi z 20 pól i przyłącze sieciowe: kabel do przyłącza na innej działce, także cudzej, za opłatą za prąd.",
             [Hydropower, Metallurgy], [(Items.CopperIngot, 60), (Items.SteelIngot, 20), (Items.IronIngot, 40)], TimeSpan.FromMinutes(4), 80,
             [Items.Transformer, Items.Substation, Items.Pylon, Items.GridTie]),
+        new(EmissionControl, "Filtry spalin", "Piece, generatory i elektrownie dymią, a smog spowalnia uprawy na działce i wokół niej. Filtr spalin zabiera część dymu.",
+            [BrickFurnaces], [(Items.Charcoal, 40), (Items.IronIngot, 40)], TimeSpan.FromMinutes(4), 50,
+            [Items.Scrubber]),
         new(ThermalPower, "Energetyka cieplna", "Elektrownia węglowa na 3 × 3 polach daje 1 MW z węgla.",
             [PowerDistribution, BuildingMaterials], [(Items.Coal, 200), (Items.SteelIngot, 60), (Items.Concrete, 30), (Items.Transformer, 2)],
             TimeSpan.FromMinutes(8), 150, [Items.CoalPlant]),
@@ -753,7 +757,7 @@ public static class TechTree
         new("husbandry", "Hodowla", Items.Cow,
             [Breeding, Feeders, Dairying, Distilling, Farmsteads, Butchery, Biogas, WorksCanteens, WorkMeals, BioLab, Horsemanship, FineCuisine, ManorFarms]),
         new("energy", "Energia", Items.WindTurbine,
-            [Hydropower, HydroPlant, WindPower, LargeWind, PowerDistribution, ThermalPower, EnergyStorage, NuclearPower]),
+            [Hydropower, HydroPlant, WindPower, LargeWind, PowerDistribution, EmissionControl, ThermalPower, EnergyStorage, NuclearPower]),
         new("oil", "Ropa i gaz", Items.CrudeOil,
             [OilExtraction, Refining, EnhancedRecovery, OffshoreDrilling, Cracking, Petrochemistry, Combustion, Roads]),
         new("coast", "Nabrzeże", Items.Herring, [Fishing, SaltWorks, FishProcessing, Seafaring, Aquaculture, TidalPower]),
