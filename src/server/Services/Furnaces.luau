@@ -12,6 +12,7 @@ local Factory = require(script.Parent.Factory)
 local Inventory = require(script.Parent.Inventory)
 local Net = require(script.Parent.Net)
 local Plots = require(script.Parent.Plots)
+local Tutorial = require(script.Parent.Tutorial)
 
 local Furnaces = {}
 
@@ -188,6 +189,9 @@ function Furnaces.Start()
 		furnace.state = state
 		show(player, furnace)
 		Net.PushState(player)
+		if payload.what == "output" and taken[1] then
+			Tutorial.Note(player, profile, "smelt", taken[1][1], taken[1][2])
+		end
 		return reply(furnace, { taken = taken })
 	end)
 

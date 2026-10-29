@@ -7,6 +7,7 @@ local Players = game:GetService("Players")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Items = require(Shared.Items)
 local Remotes = require(Shared.Remotes)
+local Tutorial = require(Shared.Tutorial)
 local Data = require(script.Parent.Data)
 local Inventory = require(script.Parent.Inventory)
 
@@ -99,7 +100,7 @@ function Net.Near(player, position, range)
 	return root ~= nil and (root.Position - position).Magnitude <= range
 end
 
--- Pushes the player's balance, inventory and its tiles to their client and the leaderboard.
+-- Pushes the player's balance, inventory and its tiles and their tutorial task to their client and the leaderboard.
 function Net.PushState(player)
 	local profile = Data.Get(player)
 	if profile == nil then
@@ -109,6 +110,7 @@ function Net.PushState(player)
 		balanceCents = profile.balanceCents,
 		inventory = profile.inventory,
 		slots = Inventory.Slots(profile),
+		tutorial = Tutorial.View(profile.tutorial),
 	})
 	local stats = player:FindFirstChild("leaderstats")
 	local money = stats and stats:FindFirstChild("Pieniądze")

@@ -13,6 +13,7 @@ local Mining = require(Shared.Mining)
 local Forestry = require(Shared.Forestry)
 local Logistics = require(Shared.Logistics)
 local PlotLayout = require(Shared.PlotLayout)
+local Tutorial = require(Shared.Tutorial)
 local Clock = require(script.Parent.Clock)
 local Inventory = require(script.Parent.Inventory)
 
@@ -63,6 +64,10 @@ local function newProfile()
 		-- The player's company (Services/Companies): { id, name } or nil, and steps on their way.
 		company = nil,
 		companyPending = {},
+		-- Orders from NPC companies (Shared.Contracts), made on first look.
+		contracts = nil,
+		-- The tutorial's task at hand (Shared.Tutorial).
+		tutorial = Tutorial.New(),
 		nextId = 1,
 		lock = nil,
 	}
@@ -239,6 +244,10 @@ local function migrate(profile)
 	end
 	for _, mine in ipairs(profile.mines) do
 		mine.level = mine.level or 1
+	end
+	-- The tutorial came later: players from before start it too, and may skip it.
+	if profile.tutorial == nil then
+		profile.tutorial = Tutorial.New()
 	end
 	-- The inventory's tiles, laid out in the game's item order the first time.
 	Inventory.Slots(profile, Items.Order)

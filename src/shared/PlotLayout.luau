@@ -36,6 +36,7 @@ PlotLayout.FurnaceSlotTiles = {
 -- which way each faces (yaw, radians about the vertical; 0 faces -z).
 PlotLayout.Stall = { x = 0, z = -18, yaw = math.pi }
 PlotLayout.Workbench = { x = 20, z = -4, yaw = math.pi / 2 }
+PlotLayout.Board = { x = -20, z = -4, yaw = -math.pi / 2 }
 PlotLayout.Fountain = { x = 0, z = 0 }
 PlotLayout.SquareSpawn = { x = 0, z = 14 }
 

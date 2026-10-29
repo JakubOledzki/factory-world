@@ -8,7 +8,7 @@ const { luaShared } = require("./shared.js");
 
 const lua = luaShared();
 const L = lua.call("{ Count = PlotLayout.Count, Size = PlotLayout.Size, Ring = PlotLayout.Ring, Mines = PlotLayout.Mines,"
-  + " WildTrees = PlotLayout.WildTrees, FurnaceSlotTiles = PlotLayout.FurnaceSlotTiles, Stall = PlotLayout.Stall, Workbench = PlotLayout.Workbench,"
+  + " WildTrees = PlotLayout.WildTrees, FurnaceSlotTiles = PlotLayout.FurnaceSlotTiles, Stall = PlotLayout.Stall, Workbench = PlotLayout.Workbench, Board = PlotLayout.Board,"
   + " Fountain = PlotLayout.Fountain, SquareSpawn = PlotLayout.SquareSpawn, Spawn = PlotLayout.Spawn }");
 const center = (i) => lua.call(`{ PlotLayout.Center(${i}) }`);
 
@@ -33,6 +33,7 @@ function square() {
   const s = Math.sin(L.Stall.yaw), c = Math.cos(L.Stall.yaw);
   objects.push({ at: [L.Stall.x + 2.6 * s, PAVING, L.Stall.z + 2.6 * c], yaw: L.Stall.yaw, parts: lua.call("Models.Merchant()") });
   objects.push({ at: [L.Workbench.x, PAVING, L.Workbench.z], yaw: L.Workbench.yaw, parts: lua.call("Models.Workbench()") });
+  objects.push({ at: [L.Board.x, PAVING, L.Board.z], yaw: L.Board.yaw, parts: lua.call("Models.NoticeBoard()") });
   for (let i = 1; i <= L.Count; i++) {
     const [x, z] = center(i);
     const length = L.Ring - L.Size / 2 - 30;
@@ -708,6 +709,43 @@ function views() {
           return `<div class="row" style="height:40px">${slot(p.item, "", { size: 32 })}<span style="flex:1;font-size:14px">${name(p.item)} &nbsp; ${p.delivered} / ${p.quantity}</span><span class="btn" style="width:150px;text-align:center;padding:8px 0;${left > 0 && give > 0 ? "" : "background:#4e5460"}">${left <= 0 ? "Zebrane" : give > 0 ? "Oddaj " + give : "Nie masz"}</span></div>`; }).join("")}
         <b style="font-size:17px">Wspólnicy</b>
         ${c.members.map((m) => `<div class="row" style="height:34px;font-size:14px"><span><b>${m.name}</b>${m.owner ? " (założyciel)" : ""} &nbsp; ${m.shares} udziałów, ${pct(m.shares)}%</span></div>`).join("")}
+      </div></div>` };
+  }
+  // 20. The board of orders on the square, the orders window and the tutorial's task.
+  {
+    let objects = square().concat(forest([0, 0, 160]));
+    for (let i = 1; i <= L.Count; i++) objects = objects.concat(plot(i, { furnaces: ["lit"] }).objects);
+    const now = 1700000000;
+    const orders = lua.call(`(function()
+      local n = 0
+      local function roll(a, b) n = n + 5; return a + n % (b - a + 1) end
+      local s = Contracts.New()
+      Contracts.Refresh(s, ${now} - 3000, function() return true end, roll)
+      local o = s.list[1]
+      Contracts.Deliver(s, o.id, o.quantity - 5, o.quantity - 5, ${now} - 600, function() return true end, roll)
+      local list = {}
+      for _, c in ipairs(s.list) do list[#list + 1] = { item = c.item, quantity = c.quantity, delivered = c.delivered, issuer = c.issuer, reward = Money.Format(c.rewardCents), left = c.deadline - ${now} } end
+      return list
+    end)()`);
+    const t = lua.call("(function() local s = Tutorial.New(); s.step = 6; s.progress = 2; return Tutorial.View(s) end)()");
+    const hm = (s) => s >= 3600 ? `${Math.floor(s / 3600)} h ${Math.floor((s % 3600) / 60)} min` : `${Math.floor(s / 60)} min`;
+    const card = (o) => {
+      const give = Math.min(have[o.item] || 0, o.quantity - o.delivered);
+      return `<div class="row" style="height:92px;align-items:flex-start;padding:10px 10px">${slot(o.item, String(o.quantity - o.delivered), { size: 64 })}
+        <span style="flex:1;font-size:14px;line-height:1.35"><b>${name(o.item)}</b> &nbsp;${o.delivered} / ${o.quantity}<br><span class="muted">${o.issuer}</span><br>Zapłata: <b class="gold">${o.reward}</b><br><span class="muted" style="font-size:13px">Termin: ${hm(o.left)}</span></span>
+        <span style="display:flex;flex-direction:column;gap:6px"><span class="btn" style="width:150px;text-align:center;padding:8px 0;${give > 0 ? "" : "background:#4e5460"}">${give > 0 ? "Oddaj " + give : "Nie masz"}</span><span class="btn red" style="width:150px;text-align:center;padding:4px 0;font-size:13px">Zrezygnuj</span></span></div>`;
+    };
+    const rewards = [lua.call(`Money.Format(${t.rewardCents})`)].concat((t.rewardItems || []).map(([id, n]) => `${n} × ${name(id)}`)).join(", ");
+    out["20-zlecenia"] = { objects, camera: { pos: [-1, 7, 2], look: [-22, 4.5, -7], fov: 62 }, shadowRadius: 60, hud: "1 284,50 $", caption,
+      avatars: [{ at: [-13, 0, 3.5], yaw: -Math.PI / 2 - 0.5, shirt: [60, 110, 200] }],
+      labels: [{ at: [L.Board.x, 10.5, L.Board.z], text: "Zlecenia", color: "#ffd696", size: 18 }],
+      overlay: `<div class="win" style="width:280px;left:16px;top:200px;border:1.5px solid #c8aa5a;padding:8px 12px 10px;box-sizing:border-box;display:flex;flex-direction:column;gap:4px">
+          <b style="font-size:13px;color:#e6c878">SAMOUCZEK ${t.number}/${t.count}</b><b style="font-size:18px">${t.title}</b>
+          <span style="font-size:15px">${t.text} &nbsp;<b>${t.progress}/${t.goal}</b></span><span class="muted" style="font-size:13px">${t.hint}</span>
+          <span class="gold" style="font-size:13px">Nagroda: ${rewards}</span><span class="btn" style="width:150px;text-align:center;padding:4px 0;font-size:12px;background:#4e5460">Pomiń samouczek</span></div>
+        <div class="win" style="width:600px;right:16px;bottom:16px"><div class="hd">Zlecenia firm<span class="x">✕</span></div><div class="bd">
+        <div class="muted" style="font-size:14px">Firmy płacą za towar więcej niż handlarz. Oddawaj z ekwipunku, także po trochu; zapłata przychodzi z ostatnią sztuką. Gdy minie termin, oddane sztuki wracają do ciebie.</div>
+        ${orders.map(card).join("")}
       </div></div>` };
   }
   // The windows' item pictures: every item's parts, drawn by index.html.

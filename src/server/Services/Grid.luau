@@ -29,6 +29,7 @@ local Inventory = require(script.Parent.Inventory)
 local Net = require(script.Parent.Net)
 local Plots = require(script.Parent.Plots)
 local TestMode = require(script.Parent.TestMode)
+local Tutorial = require(script.Parent.Tutorial)
 
 local Grid = {}
 
@@ -409,6 +410,7 @@ function Grid.Start()
 			end
 		end
 		Net.PushState(player)
+		Tutorial.Note(player, profile, "place", item)
 		return { ok = true, id = id }
 	end)
 
@@ -525,6 +527,7 @@ function Grid.Start()
 			views[player][o.id] = nil
 		end
 		Plots.Gather(player, profile, Forestry.Cut(random:NextInteger(0, 99)))
+		Tutorial.Note(player, profile, "chop")
 	end)
 
 	-- Reaping a ripe field by hand; the field stays tilled for the next crop.
@@ -549,6 +552,7 @@ function Grid.Start()
 		end
 		rebuild(player, o)
 		Plots.Gather(player, profile, { { item, count } })
+		Tutorial.Note(player, profile, "reap", item, count)
 	end)
 
 	-- Sowing a crop on an empty field; seeds cost nothing, as on main.
@@ -574,6 +578,7 @@ function Grid.Start()
 			return Net.Error(code)
 		end
 		rebuild(player, o)
+		Tutorial.Note(player, profile, "sow", crop)
 		return { ok = true }
 	end)
 

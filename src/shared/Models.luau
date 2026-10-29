@@ -335,6 +335,55 @@ function Models.Workbench()
 	return parts
 end
 
+-- The board of orders on the square: a wooden board under a small shingled roof on two posts, with
+-- sheets of orders pinned to it, facing -z; the board is named "Board".
+function Models.NoticeBoard()
+	local rng = Models.Rng(17)
+	local parts = {}
+	for _, x in ipairs({ -3.4, 3.4 }) do
+		post(parts, 8.6, 0.6, { x, 4.3, 0 }, vary(Wood, rng, 6), "Wood")
+		add(parts, { size = { 1.4, 0.5, 1.4 }, pos = { x, 0.25, 0 }, color = vary(Stone, rng, 8), material = "Slate" })
+	end
+	add(parts, { name = "Board", size = { 7.4, 4.2, 0.4 }, pos = { 0, 4.6, 0 }, color = vary(Planks, rng, 8), material = "WoodPlanks" })
+	-- A frame around the board.
+	for _, y in ipairs({ 2.4, 6.8 }) do
+		add(parts, { size = { 7.8, 0.3, 0.55 }, pos = { 0, y, 0 }, color = vary(DarkWood, rng, 4), material = "Wood" })
+	end
+	-- The roof: two shingled slopes meeting over the board.
+	for _, side in ipairs({ -1, 1 }) do
+		add(parts, {
+			size = { 8.6, 0.25, 1.5 },
+			pos = { 0, 8.85, side * 0.62 },
+			rot = { side * 0.6, 0, 0 },
+			color = vary({ 150, 64, 48 }, rng, 8),
+			material = "Slate",
+		})
+	end
+	add(parts, { size = { 8.8, 0.25, 0.25 }, pos = { 0, 9.3, 0 }, color = vary(DarkWood, rng, 4), material = "Wood" })
+	-- Sheets of orders, pinned a little crooked, each with a red pin.
+	local sheets = { { -2.4, 5.4 }, { -0.8, 5.7 }, { 0.9, 5.3 }, { 2.5, 5.6 }, { -1.7, 3.6 }, { 0.2, 3.7 }, { 2, 3.5 } }
+	for i, s in ipairs(sheets) do
+		local paper = i % 3 == 0 and { 236, 222, 180 } or { 246, 244, 236 }
+		add(parts, {
+			size = { 1.2, 1.5, 0.05 },
+			pos = { s[1], s[2], -0.23 },
+			rot = { 0, 0, rng.Num(-0.12, 0.12) },
+			color = paper,
+			material = "SmoothPlastic",
+		})
+		for line = 0, 2 do
+			add(parts, { size = { 0.8, 0.07, 0.02 }, pos = { s[1], s[2] + 0.3 - line * 0.3, -0.27 }, color = { 90, 90, 100 }, material = "SmoothPlastic" })
+		end
+		ball(parts, 0.18, { s[1], s[2] + 0.6, -0.3 }, { 200, 40, 40 }, "SmoothPlastic", { noCollide = true })
+	end
+	-- A lantern hanging under the roof and a crate of parcels at the foot.
+	add(parts, { size = { 0.12, 0.6, 0.12 }, pos = { 0, 8.1, -0.9 }, color = Iron, material = "Metal" })
+	ball(parts, 0.5, { 0, 7.7, -0.9 }, { 255, 226, 150 }, "Neon", { noCollide = true, light = { color = { 255, 214, 150 }, range = 10, brightness = 0.7 } })
+	add(parts, { size = { 1.6, 1.2, 1.2 }, pos = { 4.6, 0.6, -0.6 }, rot = { 0, 0.3, 0 }, color = vary({ 168, 124, 76 }, rng, 10), material = "WoodPlanks" })
+	add(parts, { size = { 1, 0.7, 0.8 }, pos = { 4.6, 1.55, -0.6 }, rot = { 0, -0.2, 0 }, color = { 186, 150, 104 }, material = "Fabric" })
+	return parts
+end
+
 -- The merchant's stall: a counter, a striped awning on round posts, crates, barrels and sacks, with
 -- the counter (named "Counter") facing -z.
 function Models.Stall()

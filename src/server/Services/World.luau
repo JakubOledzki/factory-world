@@ -65,6 +65,10 @@ function World.Start()
 	Build.Label(bench.Top, "Stół warsztatowy", 3.5, Color3.fromRGB(220, 230, 255))
 	Build.Prompt(bench.Top, { ActionText = "Wytwarzaj", ObjectText = "Stół warsztatowy", HoldDuration = 0, KeyboardKeyCode = Enum.KeyCode.E }, { Kind = "workbench" })
 
+	local board = Build.FromModel(folder, "NoticeBoard", Models.NoticeBoard(), placed(PlotLayout.Board))
+	Build.Label(board.Board, "Zlecenia", 5.6, Color3.fromRGB(255, 214, 150))
+	Build.Prompt(board.Board, { ActionText = "Zlecenia", ObjectText = "Tablica zleceń", HoldDuration = 0, KeyboardKeyCode = Enum.KeyCode.E }, { Kind = "contracts" })
+
 	-- Dirt paths from the square to each plot, edged with a darker strip.
 	for index = 1, PlotLayout.Count do
 		local x, z = PlotLayout.Center(index)

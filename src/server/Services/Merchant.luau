@@ -11,6 +11,7 @@ local Clock = require(script.Parent.Clock)
 local Inventory = require(script.Parent.Inventory)
 local Wallet = require(script.Parent.Wallet)
 local Net = require(script.Parent.Net)
+local Tutorial = require(script.Parent.Tutorial)
 
 local Merchant = {}
 
@@ -94,6 +95,7 @@ function Merchant.Start()
 		end
 		Wallet.Credit(profile, price * quantity, "merchant_sell:" .. item)
 		Net.PushState(player)
+		Tutorial.Note(player, profile, "sell", item, quantity)
 		return { ok = true, balanceCents = profile.balanceCents }
 	end)
 end

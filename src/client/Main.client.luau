@@ -19,6 +19,7 @@ local LandWindow = require(Ui.Land)
 local ResearchWindow = require(Ui.Research)
 local MarketWindow = require(Ui.Market)
 local CompanyWindow = require(Ui.Company)
+local ContractsWindow = require(Ui.Contracts)
 local FieldWindow = require(Ui.Field)
 local BuildBar = require(Ui.BuildBar)
 require(script.Parent:WaitForChild("Game"))
@@ -54,6 +55,8 @@ end, function()
 	show(LandWindow.Open)
 end, function()
 	show(CompanyWindow.Open)
+end, function()
+	show(ContractsWindow.Open)
 end)
 BuildBar.Mount(screen)
 task.spawn(GridView.Start)
@@ -84,6 +87,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		show(LandWindow.Open)
 	elseif input.KeyCode == Enum.KeyCode.K then
 		show(CompanyWindow.Open)
+	elseif input.KeyCode == Enum.KeyCode.J then
+		show(ContractsWindow.Open)
 	end
 end)
 
@@ -121,6 +126,8 @@ ProximityPromptService.PromptTriggered:Connect(function(prompt)
 		show(StationWindow.Open)
 	elseif kind == "generator" then
 		show(GeneratorWindow.Open, prompt:GetAttribute("GeneratorId"))
+	elseif kind == "contracts" then
+		show(ContractsWindow.Open)
 	elseif kind == "field" then
 		show(FieldWindow.Open, prompt:GetAttribute("FieldId"))
 	end

@@ -20,6 +20,7 @@ local Factory = require(script.Parent.Factory)
 local Inventory = require(script.Parent.Inventory)
 local Net = require(script.Parent.Net)
 local TestMode = require(script.Parent.TestMode)
+local Tutorial = require(script.Parent.Tutorial)
 local Wallet = require(script.Parent.Wallet)
 
 local Plots = {}
@@ -185,6 +186,7 @@ local function workMine(player, profile, prompt)
 	local drops = profile.active and Lands.Biomes[profile.active].drops or Mining.Drops
 	Plots.Gather(player, profile, Mining.Load(Mining.Roll(random, drops), drops))
 	showMine(player, i)
+	Tutorial.Note(player, profile, "mine")
 end
 
 -- Builds the plot the player shows, at `index`, and everything on its grid.

@@ -6,6 +6,7 @@ local Research = require(Shared.Research)
 local Clock = require(script.Parent.Clock)
 local Inventory = require(script.Parent.Inventory)
 local Net = require(script.Parent.Net)
+local Tutorial = require(script.Parent.Tutorial)
 
 local Lab = {}
 
@@ -53,6 +54,7 @@ function Lab.Start()
 		end
 		profile.research = after
 		Net.PushState(player)
+		Tutorial.Note(player, profile, "research", id)
 		return reply(profile)
 	end)
 end

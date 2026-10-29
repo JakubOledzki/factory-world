@@ -1188,3 +1188,143 @@ test("Only home and fertile lands grow crops, and flour and bread pay more than 
 		end
 	end
 end)
+
+-- A roll that goes through the numbers in turn, so a test sees the same orders every time.
+local function roller()
+	local n = 0
+	return function(a, b)
+		n = n + 7
+		return a + n % (b - a + 1)
+	end
+end
+
+local function everything()
+	return true
+end
+
+test("Company orders: three at a time, each for another item, paying more than the merchant and less than he charges", function()
+	local Contracts = load_shared("Contracts")
+	for _, t in ipairs(Contracts.Templates) do
+		local item, cents = t[1], t[5]
+		assert(Items.Names[item], item)
+		assert(Prices.Buys[item] and cents > Prices.Buys[item], item .. " pays more than the merchant")
+		assert(Prices.Sells[item] == nil or cents < Prices.Sells[item], item .. " is not worth buying from the merchant")
+		assert((t[3] - t[2]) % t[4] == 0 and t[2] > 0, item .. " quantities")
+	end
+	local state = Contracts.New()
+	eq(#Contracts.Refresh(state, 1000, everything, roller()), 0)
+	local open = Contracts.Open(state, 1000)
+	eq(#open, Contracts.Slots)
+	local seen = {}
+	for _, o in ipairs(open) do
+		assert(not seen[o.item], "two orders for " .. o.item)
+		seen[o.item] = true
+		eq(o.delivered, 0)
+		assert(o.deadline > 1000)
+	end
+	-- Items research still locks are never asked for.
+	local Research = load_shared("Research")
+	local fresh = Contracts.New()
+	for i = 1, 20 do
+		Contracts.Refresh(fresh, 1000, function(item)
+			return Research.Unlocked({}, item, 1000)
+		end, roller())
+		for _, o in ipairs(fresh.list) do
+			assert(Research.LockedBy(o.item) == nil, o.item .. " is locked")
+		end
+		fresh.list = {}
+	end
+end)
+
+test("Company orders: pieces go in parts, the last one ends the order and the next comes later", function()
+	local Contracts = load_shared("Contracts")
+	local state = Contracts.New()
+	local roll = roller()
+	Contracts.Refresh(state, 0, everything, roll)
+	local o = Contracts.Open(state, 0)[1]
+	local id, item, quantity = o.id, o.item, o.quantity
+	local given = assert(Contracts.Deliver(state, id, 5, 3, 10, everything, roll))
+	eq(given, 3, "only what the player has")
+	eq(o.delivered, 3)
+	local nothing, code = Contracts.Deliver(state, id, 5, 0, 10, everything, roll)
+	eq(nothing, nil)
+	eq(code, "not_enough_items")
+	given = assert(Contracts.Deliver(state, id, 100000, 100000, 20, everything, roll))
+	eq(given, quantity - 3, "never more than is missing")
+	eq(o.delivered, quantity)
+	local open, nextAt = Contracts.Open(state, 20)
+	eq(#open, Contracts.Slots - 1)
+	eq(nextAt, 20 + Contracts.Refill)
+	eq(#state.list, Contracts.Slots, "the next order waits")
+	for _, other in ipairs(state.list) do
+		assert(other.id ~= id)
+	end
+	eq(select(2, Contracts.Deliver(state, id, 1, 1, 30, everything, roll)), "no_contract")
+	eq(#Contracts.Open(state, 20 + Contracts.Refill), Contracts.Slots)
+end)
+
+test("Company orders: giving up or missing the deadline hands the delivered pieces back", function()
+	local Contracts = load_shared("Contracts")
+	local state = Contracts.New()
+	local roll = roller()
+	Contracts.Refresh(state, 0, everything, roll)
+	local a, b = state.list[1], state.list[2]
+	Contracts.Deliver(state, a.id, 1, 1, 1, everything, roll)
+	Contracts.Deliver(state, b.id, 2, 2, 1, everything, roll)
+	local dropped = assert(Contracts.Drop(state, a.id, 2, everything, roll))
+	eq(dropped.delivered, 1)
+	eq(Contracts.Drop(state, a.id, 2, everything, roll), nil)
+	eq(select(2, Contracts.Deliver(state, b.id, 1, 1, b.deadline, everything, roll)), "contract_expired")
+	local back = Contracts.Refresh(state, b.deadline, everything, roll)
+	local found = false
+	for _, entry in ipairs(back) do
+		if entry[1] == b.item and entry[2] == 2 then
+			found = true
+		end
+	end
+	assert(found, "the pieces on the expired order come back")
+	eq(#state.list, Contracts.Slots)
+	for _, o in ipairs(state.list) do
+		assert(o.id ~= b.id)
+	end
+end)
+
+test("The tutorial goes step by step, counts only its own events and ends", function()
+	local Tutorial = load_shared("Tutorial")
+	local state = Tutorial.New()
+	local ids = {}
+	for _, step in ipairs(Tutorial.Steps) do
+		assert(not ids[step.id], "two steps " .. step.id)
+		ids[step.id] = true
+		assert(step.goal >= 1 and step.rewardCents > 0 and step.title and step.text and step.hint, step.id)
+		for _, entry in ipairs(step.rewardItems or {}) do
+			assert(Items.Names[entry[1]] and entry[2] > 0, step.id)
+		end
+	end
+	eq(Tutorial.View(state).title, Tutorial.Steps[1].title)
+	eq(Tutorial.Note(state, "chop"), nil, "another task's event")
+	eq(state.progress, 0)
+	eq(Tutorial.Note(state, "mine"), nil)
+	eq(Tutorial.Note(state, "mine"), nil)
+	eq(Tutorial.Note(state, "mine").id, "mine")
+	eq(state.step, 2)
+	-- A task about one item does not count another.
+	local finished = {}
+	for i, step in ipairs(Tutorial.Steps) do
+		if i >= 2 then
+			if step.item then
+				eq(Tutorial.Note(state, step.event, Items.Stone, step.goal), nil, step.id)
+			end
+			local done = Tutorial.Note(state, step.event, step.item, step.goal)
+			eq(done and done.id, step.id)
+			table.insert(finished, done.id)
+		end
+	end
+	eq(#finished, #Tutorial.Steps - 1)
+	eq(Tutorial.View(state), nil)
+	eq(Tutorial.Note(state, "mine"), nil)
+	local skipped = Tutorial.New()
+	Tutorial.Skip(skipped)
+	eq(Tutorial.View(skipped), nil)
+	checkModel("NoticeBoard", Models.NoticeBoard(), { "Board" })
+end)

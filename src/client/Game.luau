@@ -9,6 +9,8 @@ Game.BalanceCents = 0
 Game.Inventory = {}
 -- The inventory window's tiles: item ids, "" for an empty tile (server Inventory.Slots).
 Game.Slots = {}
+-- The tutorial's task at hand (Shared.Tutorial.View), nil when it is over.
+Game.Tutorial = nil
 Game.Changed = Instance.new("BindableEvent")
 Game.Toast = Instance.new("BindableEvent")
 
@@ -102,6 +104,8 @@ Game.Errors = {
 	too_many_offers = "Masz już najwięcej otwartych ofert. Anuluj którąś w „Moje oferty”.",
 	nothing_owed = "Nic na ciebie nie czeka.",
 	duplicate = "Ta transakcja już się odbyła.",
+	no_contract = "Tego zlecenia już nie ma.",
+	contract_expired = "Termin tego zlecenia minął.",
 }
 
 function Game.ErrorText(code)
@@ -147,6 +151,7 @@ remotes:WaitForChild("State").OnClientEvent:Connect(function(state)
 	Game.BalanceCents = state.balanceCents
 	Game.Inventory = state.inventory or {}
 	Game.Slots = state.slots or {}
+	Game.Tutorial = state.tutorial
 	Game.Changed:Fire()
 end)
 

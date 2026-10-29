@@ -2,7 +2,7 @@
 -- sends intentions; every reply is a table { ok = true, ... } or { ok = false, code = "..." }.
 return {
 	-- Server -> client pushes (RemoteEvents).
-	State = "State", -- { balanceCents, inventory = { [item] = quantity }, plot = index }
+	State = "State", -- { balanceCents, inventory = { [item] = quantity }, slots, tutorial = Tutorial.View }
 	Toast = "Toast", -- { text }
 
 	-- Client -> server requests (RemoteFunctions).
@@ -62,4 +62,8 @@ return {
 	CompanyDividend = "CompanyDividend",
 	CompanyProject = "CompanyProject", -- { project }
 	CompanyContribute = "CompanyContribute", -- { item, quantity }
+	ContractsGet = "ContractsGet",
+	ContractDeliver = "ContractDeliver", -- { id, quantity }
+	ContractDrop = "ContractDrop", -- { id }
+	TutorialSkip = "TutorialSkip",
 }

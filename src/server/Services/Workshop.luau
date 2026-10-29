@@ -11,6 +11,7 @@ local Data = require(script.Parent.Data)
 local Grid = require(script.Parent.Grid)
 local Inventory = require(script.Parent.Inventory)
 local Net = require(script.Parent.Net)
+local Tutorial = require(script.Parent.Tutorial)
 
 local Workshop = {}
 
@@ -100,6 +101,7 @@ function Workshop.Start()
 		end
 		profile.workshop = queue
 		Net.PushState(player)
+		Tutorial.Note(player, profile, "craft", recipe.id)
 		return reply(profile)
 	end)
 end
