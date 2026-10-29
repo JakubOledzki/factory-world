@@ -467,6 +467,12 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("bigint[]")
                         .HasColumnName("quantities");
 
+                    b.Property<bool>("Smuggle")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("smuggle");
+
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -545,6 +551,63 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.HasKey("ObjectId");
 
                     b.ToTable("hives", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.MeteorDigRow", b =>
+                {
+                    b.Property<long>("Slot")
+                        .HasColumnType("bigint")
+                        .HasColumnName("slot");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("player_id");
+
+                    b.Property<DateTimeOffset>("LastAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_at");
+
+                    b.Property<long>("Pieces")
+                        .HasColumnType("bigint")
+                        .HasColumnName("pieces");
+
+                    b.HasKey("Slot", "PlayerId");
+
+                    b.ToTable("meteor_digs", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.MeteorRow", b =>
+                {
+                    b.Property<long>("Slot")
+                        .HasColumnType("bigint")
+                        .HasColumnName("slot");
+
+                    b.Property<DateTimeOffset>("FellAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("fell_at");
+
+                    b.Property<long>("IridiumLeft")
+                        .HasColumnType("bigint")
+                        .HasColumnName("iridium_left");
+
+                    b.Property<long>("IronLeft")
+                        .HasColumnType("bigint")
+                        .HasColumnName("iron_left");
+
+                    b.Property<int>("X")
+                        .HasColumnType("integer")
+                        .HasColumnName("x");
+
+                    b.Property<int>("Y")
+                        .HasColumnType("integer")
+                        .HasColumnName("y");
+
+                    b.HasKey("Slot");
+
+                    b.ToTable("meteors", "world", t =>
+                        {
+                            t.HasCheckConstraint("ck_meteors_left", "iron_left >= 0 AND iridium_left >= 0");
+                        });
                 });
 
             modelBuilder.Entity("FactoryWorld.Modules.World.OilFieldRow", b =>
@@ -1346,6 +1409,44 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("surveys", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.TenderBidRow", b =>
+                {
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<int>("Week")
+                        .HasColumnType("integer")
+                        .HasColumnName("week");
+
+                    b.Property<Guid>("BidderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("bidder_id");
+
+                    b.Property<DateTimeOffset>("At")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("at");
+
+                    b.Property<long>("DepositCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("deposit_cents");
+
+                    b.Property<long>("PriceCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("price_cents");
+
+                    b.HasKey("TownX", "TownY", "Week", "BidderId");
+
+                    b.ToTable("tender_bids", "world", t =>
+                        {
+                            t.HasCheckConstraint("ck_tender_bids_money", "price_cents > 0 AND deposit_cents > 0");
+                        });
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.TownContributionRow", b =>
                 {
                     b.Property<int>("TownX")
@@ -1467,6 +1568,76 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("town_progress", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownTenderRow", b =>
+                {
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<int>("Week")
+                        .HasColumnType("integer")
+                        .HasColumnName("week");
+
+                    b.Property<long>("CapCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("cap_cents");
+
+                    b.Property<DateTimeOffset>("ClosesAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("closes_at");
+
+                    b.Property<long>("Delivered")
+                        .HasColumnType("bigint")
+                        .HasColumnName("delivered");
+
+                    b.Property<long>("DepositCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("deposit_cents");
+
+                    b.Property<DateTimeOffset>("EndsAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ends_at");
+
+                    b.Property<string>("Item")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("item");
+
+                    b.Property<long>("PriceCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("price_cents");
+
+                    b.Property<long>("Quantity")
+                        .HasColumnType("bigint")
+                        .HasColumnName("quantity");
+
+                    b.Property<string>("State")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("state");
+
+                    b.Property<Guid?>("WinnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("winner_id");
+
+                    b.HasKey("TownX", "TownY", "Week");
+
+                    b.HasIndex("State");
+
+                    b.ToTable("town_tenders", "world", t =>
+                        {
+                            t.HasCheckConstraint("ck_town_tenders_delivered", "delivered >= 0 AND delivered <= quantity");
+
+                            t.HasCheckConstraint("ck_town_tenders_money", "price_cents >= 0 AND deposit_cents >= 0");
+                        });
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.TownVoteRow", b =>
                 {
                     b.Property<int>("TownX")
@@ -1492,6 +1663,35 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.HasKey("TownX", "TownY", "Week", "VoterId");
 
                     b.ToTable("town_votes", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownWeekDeliveryRow", b =>
+                {
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<int>("Week")
+                        .HasColumnType("integer")
+                        .HasColumnName("week");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("player_id");
+
+                    b.Property<long>("DeliveredCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("delivered_cents");
+
+                    b.HasKey("TownX", "TownY", "Week", "PlayerId");
+
+                    b.HasIndex("TownX", "TownY", "Week", "DeliveredCents");
+
+                    b.ToTable("town_week_deliveries", "world");
                 });
 
             modelBuilder.Entity("FactoryWorld.Modules.World.TrainRouteRow", b =>
@@ -1540,6 +1740,12 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");
+
+                    b.Property<bool>("Smuggle")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("smuggle");
 
                     b.Property<int>("ToX")
                         .HasColumnType("integer")

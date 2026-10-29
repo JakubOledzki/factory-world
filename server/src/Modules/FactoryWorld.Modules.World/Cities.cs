@@ -244,6 +244,17 @@ public static class CityRules
 
     public const double CheapPlots = 0.8;
 
+    /// <summary>The chief supplier: who delivered the most to a town in a week (at least <see cref="SupplierMinCents"/>) holds the
+    /// title the next week, and the town pays them <see cref="SupplierBonusPercent"/> more for what it wants.</summary>
+    public const int SupplierBonusPercent = 5;
+
+    public const long SupplierMinCents = 500_00;
+
+    /// <summary>How many of this week's best suppliers the town window lists.</summary>
+    public const int SupplierRaceShown = 3;
+
+    public static long SupplierPriceCents(long priceCents) => priceCents * (100 + SupplierBonusPercent) / 100;
+
     /// <summary>Plots between two, around the globe's seam too.</summary>
     public static double Distance(int width, int x, int y, int toX, int toY)
     {
@@ -365,9 +376,9 @@ public sealed class TownFestivalRow
     public DateTimeOffset Until { get; set; }
 }
 
-public sealed class CityService(
+public sealed partial class CityService(
     GameDb db, WorldMap map, Towns towns, PlotService plots, IInventory inventory, IWallet wallet, ICharacterProgress progress,
-    ICharacterNames names, IMarketPrices prices, BeachService beach, TimeProvider time) : IMachineContents
+    ICharacterNames names, IMarketPrices prices, BeachService beach, IAnnouncements announcements, TimeProvider time) : IMachineContents
 {
     /// <summary>The town of a city plot; fails for any other plot.</summary>
     public Town RequireTown(int x, int y)
@@ -586,23 +597,13 @@ public sealed class CityService(
                 await inventory.RemoveAsync(player, item, taken, cancellationToken);
             }
 
-            var cents = taken * need.PriceCents;
+            // The town's chief supplier of last week gets a little more for everything it wants.
+            var price = await SupplierAsync(town, CityRules.WeekOf(time.GetUtcNow()), cancellationToken) == player
+                ? CityRules.SupplierPriceCents(need.PriceCents)
+                : need.PriceCents;
+            var cents = taken * price;
             await AddDayDeliveryAsync(town, CityRules.DayOf(time.GetUtcNow()), item, taken, cancellationToken);
-            await using (var grow = await db.CommandAsync(
-                """
-                INSERT INTO world.town_progress (town_x, town_y, delivered_cents) VALUES (@x, @y, @cents)
-                ON CONFLICT (town_x, town_y) DO UPDATE SET delivered_cents = world.town_progress.delivered_cents + excluded.delivered_cents;
-                INSERT INTO world.town_contributions (town_x, town_y, player_id, delivered_cents) VALUES (@x, @y, @player, @cents)
-                ON CONFLICT (town_x, town_y, player_id) DO UPDATE SET delivered_cents = world.town_contributions.delivered_cents + excluded.delivered_cents
-                """, cancellationToken))
-            {
-                grow.Parameters.AddWithValue("x", town.X);
-                grow.Parameters.AddWithValue("y", town.Y);
-                grow.Parameters.AddWithValue("cents", cents);
-                grow.Parameters.AddWithValue("player", player);
-                await grow.ExecuteNonQueryAsync(cancellationToken);
-            }
-
+            await GrowAsync(town, player, cents, cancellationToken);
             await wallet.CreditAsync(player, cents, $"town {town.Name}: {taken} {item}", cancellationToken);
             var xp = await progress.AddXpAsync(player, Math.Max(1, cents / 1000), cancellationToken);
             return (taken, cents, xp, CityRules.Level(await DeliveredAsync(town, cancellationToken)));
@@ -879,11 +880,16 @@ public sealed class CityService(
             }
         }
 
+        var week = CityRules.WeekOf(now);
+        var supplier = await SupplierAsync(town, week, cancellationToken);
+        var race = await WeekSuppliersAsync(town, week, CityRules.SupplierRaceShown, cancellationToken);
+        var myWeek = await WeekDeliveredAsync(town, week, player, cancellationToken);
+        var tender = await TenderViewAsync(town, level, player, folk.Contains(player), cancellationToken);
         var named = await names.NamesAsync(
-            contributors.Select(c => c.Id).Concat(offices.Select(o => o.Owner)).Concat(folk).Concat(policy.Mayor is { } m ? [m] : []).Distinct().ToList(),
+            contributors.Select(c => c.Id).Concat(offices.Select(o => o.Owner)).Concat(folk).Concat(policy.Mayor is { } m ? [m] : [])
+                .Concat(supplier is { } s ? [s] : []).Concat(race.Select(r => r.Player)).Concat(tender.People).Distinct().ToList(),
             cancellationToken);
         string Name(Guid id) => named.GetValueOrDefault(id, "?");
-        var week = CityRules.WeekOf(now);
         return new
         {
             town = new
@@ -910,6 +916,18 @@ public sealed class CityService(
             }),
             contributors = contributors.Select(c => new { name = Name(c.Id), cents = c.Cents, mine = c.Id == player }),
             myCents = mine,
+            // The chief supplier: who delivered the most last week holds the title this week and gets supplierPercent more for deliveries.
+            supplier = new
+            {
+                name = supplier is { } chief ? Name(chief) : null,
+                isMe = supplier == player,
+                percent = CityRules.SupplierBonusPercent,
+                minCents = CityRules.SupplierMinCents,
+                weekEndsAt = CityRules.WeekStart(week + 1).ToUnixTimeMilliseconds(),
+                race = race.Select((r, i) => new { place = i + 1, name = Name(r.Player), cents = r.Cents, mine = r.Player == player }),
+                myCents = myWeek,
+            },
+            tender = tender.Json(Name),
             trash = new
             {
                 perDay = CityRules.TrashPerDay(town, level),
