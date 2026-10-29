@@ -34,6 +34,10 @@ public static partial class CompanyRules
     /// <summary>How many of the latest log entries members see.</summary>
     public const int LogLength = 30;
 
+    /// <summary>Character level a player needs before bringing a plot into a company, so that fresh accounts
+    /// can't buy plots at the first, cheapest prices and hand them over.</summary>
+    public const int PlotMinLevel = 10;
+
     /// <summary>Letters, digits, spaces and <c>- _ . &amp;</c>, starting and ending with a letter or digit.</summary>
     [GeneratedRegex(@"^[\p{L}\p{N}](?:[\p{L}\p{N} _.&-]*[\p{L}\p{N}])?$")]
     public static partial Regex NamePattern();
@@ -121,7 +125,7 @@ public sealed record CompanyView(Guid Player, CompanyState? Company, IReadOnlyLi
 
 public sealed partial class CompanyService(
     GameDb db, IInventory inventory, ICharacterNames names, IPlotRegistry plots, IPlotObjects objects, IWallet wallet,
-    IMarketPrices prices, ITechnologies technologies, ICompanyTechnologies companyTechnologies, TimeProvider time)
+    IMarketPrices prices, ITechnologies technologies, ICompanyTechnologies companyTechnologies, ICharacterXp xp, TimeProvider time)
 {
     /// <summary>Whether a headquarters stands on any of the company's plots.</summary>
     public async Task<bool> HasHqAsync(Guid company, CancellationToken cancellationToken)
@@ -335,6 +339,11 @@ public sealed partial class CompanyService(
             if (await plots.FindAsync(x, y, cancellationToken) is not { } plot || plot.Owner != player)
             {
                 throw new GameException("not_owner", "This is not your plot.");
+            }
+
+            if (await xp.LevelAsync(player, cancellationToken) < CompanyRules.PlotMinLevel)
+            {
+                throw new GameException("level_too_low", $"Bringing a plot into a company takes level {CompanyRules.PlotMinLevel}.");
             }
 
             await using (var insert = await db.CommandAsync(

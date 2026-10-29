@@ -178,6 +178,7 @@ public sealed class CompanyEconomyTests(ServerFactory factory) : IClassFixture<S
 
         var (x, y) = FreePlot(Biome.Grassland);
         Assert.Equal("world.bought", (await owner.SendAsync("world.buy", new { x, y })).Type());
+        await factory.CompanyLevelAsync(owner.Id);
         var added = await owner.CompanyAsync("company.addPlot", new { x, y });
         // The plot buys its owner shares worth what it cost.
         Assert.True(Economy(added).GetProperty("shares").GetProperty("yours").GetInt64() > CompanyMoney.FounderShares);
