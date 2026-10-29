@@ -9,6 +9,7 @@ using FactoryWorld.Modules.Contracts;
 using FactoryWorld.Modules.Companies;
 using FactoryWorld.Modules.Crafting;
 using FactoryWorld.Modules.Inventory;
+using FactoryWorld.Modules.Law;
 using FactoryWorld.Modules.Logistics;
 using FactoryWorld.Modules.Market;
 using FactoryWorld.Modules.Power;
@@ -46,6 +47,7 @@ IGameModule[] modules =
     new AchievementsModule(),
     new RivalryModule(),
     new BotsModule(),
+    new LawModule(),
     new ChatModule(),
 ];
 

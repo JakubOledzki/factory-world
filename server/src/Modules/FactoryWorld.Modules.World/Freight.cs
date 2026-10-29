@@ -62,7 +62,7 @@ public sealed record FreightCargo(string Item, long Quantity, long Stock);
 public sealed record FreightRoute(
     long Id, int FromX, int FromY, int ToX, int ToY, IReadOnlyList<FreightCargo> Cargo, string State, DateTimeOffset NextAt,
     IReadOnlyDictionary<string, long> Carried, long Trips, long Delivered, long LastFeeCents, string? Problem, bool Stopping,
-    double Km, TimeSpan Trip, long FeeCents);
+    double Km, TimeSpan Trip, long FeeCents, bool Smuggle = false);
 
 /// <summary>One of the player's plots as the route menu shows it.</summary>
 public sealed record FreightPlot(int X, int Y, Biome Biome, string? Name, int Loading, int Receiving, double FeeFactor);
@@ -70,7 +70,7 @@ public sealed record FreightPlot(int X, int Y, Biome Biome, string? Name, int Lo
 public sealed record FreightState(IReadOnlyList<FreightRoute> Routes, IReadOnlyList<FreightPlot> Plots, DateTimeOffset Now);
 
 public sealed class FreightService(
-    GameDb db, WorldMap map, IWallet wallet, IFreightChests chests, CityService cities, StationService stations, TimeProvider time)
+    GameDb db, WorldMap map, IWallet wallet, IFreightChests chests, CityService cities, StationService stations, IBorderControl border, TimeProvider time)
 {
     /// <summary>The player's routes and plots, after moving the trains that were due.</summary>
     public async Task<FreightState> StateAsync(Guid player, CancellationToken cancellationToken)
@@ -81,7 +81,8 @@ public sealed class FreightService(
 
     /// <summary>Sets up a route from one of the player's plots to another; its train starts waiting for the load at once.</summary>
     public async Task<FreightState> AddAsync(
-        Guid player, int fromX, int fromY, int toX, int toY, IReadOnlyList<(string Item, long Quantity)> cargo, CancellationToken cancellationToken)
+        Guid player, int fromX, int fromY, int toX, int toY, IReadOnlyList<(string Item, long Quantity)> cargo, CancellationToken cancellationToken,
+        bool smuggle = false)
     {
         if (fromX == toX && fromY == toY)
         {
@@ -128,8 +129,8 @@ public sealed class FreightService(
             await using var insert = await db.CommandAsync(
                 """
                 INSERT INTO world.freight_routes (owner_id, from_x, from_y, to_x, to_y, items, quantities, state, next_at,
-                    carried_items, carried_quantities, stock, trips, delivered, last_fee_cents, stopping, created_at)
-                VALUES (@owner, @fx, @fy, @tx, @ty, @items, @quantities, @state, @now, '{}', '{}', '{}', 0, 0, 0, false, @now)
+                    carried_items, carried_quantities, stock, trips, delivered, last_fee_cents, stopping, created_at, smuggle)
+                VALUES (@owner, @fx, @fy, @tx, @ty, @items, @quantities, @state, @now, '{}', '{}', '{}', 0, 0, 0, false, @now, @smuggle)
                 """, cancellationToken);
             insert.Parameters.AddWithValue("owner", player);
             insert.Parameters.AddWithValue("fx", fromX);
@@ -140,6 +141,7 @@ public sealed class FreightService(
             insert.Parameters.AddWithValue("quantities", cargo.Select(c => c.Quantity).ToArray());
             insert.Parameters.AddWithValue("state", FreightRules.Loading);
             insert.Parameters.AddWithValue("now", now);
+            insert.Parameters.AddWithValue("smuggle", smuggle);
             await insert.ExecuteNonQueryAsync(cancellationToken);
         }, cancellationToken);
 
@@ -288,18 +290,28 @@ public sealed class FreightService(
         }
 
         var load = route.Items.Zip(route.Quantities).ToDictionary(p => p.First, p => p.Second);
+        // Into another country: the duty, or smuggling past customs.
+        var crossing = await border.CrossAsync(route.OwnerId, (route.FromX, route.FromY), (route.ToX, route.ToY), load, route.Smuggle, cancellationToken, fee);
+        if (crossing.Refused is { } refused)
+        {
+            route.LastProblem = refused;
+            return;
+        }
+
         if (!await chests.TakeAsync(route.FromX, route.FromY, load, cancellationToken))
         {
-            route.LastProblem = "waiting";
-            return;
+            // The duty is paid already: undo it with the rest.
+            throw new GameException("waiting", "The load is not in the chests.");
         }
 
         await wallet.DebitAsync(route.OwnerId, fee,
             $"freight route {route.Id} {load.Values.Sum()} items {route.FromX}:{route.FromY}->{route.ToX}:{route.ToY} ({km:0} km)", cancellationToken);
         route.State = FreightRules.Travelling;
         route.NextAt = now + trip;
-        route.CarriedItems = route.Items;
-        route.CarriedQuantities = route.Quantities;
+        // What customs seized at the border does not arrive.
+        var carried = crossing.Left(load);
+        route.CarriedItems = carried.Keys.ToArray();
+        route.CarriedQuantities = carried.Values.ToArray();
         route.Stock = route.Items.Select(i => stock.GetValueOrDefault(i) - load[i]).ToArray();
         route.LastFeeCents = fee;
         route.LastProblem = null;
@@ -350,7 +362,7 @@ public sealed class FreightService(
 
     private const string Columns =
         "id, owner_id, from_x, from_y, to_x, to_y, items, quantities, state, next_at, carried_items, carried_quantities, stock, trips, delivered, " +
-        "last_fee_cents, last_problem, stopping";
+        "last_fee_cents, last_problem, stopping, smuggle";
 
     private static FreightRouteRow Read(Npgsql.NpgsqlDataReader r) => new()
     {
@@ -372,6 +384,7 @@ public sealed class FreightService(
         LastFeeCents = r.GetInt64(15),
         LastProblem = r.IsDBNull(16) ? null : r.GetString(16),
         Stopping = r.GetBoolean(17),
+        Smuggle = r.GetBoolean(18),
     };
 
     private async Task SaveAsync(FreightRouteRow route, CancellationToken cancellationToken)
@@ -423,7 +436,7 @@ public sealed class FreightService(
             routes.Add(new FreightRoute(r.Id, r.FromX, r.FromY, r.ToX, r.ToY,
                 r.Items.Select((item, i) => new FreightCargo(item, r.Quantities[i], i < r.Stock.Length ? r.Stock[i] : 0)).ToList(),
                 r.State, r.NextAt, r.CarriedItems.Zip(r.CarriedQuantities).ToDictionary(p => p.First, p => p.Second),
-                r.Trips, r.Delivered, r.LastFeeCents, r.LastProblem, r.Stopping, km, trip, fee));
+                r.Trips, r.Delivered, r.LastFeeCents, r.LastProblem, r.Stopping, km, trip, fee, r.Smuggle));
         }
 
         // The player's plots with how many freight chests stand on each.
@@ -476,7 +489,7 @@ public sealed class FreightService(
 
 public sealed record FreightCargoRequest(string Item, long Quantity);
 
-public sealed record FreightAddRequest(int FromX, int FromY, int ToX, int ToY, List<FreightCargoRequest>? Cargo);
+public sealed record FreightAddRequest(int FromX, int FromY, int ToX, int ToY, List<FreightCargoRequest>? Cargo, bool Smuggle = false);
 
 public sealed record FreightRemoveRequest(long Id);
 
@@ -507,6 +520,7 @@ public abstract class FreightHandler(IServiceScopeFactory scopes) : IMessageHand
                 lastFeeCents = r.LastFeeCents,
                 problem = r.Problem,
                 stopping = r.Stopping,
+                smuggle = r.Smuggle,
                 km = Math.Round(r.Km),
                 tripSeconds = (long)r.Trip.TotalSeconds,
                 // What one full train costs now.
@@ -557,7 +571,7 @@ public sealed class AddFreightHandler(IServiceScopeFactory scopes) : FreightHand
     protected override Task<FreightState> RunAsync(FreightService freight, Guid player, JsonElement? payload, CancellationToken cancellationToken)
     {
         var r = Payload.Read<FreightAddRequest>(payload);
-        return freight.AddAsync(player, r.FromX, r.FromY, r.ToX, r.ToY, (r.Cargo ?? []).Select(c => (c.Item, c.Quantity)).ToList(), cancellationToken);
+        return freight.AddAsync(player, r.FromX, r.FromY, r.ToX, r.ToY, (r.Cargo ?? []).Select(c => (c.Item, c.Quantity)).ToList(), cancellationToken, r.Smuggle);
     }
 }
 

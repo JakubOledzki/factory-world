@@ -651,6 +651,12 @@ public abstract class TradeHandler(IServiceScopeFactory scopes) : IMessageHandle
     {
         var request = Payload.Read<TradeRequest>(payload);
         await using var scope = scopes.CreateAsyncScope();
+        // A player the police banned from trading may not deal with the trader either.
+        foreach (var sanctions in scope.ServiceProvider.GetServices<ISanctions>())
+        {
+            await sanctions.RequireAllowedAsync(client.RequireAccount(), SanctionKinds.Trade, cancellationToken);
+        }
+
         var market = scope.ServiceProvider.GetRequiredService<MarketService>();
         var traded = await TradeAsync(market, client.RequireAccount(), request, cancellationToken);
         return new Reply("market.traded", new { item = request.Item, quantity = request.Quantity, balanceCents = traded.Balance, toPallet = traded.ToPallet });

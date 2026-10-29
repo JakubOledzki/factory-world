@@ -349,9 +349,19 @@ def settings():
     p.save("settings")
 
 
+def police():
+    p = Pen()
+    shield = [(32, 6), (54, 13), (53, 32), (32, 58), (11, 32), (10, 13)]
+    p.poly(shield, SHADE)
+    p.poly([(32, 11), (49, 16.5), (48.5, 31), (32, 52), (15.5, 31), (15, 16.5)], INK)  # the badge inside the rim
+    p.poly(star(32, 30, 12, 5.2), CUT)
+    p.dot(32, 30, 3.5, INK)
+    p.save("police")
+
+
 def main() -> None:
     for draw in (backpack, garage, market, contracts, company, stats, achievements, world_map, logout,
-                 station, plant, mine_upgrade, garage_upgrade, city, bank, blueprint, clear, undo, chat, gallery, like, bell, settings):
+                 station, plant, mine_upgrade, garage_upgrade, city, bank, blueprint, clear, undo, chat, gallery, like, bell, settings, police):
         draw()
 
 

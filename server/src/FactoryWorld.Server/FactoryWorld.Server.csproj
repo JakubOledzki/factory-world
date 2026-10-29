@@ -22,6 +22,7 @@
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Achievements\FactoryWorld.Modules.Achievements.csproj" />
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Rivalry\FactoryWorld.Modules.Rivalry.csproj" />
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Bots\FactoryWorld.Modules.Bots.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Law\FactoryWorld.Modules.Law.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -467,6 +467,12 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("bigint[]")
                         .HasColumnName("quantities");
 
+                    b.Property<bool>("Smuggle")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("smuggle");
+
                     b.Property<string>("State")
                         .IsRequired()
                         .HasMaxLength(16)
@@ -1727,6 +1733,12 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.Property<Guid>("OwnerId")
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");
+
+                    b.Property<bool>("Smuggle")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("smuggle");
 
                     b.Property<int>("ToX")
                         .HasColumnType("integer")

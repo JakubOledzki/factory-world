@@ -1,6 +1,18 @@
 [
 	{
 		"date": "2026-10-29",
+		"title": "Policja, cło i przemyt",
+		"changes": [
+			"Każdy kraj z rządem ma własną policję. Złóż podanie w oknie „Policja” (od 5 poziomu, bez wyroku w ostatnim tygodniu). Komendanta mianuje prezydent albo minister spraw wewnętrznych, a on przyjmuje i awansuje funkcjonariuszy: kadet, posterunkowy, detektyw. Skarbiec kraju płaci pensję za każdy dzień służby i 10% grzywien z twoich wyroków.",
+			"Pociąg do innego kraju płaci cło do jego skarbca. Zaznacz „Przemyt”, a pojedzie bez cła i nawet z zakazanym towarem, ale celnicy łapią część takich pociągów i zabierają towar, a policja przez 48 godzin może skontrolować każdy pociąg, który wjechał do kraju.",
+			"Policjanci kontrolują pociągi, przyjmują zgłoszenia, prowadzą śledztwa, a z nakazem od sądu przeszukują działki. Wyrok to grzywna, zakaz handlu, zakaz przekraczania granic albo list gończy. Od wyroku można się odwołać w ciągu doby do ministra sprawiedliwości albo prezydenta.",
+			"Rząd ustala, jakie towary są zakazane, które wymagają licencji i czy lasy są chronione (wtedy wycinka bez certyfikatu leśnego jest nielegalna).",
+			"Paser płaci więcej niż handlarz za dynamit, rudę uranu, skamieliny i towary zakazane w twoim kraju. Sprzedaje też skrytkę w wagonach, dzięki której celnicy łapią twoje pociągi dwa razy rzadziej. Każda taka transakcja zostawia ślad, a policjantowi da się wręczyć łapówkę, którą może wykryć wydział wewnętrzny.",
+			"Nowych graczy poniżej 5 poziomu policja nie ściga."
+		]
+	},
+	{
+		"date": "2026-10-29",
 		"title": "Usuwanie całego obszaru",
 		"changes": [
 			"Nowy przycisk „Usuń obszar” na dolnym pasku (klawisz X): kliknij dwa przeciwne rogi prostokąta na działce, a wszystko, co w nim stoi, wróci do ekwipunku razem z zawartością skrzyń, maszyn i taśm. Na telefonie wystarczą dwa stuknięcia.",

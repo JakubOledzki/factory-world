@@ -672,6 +672,7 @@ var _shop_window: ShopWindow
 var _export_window: ExportWindow
 var _export_post_window: ExportPostWindow
 var _bank_window: BankWindow
+var _police_window: PoliceWindow
 var _hive_window: HiveWindow
 var _feeder_window: FeederWindow
 var _city_window: CityWindow
@@ -2126,8 +2127,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif _releasing != "":
 			_stop_releasing()
 		elif _gallery_window.visible or _station_window.visible or _inventory_window.visible or _stats_window.visible or _company_window.visible or _achievements_window.visible \
-				or _mine_window.visible or _character_window.visible or _bank_window.visible or _using_window_open():
-			for window: GameWindow in [_gallery_window, _station_window, _inventory_window, _crafting_window, _research_window, _furnace_window, _machine_window, _forester_window, _farmstead_window, _canteen_window, _generator_window, _storage_window, _splitter_window, _filter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window, _bank_window]:
+				or _mine_window.visible or _character_window.visible or _bank_window.visible or _police_window.visible or _using_window_open():
+			for window: GameWindow in [_gallery_window, _station_window, _inventory_window, _crafting_window, _research_window, _furnace_window, _machine_window, _forester_window, _farmstead_window, _canteen_window, _generator_window, _storage_window, _splitter_window, _filter_window, _stats_window, _company_window, _achievements_window, _mine_window, _market_window, _character_window, _bank_window, _police_window]:
 				window.hide_window()
 		elif _planting:
 			_set_planting(false)
@@ -4968,6 +4969,7 @@ func _build_hud() -> void:
 	bar.add_child(_market_button)
 	bar.add_child(UI.toolbar_button("company", "Spółka  [K]", func() -> void: _company_window.toggle()))
 	bar.add_child(UI.toolbar_button("bank", "Banki  [B]\nKonta, wpłaty, wypłaty i przelewy", func() -> void: _bank_window.toggle()))
+	bar.add_child(UI.toolbar_button("police", "Policja\nPrawo twojego kraju, służba, sąd i paser", func() -> void: _police_window.toggle()))
 	_city_button = UI.toolbar_button("city", "Miasto\nPotrzeby, rozwój, śmieci, usługi i ratusz", _toggle_city)
 	_city_button.visible = false
 	bar.add_child(_city_button)
@@ -5438,6 +5440,12 @@ func _build_windows() -> void:
 	_bank_window.balance_changed.connect(_reload_balance)
 	_bank_window.failed.connect(_show_error)
 	layer.add_child(_bank_window)
+	_police_window = PoliceWindow.new()
+	_police_window.dock_right()
+	_police_window.balance_changed.connect(_reload_balance)
+	_police_window.inventory_changed.connect(_reload_inventory)
+	_police_window.failed.connect(_show_error)
+	layer.add_child(_police_window)
 	layer.add_child(_city_window)
 	_achievements_window = AchievementsWindow.new()
 	_achievements_window.failed.connect(_show_error)

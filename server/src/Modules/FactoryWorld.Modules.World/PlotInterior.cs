@@ -319,7 +319,7 @@ public sealed record Harvest(TileObject Object, IReadOnlyList<(string Item, int 
 public sealed class PlotService(
     GameDb db, WorldMap map, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats,
     IEnumerable<ICompanyPlots> companies, BeachService beach, PestService pests, ForestLedger ledger, IOutfit outfit, PlotTaxService taxes,
-    TimeProvider time)
+    TimeProvider time, IServiceProvider services)
 {
     /// <summary>The tiles of a plot as they are now; only its owner and members of its company may enter, or anyone when it is public.</summary>
     public async Task<byte[]> TilesAsync(Guid player, int x, int y, CancellationToken cancellationToken)
@@ -542,7 +542,7 @@ public sealed class PlotService(
             {
                 var saw = Items.Saws.GetValueOrDefault(held!);
                 var cut = PlotLayout.Yield(obj, Random.Shared.Next(100), biome, Random.Shared.Next(1000), saw);
-                return await GiveTreesAsync(player, obj, cut, await FellAroundAsync(x, y, biome, tileX, tileY, saw, cancellationToken), cancellationToken);
+                return await GiveTreesAsync(player, x, y, obj, cut, await FellAroundAsync(x, y, biome, tileX, tileY, saw, cancellationToken), cancellationToken);
             }
 
             return await GiveAsync(player, obj, PlotLayout.Yield(obj, Random.Shared.Next(100), biome, Random.Shared.Next(1000)), cancellationToken);
@@ -606,7 +606,7 @@ public sealed class PlotService(
         pace(HarvestRules.TimeFor(tree.Kind.Tile, tool) / await SpeedAsync(player, Industries.Forestry, cancellationToken, (x, y, tileX, tileY)));
         var saw = Items.Saws.GetValueOrDefault(tool);
         var cut = await CutDownAsync(x, y, tileX, tileY, tree, saw, cancellationToken);
-        return await GiveTreesAsync(player, tree.Kind.Tile, cut, await FellAroundAsync(x, y, map.BiomeAt(x, y), tileX, tileY, saw, cancellationToken), cancellationToken);
+        return await GiveTreesAsync(player, x, y, tree.Kind.Tile, cut, await FellAroundAsync(x, y, map.BiomeAt(x, y), tileX, tileY, saw, cancellationToken), cancellationToken);
     }
 
     /// <summary>Takes a grown planted tree off its tile and says what it gives cut with <paramref name="saw"/>.</summary>
@@ -678,10 +678,16 @@ public sealed class PlotService(
 
     /// <summary>Gives what a cut tree and those felled with it gave, and counts them all as cut for the forest certificate.</summary>
     private async Task<Harvest> GiveTreesAsync(
-        Guid player, TileObject obj, IReadOnlyList<(string Item, int Quantity)> cut,
+        Guid player, int x, int y, TileObject obj, IReadOnlyList<(string Item, int Quantity)> cut,
         IReadOnlyList<((int X, int Y) Tile, IReadOnlyList<(string Item, int Quantity)> Items)> felled, CancellationToken cancellationToken)
     {
         await ledger.RecordAsync(player, 0, 1 + felled.Count, cancellationToken);
+        // Where the forest is protected, cutting without the certificate is against the law (resolved here: the law asks about plots).
+        foreach (var watch in services.GetServices<ILawWatch>())
+        {
+            await watch.TreesCutAsync(player, x, y, 1 + felled.Count, cancellationToken);
+        }
+
         var items = cut.Concat(felled.SelectMany(f => f.Items)).GroupBy(i => i.Item).Select(g => (g.Key, g.Sum(i => i.Quantity))).ToList();
         var harvest = await GiveAsync(player, obj, items, cancellationToken, 1 + felled.Count);
         return harvest with { Felled = felled.Select(f => f.Tile).ToList() };

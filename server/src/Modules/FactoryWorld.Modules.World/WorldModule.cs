@@ -335,6 +335,9 @@ public sealed class TrainRouteRow
     public long LastQuantity { get; set; }
 
     public string? LastProblem { get; set; }
+
+    /// <summary>Across a border its goods are not declared: no duty, but customs may catch it.</summary>
+    public bool Smuggle { get; set; }
 }
 
 /// <summary>A freight route between two of a player's plots, with its one train (see <see cref="FreightRules"/>).</summary>
@@ -382,6 +385,9 @@ public sealed class FreightRouteRow
 
     /// <summary>The route was removed while the train carried goods: it ends once they are delivered.</summary>
     public bool Stopping { get; set; }
+
+    /// <summary>Across a border its goods are not declared: no duty, but customs may catch it.</summary>
+    public bool Smuggle { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
 }
@@ -771,6 +777,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(r => r.LastDepartedAt).HasColumnName("last_departed_at");
             e.Property(r => r.LastQuantity).HasColumnName("last_quantity");
             e.Property(r => r.LastProblem).HasColumnName("last_problem").HasMaxLength(32);
+            e.Property(r => r.Smuggle).HasColumnName("smuggle").HasDefaultValue(false);
             e.HasIndex(r => r.NextDepartureAt);
             e.HasIndex(r => new { r.FromX, r.FromY });
             e.HasIndex(r => new { r.ToX, r.ToY });
@@ -797,6 +804,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(r => r.LastFeeCents).HasColumnName("last_fee_cents");
             e.Property(r => r.LastProblem).HasColumnName("last_problem").HasMaxLength(32);
             e.Property(r => r.Stopping).HasColumnName("stopping");
+            e.Property(r => r.Smuggle).HasColumnName("smuggle").HasDefaultValue(false);
             e.Property(r => r.CreatedAt).HasColumnName("created_at");
             e.HasIndex(r => r.NextAt);
             e.HasIndex(r => r.OwnerId);
