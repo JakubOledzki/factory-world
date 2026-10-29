@@ -81,6 +81,12 @@ public static class MarketRules
 
     /// <summary>Closed offers stay in "my offers" this long, so the owner sees what sold.</summary>
     public static readonly TimeSpan ClosedShownFor = TimeSpan.FromDays(1);
+
+    /// <summary>The market keeps this share of every sale between players; the money leaves the game.</summary>
+    public const int FeePercent = 3;
+
+    /// <summary>What the seller gets for a sale of <paramref name="cents"/>: the fee is rounded up, so splitting a sale saves nothing.</summary>
+    public static long AfterFee(long cents) => cents - (cents * FeePercent + 99) / 100;
 }
 
 public enum OfferKind
@@ -208,7 +214,7 @@ public sealed class PlayerMarketService(
             await technologies.RequireUnlockedAsync(buyer, listing.ItemId, cancellationToken);
             var cents = request.Quantity * listing.PriceCents;
             var balance = await wallet.DebitAsync(buyer, cents, $"market buy {request.Quantity} {listing.ItemId}", cancellationToken);
-            await wallet.CreditAsync(listing.OwnerId, cents, $"market sold {request.Quantity} {listing.ItemId}", cancellationToken);
+            await PayAsync(listing.OwnerId, cents, $"market sold {request.Quantity} {listing.ItemId}", cancellationToken);
             await Delivery.OverflowAsync(inventory, deliveries, buyer, listing.ItemId, request.Quantity, cancellationToken);
             return balance;
         }, cancellationToken);
@@ -220,9 +226,14 @@ public sealed class PlayerMarketService(
             var order = await TakeAsync(OfferKind.Order, seller, request, cancellationToken);
             await inventory.RemoveAsync(seller, order.ItemId, request.Quantity, cancellationToken);
             await inventory.AddAsync(order.OwnerId, order.ItemId, request.Quantity, cancellationToken);
-            return await wallet.CreditAsync(seller, request.Quantity * order.PriceCents,
-                $"filled order {request.Quantity} {order.ItemId}", cancellationToken);
+            return await PayAsync(seller, request.Quantity * order.PriceCents, $"filled order {request.Quantity} {order.ItemId}", cancellationToken);
         }, cancellationToken);
+
+    /// <summary>Pays the seller for a sale, less the market's fee.</summary>
+    private async Task<long> PayAsync(Guid seller, long cents, string reason, CancellationToken cancellationToken) =>
+        MarketRules.AfterFee(cents) is var paid and > 0
+            ? await wallet.CreditAsync(seller, paid, $"{reason}, fee {cents - paid}", cancellationToken)
+            : await wallet.BalanceAsync(seller, cancellationToken);
 
     /// <summary>Closes the player's own offer; unsold items or unspent money go back.</summary>
     public Task<long> CancelAsync(OfferKind kind, Guid owner, long id, CancellationToken cancellationToken) =>

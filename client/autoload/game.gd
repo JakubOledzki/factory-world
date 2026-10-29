@@ -64,6 +64,7 @@ const ERRORS := {
 	"bad_plot": "Nie ma takiej działki.",
 	"not_buyable": "Wody nie da się kupić.",
 	"plot_taken": "Ktoś już kupił tę działkę.",
+	"plot_tax_due": "Właściciel tej działki zalega z podatkiem. Dopóki go nie zapłaci, nic tu nie zbudujesz i nie kupi nowej działki. Podatek schodzi z portfela sam, gdy są na nim pieniądze.",
 	"not_owner": "To nie jest twoja działka albo twoja rola w spółce na to nie pozwala.",
 	"not_yours": "To postawił ktoś inny. Podnieść to może on albo właściciel działki.",
 	"invalid_company_name": "Nazwa spółki: 3–24 znaki, litery, cyfry lub spacje.",

@@ -679,7 +679,7 @@ public static class Processing
         return fire < s.Input(slot) / recipe.Ingredients[slot].Quantity;
     }
 
-    /// <summary>What the machine holds after working until <paramref name="now"/>.</summary>
+    /// <summary>What the machine holds after working until <paramref name="now"/>: batches started after its service was due take longer.</summary>
     public static MachineState Advance(ProcessingMachine machine, MachineState s, DateTimeOffset now)
     {
         if (s.StartedAt is not { } started || machine.Recipe(s.Recipe) is not { } recipe)
@@ -687,8 +687,11 @@ public static class Processing
             return s with { StartedAt = null };
         }
 
-        var possible = (int)Math.Min(int.MaxValue, Math.Max(0, (now - started).Ticks / recipe.Time.Ticks));
-        var n = Math.Min(possible, Batches(machine, s));
+        var elapsed = Math.Max(0, (now - started).Ticks);
+        var fresh = MachineServicing.FreshBatches(recipe, s, started);
+        var plain = elapsed / recipe.Time.Ticks;
+        var possible = plain <= fresh ? plain : fresh + (elapsed - fresh * recipe.Time.Ticks) / MachineServicing.WornTime(recipe).Ticks;
+        var n = (int)Math.Min(possible, Batches(machine, s));
         var inputs = s.Inputs.ToArray();
         for (var i = 0; i < recipe.Ingredients.Count; i++)
         {
@@ -713,14 +716,49 @@ public static class Processing
             }
         }
 
+        var freshMade = Math.Min(n, fresh);
         return Batches(machine, after) > 0
-            ? after with { StartedAt = started + recipe.Time * n }
+            ? after with { StartedAt = started + recipe.Time * freshMade + MachineServicing.WornTime(recipe) * (n - freshMade) }
             : after with { StartedAt = null };
     }
 
-    /// <summary>Starts an idle machine that has everything for a batch.</summary>
+    /// <summary>Starts an idle machine that has everything for a batch; its first service falls due <see cref="MachineServicing.Every"/> after.</summary>
     public static MachineState Start(ProcessingMachine machine, MachineState s, DateTimeOffset now) =>
-        s.StartedAt is null && Batches(machine, s) > 0 ? s with { StartedAt = now } : s;
+        s.StartedAt is null && Batches(machine, s) > 0 ? s with { StartedAt = now, ServiceDue = s.ServiceDue ?? now + MachineServicing.Every } : s;
+}
+
+/// <summary>
+/// Machines wear: <see cref="Every"/> of their own time after they first work, or after their last service, they work
+/// <see cref="SlowerPercent"/>% slower until the owner pays for a service, a share of what the trader asks for the machine.
+/// </summary>
+public static class MachineServicing
+{
+    public static readonly TimeSpan Every = TimeSpan.FromDays(3);
+
+    public const int SlowerPercent = 20;
+
+    /// <summary>A service costs this share of the machine's price at the trader.</summary>
+    public const int PricePercent = 10;
+
+    /// <summary>For machines the trader does not sell.</summary>
+    public const long MinCents = 100;
+
+    public static long Cents(string kind, IMarketPrices prices) =>
+        Math.Max(MinCents, (prices.SellsCents(kind) ?? 0) * PricePercent / 100);
+
+    /// <summary>A batch at <see cref="SlowerPercent"/>% less speed.</summary>
+    public static TimeSpan WornTime(ProcessingRecipe recipe) => recipe.Time * 100 / (100 - SlowerPercent);
+
+    /// <summary>Whether a batch started at <paramref name="start"/> (machine time) is made by a machine that waits for its service.</summary>
+    public static bool Worn(MachineState s, DateTimeOffset start) => s.ServiceDue is { } due && start >= due;
+
+    public static TimeSpan BatchTime(ProcessingRecipe recipe, MachineState s, DateTimeOffset start) => Worn(s, start) ? WornTime(recipe) : recipe.Time;
+
+    /// <summary>How many batches from <paramref name="started"/> on start before the service is due: <see cref="int.MaxValue"/> without a due date.</summary>
+    public static int FreshBatches(ProcessingRecipe recipe, MachineState s, DateTimeOffset started) =>
+        s.ServiceDue is not { } due ? int.MaxValue
+        : due <= started ? 0
+        : (int)Math.Min(int.MaxValue, ((due - started).Ticks + recipe.Time.Ticks - 1) / recipe.Time.Ticks);
 }
 
 /// <param name="Recipe">The recipe the player set, or null.</param>
@@ -730,9 +768,10 @@ public static class Processing
 /// <param name="Output">Products made from the recipe, waiting to be taken out.</param>
 /// <param name="StartedAt">When the batch being made now started; null while the machine stands idle.</param>
 /// <param name="Extras">How much of each of the recipe's <see cref="ProcessingRecipe.Extras"/> waits to be taken out, in the recipe's order.</param>
+/// <param name="ServiceDue">In the machine's own time, when it needs a service; batches started from then on take longer. Null until it first works.</param>
 public sealed record MachineState(
     string? Recipe, IReadOnlyList<int> Inputs, string? FuelItem, int Fuel, int Heat, int Output, DateTimeOffset? StartedAt,
-    IReadOnlyList<int>? Extras = null)
+    IReadOnlyList<int>? Extras = null, DateTimeOffset? ServiceDue = null)
 {
     public static readonly MachineState Empty = new(null, [], null, 0, 0, 0, null);
 
@@ -746,22 +785,23 @@ public sealed record MachineState(
 
 /// <param name="MachineTime">The machine's own time at <paramref name="ServerTime"/>, which <see cref="MachineState.StartedAt"/> is in.</param>
 /// <param name="Speed">How fast it works on the power it has: 1 for machines that need none.</param>
+/// <param name="ServiceCents">What a service of the machine costs.</param>
 public sealed record MachineReply(
     Guid Id, ProcessingMachine Machine, MachineState State, DateTimeOffset ServerTime, IReadOnlyList<(string Item, int Quantity)> Taken, XpGain? Xp,
-    DateTimeOffset MachineTime = default, double Speed = 1);
+    DateTimeOffset MachineTime = default, double Speed = 1, long ServiceCents = 0, long? BalanceCents = null);
 
 /// <summary>Rows of <c>crafting.machines</c>; a machine gets one when it is first used.</summary>
 internal static class MachineRows
 {
-    private const string Columns = "kind, recipe, inputs, fuel_item, fuel, heat, output, started_at, extras";
+    private const string Columns = "kind, recipe, inputs, fuel_item, fuel, heat, output, started_at, extras, service_due";
 
     private const string Write =
         """
-        INSERT INTO crafting.machines (object_id, owner_id, kind, recipe, inputs, fuel_item, fuel, heat, output, started_at, extras)
-        VALUES (@id, @owner, @kind, @recipe, @inputs, @fuelItem, @fuel, @heat, @output, @started, @extras)
+        INSERT INTO crafting.machines (object_id, owner_id, kind, recipe, inputs, fuel_item, fuel, heat, output, started_at, extras, service_due)
+        VALUES (@id, @owner, @kind, @recipe, @inputs, @fuelItem, @fuel, @heat, @output, @started, @extras, @serviceDue)
         ON CONFLICT (object_id) DO UPDATE SET
             recipe = @recipe, inputs = @inputs, fuel_item = @fuelItem, fuel = @fuel, heat = @heat,
-            output = @output, started_at = @started, extras = @extras
+            output = @output, started_at = @started, extras = @extras, service_due = @serviceDue
         """;
 
     internal static (Type, Guid) Key(Guid id) => (typeof(MachineRows), id);
@@ -778,6 +818,39 @@ internal static class MachineRows
         command.Parameters.AddWithValue("id", id);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken) ? Row(reader) : null;
+    }
+
+    /// <summary>What the machine holds, locked; a machine used for the first time is empty, and takes over the wear of the
+    /// owner's machine of its kind that was picked up nearest its service.</summary>
+    public static async Task<MachineState> ReadOrNewAsync(GameDb db, Guid owner, Guid id, string kind, CancellationToken cancellationToken)
+    {
+        if (await ReadAsync(db, id, cancellationToken) is { } row)
+        {
+            return row.State;
+        }
+
+        DateTimeOffset? due;
+        await using (var take = await db.CommandAsync(
+            """
+            DELETE FROM crafting.machine_wear WHERE id = (
+                SELECT id FROM crafting.machine_wear WHERE owner_id = @owner AND kind = @kind ORDER BY service_due LIMIT 1 FOR UPDATE SKIP LOCKED)
+            RETURNING service_due
+            """, cancellationToken))
+        {
+            take.Parameters.AddWithValue("owner", owner);
+            take.Parameters.AddWithValue("kind", kind);
+            await using var reader = await take.ExecuteReaderAsync(cancellationToken);
+            due = await reader.ReadAsync(cancellationToken) ? reader.GetFieldValue<DateTimeOffset>(0) : null;
+        }
+
+        if (due is null)
+        {
+            return MachineState.Empty;
+        }
+
+        var state = MachineState.Empty with { ServiceDue = due };
+        await WriteAsync(db, owner, id, kind, state, cancellationToken);
+        return state;
     }
 
     /// <summary>Reads (and locks) the rows of these machines in one query, for <see cref="ReadAsync"/> to take one by one.</summary>
@@ -811,7 +884,8 @@ internal static class MachineRows
         (reader.GetString(at), new MachineState(
             reader.IsDBNull(at + 1) ? null : reader.GetString(at + 1), reader.GetFieldValue<int[]>(at + 2),
             reader.IsDBNull(at + 3) ? null : reader.GetString(at + 3), reader.GetInt32(at + 4), reader.GetInt32(at + 5), reader.GetInt32(at + 6),
-            reader.IsDBNull(at + 7) ? null : reader.GetFieldValue<DateTimeOffset>(at + 7), reader.GetFieldValue<int[]>(at + 8)));
+            reader.IsDBNull(at + 7) ? null : reader.GetFieldValue<DateTimeOffset>(at + 7), reader.GetFieldValue<int[]>(at + 8),
+            reader.IsDBNull(at + 9) ? null : reader.GetFieldValue<DateTimeOffset>(at + 9)));
 
     public static async Task WriteAsync(GameDb db, Guid owner, Guid id, string kind, MachineState s, CancellationToken cancellationToken)
     {
@@ -854,6 +928,7 @@ internal static class MachineRows
         parameters.AddWithValue("output", s.Output);
         parameters.AddWithValue("extras", (s.Extras ?? []).ToArray());
         parameters.Add(new NpgsqlParameter("started", NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = (object?)s.StartedAt ?? DBNull.Value });
+        parameters.Add(new NpgsqlParameter("serviceDue", NpgsqlTypes.NpgsqlDbType.TimestampTz) { Value = (object?)s.ServiceDue ?? DBNull.Value });
     }
 
     /// <summary>Everything the machine holds, as item stacks.</summary>
@@ -914,6 +989,17 @@ internal static class MachineRows
             }
         }
 
+        // Picking a machine up and putting it down again does not service it.
+        if (state.ServiceDue is { } due)
+        {
+            await using var wear = await db.CommandAsync(
+                "INSERT INTO crafting.machine_wear (owner_id, kind, service_due) VALUES (@owner, @kind, @due)", cancellationToken);
+            wear.Parameters.AddWithValue("owner", owner);
+            wear.Parameters.AddWithValue("kind", machine.Kind);
+            wear.Parameters.AddWithValue("due", due);
+            await wear.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         db.ForgetReadAhead(MachineRows.Key(id));
         await using var delete = await db.CommandAsync("DELETE FROM crafting.machines WHERE object_id = @id", cancellationToken);
         delete.Parameters.AddWithValue("id", id);
@@ -923,7 +1009,7 @@ internal static class MachineRows
 
 public sealed class MachineService(
     GameDb db, IEnumerable<IPlacedObjects> places, IInventory inventory, ICharacterProgress progress, IProductionStats stats, ITechnologies technologies,
-    IPlotPower power, IPlotObjects plots, IPlotRegistry registry, IWallet wallet, TimeProvider time)
+    IPlotPower power, IPlotObjects plots, IPlotRegistry registry, IWallet wallet, IMarketPrices prices, TimeProvider time)
 {
     public Task<MachineReply> StateAsync(Guid owner, Guid id, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -1105,10 +1191,23 @@ public sealed class MachineService(
         return state with { Inputs = new int[recipe.Ingredients.Count], StartedAt = null };
     }
 
+    /// <summary>Services the machine for <see cref="MachineServicing.Cents"/>: it works at full speed again for <see cref="MachineServicing.Every"/>
+    /// of its own time from now. What it made until now was made at the speed it had.</summary>
+    public Task<MachineReply> ServiceAsync(Guid owner, Guid id, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            var (machine, state, clock) = await OpenAsync(owner, id, cancellationToken);
+            var cents = MachineServicing.Cents(machine.Kind, prices);
+            var balance = await wallet.DebitAsync(owner, cents, $"service {machine.Kind} {id}", cancellationToken);
+            state = state with { ServiceDue = clock.At(time.GetUtcNow()) + MachineServicing.Every };
+            await MachineRows.WriteAsync(db, owner, id, machine.Kind, state, cancellationToken);
+            return Reply(id, machine, state, clock, [], null) with { BalanceCents = balance };
+        }, cancellationToken);
+
     private MachineReply Reply(Guid id, ProcessingMachine machine, MachineState state, IPowerClock clock, IReadOnlyList<(string, int)> taken, XpGain? xp)
     {
         var now = time.GetUtcNow();
-        return new MachineReply(id, machine, state, now, taken, xp, clock.At(now), clock.Speed(now));
+        return new MachineReply(id, machine, state, now, taken, xp, clock.At(now), clock.Speed(now), MachineServicing.Cents(machine.Kind, prices));
     }
 
     /// <summary>The player's machine, locked until the transaction ends and worked up to now, with the
@@ -1132,7 +1231,7 @@ public sealed class MachineService(
 
         // The grid is locked before the machine, as when inserters work it.
         var clock = await Processing.ClockAsync(machine, power, id, cancellationToken);
-        var stored = (await MachineRows.ReadAsync(db, id, cancellationToken))?.State ?? MachineState.Empty;
+        var stored = await MachineRows.ReadOrNewAsync(db, owner, id, machine.Kind, cancellationToken);
         var now = time.GetUtcNow();
         var state = Processing.Advance(machine, stored, clock.At(now));
         var made = MachineProduction.Processed(machine, stored, state, clock, now);
@@ -1157,7 +1256,7 @@ public sealed class ProcessingPorts(GameDb db, IProductionStats stats, IPlotPowe
         }
 
         var clock = await Processing.ClockAsync(machine, power, id, cancellationToken);
-        var state = (await MachineRows.ReadAsync(db, id, cancellationToken))?.State ?? MachineState.Empty;
+        var state = await MachineRows.ReadOrNewAsync(db, owner, id, machine.Kind, cancellationToken);
         return new Port(db, stats, owner, id, machine, state, clock);
     }
 
@@ -1271,7 +1370,7 @@ public sealed class ProcessingPorts(GameDb db, IProductionStats stats, IPlotPowe
         public DateTimeOffset? NextChange(DateTimeOffset now)
         {
             Advance(now);
-            return state.StartedAt is { } started && Recipe is { } recipe ? clock.When(started + recipe.Time, now) : null;
+            return state.StartedAt is { } started && Recipe is { } recipe ? clock.When(started + MachineServicing.BatchTime(recipe, state, started), now) : null;
         }
 
         public async Task SaveAsync(CancellationToken cancellationToken)
@@ -1375,13 +1474,19 @@ public abstract class MachineHandler(IServiceScopeFactory scopes) : IMessageHand
             powered = machine.Powered,
             // How fast it works on the power it has, 0 to 1.
             speed = reply.Speed,
-            seconds = recipe?.Time.TotalSeconds,
+            // The batch being made: longer while the machine waits for its service.
+            seconds = recipe is null ? (double?)null : (s.StartedAt is { } at ? MachineServicing.BatchTime(recipe, s, at) : MachineServicing.BatchTime(recipe, s, reply.MachineTime)).TotalSeconds,
+            worn = MachineServicing.Worn(s, s.StartedAt ?? reply.MachineTime),
+            serviceDue = s.ServiceDue is { } due ? (reply.ServerTime - (reply.MachineTime - due)).ToUnixTimeMilliseconds() : (long?)null,
+            serviceCents = reply.ServiceCents,
+            slowerPercent = MachineServicing.SlowerPercent,
             serverTime = reply.ServerTime.ToUnixTimeMilliseconds(),
             maxInput = Processing.MaxInput,
             maxFuel = Processing.MaxFuel,
             maxOutput = Processing.MaxOutput,
             taken = reply.Taken.Select(t => new { id = t.Item, name = Items.Names[t.Item], quantity = t.Quantity }),
             xp = reply.Xp is { } xp ? new { xp = xp.Xp, level = xp.Level, leveledUp = xp.LeveledUp } : null,
+            balanceCents = reply.BalanceCents,
         });
     }
 
@@ -1417,6 +1522,15 @@ public sealed class LoadMachineHandler(IServiceScopeFactory scopes) : MachineHan
         var request = Payload.Read<LoadMachineRequest>(payload);
         return machines.LoadAsync(owner, request.Machine, request.Item ?? "", request.Quantity, request.Fuel, cancellationToken);
     }
+}
+
+/// <summary>Pays for a service of the machine, which then works at full speed again.</summary>
+public sealed class ServiceMachineHandler(IServiceScopeFactory scopes) : MachineHandler(scopes)
+{
+    public override string Type => "machine.service";
+
+    protected override Task<MachineReply> RunAsync(MachineService machines, Guid owner, JsonElement? payload, CancellationToken cancellationToken) =>
+        machines.ServiceAsync(owner, Payload.Read<MachineRequest>(payload).Machine, cancellationToken);
 }
 
 public sealed class TakeMachineHandler(IServiceScopeFactory scopes) : MachineHandler(scopes)

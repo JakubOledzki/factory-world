@@ -48,6 +48,8 @@ var _owned := {}
 var _help := {}
 var _balance := 0
 var _next_base_price := 0
+## Every plot but the first costs this many thousandths of its price a day.
+var _tax_per_mille := 0
 
 ## The point of the map (in plots) in the middle of the screen, and pixels per plot.
 var _center := Vector2.ZERO
@@ -657,6 +659,11 @@ func _show_plot() -> void:
 			if factor != 1.0:
 				price_row.add_child(_small("(×%s za biom)" % str(factor).replace(".", ","), UI.MUTED))
 			_plot_box.add_child(price_row)
+			if _owned.is_empty():
+				_plot_box.add_child(_small("Pierwsza działka jest bez podatku.", UI.MUTED))
+			else:
+				_plot_box.add_child(_small("Podatek: %s dziennie (%s%% ceny) i tyle samo od wartości wszystkiego, co na niej postawisz." % [
+						UI.money(floori(price * _tax_per_mille / 1000.0)), str(_tax_per_mille / 10.0).replace(".", ",")], UI.MUTED))
 			_buy = UI.button("Potwierdź zakup" if _confirming else "Kup działkę", _on_buy, true)
 			_buy.disabled = _balance < price
 			_plot_box.add_child(_buy)
@@ -868,6 +875,12 @@ func _load() -> void:
 	for biome: Dictionary in info["payload"]["biomes"]:
 		_biomes[int(biome["id"])] = biome
 	_next_base_price = info["payload"]["nextBasePriceCents"]
+	_tax_per_mille = int(info["payload"].get("taxPerMille", 0))
+	var tax: Dictionary = info["payload"].get("tax", {})
+	if int(tax.get("owedCents", 0)) > 0:
+		_show_toast("Zalegasz z podatkiem od działek: %s. Dopóki go nie zapłacisz, nic nie zbudujesz i nie kupisz działki." % UI.money(int(tax["owedCents"])), UI.ERROR)
+	if int(tax.get("dailyCents", 0)) > 0:
+		_mine_button.tooltip_text = "Podatek od działek: %s dziennie, pobierany z portfela" % UI.money(int(tax["dailyCents"]))
 	for plot: Dictionary in info["payload"]["plots"]:
 		var at := Vector2i(plot["x"], plot["y"])
 		_my_plots.append(at)

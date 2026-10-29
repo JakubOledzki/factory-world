@@ -1,7 +1,9 @@
 using System.IO.Compression;
 using System.Text.Json;
+using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Abstractions.Contracts;
 using FactoryWorld.Modules.Crafting;
+using FactoryWorld.Modules.Research;
 using FactoryWorld.Modules.World;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -86,6 +88,113 @@ public sealed class ProcessingTests(ServerFactory factory) : IClassFixture<Serve
         }
 
         return (x, y, placed.Payload().GetProperty("object").GetProperty("id").GetString()!);
+    }
+
+    [Fact]
+    public async Task A_machine_works_20_percent_slower_3_days_after_it_first_worked_until_its_owner_pays_for_a_service()
+    {
+        using var client = await PlayerAsync();
+        var (_, _, sawmill) = await MachineOnPlotAsync(client, Items.Sawmill);
+        await GiveAsync(client, Items.Wood, 3);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<GameDb>();
+            await using var command = await db.CommandAsync(
+                "INSERT INTO research.technologies (owner_id, technology, starts_at, finishes_at, rewarded) VALUES (@owner, @id, @at, @at, true)", CancellationToken.None);
+            command.Parameters.AddWithValue("owner", client.AccountId);
+            command.Parameters.AddWithValue("id", TechTree.ForestryIndustry);
+            command.Parameters.AddWithValue("at", factory.Time.GetUtcNow() - TimeSpan.FromMinutes(1));
+            await command.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        Assert.Equal("machine", (await client.SendAsync("machine.recipe", new { machine = sawmill, recipe = Items.Planks })).Type());
+        var fresh = (await client.SendAsync("machine.load", new { machine = sawmill, item = Items.Wood, quantity = 1 })).Payload();
+        Assert.False(fresh.GetProperty("worn").GetBoolean());
+        Assert.Equal(8, fresh.GetProperty("seconds").GetDouble());
+
+        // Three days on, a batch of planks takes 10 s instead of 8.
+        factory.Time.Advance(MachineServicing.Every);
+        var worn = (await client.SendAsync("machine.load", new { machine = sawmill, item = Items.Wood, quantity = 2 })).Payload();
+        Assert.True(worn.GetProperty("worn").GetBoolean());
+        Assert.Equal(10, worn.GetProperty("seconds").GetDouble());
+        factory.Time.Advance(TimeSpan.FromSeconds(9));
+        Assert.Equal(2, (await client.SendAsync("machine.get", new { machine = sawmill })).Payload().GetProperty("output").GetProperty("quantity").GetInt32());
+        factory.Time.Advance(TimeSpan.FromSeconds(1));
+        Assert.Equal(4, (await client.SendAsync("machine.get", new { machine = sawmill })).Payload().GetProperty("output").GetProperty("quantity").GetInt32());
+
+        // A service costs a tenth of what the trader asks for a sawmill; the batch being made goes at full speed again.
+        long cents;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            cents = scope.ServiceProvider.GetRequiredService<IMarketPrices>().SellsCents(Items.Sawmill)!.Value / 10;
+        }
+
+        var before = await client.BalanceAsync();
+        var serviced = (await client.SendAsync("machine.service", new { machine = sawmill })).Payload();
+        Assert.Equal(cents, serviced.GetProperty("serviceCents").GetInt64());
+        Assert.Equal(before - cents, serviced.GetProperty("balanceCents").GetInt64());
+        Assert.Equal(before - cents, await client.BalanceAsync());
+        Assert.False(serviced.GetProperty("worn").GetBoolean());
+        Assert.Equal(8, serviced.GetProperty("seconds").GetDouble());
+        factory.Time.Advance(TimeSpan.FromSeconds(8));
+        Assert.Equal(6, (await client.SendAsync("machine.get", new { machine = sawmill })).Payload().GetProperty("output").GetProperty("quantity").GetInt32());
+    }
+
+    [Fact]
+    public async Task Picking_a_worn_machine_up_and_putting_it_down_again_does_not_service_it()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, sawmill) = await MachineOnPlotAsync(client, Items.Sawmill);
+        await GiveAsync(client, Items.Wood, 3);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<GameDb>();
+            await using var command = await db.CommandAsync(
+                "INSERT INTO research.technologies (owner_id, technology, starts_at, finishes_at, rewarded) VALUES (@owner, @id, @at, @at, true)", CancellationToken.None);
+            command.Parameters.AddWithValue("owner", client.AccountId);
+            command.Parameters.AddWithValue("id", TechTree.ForestryIndustry);
+            command.Parameters.AddWithValue("at", factory.Time.GetUtcNow() - TimeSpan.FromMinutes(1));
+            await command.ExecuteNonQueryAsync(CancellationToken.None);
+        }
+
+        await client.SendAsync("machine.recipe", new { machine = sawmill, recipe = Items.Planks });
+        await client.SendAsync("machine.load", new { machine = sawmill, item = Items.Wood, quantity = 1 });
+        factory.Time.Advance(MachineServicing.Every);
+        int tileX, tileY;
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await using var command = await scope.ServiceProvider.GetRequiredService<GameDb>().CommandAsync(
+                "SELECT tile_x, tile_y FROM world.plot_objects WHERE id = @id", CancellationToken.None);
+            command.Parameters.AddWithValue("id", Guid.Parse(sawmill));
+            await using var reader = await command.ExecuteReaderAsync(CancellationToken.None);
+            await reader.ReadAsync(CancellationToken.None);
+            (tileX, tileY) = (reader.GetInt32(0), reader.GetInt32(1));
+        }
+
+        Assert.Equal("plot.pickedUp", (await client.SendAsync("plot.pickup", new { x, y, id = sawmill })).Type());
+
+        var placed = await client.SendAsync("plot.place", new { x, y, kind = Items.Sawmill, tileX, tileY });
+        var again = placed.Payload().GetProperty("object").GetProperty("id").GetString();
+        await client.SendAsync("machine.recipe", new { machine = again, recipe = Items.Planks });
+        var loaded = (await client.SendAsync("machine.load", new { machine = again, item = Items.Wood, quantity = 1 })).Payload();
+        Assert.True(loaded.GetProperty("worn").GetBoolean());
+        Assert.Equal(10, loaded.GetProperty("seconds").GetDouble());
+    }
+
+    [Fact]
+    public async Task A_service_needs_the_money_and_only_the_owner_may_pay_for_it()
+    {
+        using var owner = await PlayerAsync();
+        using var stranger = await PlayerAsync();
+        var (_, _, mill) = await MachineOnPlotAsync(owner, Items.Sawmill);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            var wallet = scope.ServiceProvider.GetRequiredService<IWallet>();
+            await wallet.DebitAsync(owner.AccountId, await wallet.BalanceAsync(owner.AccountId, CancellationToken.None), "test", CancellationToken.None);
+        }
+
+        Assert.Equal("not_enough_money", (await owner.SendAsync("machine.service", new { machine = mill })).ErrorCode());
+        Assert.Equal("no_object", (await stranger.SendAsync("machine.service", new { machine = mill })).ErrorCode());
     }
 
     [Fact]
