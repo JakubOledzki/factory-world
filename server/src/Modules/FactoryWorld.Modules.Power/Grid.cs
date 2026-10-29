@@ -14,7 +14,9 @@ namespace FactoryWorld.Modules.Power;
 /// plots by a river, a lake or the sea; the generators of their network burn only for what they lack. Solar power gives by day,
 /// wind turbines as much as the wind blows. On the glacier machines that no heater warms work at half their pace.
 /// A substation powers a wider square than a pole, and high-voltage pylons are wired to each other from far apart, so one network
-/// reaches across a whole plot; two poles of different kinds are wired as far as the shorter reach of the two.
+/// reaches across a whole plot; two poles of different kinds are wired as far as the shorter reach of the two. A grid tie on a
+/// network joins it by cable to a tie on another plot (<see cref="PowerLink"/>): the supplier's network draws what the cable carries
+/// like a machine, and the receiver's gets it as free power, as much of it as the supplier's network has power for.
 /// </summary>
 public static class PowerRules
 {
@@ -247,13 +249,14 @@ public static class PowerRules
         var wind = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
         var batteries = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
         var consumers = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
+        var ties = Enumerable.Range(0, count).Select(_ => new List<Guid>()).ToList();
         var demand = new double[count];
         var bankKj = new double[count];
         var bankKw = new double[count];
         foreach (var o in all)
         {
             var isGenerator = Items.IsGenerator(o.Kind);
-            if (!isGenerator && !Items.IsRenewable(o.Kind) && !Items.IsBattery(o.Kind) && !Demand.ContainsKey(o.Kind))
+            if (!isGenerator && !Items.IsRenewable(o.Kind) && !Items.IsBattery(o.Kind) && !Demand.ContainsKey(o.Kind) && o.Kind != Items.GridTie)
             {
                 continue;
             }
@@ -280,6 +283,10 @@ public static class PowerRules
             {
                 wind[component[pole]].Add(o.Id);
             }
+            else if (o.Kind == Items.GridTie)
+            {
+                ties[component[pole]].Add(o.Id);
+            }
             else if (Items.IsBattery(o.Kind))
             {
                 batteries[component[pole]].Add(o.Id);
@@ -301,6 +308,7 @@ public static class PowerRules
                 Batteries = batteries[n],
                 BankKj = bankKj[n],
                 BankKw = bankKw[n],
+                Ties = ties[n],
             })
             .ToList();
     }
@@ -341,6 +349,30 @@ public sealed record Network(
 
     /// <summary>What its batteries take in or give out at most together (kW).</summary>
     public double BankKw { get; init; }
+
+    /// <summary>Grid ties on it, which cables join to other plots.</summary>
+    public IReadOnlyList<Guid> Ties { get; init; } = [];
+}
+
+/// <summary>A cable between a grid tie on one plot and one on another, carrying up to <see cref="Kw"/> while paid for (<see cref="Until"/>).</summary>
+public sealed class PowerLink
+{
+    /// <summary>A cable between two plots of the same owner is never paid for.</summary>
+    public static readonly DateTimeOffset Forever = DateTimeOffset.MaxValue;
+
+    public required Guid Id { get; init; }
+
+    public required Guid SupplierTie { get; init; }
+
+    public required Guid ReceiverTie { get; init; }
+
+    public required double Kw { get; init; }
+
+    public DateTimeOffset Until { get; set; }
+
+    public PowerGrid? Supplier { get; set; }
+
+    public PowerGrid? Receiver { get; set; }
 }
 
 /// <param name="FuelItem">What lies by the fire, or null.</param>
@@ -459,7 +491,8 @@ public sealed class PowerGrid : IPowerGrid
         Networks = PowerRules.Networks(objects);
         foreach (var network in Networks)
         {
-            foreach (var id in network.Generators.Concat(network.Consumers).Concat(network.Hydro).Concat(network.Solar).Concat(network.Wind).Concat(network.Batteries))
+            foreach (var id in network.Generators.Concat(network.Consumers).Concat(network.Hydro).Concat(network.Solar).Concat(network.Wind)
+                .Concat(network.Batteries).Concat(network.Ties))
             {
                 _networkOf[id] = network;
             }
@@ -521,7 +554,33 @@ public sealed class PowerGrid : IPowerGrid
     public double SolarKw(Network network, DateTimeOffset at) => network.Solar.Sum(id => SolarKw(id, at));
 
     /// <summary>What a network's water and solar power give together at <paramref name="at"/> (kW).</summary>
-    public double FreeKw(Network network, DateTimeOffset at) => HydroKw(network) + SolarKw(network, at) + WindKw(network, at);
+    public double FreeKw(Network network, DateTimeOffset at) => HydroKw(network) + SolarKw(network, at) + WindKw(network, at) + ImportKw(network, at);
+
+    /// <summary>Cables that take power from this plot to others.</summary>
+    public List<PowerLink> Exports { get; } = [];
+
+    /// <summary>Cables that bring power to this plot from others.</summary>
+    public List<PowerLink> Imports { get; } = [];
+
+    /// <summary>What a network sends along its cables at <paramref name="at"/> (kW): it draws that like a machine while the cable is paid for.</summary>
+    public double ExportKw(Network network, DateTimeOffset at) =>
+        Exports.Where(l => at < l.Until && network.Ties.Contains(l.SupplierTie)).Sum(l => l.Kw);
+
+    /// <summary>What a network gets along its cables at <paramref name="at"/> (kW): as much of each as the supplier's network has power for.</summary>
+    public double ImportKw(Network network, DateTimeOffset at) =>
+        Imports.Where(l => network.Ties.Contains(l.ReceiverTie)).Sum(l => Flow(l, at));
+
+    /// <summary>What a network's machines and the cables it sends power along draw at <paramref name="at"/> (kW).</summary>
+    public double DemandKw(Network network, DateTimeOffset at) => network.DemandKw + ExportKw(network, at);
+
+    /// <summary>How well the network of a tie is powered at <paramref name="at"/>: 0 when no pole reaches it.</summary>
+    public double TieSpeed(Guid tie, DateTimeOffset at) => _networkOf.TryGetValue(tie, out var network) ? Speed(network, at) : 0;
+
+    /// <summary>What a cable carries at <paramref name="at"/> (kW).</summary>
+    public static double Flow(PowerLink link, DateTimeOffset at) => at < link.Until ? link.Kw * (link.Supplier?.TieSpeed(link.SupplierTie, at) ?? 0) : 0;
+
+    /// <summary>Starts the networks' timelines again from the moment the grid was settled, after its cables changed.</summary>
+    public void Replan() => Plan();
 
     /// <summary>What a network's power plants can give at <paramref name="at"/>: running generators, water and solar power and batteries with power in them (kW).</summary>
     public double SupplyKw(Network network, DateTimeOffset at) =>
@@ -589,7 +648,7 @@ public sealed class PowerGrid : IPowerGrid
 
         if (network.Hydro.Contains(id) || network.Solar.Contains(id) || network.Wind.Contains(id))
         {
-            var used = segment.Free <= 0 ? 0 : Math.Min(1, (network.DemandKw + Math.Max(0, segment.Rate)) / segment.Free);
+            var used = segment.Free <= 0 ? 0 : Math.Min(1, (DemandKw(network, at) + Math.Max(0, segment.Rate)) / segment.Free);
             return (network.Hydro.Contains(id) ? HydroKw(id) : network.Solar.Contains(id) ? SolarKw(id, at) : WindKw(id, at)) * used;
         }
 
@@ -756,12 +815,28 @@ public sealed class PowerGrid : IPowerGrid
             await _save(Data, Settled, cancellationToken);
             Changed = false;
         }
+
+        // Settling this grid settled the plots it sends power to.
+        foreach (var link in Exports)
+        {
+            if (link.Receiver is { } receiver)
+            {
+                await receiver.SaveAsync(cancellationToken);
+            }
+        }
     }
 
     /// <summary>Brings everything up to <paramref name="at"/> and works on from there, so the grid can change.</summary>
     public void Settle(DateTimeOffset at)
     {
         at = Max(at, Settled);
+
+        // The plots this one sends power to worked out what they got with the grid as it was: they are settled first.
+        foreach (var link in Exports)
+        {
+            link.Receiver?.Settle(at);
+        }
+
         var data = new GridData();
         foreach (var o in _objects)
         {
@@ -888,12 +963,29 @@ public sealed class PowerGrid : IPowerGrid
     private void Step(Network network, Timeline timeline)
     {
         var (t, states, bank) = (timeline.At, timeline.States, timeline.Bank);
-        var demand = network.DemandKw;
+        var demand = DemandKw(network, t);
         var free = FreeKw(network, t);
         DateTimeOffset? end = network.Solar.Count == 0 ? null : Min(Sun.NextChange(t), Sandy ? SandWeather.NextChange(t) : (DateTimeOffset?)null);
         if (network.Wind.Count > 0)
         {
             end = Min(end, Min(Wind.NextChange(t), Icy ? Abstractions.Contracts.Blizzard.NextChange(t) : (DateTimeOffset?)null));
+        }
+
+        // Cables change what the network draws and gets when what was paid for runs out, and when the supplier's network changes.
+        foreach (var link in Exports.Where(l => network.Ties.Contains(l.SupplierTie)).Concat(Imports.Where(l => network.Ties.Contains(l.ReceiverTie))))
+        {
+            if (link.Until > t && link.Until != PowerLink.Forever)
+            {
+                end = Min(end, link.Until);
+            }
+        }
+
+        foreach (var link in Imports.Where(l => t < l.Until && network.Ties.Contains(l.ReceiverTie)))
+        {
+            if (link.Supplier is { } supplier && supplier.NetworkOf(link.SupplierTie) is { } far && supplier.NextChange(far, t) is { } change && change > t)
+            {
+                end = Min(end, change);
+            }
         }
 
         double rate, share = 0, speed;

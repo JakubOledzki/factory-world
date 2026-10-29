@@ -20,6 +20,44 @@ public sealed class PowerPlotRow
     public string Data { get; set; } = "{}";
 }
 
+/// <summary>A grid tie whose owner sells power to other players' plots, at a price per kWh.</summary>
+public sealed class PowerTieRow
+{
+    public Guid Id { get; set; }
+
+    public int X { get; set; }
+
+    public int Y { get; set; }
+
+    public long PriceCents { get; set; }
+
+    public bool Open { get; set; }
+}
+
+/// <summary>A cable from a supplier's grid tie to a receiver's, carrying up to <see cref="Kw"/> until <see cref="PaidUntil"/>.</summary>
+public sealed class PowerLineRow
+{
+    public Guid Id { get; set; }
+
+    public int FromX { get; set; }
+
+    public int FromY { get; set; }
+
+    public Guid FromTie { get; set; }
+
+    public int ToX { get; set; }
+
+    public int ToY { get; set; }
+
+    public Guid ToTie { get; set; }
+
+    public double Kw { get; set; }
+
+    public DateTimeOffset PaidUntil { get; set; }
+
+    public DateTimeOffset BuiltAt { get; set; }
+}
+
 public sealed class PowerDbContext(DbContextOptions<PowerDbContext> options, GameDb gameDb) : ModuleDbContext(options, gameDb)
 {
     public const string Schema = "power";
@@ -35,6 +73,35 @@ public sealed class PowerDbContext(DbContextOptions<PowerDbContext> options, Gam
             e.Property(p => p.Y).HasColumnName("y");
             e.Property(p => p.SettledAt).HasColumnName("settled_at");
             e.Property(p => p.Data).HasColumnName("data").HasColumnType("jsonb");
+        });
+        model.Entity<PowerTieRow>(e =>
+        {
+            e.ToTable("ties", t => t.HasCheckConstraint("ck_ties_price", "price_cents >= 0"));
+            e.HasKey(t => t.Id);
+            e.Property(t => t.Id).HasColumnName("id");
+            e.Property(t => t.X).HasColumnName("x");
+            e.Property(t => t.Y).HasColumnName("y");
+            e.Property(t => t.PriceCents).HasColumnName("price_cents");
+            e.Property(t => t.Open).HasColumnName("open");
+            e.HasIndex(t => new { t.X, t.Y });
+        });
+        model.Entity<PowerLineRow>(e =>
+        {
+            e.ToTable("lines", t => t.HasCheckConstraint("ck_lines_kw", "kw > 0"));
+            e.HasKey(l => l.Id);
+            e.Property(l => l.Id).HasColumnName("id");
+            e.Property(l => l.FromX).HasColumnName("from_x");
+            e.Property(l => l.FromY).HasColumnName("from_y");
+            e.Property(l => l.FromTie).HasColumnName("from_tie");
+            e.Property(l => l.ToX).HasColumnName("to_x");
+            e.Property(l => l.ToY).HasColumnName("to_y");
+            e.Property(l => l.ToTie).HasColumnName("to_tie");
+            e.Property(l => l.Kw).HasColumnName("kw");
+            e.Property(l => l.PaidUntil).HasColumnName("paid_until");
+            e.Property(l => l.BuiltAt).HasColumnName("built_at");
+            e.HasIndex(l => new { l.FromX, l.FromY });
+            e.HasIndex(l => new { l.ToX, l.ToY });
+            e.HasIndex(l => new { l.FromTie, l.ToTie }).IsUnique();
         });
     }
 }
@@ -56,6 +123,10 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IPlotRegistry re
 
     async Task<IPowerGrid> IPlotPower.OpenAsync(int x, int y, CancellationToken cancellationToken) => await OpenAsync(x, y, cancellationToken);
 
+    /// <summary>The cables of this request, by id, as the open grids share them.</summary>
+    private readonly Dictionary<Guid, PowerLink> _links = [];
+
+    /// <summary>A plot's grid, with the grids of every plot cables join it to, near or far, so power can flow between them.</summary>
     public async Task<PowerGrid> OpenAsync(int x, int y, CancellationToken cancellationToken)
     {
         if (_grids.TryGetValue((x, y), out var open))
@@ -63,6 +134,113 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IPlotRegistry re
             return open;
         }
 
+        var lines = await LinesAroundAsync(x, y, cancellationToken);
+        // Locked in one order, so two requests opening the same plots never wait on each other.
+        var linked = lines.SelectMany(l => new[] { (l.FromX, l.FromY), (l.ToX, l.ToY) }).Append((x, y)).Distinct().OrderBy(p => p.Item1).ThenBy(p => p.Item2);
+        foreach (var (px, py) in linked)
+        {
+            if (!_grids.ContainsKey((px, py)))
+            {
+                await OpenOneAsync(px, py, cancellationToken);
+            }
+        }
+
+        foreach (var line in lines)
+        {
+            Link(line);
+        }
+
+        return _grids[(x, y)];
+    }
+
+    /// <summary>Joins two open grids by a cable; nothing when they are joined already.</summary>
+    public PowerLink Link(PowerLineRow line)
+    {
+        if (_links.TryGetValue(line.Id, out var known))
+        {
+            return known;
+        }
+
+        var link = new PowerLink
+        {
+            Id = line.Id, SupplierTie = line.FromTie, ReceiverTie = line.ToTie, Kw = line.Kw, Until = line.PaidUntil,
+            Supplier = _grids[(line.FromX, line.FromY)], Receiver = _grids[(line.ToX, line.ToY)],
+        };
+        link.Supplier.Exports.Add(link);
+        link.Receiver.Imports.Add(link);
+        _links[line.Id] = link;
+        return link;
+    }
+
+    /// <summary>Takes a cable out of the open grids, both settled at <paramref name="at"/> first.</summary>
+    public async Task UnlinkAsync(Guid id, DateTimeOffset at, CancellationToken cancellationToken)
+    {
+        if (!_links.Remove(id, out var link))
+        {
+            return;
+        }
+
+        link.Supplier!.Settle(at);
+        link.Receiver!.Settle(at);
+        link.Supplier.Exports.Remove(link);
+        link.Receiver.Imports.Remove(link);
+        link.Supplier.Replan();
+        link.Receiver.Replan();
+        await link.Supplier.SaveAsync(cancellationToken);
+        await link.Receiver.SaveAsync(cancellationToken);
+    }
+
+    /// <summary>Every cable of the plots joined to (x, y) by cables, however many steps away.</summary>
+    public async Task<IReadOnlyList<PowerLineRow>> LinesAroundAsync(int x, int y, CancellationToken cancellationToken)
+    {
+        var lines = new Dictionary<Guid, PowerLineRow>();
+        var seen = new HashSet<(int, int)> { (x, y) };
+        var queue = new Queue<(int X, int Y)>([(x, y)]);
+        while (queue.TryDequeue(out var plot))
+        {
+            foreach (var line in await LinesOfAsync(plot.X, plot.Y, cancellationToken))
+            {
+                lines.TryAdd(line.Id, line);
+                foreach (var end in new[] { (line.FromX, line.FromY), (line.ToX, line.ToY) })
+                {
+                    if (seen.Add(end))
+                    {
+                        queue.Enqueue(end);
+                    }
+                }
+            }
+        }
+
+        return lines.Values.ToList();
+    }
+
+    /// <summary>The cables that start or end on a plot.</summary>
+    public async Task<IReadOnlyList<PowerLineRow>> LinesOfAsync(int x, int y, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            """
+            SELECT id, from_x, from_y, from_tie, to_x, to_y, to_tie, kw, paid_until, built_at FROM power.lines
+            WHERE (from_x = @x AND from_y = @y) OR (to_x = @x AND to_y = @y)
+            """, cancellationToken);
+        command.Parameters.AddWithValue("x", x);
+        command.Parameters.AddWithValue("y", y);
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        var lines = new List<PowerLineRow>();
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            lines.Add(new PowerLineRow
+            {
+                Id = reader.GetGuid(0), FromX = reader.GetInt32(1), FromY = reader.GetInt32(2), FromTie = reader.GetGuid(3),
+                ToX = reader.GetInt32(4), ToY = reader.GetInt32(5), ToTie = reader.GetGuid(6), Kw = reader.GetDouble(7),
+                PaidUntil = reader.GetFieldValue<DateTimeOffset>(8), BuiltAt = reader.GetFieldValue<DateTimeOffset>(9),
+            });
+        }
+
+        return lines;
+    }
+
+    private async Task<PowerGrid> OpenOneAsync(int x, int y, CancellationToken cancellationToken)
+    {
         // A grid starts the first time it is looked at, so a machine's time is counted from a moment that stays put.
         await using (var create = await db.CommandAsync(
             "INSERT INTO power.plots (x, y, settled_at, data) VALUES (@x, @y, @now, '{}') ON CONFLICT DO NOTHING", cancellationToken))
@@ -161,9 +339,22 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IPlotRegistry re
             return new GeneratorReply(id, grid, time.GetUtcNow(), taken);
         }, cancellationToken);
 
-    /// <summary>A generator or a battery taken off its plot: its fuel goes back to the owner, its stored power is lost, and the grid goes on without it.</summary>
+    /// <summary>A generator or a battery taken off its plot: its fuel goes back to the owner, its stored power is lost, and the grid goes on without it.
+    /// A grid tie taken off takes its cables with it, and what was paid for them is lost.</summary>
     public async Task ReleaseAsync(Guid owner, Guid id, CancellationToken cancellationToken)
     {
+        foreach (var link in _links.Values.Where(l => l.SupplierTie == id || l.ReceiverTie == id).ToList())
+        {
+            await UnlinkAsync(link.Id, time.GetUtcNow(), cancellationToken);
+        }
+
+        await using (var delete = await db.CommandAsync(
+            "DELETE FROM power.lines WHERE from_tie = @id OR to_tie = @id; DELETE FROM power.ties WHERE id = @id", cancellationToken))
+        {
+            delete.Parameters.AddWithValue("id", id);
+            await delete.ExecuteNonQueryAsync(cancellationToken);
+        }
+
         // Objects are taken off only after the plot was caught up, which opened its grid.
         if (_grids.Values.FirstOrDefault(g => g.Data.Generators.ContainsKey(id) || g.Data.Batteries.ContainsKey(id)
             || g.Objects.Any(o => o.Id == id && (Items.IsGenerator(o.Kind) || Items.IsHeater(o.Kind) || Items.IsBattery(o.Kind)))) is not { } grid)
@@ -269,8 +460,12 @@ public static class PowerJson
                 poles = n.Poles,
                 generators = n.Generators,
                 consumers = n.Consumers,
-                demandKw = n.DemandKw,
+                demandKw = grid.DemandKw(n, now),
                 supplyKw = grid.SupplyKw(n, now),
+                // What its grid ties send along cables to other plots and get from them now (kW).
+                ties = n.Ties,
+                exportKw = grid.ExportKw(n, now),
+                importKw = grid.ImportKw(n, now),
                 hydro = n.Hydro,
                 hydroKw = grid.HydroKw(n),
                 solar = n.Solar,
@@ -375,7 +570,7 @@ public static class PowerJson
                 id = network.Id,
                 generators = network.Generators.Count,
                 machines = network.Consumers.Count,
-                demandKw = network.DemandKw,
+                demandKw = grid.DemandKw(network, now),
                 supplyKw = grid.SupplyKw(network, now),
                 hydro = network.Hydro.Count,
                 solar = network.Solar.Count,
@@ -453,6 +648,13 @@ public sealed class PowerModule : IGameModule
         services.AddSingleton<IMessageHandler, GetGeneratorHandler>();
         services.AddSingleton<IMessageHandler, LoadGeneratorHandler>();
         services.AddSingleton<IMessageHandler, TakeGeneratorHandler>();
+        services.AddScoped<PowerLineService>();
+        services.AddSingleton<IMessageHandler, GetTieHandler>();
+        services.AddSingleton<IMessageHandler, PriceTieHandler>();
+        services.AddSingleton<IMessageHandler, BuildLineHandler>();
+        services.AddSingleton<IMessageHandler, BuyLineHandler>();
+        services.AddSingleton<IMessageHandler, RemoveLineHandler>();
+        services.AddSingleton<IMessageHandler, TieOffersHandler>();
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>

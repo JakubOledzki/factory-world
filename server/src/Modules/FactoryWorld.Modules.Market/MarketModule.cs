@@ -460,6 +460,7 @@ public static class NpcPrices
         [Items.UraniumOre] = 8000,
         [Items.FuelRod] = 40_000,
         [Items.NuclearPlant] = 1_350_000,
+        [Items.GridTie] = 120_000,
         // Husbandry and gastronomy: what the other industries need pays about 1.4 times what went into it.
         [Items.Meat] = 900,
         [Items.Hide] = 3000,

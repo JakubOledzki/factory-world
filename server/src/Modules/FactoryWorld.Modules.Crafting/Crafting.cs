@@ -223,6 +223,7 @@ public static class Workshop
         new(Items.Transformer, 1, TimeSpan.FromSeconds(30), [(Items.CopperIngot, 6), (Items.IronIngot, 4), (Items.SteelIngot, 1)], 8),
         new(Items.Substation, 1, TimeSpan.FromSeconds(40), [(Items.Transformer, 1), (Items.SteelIngot, 4), (Items.CopperIngot, 6), (Items.Bricks, 5)], 15),
         new(Items.Pylon, 1, TimeSpan.FromSeconds(30), [(Items.SteelIngot, 6), (Items.CopperIngot, 4), (Items.Stone, 10)], 10),
+        new(Items.GridTie, 1, TimeSpan.FromSeconds(60), [(Items.Transformer, 2), (Items.SteelIngot, 10), (Items.CopperIngot, 20), (Items.Concrete, 10)], 30),
         new(Items.CoalPlant, 1, TimeSpan.FromSeconds(180),
             [(Items.SteelIngot, 40), (Items.Bricks, 60), (Items.Concrete, 20), (Items.Transformer, 2), (Items.ElectricMotor, 2)], 120),
         new(Items.EnergyStore, 1, TimeSpan.FromSeconds(120), [(Items.Battery, 8), (Items.SteelIngot, 20), (Items.Transformer, 2), (Items.Concrete, 10)], 80),

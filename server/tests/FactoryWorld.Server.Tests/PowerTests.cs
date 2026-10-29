@@ -314,6 +314,72 @@ public sealed class PowerTests(ServerFactory factory) : IClassFixture<ServerFact
         Assert.Equal(Items.UraniumOre, Mining.DropsFor(Mining.Level(5), Mineral.None)[1].Item);
     }
 
+    private static (PowerGrid Supplier, PowerGrid Receiver, PowerLink Link, PlotObject Generator, PlotObject Mill) Cable(double kw, DateTimeOffset until, int coal = 10)
+    {
+        var generator = Obj(Items.Generator, 1, 0);
+        var supplierTie = Obj(Items.GridTie, -1, 0);
+        PlotObject[] there = [Obj(Items.Pole, 0, 0), generator, supplierTie];
+        var supplier = Grid(there, Fuelled(generator, Items.Coal, coal));
+        var mill = Obj(Items.Mill, 1, 0);
+        var receiverTie = Obj(Items.GridTie, -1, 0);
+        PlotObject[] here = [Obj(Items.Pole, 0, 0), mill, receiverTie];
+        var receiver = Grid(here);
+        var link = new PowerLink { Id = Guid.NewGuid(), SupplierTie = supplierTie.Id, ReceiverTie = receiverTie.Id, Kw = kw, Until = until, Supplier = supplier, Receiver = receiver };
+        supplier.Exports.Add(link);
+        receiver.Imports.Add(link);
+        return (supplier, receiver, link, generator, mill);
+    }
+
+    [Fact]
+    public void A_cable_carries_power_from_a_generator_on_one_plot_to_a_mill_on_another_while_it_is_paid_for()
+    {
+        var (supplier, receiver, link, generator, mill) = Cable(50, Start + TimeSpan.FromHours(1));
+
+        // The cable draws all it can carry from the supplier, and the mill takes what it needs of it.
+        Assert.Equal(1, receiver.Clock(mill.Id).Speed(Start));
+        Assert.Equal(50, supplier.Output(generator.Id, Start));
+        Assert.Equal(50, PowerGrid.Flow(link, Start));
+        Assert.Equal(50, receiver.ImportKw(receiver.Networks[0], Start));
+
+        // Once what was paid for runs out, the power stops and the generator rests.
+        var later = Start + TimeSpan.FromHours(1) + TimeSpan.FromSeconds(1);
+        Assert.Equal(0, receiver.Clock(mill.Id).Speed(later));
+        Assert.Equal(0, supplier.Output(generator.Id, later));
+        Assert.Equal(Start + TimeSpan.FromHours(1), receiver.Clock(mill.Id).At(later + TimeSpan.FromMinutes(5)));
+    }
+
+    [Fact]
+    public void A_cable_gives_only_as_much_as_the_supplier_has_and_its_changes_reach_the_other_plot()
+    {
+        // Ten coal is 200 MJ: 4000 s at 50 kW. After that the mill on the other plot stops.
+        var (supplier, receiver, _, generator, mill) = Cable(50, PowerLink.Forever);
+        var out_ = supplier.RunsOutAt(generator.Id)!.Value;
+        Assert.InRange((out_ - Start).TotalSeconds, 3999.9, 4000.1);
+        Assert.Equal(1, receiver.Clock(mill.Id).Speed(out_ - TimeSpan.FromSeconds(1)));
+        Assert.Equal(0, receiver.Clock(mill.Id).Speed(out_ + TimeSpan.FromSeconds(1)));
+
+        // Fuel put in an hour after it went out settles the other plot first: its mill lost that hour, and works again.
+        var refuel = out_ + TimeSpan.FromHours(1);
+        supplier.Fuel(generator.Id, Items.Coal, 5, refuel);
+        Assert.Equal(refuel, receiver.Settled);
+        Assert.InRange(receiver.Data.Lags[mill.Id], TimeSpan.FromHours(1).Ticks - TimeSpan.TicksPerSecond, TimeSpan.FromHours(1).Ticks + TimeSpan.TicksPerSecond);
+        Assert.Equal(1, receiver.Clock(mill.Id).Speed(refuel + TimeSpan.FromSeconds(1)));
+    }
+
+    [Fact]
+    public void A_cable_costs_ten_thousand_dollars_a_tile_and_power_the_supplier_price_per_kwh()
+    {
+        // Two plots side by side, ties on the same row: 250 tiles apart, 2.5 million dollars.
+        var a = Obj(Items.GridTie, 10, 20);
+        var b = Obj(Items.GridTie, 10, 20);
+        Assert.Equal(250, PowerLines.Distance(0, 0, a, 1, 0, b));
+        Assert.Equal(250 * 1_000_000L, PowerLines.CableCents(PowerLines.Distance(0, 0, a, 1, 0, b)));
+        // 500 tiles: 5 million dollars.
+        Assert.Equal(5_000_000_00L, PowerLines.CableCents(500));
+        // 100 kW for 2 hours at 5 cents a kWh: 200 kWh, 10 dollars.
+        Assert.Equal(1000, PowerLines.PowerCents(100, 2, 5));
+    }
+
     // --- In the game ---------------------------------------------------------------------------
 
     private async Task GiveAsync(GameClient client, string item, long quantity)
@@ -341,15 +407,22 @@ public sealed class PowerTests(ServerFactory factory) : IClassFixture<ServerFact
     }
 
     /// <summary>A player with a plot that has three free tiles in a row from (tileX, tileY) east.</summary>
-    private async Task<(GameClient Client, int X, int Y, int TileX, int TileY)> PlotAsync()
+    private async Task<(GameClient Client, int X, int Y, int TileX, int TileY)> PlotAsync(long cents = 1_000_000)
     {
         var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
         await using (var scope = factory.Services.CreateAsyncScope())
         {
-            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(client.AccountId, 1_000_000, "test", CancellationToken.None);
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(client.AccountId, cents, "test", CancellationToken.None);
         }
 
+        var (x, y, tx, ty) = await BuyPlotAsync(client);
+        return (client, x, y, tx, ty);
+    }
+
+    /// <summary>Another plot for the player, with three free tiles in a row from (tileX, tileY) east.</summary>
+    private static async Task<(int X, int Y, int TileX, int TileY)> BuyPlotAsync(GameClient client)
+    {
         var (x, y) = FreePlot();
         Assert.Equal("world.bought", (await client.SendAsync("world.buy", new { x, y })).Type());
         var plot = await client.SendAsync("plot.enter", new { x, y });
@@ -364,7 +437,7 @@ public sealed class PowerTests(ServerFactory factory) : IClassFixture<ServerFact
                 // Room for a 2 × 2 machine and a pole and a generator east of it.
                 if (Enumerable.Range(tx, 4).All(i => bytes[ty * PlotLayout.Size + i] == (byte)TileObject.None && bytes[(ty + 1) * PlotLayout.Size + i] == (byte)TileObject.None))
                 {
-                    return (client, x, y, tx, ty);
+                    return (x, y, tx, ty);
                 }
             }
         }
@@ -471,6 +544,100 @@ public sealed class PowerTests(ServerFactory factory) : IClassFixture<ServerFact
         var power = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("power");
         Assert.Equal(20, power.GetProperty("poleKinds").GetProperty(Items.Pylon).GetProperty("reach").GetDouble());
         Assert.Equal(4, power.GetProperty("poleKinds").GetProperty(Items.Substation).GetProperty("supply").GetInt32());
+    }
+
+    [Fact]
+    public async Task A_cable_between_two_plots_of_one_owner_is_free_and_powers_a_mill_on_the_other()
+    {
+        var (client, x, y, tx, ty) = await PlotAsync(2_000_000_000_00);
+        using var _ = client;
+        var (x2, y2, tx2, ty2) = await BuyPlotAsync(client);
+        var supplierTie = await PlaceAsync(client, x, y, Items.GridTie, tx, ty);
+        await PlaceAsync(client, x, y, Items.Pole, tx + 1, ty);
+        var generator = await PlaceAsync(client, x, y, Items.Generator, tx + 2, ty);
+        var receiverTie = await PlaceAsync(client, x2, y2, Items.GridTie, tx2, ty2);
+        await PlaceAsync(client, x2, y2, Items.Pole, tx2 + 1, ty2);
+        var mill = await PlaceAsync(client, x2, y2, Items.Mill, tx2 + 2, ty2);
+        await GiveAsync(client, Items.Coal, 10);
+        await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Coal, quantity = 10 });
+
+        Assert.Equal("bad_kw", (await client.SendAsync("powerline.build", new { x = x2, y = y2, id = receiverTie, fromX = x, fromY = y, fromId = supplierTie, kw = 1 })).ErrorCode());
+        Assert.Equal("same_plot", (await client.SendAsync("powerline.build", new { x, y, id = supplierTie, fromX = x, fromY = y, fromId = supplierTie, kw = 50 })).ErrorCode());
+        // Once its window was opened, a closed tie on the owner's other plot is offered to them, and to nobody else.
+        Assert.False((await client.SendAsync("powertie.get", new { x, y, id = supplierTie })).Payload().GetProperty("open").GetBoolean());
+        var offers = (await client.SendAsync("powertie.offers", new { x = x2, y = y2, id = receiverTie })).Payload().GetProperty("offers").EnumerateArray();
+        Assert.Contains(offers, o => o.GetProperty("id").GetString() == supplierTie && o.GetProperty("mine").GetBoolean());
+        var (stranger, sx, sy, stx, sty) = await PlotAsync(2_000_000_000_00);
+        using var __ = stranger;
+        var strangerTie = await PlaceAsync(stranger, sx, sy, Items.GridTie, stx, sty);
+        var theirs = (await stranger.SendAsync("powertie.offers", new { x = sx, y = sy, id = strangerTie })).Payload().GetProperty("offers").EnumerateArray();
+        Assert.DoesNotContain(theirs, o => o.GetProperty("id").GetString() == supplierTie);
+        Assert.Equal("tie_closed", (await stranger.SendAsync("powerline.build", new { x = sx, y = sy, id = strangerTie, fromX = x, fromY = y, fromId = supplierTie, kw = 50 })).ErrorCode());
+
+        var before = await client.BalanceAsync();
+        var built = await client.SendAsync("powerline.build", new { x = x2, y = y2, id = receiverTie, fromX = x, fromY = y, fromId = supplierTie, kw = 50 });
+        Assert.Equal("powertie", built.Type());
+        var line = Assert.Single(built.Payload().GetProperty("lines").EnumerateArray());
+        Assert.False(line.GetProperty("supplying").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, line.GetProperty("paidUntil").ValueKind);
+        Assert.Equal(50, line.GetProperty("flowKw").GetDouble());
+        Assert.True(before - await client.BalanceAsync() >= 250 * PowerLines.CentsPerTile);
+        Assert.Equal("line_loop", (await client.SendAsync("powerline.build", new { x, y, id = supplierTie, fromX = x2, fromY = y2, fromId = receiverTie, kw = 50 })).ErrorCode());
+
+        await GiveAsync(client, Items.Wheat, 10);
+        await client.SendAsync("machine.recipe", new { machine = mill, recipe = Items.Flour });
+        Assert.Equal(1, (await client.SendAsync("machine.load", new { machine = mill, item = Items.Wheat, quantity = 10 })).Payload().GetProperty("speed").GetDouble());
+        var supplying = (await client.SendAsync("generator.get", new { x, y, id = generator })).Payload();
+        Assert.Equal(50, supplying.GetProperty("outputKw").GetDouble());
+
+        // Taking the cable down stops the mill.
+        var removed = await client.SendAsync("powerline.remove", new { x, y, id = supplierTie, line = line.GetProperty("id").GetString() });
+        Assert.Empty(removed.Payload().GetProperty("lines").EnumerateArray());
+        Assert.Equal(0, (await client.SendAsync("machine.get", new { machine = mill })).Payload().GetProperty("speed").GetDouble());
+    }
+
+    [Fact]
+    public async Task Power_from_another_player_flows_only_while_paid_for_at_the_suppliers_price()
+    {
+        var (seller, sx, sy, stx, sty) = await PlotAsync();
+        using var _ = seller;
+        var (buyer, bx, by, btx, bty) = await PlotAsync(2_000_000_000_00);
+        using var __ = buyer;
+        var sellerTie = await PlaceAsync(seller, sx, sy, Items.GridTie, stx, sty);
+        var buyerTie = await PlaceAsync(buyer, bx, by, Items.GridTie, btx, bty);
+
+        Assert.Equal("tie_closed", (await buyer.SendAsync("powerline.build", new { x = bx, y = by, id = buyerTie, fromX = sx, fromY = sy, fromId = sellerTie, kw = 100 })).ErrorCode());
+        Assert.Equal("not_owner", (await buyer.SendAsync("powertie.price", new { x = sx, y = sy, id = sellerTie, priceCents = 1, open = true })).ErrorCode());
+        Assert.Equal("bad_price", (await seller.SendAsync("powertie.price", new { x = sx, y = sy, id = sellerTie, priceCents = -1, open = true })).ErrorCode());
+        Assert.True((await seller.SendAsync("powertie.price", new { x = sx, y = sy, id = sellerTie, priceCents = 5, open = true })).Payload().GetProperty("open").GetBoolean());
+
+        var offers = (await buyer.SendAsync("powertie.offers", new { x = bx, y = by, id = buyerTie })).Payload().GetProperty("offers").EnumerateArray().ToList();
+        Assert.Contains(offers, o => o.GetProperty("id").GetString() == sellerTie && o.GetProperty("priceCents").GetInt64() == 5);
+
+        var built = (await buyer.SendAsync("powerline.build", new { x = bx, y = by, id = buyerTie, fromX = sx, fromY = sy, fromId = sellerTie, kw = 100 })).Payload();
+        var line = built.GetProperty("lines")[0];
+        Assert.Equal(0, line.GetProperty("flowKw").GetDouble());
+        var lineId = line.GetProperty("id").GetString();
+
+        // 100 kW for 2 hours at 5 cents a kWh: 10 dollars to the seller.
+        var sellerBefore = await seller.BalanceAsync();
+        var buyerBefore = await buyer.BalanceAsync();
+        Assert.Equal("bad_hours", (await buyer.SendAsync("powerline.buy", new { line = lineId, hours = 0 })).ErrorCode());
+        Assert.Equal("not_owner", (await seller.SendAsync("powerline.buy", new { line = lineId, hours = 1 })).ErrorCode());
+        var bought = (await buyer.SendAsync("powerline.buy", new { line = lineId, hours = 2 })).Payload();
+        Assert.Equal(buyerBefore - 1000, await buyer.BalanceAsync());
+        Assert.Equal(sellerBefore + 1000, await seller.BalanceAsync());
+        var until = bought.GetProperty("lines")[0].GetProperty("paidUntil").GetInt64();
+        Assert.Equal((factory.Time.GetUtcNow() + TimeSpan.FromHours(2)).ToUnixTimeMilliseconds(), until);
+
+        // The seller sees the cable from their side; the power is paid for but the seller's tie stands on no network yet.
+        var sellerSide = (await seller.SendAsync("powertie.get", new { x = sx, y = sy, id = sellerTie })).Payload().GetProperty("lines")[0];
+        Assert.True(sellerSide.GetProperty("supplying").GetBoolean());
+        Assert.Equal(0, sellerSide.GetProperty("flowKw").GetDouble());
+
+        // Picking the tie up takes the cable down.
+        Assert.Equal("plot.pickedUp", (await seller.SendAsync("plot.pickup", new { x = sx, y = sy, id = sellerTie })).Type());
+        Assert.Empty((await buyer.SendAsync("powertie.get", new { x = bx, y = by, id = buyerTie })).Payload().GetProperty("lines").EnumerateArray());
     }
 
     [Fact]

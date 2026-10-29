@@ -500,6 +500,9 @@ public static class Items
     public const string FuelRod = "fuel_rod";
     public const string NuclearPlant = "power_nuclear_plant";
 
+    // A grid tie joins a plot's network to a cable to a tie on another plot: power goes along it, for a price the supplier sets.
+    public const string GridTie = "power_grid_tie";
+
     // Husbandry and gastronomy for the other industries: a slaughterhouse, a dairy, a potato distillery, a biogas plant and work horses
     // give what the rest of the game needs; meals feed the character, a works canteen feeds the machines' crews, fine dishes feed banquets.
     public const string Meat = "meat";
@@ -935,6 +938,7 @@ public static class Items
         [UraniumOre] = "Ruda uranu",
         [FuelRod] = "Pręt paliwowy",
         [NuclearPlant] = "Elektrownia jądrowa",
+        [GridTie] = "Przyłącze sieciowe",
         [Meat] = "Mięso",
         [Hide] = "Skóra",
         [Tallow] = "Łój",
