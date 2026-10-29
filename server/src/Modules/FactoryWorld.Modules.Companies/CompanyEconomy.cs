@@ -54,7 +54,7 @@ public sealed record CompanyRankings(
     int Season, DateTimeOffset EndsAt, IReadOnlyList<RankedCompany> Richest, IReadOnlyList<RankedCompany> Production,
     IReadOnlyList<RankedCompany> Plots, IReadOnlyList<RankedCompany> LastSeason, Guid? Yours);
 
-public sealed partial class CompanyService
+public sealed partial class CompanyService : ICompanyCash
 {
     // ---- Cash ----
 
@@ -83,6 +83,20 @@ public sealed partial class CompanyService
             await wallet.CreditAsync(player, cents, $"company {company} withdrawal", cancellationToken);
             await LogAsync(company, player, "withdraw", cancellationToken, quantity: cents);
             return await ReadAsync(player, cancellationToken);
+        }, cancellationToken);
+
+    /// <summary>The owner or the treasurer spends money from the cash outside the company, e.g. to back a candidate in an election;
+    /// <paramref name="reason"/> goes into the company's log.</summary>
+    public Task<string> SpendAsync(Guid player, long cents, string reason, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            CheckCents(cents);
+            var company = await RequireMoneyAsync(player, cancellationToken);
+            await ChangeMoneyAsync(company, -cents, 0, cancellationToken);
+            await LogAsync(company, player, "lobby", cancellationToken, reason.Length > 64 ? reason[..64] : reason, cents);
+            await using var command = await db.CommandAsync("SELECT name FROM companies.companies WHERE id = @company", cancellationToken);
+            command.Parameters.AddWithValue("company", company);
+            return (string)(await command.ExecuteScalarAsync(cancellationToken))!;
         }, cancellationToken);
 
     /// <summary>Sells from the warehouse to the trader at its usual price; the money goes into the cash as earnings.</summary>

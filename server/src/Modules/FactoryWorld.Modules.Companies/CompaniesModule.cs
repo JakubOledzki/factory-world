@@ -385,6 +385,7 @@ public sealed class CompaniesModule : IGameModule
     {
         services.AddModuleDbContext<CompaniesDbContext>(CompaniesDbContext.Schema);
         services.AddScoped<CompanyService>();
+        services.AddScoped<ICompanyCash>(provider => provider.GetRequiredService<CompanyService>());
         services.AddScoped<CompanyPlots>();
         services.AddScoped<ICompanyPlots>(provider => provider.GetRequiredService<CompanyPlots>());
         services.AddScoped<ICompanies>(provider => provider.GetRequiredService<CompanyPlots>());

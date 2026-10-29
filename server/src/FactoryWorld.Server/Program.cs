@@ -12,6 +12,7 @@ using FactoryWorld.Modules.Inventory;
 using FactoryWorld.Modules.Law;
 using FactoryWorld.Modules.Logistics;
 using FactoryWorld.Modules.Market;
+using FactoryWorld.Modules.Politics;
 using FactoryWorld.Modules.Power;
 using FactoryWorld.Modules.Recycling;
 using FactoryWorld.Modules.Research;
@@ -43,6 +44,7 @@ IGameModule[] modules =
     new StatisticsModule(),
     new ContractsModule(),
     new CompaniesModule(),
+    new PoliticsModule(),
     new ResearchModule(),
     new AchievementsModule(),
     new RivalryModule(),

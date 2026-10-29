@@ -54,6 +54,9 @@ public static class CountryOffices
     public const string Transport = "transport";
 
     public const string Foreign = "foreign";
+
+    /// <summary>The ministries a president fills.</summary>
+    public static readonly IReadOnlyList<string> Ministries = [Finance, Industry, Transport, Foreign, Interior, Justice];
 }
 
 public static class CountryTreasury

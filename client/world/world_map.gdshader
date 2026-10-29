@@ -1,7 +1,9 @@
 shader_type canvas_item;
-// Colours one strip of the world map. The texture holds one byte per plot: its biome id.
+// Colours one strip of the world map. The texture holds one byte per plot: its biome id. The countries
+// texture holds the country of every plot (0 for none), and the map draws their borders.
 
 uniform vec3 colors[13];
+uniform sampler2D countries : filter_nearest;
 // Plots in this strip of the map, and the column it starts at.
 uniform vec2 strip_size;
 uniform int strip_from = 0;
@@ -46,6 +48,21 @@ void fragment() {
 		vec2 edge = min(fract(plot), 1.0 - fract(plot)) * zoom;
 		float border = 1.0 - smoothstep(0.0, 1.0, min(edge.x, edge.y));
 		color = mix(color, color * 0.55, border * lines * 0.8);
+	}
+
+	// Country borders: a pixel either way lies in another country (both on land), a thin pale line at any zoom.
+	vec2 px = 1.0 / (max(zoom, 0.0001) * strip_size);
+	float here = texture(countries, UV).r;
+	if (here > 0.0) {
+		float border = 0.0;
+		for (int i = 0; i < 4; i++) {
+			vec2 offset = i == 0 ? vec2(px.x, 0.0) : i == 1 ? vec2(-px.x, 0.0) : i == 2 ? vec2(0.0, px.y) : vec2(0.0, -px.y);
+			float there = texture(countries, UV + offset).r;
+			if (there > 0.0 && abs(there - here) > 0.001) {
+				border = 1.0;
+			}
+		}
+		color = mix(color, vec3(0.96, 0.88, 0.66), border * 0.75);
 	}
 
 	// Overall a little darker and colder, for the game's night-time look.

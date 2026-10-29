@@ -1447,6 +1447,54 @@ namespace FactoryWorld.Modules.World.Migrations
                         });
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownCandidateRow", b =>
+                {
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<int>("Week")
+                        .HasColumnType("integer")
+                        .HasColumnName("week");
+
+                    b.Property<Guid>("PlayerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("player_id");
+
+                    b.Property<string>("Bonus")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("bonus");
+
+                    b.Property<long>("DepositCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("deposit_cents");
+
+                    b.Property<bool>("Settled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("settled");
+
+                    b.Property<string>("Slogan")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("slogan");
+
+                    b.Property<int>("TaxPercent")
+                        .HasColumnType("integer")
+                        .HasColumnName("tax_percent");
+
+                    b.HasKey("TownX", "TownY", "Week", "PlayerId");
+
+                    b.HasIndex("PlayerId");
+
+                    b.ToTable("town_candidates", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.TownContributionRow", b =>
                 {
                     b.Property<int>("TownX")
@@ -1517,6 +1565,132 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("town_festivals", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownInvestmentRow", b =>
+                {
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<string>("Kind")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("kind");
+
+                    b.Property<int>("Level")
+                        .HasColumnType("integer")
+                        .HasColumnName("level");
+
+                    b.HasKey("TownX", "TownY", "Kind");
+
+                    b.ToTable("town_investments", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownLedgerRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<long>("AmountCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("amount_cents");
+
+                    b.Property<long>("BalanceAfterCents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("balance_after_cents");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("reason");
+
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TownX", "TownY", "Id");
+
+                    b.ToTable("town_ledger", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownOrdinanceRow", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("kind");
+
+                    b.Property<Guid>("ProposedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("proposed_by");
+
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<DateTimeOffset>("VotingEnds")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("voting_ends");
+
+                    b.Property<int>("Week")
+                        .HasColumnType("integer")
+                        .HasColumnName("week");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TownX", "TownY", "Week", "Kind")
+                        .IsUnique();
+
+                    b.ToTable("town_ordinances", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownOrdinanceVoteRow", b =>
+                {
+                    b.Property<Guid>("OrdinanceId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ordinance_id");
+
+                    b.Property<Guid>("VoterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("voter_id");
+
+                    b.Property<bool>("Yes")
+                        .HasColumnType("boolean")
+                        .HasColumnName("yes");
+
+                    b.HasKey("OrdinanceId", "VoterId");
+
+                    b.ToTable("town_ordinance_votes", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.TownPolicyRow", b =>
                 {
                     b.Property<int>("TownX")
@@ -1539,6 +1713,10 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.Property<Guid?>("MayorId")
                         .HasColumnType("uuid")
                         .HasColumnName("mayor_id");
+
+                    b.Property<bool>("Recalled")
+                        .HasColumnType("boolean")
+                        .HasColumnName("recalled");
 
                     b.Property<int>("TaxPercent")
                         .HasColumnType("integer")
@@ -1566,6 +1744,75 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.HasKey("TownX", "TownY");
 
                     b.ToTable("town_progress", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownRecallRow", b =>
+                {
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<int>("Week")
+                        .HasColumnType("integer")
+                        .HasColumnName("week");
+
+                    b.Property<Guid>("SignerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("signer_id");
+
+                    b.HasKey("TownX", "TownY", "Week", "SignerId");
+
+                    b.ToTable("town_recalls", "world");
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownSponsorshipRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<Guid>("CandidateId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("candidate_id");
+
+                    b.Property<long>("Cents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("cents");
+
+                    b.Property<string>("Company")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("company");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<int>("Week")
+                        .HasColumnType("integer")
+                        .HasColumnName("week");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TownX", "TownY", "Week");
+
+                    b.ToTable("town_sponsorships", "world");
                 });
 
             modelBuilder.Entity("FactoryWorld.Modules.World.TownTenderRow", b =>
@@ -1635,6 +1882,28 @@ namespace FactoryWorld.Modules.World.Migrations
                             t.HasCheckConstraint("ck_town_tenders_delivered", "delivered >= 0 AND delivered <= quantity");
 
                             t.HasCheckConstraint("ck_town_tenders_money", "price_cents >= 0 AND deposit_cents >= 0");
+                        });
+                });
+
+            modelBuilder.Entity("FactoryWorld.Modules.World.TownTreasuryRow", b =>
+                {
+                    b.Property<int>("TownX")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_x");
+
+                    b.Property<int>("TownY")
+                        .HasColumnType("integer")
+                        .HasColumnName("town_y");
+
+                    b.Property<long>("Cents")
+                        .HasColumnType("bigint")
+                        .HasColumnName("cents");
+
+                    b.HasKey("TownX", "TownY");
+
+                    b.ToTable("town_treasuries", "world", t =>
+                        {
+                            t.HasCheckConstraint("ck_town_treasuries_cents", "cents >= 0");
                         });
                 });
 
