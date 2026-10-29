@@ -567,9 +567,20 @@ public abstract class PlayerMarketHandler(IServiceScopeFactory scopes) : IMessag
 {
     public abstract string Type { get; }
 
+    /// <summary>Whether the message trades (lists, buys, sells), which a player the police banned from trading may not.</summary>
+    protected virtual bool Trades => false;
+
     public async Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
     {
         await using var scope = scopes.CreateAsyncScope();
+        if (Trades)
+        {
+            foreach (var sanctions in scope.ServiceProvider.GetServices<ISanctions>())
+            {
+                await sanctions.RequireAllowedAsync(client.RequireAccount(), SanctionKinds.Trade, cancellationToken);
+            }
+        }
+
         return await HandleAsync(scope.ServiceProvider.GetRequiredService<PlayerMarketService>(), payload, client.RequireAccount(), cancellationToken);
     }
 
@@ -599,6 +610,8 @@ public sealed class ListHandler(IServiceScopeFactory scopes) : PlayerMarketHandl
 {
     public override string Type => "market.list";
 
+    protected override bool Trades => true;
+
     protected override async Task<Reply> HandleAsync(PlayerMarketService market, JsonElement? payload, Guid player, CancellationToken cancellationToken) =>
         Done(await market.ListAsync(player, Payload.Read<OfferRequest>(payload), cancellationToken));
 }
@@ -615,6 +628,8 @@ public sealed class PurchaseHandler(IServiceScopeFactory scopes) : PlayerMarketH
 {
     public override string Type => "market.purchase";
 
+    protected override bool Trades => true;
+
     protected override async Task<Reply> HandleAsync(PlayerMarketService market, JsonElement? payload, Guid player, CancellationToken cancellationToken) =>
         Done(await market.PurchaseAsync(player, Payload.Read<TakeRequest>(payload), cancellationToken));
 }
@@ -622,6 +637,8 @@ public sealed class PurchaseHandler(IServiceScopeFactory scopes) : PlayerMarketH
 public sealed class OrderHandler(IServiceScopeFactory scopes) : PlayerMarketHandler(scopes)
 {
     public override string Type => "market.order";
+
+    protected override bool Trades => true;
 
     protected override async Task<Reply> HandleAsync(PlayerMarketService market, JsonElement? payload, Guid player, CancellationToken cancellationToken) =>
         Done(await market.OrderAsync(player, Payload.Read<OfferRequest>(payload), cancellationToken));
@@ -638,6 +655,8 @@ public sealed class CancelOrderHandler(IServiceScopeFactory scopes) : PlayerMark
 public sealed class FillHandler(IServiceScopeFactory scopes) : PlayerMarketHandler(scopes)
 {
     public override string Type => "market.fill";
+
+    protected override bool Trades => true;
 
     protected override async Task<Reply> HandleAsync(PlayerMarketService market, JsonElement? payload, Guid player, CancellationToken cancellationToken) =>
         Done(await market.FillAsync(player, Payload.Read<TakeRequest>(payload), cancellationToken));
