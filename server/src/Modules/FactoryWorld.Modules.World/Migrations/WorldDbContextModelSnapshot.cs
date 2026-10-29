@@ -1496,6 +1496,10 @@ namespace FactoryWorld.Modules.World.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
 
+                    b.Property<bool>("ByTruck")
+                        .HasColumnType("boolean")
+                        .HasColumnName("by_truck");
+
                     b.Property<int>("EveryMinutes")
                         .HasColumnType("integer")
                         .HasColumnName("every_minutes");

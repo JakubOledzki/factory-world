@@ -41,7 +41,7 @@ public static class PlotObjects
         Items.Shipyard, Items.Port, Items.Breakwater, Items.Lighthouse, Items.TidalPlant,
         Items.Pumpjack, Items.GasWell, Items.OffshorePlatform, Items.WaterInjector, Items.OilSeparator,
         Items.Distillery, Items.Refinery, Items.Cracker, Items.ChemicalPlant, Items.GasPlant, Items.DieselGenerator,
-        Items.Pipe, Items.Pump, Items.Tank, Items.Road,
+        Items.Pipe, Items.Pump, Items.Tank, Items.Road, Items.TruckDepot,
         Items.Glassworks, Items.ArcFurnace, Items.WaterWell, Items.Desalinator, Items.DryingYard, Items.CementKiln, Items.ConcreteMixer,
         Items.ReedFence, Items.SolarPanel, Items.SolarTower, Items.Battery,
         Items.WindTurbine, Items.LargeWindTurbine, Items.Heater, Items.IceMelter, Items.ColdStore, Items.ServerRoom,

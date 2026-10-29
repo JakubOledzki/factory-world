@@ -132,6 +132,62 @@ public sealed class RailwayTests(ServerFactory factory) : IClassFixture<ServerFa
     }
 
     [Fact]
+    public async Task A_truck_from_the_depot_drives_goods_to_a_station_nearby_on_diesel_without_the_rail_fee()
+    {
+        using var client = await PlayerAsync();
+        var from = await BuyAsync(client);
+        var near = await BuyAsync(client);
+        Assert.InRange(RailRules.DistanceKm(Map, from.X, from.Y, near.X, near.Y), 1, TruckRules.MaxKm);
+        // Another player's plot further away than a truck goes.
+        using var other = await PlayerAsync();
+        var far = FreePlot();
+        while (RailRules.DistanceKm(Map, from.X, from.Y, far.X, far.Y) <= TruckRules.MaxKm)
+        {
+            far = FreePlot();
+        }
+
+        Assert.Equal("world.bought", (await other.SendAsync("world.buy", new { x = far.X, y = far.Y })).Type());
+        await GiveAsync(client, Items.Wood, 1500);
+        await client.SendAsync("station.load", new { x = from.X, y = from.Y, item = Items.Wood, quantity = 1500 });
+        object Send(int toX, int toY, long quantity) => new { x = from.X, y = from.Y, toX, toY, item = Items.Wood, quantity, truck = true };
+
+        Assert.Equal("no_truck_depot", (await client.SendAsync("station.send", Send(near.X, near.Y, 10))).ErrorCode());
+        await GiveAsync(client, Items.TruckDepot, 1);
+        var (sx, _, _, _) = PlotLayout.Station;
+        await PlaceAsync(client, from, Items.TruckDepot, sx + 4, PlotLayout.RailRow + 3, South);
+        Assert.Equal("no_diesel", (await client.SendAsync("station.send", Send(near.X, near.Y, 10))).ErrorCode());
+        Assert.Equal("too_far", (await client.SendAsync("station.send", Send(far.X, far.Y, 10))).ErrorCode());
+        Assert.Equal("too_much", (await client.SendAsync("station.send", Send(near.X, near.Y, TruckRules.Capacity + 1))).ErrorCode());
+
+        await GiveAsync(client, Items.Diesel, 10);
+        await client.SendAsync("station.load", new { x = from.X, y = from.Y, item = Items.Diesel, quantity = 10 });
+        var balance = await client.BalanceAsync();
+        var km = RailRules.DistanceKm(Map, from.X, from.Y, near.X, near.Y);
+        var sent = await client.SendAsync("station.send", Send(near.X, near.Y, 400));
+        Assert.Equal("station", sent.Type());
+        Assert.Equal(balance, await client.BalanceAsync());
+        Assert.Equal(10 - TruckRules.Fuel(km), Stock(sent, Items.Diesel));
+        var arrives = sent.Payload().GetProperty("outgoing").EnumerateArray().Single().GetProperty("arrivesAt").GetInt64();
+        Assert.InRange(arrives - (factory.Time.GetUtcNow() + TruckRules.TripTime(km)).ToUnixTimeMilliseconds(), -2, 2);
+
+        // A truck route takes what one truck carries, every time it is due.
+        var routed = await client.SendAsync("station.route", new { x = from.X, y = from.Y, toX = near.X, toY = near.Y, items = new[] { Items.Wood }, everyMinutes = 1, truck = true });
+        var route = Route(routed);
+        Assert.True(route.GetProperty("truck").GetBoolean());
+        Assert.Equal(JsonValueKind.Null, route.GetProperty("problem").ValueKind);
+        Assert.Equal(TruckRules.Capacity, route.GetProperty("lastQuantity").GetInt64());
+        Assert.Equal(1500 - 400 - TruckRules.Capacity, Stock(routed, Items.Wood));
+        Assert.Equal(balance, await client.BalanceAsync());
+
+        factory.Time.Advance(TimeSpan.FromMinutes(1));
+        await client.SendAsync("station.get", new { x = from.X, y = from.Y });
+        factory.Time.Advance(TruckRules.TripTime(km));
+        Assert.Equal(1500, Stock(await client.SendAsync("station.get", new { x = near.X, y = near.Y }), Items.Wood));
+        Assert.Equal("too_far", (await client.SendAsync("station.route",
+            new { x = from.X, y = from.Y, toX = far.X, toY = far.Y, everyMinutes = 1, truck = true })).ErrorCode());
+    }
+
+    [Fact]
     public async Task Routes_are_checked_and_a_train_without_money_for_the_fee_stays()
     {
         using var client = await PlayerAsync(cents: 0);

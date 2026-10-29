@@ -25,6 +25,9 @@ const FREIGHT_PROBLEMS := {
 }
 const PROBLEMS := {
 	"empty": "Czeka na towar: na stacji nie było nic do zabrania.",
+	"no_truck_depot": "Stoi: na działce nie ma bazy ciężarówek.",
+	"no_diesel": "Stoi: ciężarówka czeka na olej napędowy na stacji.",
+	"too_far": "Stoi: za daleko dla ciężarówki.",
 	"no_money": "Stoi: brakuje pieniędzy na opłatę.",
 	"no_station": "Stoi: działka docelowa nie ma już właściciela.",
 }
@@ -43,6 +46,9 @@ var sled := false
 ## from the station. It goes as a sled does ("sled" when sending).
 var horse := false
 var _by_sled := false
+## A truck depot stands on this plot: trucks drive goods up to truckMaxKm, free, on diesel from the station ("truck" when sending).
+var truck := false
+var _by_truck := false
 
 var _state := {}
 var _clock_offset := 0.0
@@ -454,7 +460,17 @@ func _render_send() -> void:
 			_send_button.text = _send_text()
 			_update_send())
 		grid.add_child(by_sled)
-	elif horse:
+	if truck:
+		grid.add_child(UI.label("Ciężarówką", UI.MUTED))
+		var by_truck := CheckBox.new()
+		by_truck.text = "Z bazy ciężarówek (bez opłaty, do %d km, za olej napędowy)" % int(_state["rates"].get("truckMaxKm", 60))
+		by_truck.button_pressed = _by_truck
+		by_truck.toggled.connect(func(on: bool) -> void:
+			_by_truck = on
+			_send_button.text = _send_text()
+			_update_send())
+		grid.add_child(by_truck)
+	if horse and not sled:
 		grid.add_child(UI.label("Wozem", UI.MUTED))
 		var by_cart := CheckBox.new()
 		by_cart.text = "Wozem konnym ze stajni (bez opłaty, do %d km, za paszę treściwą)" % int(_state["rates"].get("horseMaxKm", 50))
@@ -486,6 +502,8 @@ func _diesel_for(km: float, sending: Dictionary, quantity: int) -> int:
 
 
 func _send_text() -> String:
+	if truck and _by_truck:
+		return "Wyślij ciężarówką"
 	if sled and _by_sled:
 		return "Wyślij saniami"
 	if horse and _by_sled:
@@ -521,6 +539,20 @@ func _update_send() -> void:
 		_send_info.text += "\nPociąg spalinowy: spali %d × olej napędowy ze stacji i dojedzie szybciej." % diesel
 	elif not (_by_sea and port) and _state["rates"].has("dieselKmPerUnit"):
 		_send_info.text += "\nZaładuj na stację olej napędowy, a pojedzie szybszy pociąg spalinowy."
+	if truck and _by_truck:
+		var rates: Dictionary = _state["rates"]
+		var km := float(trip["km"])
+		var max_km := float(rates.get("truckMaxKm", 60))
+		var diesel := maxi(1, ceili(km / float(rates.get("truckKmPerDiesel", 25))))
+		var seconds := maxf(float(rates.get("truckMinTripSeconds", 5)), km / 100.0 * float(rates["secondsPer100Km"]) * float(rates.get("truckTrip", 0.5)))
+		_send_info.text = "%s  ·  %s km  ·  w drodze %s  ·  bez opłaty" % [_where(), _grouped(roundi(km)), _clock(seconds)]
+		_send_info.text += "\nCiężarówka spali %d × olej napędowy ze stacji i zabierze najwyżej %s sztuk." % [diesel, _grouped(int(rates.get("truckCapacity", 1000)))]
+		_send_button.disabled = _destination == plot or km > max_km or quantity > int(rates.get("truckCapacity", 1000))
+		if km > max_km:
+			_send_info.text += "\nZa daleko: ciężarówka jedzie najwyżej %d km." % int(max_km)
+		elif _destination == plot:
+			_send_info.text += "\nTo jest ta sama stacja."
+		return
 	if horse and _by_sled:
 		var rates: Dictionary = _state["rates"]
 		var km := float(trip["km"])
@@ -564,13 +596,15 @@ func _send() -> void:
 	_send_button.disabled = true
 	var reply := await Net.request("station.send", {
 		"x": plot.x, "y": plot.y, "toX": target.x, "toY": target.y, "item": stack["id"], "quantity": quantity,
-		"sea": _by_sea and port, "sled": (sled or horse) and _by_sled,
+		"sea": _by_sea and port, "sled": (sled or horse) and _by_sled and not (truck and _by_truck), "truck": truck and _by_truck,
 	})
 	if reply["type"] != "station":
 		failed.emit(reply)
 		_send_button.disabled = false
 		return
-	if sled and _by_sled:
+	if truck and _by_truck:
+		toast.emit("Ciężarówka z %d × %s ruszyła: %s." % [quantity, stack["name"], _where()])
+	elif sled and _by_sled:
 		toast.emit("Sanie z %d × %s ruszyły: %s." % [quantity, stack["name"], _where()])
 	elif horse and _by_sled:
 		toast.emit("Wóz konny z %d × %s ruszył: %s." % [quantity, stack["name"], _where()])
@@ -616,6 +650,15 @@ func _render_routes() -> void:
 			every.select(every.item_count - 1)
 	every.item_selected.connect(func(i: int) -> void: _route_minutes = every.get_item_metadata(i))
 	grid.add_child(every)
+	if truck:
+		grid.add_child(UI.label("Czym", UI.MUTED))
+		var by_truck := CheckBox.new()
+		by_truck.text = "Ciężarówką z bazy (bez opłaty, do %d km)" % int(rates.get("truckMaxKm", 60))
+		by_truck.button_pressed = _by_truck
+		by_truck.toggled.connect(func(on: bool) -> void:
+			_by_truck = on
+			_update_route_info())
+		grid.add_child(by_truck)
 
 	_body.add_child(UI.label("Co wozić (nic nie zaznaczone: wszystko ze stacji)", UI.MUTED))
 	var flow := HFlowContainer.new()
@@ -670,6 +713,8 @@ func _route_row(route: Dictionary) -> void:
 	title.clip_text = true
 	top.add_child(Online.with_dot(title, receiver))
 	var minutes := int(route["everyMinutes"])
+	if route.get("truck", false):
+		top.add_child(UI.label("ciężarówka", UI.MUTED))
 	top.add_child(UI.label("co %d min" % minutes if minutes < 60 else "co godzinę", UI.GOLD))
 	top.add_child(UI.button("Usuń", _remove_route.bind(int(route["id"]))))
 	box.add_child(top)
@@ -690,7 +735,7 @@ func _route_row(route: Dictionary) -> void:
 	if problem != null:
 		box.add_child(UI.label(PROBLEMS.get(problem, problem), UI.ERROR if problem != "empty" else UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	elif route["lastAt"] != null:
-		box.add_child(UI.label("Ostatni pociąg zabrał %d szt." % int(route["lastQuantity"]), UI.GOOD))
+		box.add_child(UI.label("Ostatni %s zabrał %d szt." % ["kurs ciężarówki" if route.get("truck", false) else "pociąg", int(route["lastQuantity"])], UI.GOOD))
 	_body.add_child(box)
 	_route_labels.append([status, float(route["nextAt"])])
 
@@ -699,6 +744,18 @@ func _update_route_info() -> void:
 	var rates: Dictionary = _state["rates"]
 	var capacity := int(rates["routeCapacity"])
 	var trip := _trip(capacity)
+	if truck and _by_truck:
+		var km := float(trip["km"])
+		var max_km := float(rates.get("truckMaxKm", 60))
+		_send_info.text = "%s  ·  %s km\nCiężarówka zabiera do %s sztuk, bez opłaty, i spala %d × olej napędowy ze stacji na kurs." % [
+			_where(), _grouped(roundi(km)), _grouped(int(rates.get("truckCapacity", 1000))),
+			maxi(1, ceili(km / float(rates.get("truckKmPerDiesel", 25))))]
+		_send_button.disabled = _destination == plot or km > max_km
+		if km > max_km:
+			_send_info.text += "\nZa daleko: ciężarówka jedzie najwyżej %d km." % int(max_km)
+		elif _destination == plot:
+			_send_info.text += "\nTo jest ta sama stacja."
+		return
 	_send_info.text = "%s  ·  %s km  ·  w drodze %s\nPociąg zabiera do %s sztuk. Pełny kosztuje %s, mniejszy mniej; pusty nie odjeżdża i nic nie kosztuje." % [
 		_where(), _grouped(roundi(trip["km"])), _clock(trip["seconds"]), _grouped(capacity), UI.money(trip["fee"])]
 	_send_button.disabled = _destination == plot
@@ -710,13 +767,13 @@ func _add_route() -> void:
 	_send_button.disabled = true
 	var reply := await Net.request("station.route", {
 		"x": plot.x, "y": plot.y, "toX": _destination.x, "toY": _destination.y,
-		"items": _route_items, "everyMinutes": _route_minutes,
+		"items": _route_items, "everyMinutes": _route_minutes, "truck": truck and _by_truck,
 	})
 	if reply["type"] != "station":
 		failed.emit(reply)
 		_send_button.disabled = false
 		return
-	toast.emit("Kurs uruchomiony: pociąg do %s co %d min." % [_where(), _route_minutes])
+	toast.emit("Kurs uruchomiony: %s do %s co %d min." % ["ciężarówka" if truck and _by_truck else "pociąg", _where(), _route_minutes])
 	_route_items.clear()
 	apply(reply)
 	_render()

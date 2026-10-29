@@ -328,6 +328,9 @@ public sealed class TrainRouteRow
 
     public int EveryMinutes { get; set; }
 
+    /// <summary>Trucks from the plot's truck depot drive it instead of a train.</summary>
+    public bool ByTruck { get; set; }
+
     public DateTimeOffset NextDepartureAt { get; set; }
 
     public DateTimeOffset? LastDepartedAt { get; set; }
@@ -767,6 +770,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(r => r.ToY).HasColumnName("to_y");
             e.Property(r => r.Items).HasColumnName("items");
             e.Property(r => r.EveryMinutes).HasColumnName("every_minutes");
+            e.Property(r => r.ByTruck).HasColumnName("by_truck");
             e.Property(r => r.NextDepartureAt).HasColumnName("next_departure_at");
             e.Property(r => r.LastDepartedAt).HasColumnName("last_departed_at");
             e.Property(r => r.LastQuantity).HasColumnName("last_quantity");

@@ -1070,5 +1070,9 @@
   "anchorY": 93,
   "wireX": 64,
   "wireY": 51
+ },
+ "truck_depot": {
+  "anchorX": 64,
+  "anchorY": 65
  }
 }

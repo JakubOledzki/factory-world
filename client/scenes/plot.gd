@@ -180,7 +180,7 @@ const PLACED_SPRITES := {
 	"furniture_water_injector": "water_injector", "furniture_oil_separator": "oil_separator", "furniture_distillery": "distillery",
 	"furniture_refinery": "refinery", "furniture_cracker": "cracker", "furniture_chemical_plant": "chemical_plant",
 	"power_gas_plant": "gas_plant", "power_diesel_generator": "diesel_generator", "logistics_pump": "pump",
-	"storage_tank": "tank", "logistics_road": "road",
+	"storage_tank": "tank", "logistics_road": "road", "furniture_truck_depot": "truck_depot",
 	"furniture_glassworks": "glassworks", "furniture_arc_furnace": "arc_furnace", "furniture_water_well": "water_well",
 	"furniture_desalinator": "desalinator", "furniture_drying_yard": "drying_yard", "furniture_cement_kiln": "cement_kiln",
 	"furniture_concrete_mixer": "concrete_mixer", "furniture_reed_fence": "reed_fence", "power_solar_panel": "solar_panel",
@@ -5337,6 +5337,7 @@ func _refresh_station() -> void:
 	_station_window.sled = _biome() in POLAR and _placed.values().any(func(object: Dictionary) -> bool:
 		return object["kind"] in ["furniture_dog_kennel", "furniture_snowmobile_garage"])
 	_station_window.horse = not _biome() in POLAR and _placed.values().any(func(object: Dictionary) -> bool: return object["kind"] == STABLE)
+	_station_window.truck = _placed.values().any(func(object: Dictionary) -> bool: return object["kind"] == "furniture_truck_depot")
 	await _station_window.refresh()
 	_show_trains()
 
