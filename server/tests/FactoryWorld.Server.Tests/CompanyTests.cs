@@ -192,6 +192,7 @@ public sealed class CompanyTests(ServerFactory factory) : IClassFixture<ServerFa
         using var m = member;
         using var stranger = await PlayerAsync();
         var plot = await BuyAsync(owner, Biome.Farmland);
+        await factory.CompanyLevelAsync(owner.Client.AccountId);
         Assert.Equal("company", (await owner.SendAsync("company.addPlot", new { x = plot.X, y = plot.Y })).Type());
 
         object At(double x, double y, string facing = "down", bool walking = false) =>
@@ -305,6 +306,9 @@ public sealed class CompanyTests(ServerFactory factory) : IClassFixture<ServerFa
         Assert.Equal("not_owner", (await member.SendAsync("plot.enter", new { x = forest.X, y = forest.Y })).ErrorCode());
         Assert.Equal("not_owner", (await member.SendAsync("company.addPlot", new { x = forest.X, y = forest.Y })).ErrorCode());
 
+        // Below level 10 a player can't bring their plots in: new accounts would hand the company cheap plots.
+        Assert.Equal("level_too_low", (await owner.SendAsync("company.addPlot", new { x = forest.X, y = forest.Y })).ErrorCode());
+        await factory.CompanyLevelAsync(owner.Client.AccountId);
         var added = (await owner.SendAsync("company.addPlot", new { x = forest.X, y = forest.Y })).Payload().GetProperty("company");
         Assert.Equal(owner.Name, added.GetProperty("plots")[0].GetProperty("owner").GetString());
 
@@ -385,6 +389,7 @@ public sealed class CompanyTests(ServerFactory factory) : IClassFixture<ServerFa
         using var o = owner;
         using var m = member;
         var plot = await BuyAsync(member, Biome.Grassland);
+        await factory.CompanyLevelAsync(member.Client.AccountId);
         await member.SendAsync("company.addPlot", new { x = plot.X, y = plot.Y });
         Assert.Equal("plot", (await owner.SendAsync("plot.enter", new { x = plot.X, y = plot.Y })).Type());
 

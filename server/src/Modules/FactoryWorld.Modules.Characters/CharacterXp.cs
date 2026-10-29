@@ -21,6 +21,9 @@ public sealed class CharacterXp(GameDb db) : ICharacterXp
         return await command.ExecuteScalarAsync(cancellationToken) as long?;
     }
 
+    public async Task<int> LevelAsync(Guid accountId, CancellationToken cancellationToken) =>
+        Leveling.LevelForXp(await XpAsync(accountId, cancellationToken) ?? 0);
+
     public async Task CapAsync(Guid accountId, long maxXp, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync(
