@@ -131,15 +131,16 @@ public sealed class LawData(GameDb db, TimeProvider time) : ISanctions
         }
     }
 
-    /// <summary>Counts one more of <paramref name="kind"/> for the officer today; fails with <c>daily_limit</c> past <paramref name="limit"/>.</summary>
-    public async Task CountActionAsync(Guid player, string kind, int limit, CancellationToken cancellationToken)
+    /// <summary>Counts <paramref name="amount"/> more of <paramref name="kind"/> for the player today; fails with <c>daily_limit</c>
+    /// past <paramref name="limit"/>.</summary>
+    public async Task CountActionAsync(Guid player, string kind, int limit, CancellationToken cancellationToken, int amount = 1)
     {
         var count = (int)(await ScalarAsync(
             """
-            INSERT INTO law.action_counts (player_id, day, kind, count) VALUES (@p, @d, @k, 1)
-            ON CONFLICT (player_id, day, kind) DO UPDATE SET count = action_counts.count + 1
+            INSERT INTO law.action_counts (player_id, day, kind, count) VALUES (@p, @d, @k, @n)
+            ON CONFLICT (player_id, day, kind) DO UPDATE SET count = action_counts.count + @n
             RETURNING count
-            """, cancellationToken, ("p", player), ("d", LawRules.Day(Now)), ("k", kind)))!;
+            """, cancellationToken, ("p", player), ("d", LawRules.Day(Now)), ("k", kind), ("n", amount)))!;
         if (count > limit)
         {
             throw new GameException("daily_limit", $"You may do this {limit} times a day.");

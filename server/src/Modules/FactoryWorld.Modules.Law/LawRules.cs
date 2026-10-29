@@ -151,6 +151,10 @@ public static class LawRules
     /// <summary>What the fence pays more than the trader, in percent; still less than the trader asks for the same.</summary>
     public const int FencePercent = 140;
 
+    /// <summary>The most the fence pays one player a day, in dollars: what a country bans is up to its government, so this keeps
+    /// a ban on everyday goods from turning the fence into a mint.</summary>
+    public const int FenceDollarsPerDay = 10_000;
+
     /// <summary>A hidden compartment for the player's trains.</summary>
     public const long CompartmentCents = 2_500_00;
 

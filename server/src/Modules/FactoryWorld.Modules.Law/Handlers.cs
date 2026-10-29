@@ -301,7 +301,7 @@ public sealed class SetLawsHandler(IServiceScopeFactory scopes) : LawHandler(sco
         var licensed = (request.Licensed ?? []).ToList();
         if (licensed.Select(l => l.Item).Distinct().Count() != licensed.Count)
         {
-            throw new GameException("bad_items", "License each good once.");
+            throw new GameException("bad_law_items", "License each good once.");
         }
 
         await services.GetRequiredService<PoliceService>().SetLawsAsync(player, request.Banned ?? [],

@@ -22,12 +22,22 @@ const FREIGHT_PROBLEMS := {
 	"waiting": "Czeka na towar w skrzyniach ładujących.",
 	"no_money": "Czeka: brakuje pieniędzy na opłatę.",
 	"no_room": "Czeka na miejsce w skrzyniach odbierających.",
+	"embargo": "Stoi na granicy: kraj docelowy ma embargo.",
+	"banned_goods": "Stoi na granicy: kraj docelowy zakazuje części towaru (licencja albo przemyt).",
+	"travel_banned": "Stoi: policja zakazała ci przekraczania granic.",
+	"no_money_duty": "Czeka: brakuje pieniędzy na opłatę i cło.",
 }
 const PROBLEMS := {
 	"empty": "Czeka na towar: na stacji nie było nic do zabrania.",
 	"no_money": "Stoi: brakuje pieniędzy na opłatę.",
 	"no_station": "Stoi: działka docelowa nie ma już właściciela.",
+	"embargo": "Stoi na granicy: kraj docelowy ma embargo.",
+	"banned_goods": "Stoi na granicy: kraj docelowy zakazuje części towaru (licencja albo przemyt).",
+	"travel_banned": "Stoi: policja zakazała ci przekraczania granic.",
+	"no_money_duty": "Stoi: brakuje pieniędzy na opłatę i cło.",
 }
+## Across a border, the goods go undeclared: no duty and banned goods ride along, but customs may seize them.
+const SMUGGLE_TEXT := "Przemyt przez granicę: bez cła i z zakazanym towarem, ale celnicy mogą go przechwycić, a policja wszcząć sprawę"
 
 var plot := Vector2i(-1, -1)
 var world_width := 6933
@@ -37,6 +47,8 @@ var balance := 0
 ## A port stands on this plot: goods can go by ship to another plot with a port, slower but for a quarter of the fee.
 var port := false
 var _by_sea := false
+## The next train, route or freight route set up here goes across borders undeclared.
+var _smuggle := false
 ## A dog kennel or a snowmobile garage stands on this plot on the glacier or the tundra: goods can go by sled, free, up to sledMaxKm.
 var sled := false
 ## A stable stands on this plot off the glacier and the tundra: a horse cart takes goods up to horseMaxKm, free, on concentrate feed
@@ -466,6 +478,7 @@ func _render_send() -> void:
 		grid.add_child(by_cart)
 	_send_button.text = _send_text()
 	_body.add_child(grid)
+	_body.add_child(_smuggle_box())
 	_body.add_child(_send_info)
 	_body.add_child(_send_button)
 	_update_send()
@@ -564,7 +577,7 @@ func _send() -> void:
 	_send_button.disabled = true
 	var reply := await Net.request("station.send", {
 		"x": plot.x, "y": plot.y, "toX": target.x, "toY": target.y, "item": stack["id"], "quantity": quantity,
-		"sea": _by_sea and port, "sled": (sled or horse) and _by_sled,
+		"sea": _by_sea and port, "sled": (sled or horse) and _by_sled, "smuggle": _smuggle,
 	})
 	if reply["type"] != "station":
 		failed.emit(reply)
@@ -651,6 +664,7 @@ func _render_routes() -> void:
 		flow.add_child(b)
 	_body.add_child(flow)
 
+	_body.add_child(_smuggle_box())
 	_send_info = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
 	_body.add_child(_send_info)
 	_send_button = UI.button("Uruchom kurs", _add_route, true)
@@ -671,6 +685,8 @@ func _route_row(route: Dictionary) -> void:
 	top.add_child(Online.with_dot(title, receiver))
 	var minutes := int(route["everyMinutes"])
 	top.add_child(UI.label("co %d min" % minutes if minutes < 60 else "co godzinę", UI.GOLD))
+	if route.get("smuggle", false):
+		top.add_child(UI.label("przemyt", UI.ERROR))
 	top.add_child(UI.button("Usuń", _remove_route.bind(int(route["id"]))))
 	box.add_child(top)
 
@@ -710,7 +726,7 @@ func _add_route() -> void:
 	_send_button.disabled = true
 	var reply := await Net.request("station.route", {
 		"x": plot.x, "y": plot.y, "toX": _destination.x, "toY": _destination.y,
-		"items": _route_items, "everyMinutes": _route_minutes,
+		"items": _route_items, "everyMinutes": _route_minutes, "smuggle": _smuggle,
 	})
 	if reply["type"] != "station":
 		failed.emit(reply)
@@ -856,6 +872,7 @@ func _render_freight() -> void:
 		_body.add_child(_freight_choices)
 		_render_freight_choices()
 
+	_body.add_child(_smuggle_box())
 	_freight_info = UI.label("", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true)
 	_body.add_child(_freight_info)
 	_freight_button = UI.button("Utwórz trasę", _add_freight, true)
@@ -944,7 +961,7 @@ func _add_freight() -> void:
 	_freight_button.disabled = true
 	var cargo: Array = _freight_cargo.map(func(e: Array) -> Dictionary: return {"item": e[0], "quantity": int(e[1])})
 	var reply := await Net.request("freight.add", {
-		"fromX": _freight_from.x, "fromY": _freight_from.y, "toX": _freight_to.x, "toY": _freight_to.y, "cargo": cargo,
+		"fromX": _freight_from.x, "fromY": _freight_from.y, "toX": _freight_to.x, "toY": _freight_to.y, "cargo": cargo, "smuggle": _smuggle,
 	})
 	if reply["type"] != "freight":
 		failed.emit(reply)
@@ -989,6 +1006,8 @@ func _freight_row(route: Dictionary) -> void:
 	title.clip_text = true
 	title.tooltip_text = title.text
 	top.add_child(title)
+	if route.get("smuggle", false):
+		top.add_child(UI.label("przemyt", UI.ERROR))
 	if route["stopping"]:
 		top.add_child(UI.label("ostatni kurs", UI.MUTED))
 	else:
@@ -1028,7 +1047,7 @@ func _freight_row(route: Dictionary) -> void:
 			status.add_theme_color_override("font_color", UI.ERROR)
 		_:
 			status.text = FREIGHT_PROBLEMS.get(problem, "Ładuje…") if problem != null else "Ładuje…"
-			if problem == "no_money":
+			if problem != "waiting":
 				status.add_theme_color_override("font_color", UI.ERROR)
 	box.add_child(status)
 	box.add_child(UI.label("%s km · w jedną stronę %s · kurs %s · kursów: %d (dowiezione %s szt.)" % [
@@ -1127,3 +1146,13 @@ static func _grouped(value: int) -> String:
 			out += " "
 		out += text[i]
 	return out
+
+
+## The checkbox that sends the next train undeclared across a border.
+func _smuggle_box() -> CheckBox:
+	var box := CheckBox.new()
+	box.text = "Przemyt (bez cła)"
+	box.tooltip_text = SMUGGLE_TEXT
+	box.button_pressed = _smuggle
+	box.toggled.connect(func(on: bool) -> void: _smuggle = on)
+	return box

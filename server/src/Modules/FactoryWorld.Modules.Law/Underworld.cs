@@ -44,7 +44,7 @@ public sealed class Underworld(
     {
         if (await xp.LevelAsync(player, cancellationToken) < LawRules.FenceLevel)
         {
-            throw new GameException("level_too_low", $"The fence deals with players from level {LawRules.FenceLevel}.");
+            throw new GameException("fence_level_too_low", $"The fence deals with players from level {LawRules.FenceLevel}.");
         }
     }
 
@@ -59,7 +59,9 @@ public sealed class Underworld(
             }
 
             var price = FencePrice(item ?? "", await BannedAtHomeAsync(player, cancellationToken))
-                ?? throw new GameException("not_traded", "The fence does not take this.");
+                ?? throw new GameException("fence_not_traded", "The fence does not take this.");
+            await data.CountActionAsync(player, "fence_dollars", LawRules.FenceDollarsPerDay, cancellationToken,
+                (int)Math.Min(int.MaxValue, (price * quantity + 99) / 100));
             await inventory.RemoveAsync(player, item!, quantity, cancellationToken);
             var balance = await wallet.CreditAsync(player, price * quantity, $"fence sell {quantity} {item}", cancellationToken);
             await TraceAtHomeAsync(player, Crimes.BlackMarket, $"Sold {quantity} {item} to the fence", price * quantity, cancellationToken);

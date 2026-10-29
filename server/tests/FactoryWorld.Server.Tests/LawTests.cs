@@ -275,12 +275,12 @@ public sealed class LawTests(LawServerFactory factory) : IClassFixture<LawServer
 
         // Only the chief hires, and nobody below the level, a foreigner or a player who did not apply.
         var (young, youngName) = await CitizenAsync(Home, level: 1);
-        Assert.Equal("level_too_low", (await young.SendAsync("law.apply")).ErrorCode());
+        Assert.Equal("police_level_too_low", (await young.SendAsync("law.apply")).ErrorCode());
         var (foreigner, foreignerName) = await CitizenAsync(Abroad);
         Assert.Equal("no_government", (await foreigner.SendAsync("law.apply")).ErrorCode());
         Assert.Equal("no_application", (await chief.SendAsync("law.hire", new { name = foreignerName, yes = true })).ErrorCode());
         Assert.Equal("rank_too_low", (await constable.SendAsync("law.hire", new { name = youngName, yes = true })).ErrorCode());
-        Assert.Equal("not_allowed", (await constable.SendAsync("law.appointChief", new { name = constableName })).ErrorCode());
+        Assert.Equal("not_government", (await constable.SendAsync("law.appointChief", new { name = constableName })).ErrorCode());
         Assert.Equal("bad_rank", (await chief.SendAsync("law.setRank", new { name = constableName, rank = 3 })).ErrorCode());
 
         // A day later the treasury pays the salaries; with no money in it, nothing.
@@ -355,7 +355,7 @@ public sealed class LawTests(LawServerFactory factory) : IClassFixture<LawServer
 
         // The smuggler appeals; the president overturns it: the fine comes back and the bans end.
         await LawAsync(smuggler, "law.appeal", new { id = caseId });
-        Assert.Equal("not_allowed", (await officers[0].Client.SendAsync("law.judge", new { id = caseId, yes = false })).ErrorCode());
+        Assert.Equal("not_government", (await officers[0].Client.SendAsync("law.judge", new { id = caseId, yes = false })).ErrorCode());
         Assert.Single((await LawAsync(president)).GetProperty("court").GetProperty("appeals").EnumerateArray());
         await LawAsync(president, "law.judge", new { id = caseId, yes = false });
         Assert.Equal(balance, await smuggler.BalanceAsync());
@@ -377,7 +377,7 @@ public sealed class LawTests(LawServerFactory factory) : IClassFixture<LawServer
         var price = offer.GetProperty("priceCents").GetInt64();
         Assert.True(price > NpcPrices.Buys[Items.Dynamite]);
         Assert.True(price < factory.Services.GetRequiredService<IMarketPrices>().SellsCents(Items.Dynamite));
-        Assert.Equal("not_traded", (await dealer.SendAsync("fence.sell", new { item = Items.Wood, quantity = 1 })).ErrorCode());
+        Assert.Equal("fence_not_traded", (await dealer.SendAsync("fence.sell", new { item = Items.Wood, quantity = 1 })).ErrorCode());
 
         var balance = await dealer.BalanceAsync();
         for (var i = 0; i < 20; i++)
@@ -447,7 +447,7 @@ public sealed class LawTests(LawServerFactory factory) : IClassFixture<LawServer
         Assert.False(warrant.GetProperty("granted").GetBoolean());
         var id = warrant.GetProperty("id").GetInt64();
         Assert.Equal("no_warrant", (await detective.Client.SendAsync("law.search", new { id })).ErrorCode());
-        Assert.Equal("not_allowed", (await detective.Client.SendAsync("law.decideWarrant", new { id, yes = true })).ErrorCode());
+        Assert.Equal("not_government", (await detective.Client.SendAsync("law.decideWarrant", new { id, yes = true })).ErrorCode());
         await LawAsync(president, "law.decideWarrant", new { id, yes = true });
 
         var found = await detective.Client.SendAsync("law.search", new { id });
@@ -474,12 +474,12 @@ public sealed class LawTests(LawServerFactory factory) : IClassFixture<LawServer
         Assert.Equal("no_player", (await stranger.SendAsync("law.report", new { name = "nobody-at-all", text = "x" })).ErrorCode());
         Assert.Equal("law.reported", (await stranger.SendAsync("law.report", new { name = officers[0].Name, text = "Przemyca węgiel." })).Type());
         Assert.Single((await LawAsync(officers[1].Client)).GetProperty("police").GetProperty("reports").EnumerateArray());
-        Assert.Equal("bad_items", (await president.SendAsync("law.setLaws", new { banned = new[] { "no_such_item" } })).ErrorCode());
-        Assert.Equal("not_allowed", (await stranger.SendAsync("law.setLaws", new { banned = Array.Empty<string>() })).ErrorCode());
+        Assert.Equal("bad_law_items", (await president.SendAsync("law.setLaws", new { banned = new[] { "no_such_item" } })).ErrorCode());
+        Assert.Equal("not_government", (await stranger.SendAsync("law.setLaws", new { banned = Array.Empty<string>() })).ErrorCode());
         Assert.Equal("bad_amount", (await stranger.SendAsync("law.bribe", new { name = officers[0].Name, cents = 0L })).ErrorCode());
         Assert.Equal("bad_payload", (await stranger.SendAsync("law.sentence", "nope")).ErrorCode());
         var (young, _) = await CitizenAsync(Home, level: 1);
-        Assert.Equal("level_too_low", (await young.SendAsync("fence.sell", new { item = Items.Dynamite, quantity = 1 })).ErrorCode());
+        Assert.Equal("fence_level_too_low", (await young.SendAsync("fence.sell", new { item = Items.Dynamite, quantity = 1 })).ErrorCode());
         var (nobody, _) = await CitizenAsync(Home);
         Countries.Citizens.TryRemove(nobody.AccountId, out _);
         Assert.Equal("no_country", (await nobody.SendAsync("law.apply")).ErrorCode());

@@ -235,7 +235,7 @@ public sealed class CaseService(
             if (tradeBanHours is < 0 or > LawRules.MaxBanHours || travelBanHours is < 0 or > LawRules.MaxBanHours
                 || wantedHours is < 0 or > LawRules.MaxWantedHours)
             {
-                throw new GameException("bad_hours", $"Bans last 0-{LawRules.MaxBanHours} hours, the wanted list 0-{LawRules.MaxWantedHours}.");
+                throw new GameException("bad_sentence_hours", $"Bans last 0-{LawRules.MaxBanHours} hours, the wanted list 0-{LawRules.MaxWantedHours}.");
             }
 
             if (await xp.LevelAsync(c.Suspect, cancellationToken) < LawRules.ProtectedBelowLevel)
@@ -400,7 +400,7 @@ public sealed class CaseService(
             if (await countries.CountryOfPlotAsync(x, y, cancellationToken) != officer.Country
                 || await plots.FindAsync(x, y, cancellationToken) is not { } plot)
             {
-                throw new GameException("bad_plot", "A warrant is for a bought plot in your country.");
+                throw new GameException("bad_warrant_plot", "A warrant is for a bought plot in your country.");
             }
 
             if (plot.Owner == player)
@@ -455,7 +455,7 @@ public sealed class CaseService(
                 ?? throw new GameException("no_warrant", "There is no granted warrant of that number.");
             await data.ExecuteAsync("UPDATE law.warrants SET used = true WHERE id = @id", cancellationToken, ("id", warrantId));
             var owner = (await plots.FindAsync(warrant.X, warrant.Y, cancellationToken))?.Owner
-                ?? throw new GameException("bad_plot", "Nobody owns this plot any more.");
+                ?? throw new GameException("bad_warrant_plot", "Nobody owns this plot any more.");
             if (owner == player)
             {
                 throw new GameException("own_case", "You may not search your own plot.");

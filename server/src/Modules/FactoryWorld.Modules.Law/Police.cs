@@ -26,7 +26,7 @@ public sealed class PoliceService(LawData data, ICountries countries, IWallet wa
         var held = await countries.OfficesAsync(player, country, cancellationToken);
         if (!offices.Any(held.Contains))
         {
-            throw new GameException("not_allowed", "Only the country's government may do this.");
+            throw new GameException("not_government", "Only the country's government may do this.");
         }
     }
 
@@ -43,7 +43,7 @@ public sealed class PoliceService(LawData data, ICountries countries, IWallet wa
 
         if (await xp.LevelAsync(player, cancellationToken) < LawRules.ProtectedBelowLevel)
         {
-            throw new GameException("level_too_low", $"The police take players from level {LawRules.ProtectedBelowLevel}.");
+            throw new GameException("police_level_too_low", $"The police take players from level {LawRules.ProtectedBelowLevel}.");
         }
 
         if ((await data.SanctionsAsync(player, cancellationToken)).Count > 0
@@ -186,12 +186,12 @@ public sealed class PoliceService(LawData data, ICountries countries, IWallet wa
             if (banned.Count + licensed.Count > LawRules.MaxRules || banned.Concat(licensed.Keys).Any(i => !Items.Exists(i ?? ""))
                 || banned.Intersect(licensed.Keys).Any() || banned.Distinct().Count() != banned.Count)
             {
-                throw new GameException("bad_items", $"Ban or license at most {LawRules.MaxRules} existing goods, each once.");
+                throw new GameException("bad_law_items", $"Ban or license at most {LawRules.MaxRules} existing goods, each once.");
             }
 
             if (licensed.Values.Any(fee => fee is < 0 or > LawRules.MaxLicenceFeeCents))
             {
-                throw new GameException("bad_fee", $"A licence costs 0-{LawRules.MaxLicenceFeeCents / 100} $ a week.");
+                throw new GameException("bad_licence_fee", $"A licence costs 0-{LawRules.MaxLicenceFeeCents / 100} $ a week.");
             }
 
             await data.ExecuteAsync("DELETE FROM law.country_rules WHERE country = @c", cancellationToken, ("c", country));
