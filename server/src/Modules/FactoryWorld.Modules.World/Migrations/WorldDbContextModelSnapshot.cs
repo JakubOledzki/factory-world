@@ -1165,6 +1165,42 @@ namespace FactoryWorld.Modules.World.Migrations
                     b.ToTable("plot_wells", "world");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.World.SavedPlanRow", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<long>("Id"));
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("Objects")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("objects");
+
+                    b.Property<Guid>("OwnerId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("owner_id");
+
+                    b.Property<DateTimeOffset>("SavedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("saved_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerId", "Name")
+                        .IsUnique();
+
+                    b.ToTable("plans", "world");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.World.ServiceSaleRow", b =>
                 {
                     b.Property<Guid>("Id")

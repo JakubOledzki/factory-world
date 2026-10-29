@@ -1,6 +1,18 @@
 [
 	{
 		"date": "2026-10-29",
+		"title": "Ciężarówki, smog, deszcz, AGD dla miast i szkicownik",
+		"changes": [
+			"Hala montażowa składa rowery i radia (badanie „Montaż”), a po nowym badaniu „AGD i motoryzacja” pralki i samochody. Miasta od poziomu Miasto kupują rowery i radia, duże miasta pralki, a metropolie samochody.",
+			"Podajniki i pompy mają warunek pracy (w oknie filtra): „napełniaj skrzynię przed sobą do” zatrzymuje je, gdy w skrzyni albo zbiorniku jest już tyle sztuk, a „zostawiaj w skrzyni za sobą” trzyma zapas w skrzyni, z której biorą.",
+			"Baza ciężarówek (badanie „Drogi”): ciężarówki wiozą do 1000 sztuk ze stacji tej działki do stacji do 60 km dalej, bez opłaty za kolej i dwa razy szybciej niż pociąg, spalając 1 olej napędowy ze stacji na każde 25 km. W oknie stacji wyślesz je ręcznie albo ustawisz stały kurs ciężarówki.",
+			"Deszcz i susza nad polami: na żyznych glebach i w oazach mniej więcej co piąte dwie godziny pada przez godzinę i uprawy rosną wtedy półtora raza szybciej, a co dziesiąte trwa susza i rosną dwa razy wolniej. Pogodę i prognozę widać pod nazwą działki.",
+			"Smog: piece, generatory, elektrownie, rafinerie i piece do wypału dymią. Działka oddycha swoim dymem i połową dymu sąsiednich działek; powyżej 20 uprawy rosną wolniej, aż do połowy tempa. Filtr spalin (badanie „Filtry spalin”) zabiera 20 dymu ze swojej działki.",
+			"Plany i szkicownik (nowy przycisk na dolnym pasku): plany budowy zapisujesz pod nazwą na serwerze i stawiasz na każdej działce, także po ponownym uruchomieniu gry. W szkicowniku rysujesz fabrykę z dowolnych obiektów, bez przedmiotów w ekwipunku, i zapisujesz ją jako plan do postawienia, gdy zbierzesz części."
+		]
+	},
+	{
+		"date": "2026-10-29",
 		"title": "Działki w spółce od 10 poziomu",
 		"changes": [
 			"Swoją działkę wniesiesz do spółki dopiero od 10 poziomu postaci. Dzięki temu nikt nie zakłada nowych kont tylko po to, żeby kupić na nich tanie pierwsze działki i oddać je spółce. Działki już wniesione zostają w spółkach."

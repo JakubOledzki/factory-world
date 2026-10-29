@@ -639,6 +639,12 @@ var _plan_mode := ""
 var _plan_corner := Vector2i(-1, -1)
 ## The copied plan, kept while the game runs, also on other plots: [{ kind, dx, dy, rotation }] from its top left tile.
 static var _plan: Array[Dictionary] = []
+## The sketchbook (plan mode "sketch"): ghosts drawn on the plot without building anything, [{ kind, tileX, tileY, rotation }],
+## kept while the game runs; what the next click draws, and turned which way.
+static var _sketch: Array[Dictionary] = []
+var _sketch_kind := ""
+var _sketch_rotation := 0
+var _plans_window: PlansWindow
 ## What Ctrl+Z undoes, newest last: { placed: [ids] } to take back what was put up, or { picked: [objects] } to put back what was picked up.
 var _undo: Array[Dictionary] = []
 var _plan_button: Button
@@ -2148,7 +2154,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			_stop_work()
 			_path = PackedVector2Array()
 	elif event.is_action_pressed("rotate"):
-		if _placing != "":
+		if _plan_mode == "sketch":
+			_sketch_rotation = (_sketch_rotation + 1) % 4
+			_update_hint()
+		elif _placing != "":
 			_place_rotation = (_place_rotation + 1) % 4
 			_update_hint()
 		elif _turnable(_hovered):
@@ -3412,6 +3421,8 @@ func _plan_click(cell: Vector2i) -> void:
 			_copy_plan(Rect2i(_plan_corner, Vector2i.ZERO).expand(cell))
 	elif _plan_mode == "paste":
 		_paste_plan(cell)
+	elif _plan_mode == "sketch":
+		_sketch_click(cell)
 
 
 ## Copies what stands in the rectangle (both corners included): every object whose tile is inside it.
@@ -3521,6 +3532,8 @@ func _draw_plan(ground: Vector2i) -> void:
 		var rect := Rect2(Vector2(area.position) * TILE, Vector2(area.size) * TILE)
 		_marks.draw_rect(rect, Color(0.36, 0.7, 0.9, 0.12))
 		_marks.draw_rect(rect, Color(0.36, 0.7, 0.9, 0.85), false, 2.0)
+	elif _plan_mode == "sketch":
+		_draw_sketch(ground)
 	elif _plan_mode == "paste" and ground.x >= 0:
 		var tint := Color(0.56, 0.84, 0.35, 0.8) if _plan_fits(ground) else Color(1.0, 0.42, 0.35, 0.8)
 		for o: Dictionary in _plan_at(ground):
@@ -3531,6 +3544,103 @@ func _draw_plan(ground: Vector2i) -> void:
 				_marks.draw_rect(rect, Color(tint, 0.6), false, 1.5)
 			var size := 18.0 + 10.0 * (Footprints.size(o["kind"]) - 1)
 			_marks.draw_texture_rect(_logistics._icon(o["kind"]), Rect2(_object_centre(o["kind"], cell) - Vector2(size, size) / 2, Vector2(size, size)), false, Color(1, 1, 1, 0.75))
+
+
+func _toggle_plans_window() -> void:
+	if _visitor:
+		_show_toast("Na cudzej działce niczego nie postawisz.", UI.ERROR)
+		return
+	_plans_window.placeable = Array(_plot.get("placeable", []))
+	_plans_window.toggle()
+
+
+## Puts up a saved plan as a copied one is: its ghost follows the mouse until a click builds it.
+func _use_saved_plan(objects: Array) -> void:
+	var plan: Array[Dictionary] = []
+	for o: Dictionary in objects:
+		plan.append({"kind": str(o["kind"]), "dx": int(o["dx"]), "dy": int(o["dy"]), "rotation": int(o.get("rotation", 0))})
+	if plan.is_empty():
+		return
+	_stop_placing()
+	_set_planting(false)
+	_stop_releasing()
+	_plan = plan
+	_plan_mode = "paste"
+	_plans_window.hide_window()
+	_show_toast("Plan: %d obiektów. Kliknij, gdzie go postawić." % plan.size(), UI.GOOD)
+	_update_hint()
+
+
+## The sketchbook draws `kind` with the next clicks.
+func _start_sketch(kind: String) -> void:
+	_stop_placing()
+	_set_planting(false)
+	_stop_releasing()
+	_stop_work()
+	_plan_mode = "sketch"
+	_sketch_kind = kind
+	_update_hint()
+
+
+## The drawn object covering `cell`, or -1.
+func _sketch_at(cell: Vector2i) -> int:
+	for i in _sketch.size():
+		var o: Dictionary = _sketch[i]
+		if cell in _footprint(o["kind"], Vector2i(o["tileX"], o["tileY"])):
+			return i
+	return -1
+
+
+func _sketch_click(cell: Vector2i) -> void:
+	var at := _sketch_at(cell)
+	if at >= 0:
+		_sketch.remove_at(at)
+	elif _sketch_kind == "":
+		return
+	elif _sketch.size() >= MAX_PLAN:
+		_show_toast("Szkic może mieć najwyżej %d obiektów." % MAX_PLAN, UI.ERROR)
+		return
+	else:
+		for covered in _footprint(_sketch_kind, cell):
+			if covered.x < 0 or covered.y < 0 or covered.x >= _size or covered.y >= _size or _sketch_at(covered) >= 0:
+				_show_toast("Tu nie zmieści się rysunek: zachodzi na inny albo wychodzi poza działkę.", UI.ERROR)
+				return
+		_sketch.append({"kind": _sketch_kind, "tileX": cell.x, "tileY": cell.y, "rotation": _sketch_rotation})
+	_plans_window.render_sketch()
+	_marks.queue_redraw()
+
+
+## The sketch as a plan from its top left tile.
+func _sketch_plan() -> Array:
+	var left := _size
+	var top := _size
+	for o: Dictionary in _sketch:
+		for covered in _footprint(o["kind"], Vector2i(o["tileX"], o["tileY"])):
+			left = mini(left, covered.x)
+			top = mini(top, covered.y)
+	var plan: Array = []
+	for o: Dictionary in _sketch:
+		plan.append({"kind": o["kind"], "dx": int(o["tileX"]) - left, "dy": int(o["tileY"]) - top, "rotation": int(o["rotation"])})
+	return plan
+
+
+## The drawn objects in blue, and what the next click draws under the mouse.
+func _draw_sketch(ground: Vector2i) -> void:
+	var ghosts: Array[Dictionary] = _sketch.duplicate()
+	if ground.x >= 0 and _sketch_kind != "" and _sketch_at(ground) < 0:
+		ghosts.append({"kind": _sketch_kind, "tileX": ground.x, "tileY": ground.y, "rotation": _sketch_rotation, "cursor": true})
+	for o: Dictionary in ghosts:
+		var cell := Vector2i(o["tileX"], o["tileY"])
+		var tint := Color(0.98, 0.85, 0.4, 0.8) if o.get("cursor", false) else Color(0.4, 0.62, 1.0, 0.8)
+		for at in _footprint(o["kind"], cell):
+			var rect := Rect2(Vector2(at) * TILE, TILE).grow(-2.0)
+			_marks.draw_rect(rect, Color(tint, 0.18))
+			_marks.draw_rect(rect, Color(tint, 0.7), false, 1.5)
+		var size := 18.0 + 10.0 * (Footprints.size(o["kind"]) - 1)
+		var centre := _object_centre(o["kind"], cell)
+		_marks.draw_texture_rect(_logistics._icon(o["kind"]), Rect2(centre - Vector2(size, size) / 2, Vector2(size, size)), false, Color(1, 1, 1, 0.8))
+		var arrow := Vector2(PlotLogistics.facing(int(o["rotation"]))) * size * 0.6
+		_marks.draw_line(centre, centre + arrow, Color(tint, 0.9), 2.0)
 
 
 ## Notes a step Ctrl+Z can undo.
@@ -4936,6 +5046,7 @@ func _build_hud() -> void:
 	bar.add_child(UI.toolbar_button("stats", "Statystyki  [L]", func() -> void: _stats_window.toggle()))
 	_plan_button = UI.toolbar_button("blueprint", "Plany budowy  [V]\nZaznacz kawałek fabryki i postaw jego kopię gdzie indziej", _toggle_plan)
 	bar.add_child(_plan_button)
+	bar.add_child(UI.toolbar_button("sketchbook", "Plany i szkicownik\nZapisane plany budowy i rysowanie fabryki bez przedmiotów", _toggle_plans_window))
 	_undo_button = UI.toolbar_button("undo", "Cofnij  [Ctrl+Z]\nCofa ostatnie postawienie albo schowanie", _undo_last)
 	_undo_button.visible = false
 	bar.add_child(_undo_button)
@@ -5090,6 +5201,11 @@ func _update_hint() -> void:
 		return
 	if _plan_mode == "copy":
 		_hint.text = "Plan budowy: kliknij %s róg kawałka fabryki do skopiowania. Esc kończy." % ("pierwszy" if _plan_corner.x < 0 else "drugi, przeciwny")
+		return
+	if _plan_mode == "sketch":
+		_hint.text = ("Szkicownik: kliknij pole, aby narysować %s %s; kliknięcie rysunku go zmazuje. [R] obraca, Esc kończy. Nic tu nie powstaje naprawdę." % [
+			ItemInfo.name_of(_sketch_kind).to_lower(), DIRECTION_ARROWS[_sketch_rotation]]) if _sketch_kind != "" \
+			else "Szkicownik: wybierz w oknie, co rysować. Esc kończy."
 		return
 	if _plan_mode == "paste":
 		_hint.text = "Plan budowy (%d obiektów): kliknij, gdzie postawić kopię; lewy górny róg jest pod myszą. [V] kopiuje inny kawałek, Esc kończy." % _plan.size()
@@ -5341,7 +5457,18 @@ func _build_windows() -> void:
 	_gallery_window = GalleryWindow.new()
 	_gallery_window.dock_right()
 	_gallery_window.failed.connect(_show_error)
+	_plans_window = PlansWindow.new()
+	_plans_window.dock_right()
+	_plans_window.failed.connect(_show_error)
+	_plans_window.current_plan = func() -> Array: return _sketch_plan() if not _sketch.is_empty() else Array(_plan)
+	_plans_window.sketch_size = func() -> int: return _sketch.size()
+	_plans_window.use_plan.connect(_use_saved_plan)
+	_plans_window.sketch_kind.connect(_start_sketch)
+	_plans_window.sketch_cleared.connect(func() -> void:
+		_sketch.clear()
+		_marks.queue_redraw())
 	var layer := _hud
+	layer.add_child(_plans_window)
 	layer.add_child(_stats_window)
 	layer.add_child(_gallery_window)
 	layer.add_child(_inventory_window)

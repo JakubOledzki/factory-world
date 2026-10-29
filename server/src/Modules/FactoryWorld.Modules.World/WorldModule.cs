@@ -971,6 +971,17 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(t => t.OwnerId).HasColumnName("owner_id");
             e.Property(t => t.PaidUntil).HasColumnName("paid_until");
         });
+        model.Entity<SavedPlanRow>(e =>
+        {
+            e.ToTable("plans");
+            e.Property(p => p.Id).HasColumnName("id");
+            e.Property(p => p.OwnerId).HasColumnName("owner_id");
+            e.Property(p => p.Name).HasColumnName("name").HasMaxLength(PlanRules.MaxName);
+            e.Property(p => p.Objects).HasColumnName("objects").HasColumnType("jsonb");
+            e.Property(p => p.SavedAt).HasColumnName("saved_at");
+            // A player's plans have names of their own.
+            e.HasIndex(p => new { p.OwnerId, p.Name }).IsUnique();
+        });
         model.Entity<PlotLikeRow>(e =>
         {
             e.ToTable("plot_likes");
@@ -1580,6 +1591,10 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, PlaceManyOnPlotHandler>();
         services.AddSingleton<PlotGallery>();
         services.AddScoped<LikeService>();
+        services.AddScoped<PlanService>();
+        services.AddSingleton<IMessageHandler, GetPlansHandler>();
+        services.AddSingleton<IMessageHandler, SavePlanHandler>();
+        services.AddSingleton<IMessageHandler, DeletePlanHandler>();
         services.AddSingleton<IMessageHandler, LikePlotHandler>();
         services.AddSingleton<IMessageHandler, GalleryHandler>();
         services.AddSingleton<IMessageHandler, PickUpManyFromPlotHandler>();
