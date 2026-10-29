@@ -826,15 +826,29 @@ public sealed class PowerGrid : IPowerGrid
         }
     }
 
+    private bool _settlingReceivers;
+
     /// <summary>Brings everything up to <paramref name="at"/> and works on from there, so the grid can change.</summary>
     public void Settle(DateTimeOffset at)
     {
         at = Max(at, Settled);
 
         // The plots this one sends power to worked out what they got with the grid as it was: they are settled first.
-        foreach (var link in Exports)
+        // Cables never make a loop, but should one appear, a plot already settling its receivers does not go round again.
+        if (!_settlingReceivers)
         {
-            link.Receiver?.Settle(at);
+            _settlingReceivers = true;
+            try
+            {
+                foreach (var link in Exports)
+                {
+                    link.Receiver?.Settle(at);
+                }
+            }
+            finally
+            {
+                _settlingReceivers = false;
+            }
         }
 
         var data = new GridData();

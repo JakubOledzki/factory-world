@@ -608,7 +608,7 @@ public sealed class PowerTests(ServerFactory factory) : IClassFixture<ServerFact
 
         Assert.Equal("tie_closed", (await buyer.SendAsync("powerline.build", new { x = bx, y = by, id = buyerTie, fromX = sx, fromY = sy, fromId = sellerTie, kw = 100 })).ErrorCode());
         Assert.Equal("not_owner", (await buyer.SendAsync("powertie.price", new { x = sx, y = sy, id = sellerTie, priceCents = 1, open = true })).ErrorCode());
-        Assert.Equal("bad_price", (await seller.SendAsync("powertie.price", new { x = sx, y = sy, id = sellerTie, priceCents = -1, open = true })).ErrorCode());
+        Assert.Equal("bad_power_price", (await seller.SendAsync("powertie.price", new { x = sx, y = sy, id = sellerTie, priceCents = -1, open = true })).ErrorCode());
         Assert.True((await seller.SendAsync("powertie.price", new { x = sx, y = sy, id = sellerTie, priceCents = 5, open = true })).Payload().GetProperty("open").GetBoolean());
 
         var offers = (await buyer.SendAsync("powertie.offers", new { x = bx, y = by, id = buyerTie })).Payload().GetProperty("offers").EnumerateArray().ToList();
@@ -624,7 +624,9 @@ public sealed class PowerTests(ServerFactory factory) : IClassFixture<ServerFact
         var buyerBefore = await buyer.BalanceAsync();
         Assert.Equal("bad_hours", (await buyer.SendAsync("powerline.buy", new { line = lineId, hours = 0 })).ErrorCode());
         Assert.Equal("not_owner", (await seller.SendAsync("powerline.buy", new { line = lineId, hours = 1 })).ErrorCode());
-        var bought = (await buyer.SendAsync("powerline.buy", new { line = lineId, hours = 2 })).Payload();
+        Assert.Equal("price_changed", (await buyer.SendAsync("powerline.buy", new { line = lineId, hours = 2, priceCents = 4 })).ErrorCode());
+        Assert.Equal(buyerBefore, await buyer.BalanceAsync());
+        var bought = (await buyer.SendAsync("powerline.buy", new { line = lineId, hours = 2, priceCents = 5 })).Payload();
         Assert.Equal(buyerBefore - 1000, await buyer.BalanceAsync());
         Assert.Equal(sellerBefore + 1000, await seller.BalanceAsync());
         var until = bought.GetProperty("lines")[0].GetProperty("paidUntil").GetInt64();
@@ -635,7 +637,14 @@ public sealed class PowerTests(ServerFactory factory) : IClassFixture<ServerFact
         Assert.True(sellerSide.GetProperty("supplying").GetBoolean());
         Assert.Equal(0, sellerSide.GetProperty("flowKw").GetDouble());
 
-        // Picking the tie up takes the cable down.
+        // The seller cannot cut power that was paid for, and once they close the tie nobody buys more.
+        Assert.Equal("line_paid", (await seller.SendAsync("powerline.remove", new { x = sx, y = sy, id = sellerTie, line = lineId })).ErrorCode());
+        Assert.Equal("line_paid", (await seller.SendAsync("plot.pickup", new { x = sx, y = sy, id = sellerTie })).ErrorCode());
+        await seller.SendAsync("powertie.price", new { x = sx, y = sy, id = sellerTie, priceCents = 5, open = false });
+        Assert.Equal("tie_closed", (await buyer.SendAsync("powerline.buy", new { line = lineId, hours = 1 })).ErrorCode());
+
+        // When the paid time is over, picking the tie up takes the cable down.
+        factory.Time.Advance(TimeSpan.FromHours(2));
         Assert.Equal("plot.pickedUp", (await seller.SendAsync("plot.pickup", new { x = sx, y = sy, id = sellerTie })).Type());
         Assert.Empty((await buyer.SendAsync("powertie.get", new { x = bx, y = by, id = buyerTie })).Payload().GetProperty("lines").EnumerateArray());
     }

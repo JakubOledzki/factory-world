@@ -1064,5 +1064,11 @@
   "anchorY": 283,
   "wireX": 269,
   "wireY": 328
+ },
+ "grid_tie": {
+  "anchorX": 64,
+  "anchorY": 93,
+  "wireX": 64,
+  "wireY": 51
  }
 }

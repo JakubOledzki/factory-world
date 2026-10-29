@@ -207,7 +207,7 @@ const PLACED_SPRITES := {
 	"storage_receiving_chest_3": "receiving_chest_3", "storage_receiving_chest_4": "receiving_chest_4",
 	"furniture_megafactory": "megafactory", "power_fusion_plant": "fusion_plant",
 	"power_substation": "substation", "power_pylon": "pylon", "power_coal_plant": "coal_plant", "power_energy_store": "energy_store",
-	"power_nuclear_plant": "nuclear_plant",
+	"power_nuclear_plant": "nuclear_plant", "power_grid_tie": "grid_tie",
 	"furniture_canteen": "canteen", "furniture_slaughterhouse": "slaughterhouse", "furniture_dairy": "dairy",
 	"furniture_potato_distillery": "potato_distillery", "furniture_biogas_plant": "biogas_plant", "furniture_stable": "stable",
 	"furniture_bellows": "bellows", "furniture_feeder": "feeder", "furniture_farmstead": "farmstead", "furniture_manor_farm": "manor_farm",
@@ -291,6 +291,8 @@ const SOLAR := ["power_solar_panel", "power_solar_tower"]
 const SOLAR_TOWER := "power_solar_tower"
 ## Batteries and the energy store, which keep what free power has to spare.
 const BATTERIES := ["power_battery", "power_energy_store"]
+## The end of a power cable to another plot.
+const GRID_TIE := "power_grid_tie"
 const REED_FENCE := "furniture_reed_fence"
 ## The glacier and the tundra: wind blows stronger, blizzards sweep the glacier and the aurora shines on some nights.
 const TUNDRA := 7
@@ -659,6 +661,7 @@ var _market_button: Button
 var _generator_window: GeneratorWindow
 var _drill_window: DrillWindow
 var _well_window: WellWindow
+var _grid_tie_window: GridTieWindow
 var _shop_window: ShopWindow
 var _export_window: ExportWindow
 var _export_post_window: ExportPostWindow
@@ -1845,6 +1848,8 @@ func _placed_label(cell: Vector2i) -> String:
 		return "%s (%s): kliknij po więcej" % [object["name"], _power.describe(object["id"])]
 	if object["kind"] in GENERATORS:
 		return "%s%s: kliknij, aby dołożyć opału" % [object["name"], _power_note(object["id"])]
+	if object["kind"] == GRID_TIE:
+		return "%s%s: kliknij, aby poprowadzić kabel albo sprzedawać prąd" % [object["name"], " (bez słupa obok)" if _power.network(object["id"]).is_empty() else ""]
 	if object["kind"] in WELLS:
 		return "%s%s: kliknij, aby zobaczyć szyb" % [object["name"], _power_note(object["id"]) if _power.runs_on_power(object["kind"]) else ""]
 	if object["kind"] == ROAD:
@@ -3109,6 +3114,8 @@ func _place_object(cell: Vector2i) -> void:
 		_show_toast("%s stoi na działce: zasila maszyny do 4 pól wokół i łączy się ze słupami do 10 pól od siebie." % object["name"])
 	elif kind == "power_pylon":
 		_show_toast("%s stoi na działce: łączy się z innymi słupami wysokiego napięcia do 20 pól od siebie i ciągnie prąd przez całą działkę." % object["name"])
+	elif kind == GRID_TIE:
+		_show_toast("%s stoi na działce. Postaw obok słup i kliknij przyłącze, aby poprowadzić kabel z innej działki albo sprzedawać prąd." % object["name"])
 	elif kind == "power_nuclear_plant":
 		_show_toast("%s stoi na działce: włóż pręty paliwowe i podłącz ją słupem, a da 2,5 MW." % object["name"])
 	elif kind in HYDRO:
@@ -3201,6 +3208,8 @@ func _use_placed(cell: Vector2i) -> void:
 		_generator_window.set_tools(_object_tools(cell))
 	elif object["kind"] in WELLS:
 		_well_window.open_at(_at, object["id"])
+	elif object["kind"] == GRID_TIE:
+		_grid_tie_window.open_at(_at, object["id"])
 	elif object["kind"] == SHOP:
 		_shop_window.open_at(object["id"])
 	elif object["kind"] == BEEHIVE:
@@ -3238,7 +3247,7 @@ func _using_window_open() -> bool:
 	return _crafting_window.visible or _research_window.visible or _furnace_window.visible or _machine_window.visible or _storage_window.visible \
 		or _splitter_window.visible or _filter_window.visible or _generator_window.visible or _market_window.visible or _forester_window.visible \
 		or _farmstead_window.visible or _canteen_window.visible \
-		or _drill_window.visible or _well_window.visible or _shop_window.visible or _hive_window.visible or _feeder_window.visible \
+		or _drill_window.visible or _well_window.visible or _grid_tie_window.visible or _shop_window.visible or _hive_window.visible or _feeder_window.visible \
 		or _export_window.visible or _export_post_window.visible
 
 
@@ -3253,6 +3262,7 @@ func _hide_placed_windows() -> void:
 	_generator_window.hide_window()
 	_drill_window.hide_window()
 	_well_window.hide_window()
+	_grid_tie_window.hide_window()
 	_shop_window.hide_window()
 	_hive_window.hide_window()
 	_feeder_window.hide_window()
@@ -5201,6 +5211,11 @@ func _build_windows() -> void:
 	_well_window.inventory_changed.connect(_on_furnace_changed)
 	_well_window.failed.connect(_show_error)
 	_well_window.pick_up_requested.connect(_pick_up_placed)
+	_grid_tie_window = GridTieWindow.new()
+	_grid_tie_window.dock_right()
+	_grid_tie_window.balance_changed.connect(_reload_balance)
+	_grid_tie_window.failed.connect(_show_error)
+	_grid_tie_window.pick_up_requested.connect(_pick_up_placed)
 	_shop_window = ShopWindow.new()
 	_shop_window.dock_right()
 	_shop_window.inventory_changed.connect(_reload_inventory)
@@ -5271,6 +5286,7 @@ func _build_windows() -> void:
 	layer.add_child(_generator_window)
 	layer.add_child(_drill_window)
 	layer.add_child(_well_window)
+	layer.add_child(_grid_tie_window)
 	layer.add_child(_shop_window)
 	layer.add_child(_hive_window)
 	layer.add_child(_feeder_window)

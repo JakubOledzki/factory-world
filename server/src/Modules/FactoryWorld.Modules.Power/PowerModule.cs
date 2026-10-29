@@ -340,9 +340,22 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IPlotRegistry re
         }, cancellationToken);
 
     /// <summary>A generator or a battery taken off its plot: its fuel goes back to the owner, its stored power is lost, and the grid goes on without it.
-    /// A grid tie taken off takes its cables with it, and what was paid for them is lost.</summary>
+    /// A grid tie taken off takes its cables with it; one selling power that is paid for stays until that time runs out.</summary>
     public async Task ReleaseAsync(Guid owner, Guid id, CancellationToken cancellationToken)
     {
+        // Power another player paid for is owed until its time runs out: the tie that sells it stays till then.
+        await using (var paid = await db.CommandAsync(
+            "SELECT 1 FROM power.lines WHERE from_tie = @id AND paid_until > @now AND paid_until < @forever LIMIT 1", cancellationToken))
+        {
+            paid.Parameters.AddWithValue("id", id);
+            paid.Parameters.AddWithValue("now", time.GetUtcNow());
+            paid.Parameters.AddWithValue("forever", PowerLink.Forever);
+            if (await paid.ExecuteScalarAsync(cancellationToken) is not null)
+            {
+                throw new GameException("line_paid", "Another player paid for power along a cable from this grid tie; it stays until that time runs out.");
+            }
+        }
+
         foreach (var link in _links.Values.Where(l => l.SupplierTie == id || l.ReceiverTie == id).ToList())
         {
             await UnlinkAsync(link.Id, time.GetUtcNow(), cancellationToken);

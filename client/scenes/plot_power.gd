@@ -17,13 +17,15 @@ const BATTERIES := ["power_battery", "power_energy_store"]
 ## Wind power: wired to a pole too, it gives as much as the wind blows. A heater gives no power, it warms machines on the glacier.
 const WIND := ["power_wind_turbine", "power_large_wind_turbine"]
 const HEATER := "power_heater"
+## The end of a cable to another plot: wired to a pole like a generator, it brings power in or sends it out.
+const GRID_TIE := "power_grid_tie"
 ## Sprites whose layout says where wires meet them, by kind.
 const WIRE_SPRITES := {"power_generator": "generator", "power_water_wheel": "water_wheel", "power_hydro_plant": "hydro_plant",
 	"power_tidal_plant": "tidal_plant", "power_gas_plant": "gas_plant", "power_diesel_generator": "diesel_generator",
 	"power_solar_panel": "solar_panel", "power_solar_tower": "solar_tower", "power_battery": "battery",
 	"power_wind_turbine": "wind_turbine", "power_large_wind_turbine": "large_wind_turbine", "power_fusion_plant": "fusion_plant",
 	"power_coal_plant": "coal_plant", "power_nuclear_plant": "nuclear_plant", "power_energy_store": "energy_store",
-	"power_pole": "pole", "power_substation": "substation", "power_pylon": "pylon"}
+	"power_pole": "pole", "power_substation": "substation", "power_pylon": "pylon", "power_grid_tie": "grid_tie"}
 const POLE := "power_pole"
 const WIRE := Color(0.08, 0.07, 0.06, 0.9)
 const WIRE_SHINE := Color(0.62, 0.42, 0.25, 0.55)
@@ -99,7 +101,7 @@ func apply(summary: Dictionary) -> void:
 	_networks = {}
 	for network: Dictionary in summary.get("networks", []):
 		_networks[int(network["id"])] = network
-		for key: String in ["poles", "generators", "consumers", "hydro", "solar", "batteries", "wind"]:
+		for key: String in ["poles", "generators", "consumers", "hydro", "solar", "batteries", "wind", "ties"]:
 			for id: String in network.get(key, []):
 				_network_of[id] = int(network["id"])
 	_cold = {}
@@ -114,9 +116,9 @@ func has_power() -> bool:
 	return _powered
 
 
-## Whether an object of `kind` gives power to a network: a generator, water or solar power or a battery.
+## Whether an object of `kind` gives power to a network: a generator, water or solar power, a battery or a grid tie.
 func _source(kind: String) -> bool:
-	return kind in GENERATORS or kind in HYDRO or kind in SOLAR or kind in BATTERIES or kind in WIND
+	return kind in GENERATORS or kind in HYDRO or kind in SOLAR or kind in BATTERIES or kind in WIND or kind == GRID_TIE
 
 
 ## Whether an object of `kind` carries power: a pole, a substation or a high-voltage pylon.

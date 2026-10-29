@@ -25,6 +25,9 @@ public static class PowerLines
 
     public const int MaxHours = 168;
 
+    /// <summary>The advisory lock that lays cables one at a time.</summary>
+    public const long BuildLock = 0x506F7765724C696E;
+
     /// <summary>The highest price per kWh a supplier may ask.</summary>
     public const long MaxPriceCents = 100_000;
 
@@ -83,7 +86,7 @@ public sealed class PowerLineService(
         {
             if (priceCents is < 0 or > PowerLines.MaxPriceCents)
             {
-                throw new GameException("bad_price", $"A kWh costs 0 to {PowerLines.MaxPriceCents} cents.");
+                throw new GameException("bad_power_price", $"A kWh costs 0 to {PowerLines.MaxPriceCents} cents.");
             }
 
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Owner);
@@ -130,6 +133,14 @@ public sealed class PowerLineService(
             if (!free && (await OfferAsync(fromId, cancellationToken)) is not { Open: true })
             {
                 throw new GameException("tie_closed", "The owner of that grid tie does not sell power.");
+            }
+
+            // Cables are laid one at a time across the server, so two built at once between the same plots
+            // cannot each miss the other and close a loop.
+            await using (var serial = await db.CommandAsync("SELECT pg_advisory_xact_lock(@key)", cancellationToken))
+            {
+                serial.Parameters.AddWithValue("key", PowerLines.BuildLock);
+                await serial.ExecuteNonQueryAsync(cancellationToken);
             }
 
             var lines = await power.LinesAroundAsync(x, y, cancellationToken);
@@ -187,7 +198,7 @@ public sealed class PowerLineService(
         }, cancellationToken);
 
     /// <summary>Pays the supplier for <paramref name="hours"/> more of power along a cable to one of the player's plots.</summary>
-    public Task<TieReply> BuyAsync(Guid player, Guid lineId, int hours, CancellationToken cancellationToken) =>
+    public Task<TieReply> BuyAsync(Guid player, Guid lineId, int hours, long? expectedPriceCents, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
             if (hours is < 1 or > PowerLines.MaxHours)
@@ -204,7 +215,18 @@ public sealed class PowerLineService(
             }
 
             var supplierOwner = (await registry.FindAsync(line.FromX, line.FromY, cancellationToken))!.Owner;
-            var price = (await OfferAsync(line.FromTie, cancellationToken))?.PriceCents ?? 0;
+            if (await OfferAsync(line.FromTie, cancellationToken) is not { Open: true } offer)
+            {
+                throw new GameException("tie_closed", "The owner of that grid tie does not sell power.");
+            }
+
+            // The buyer pays the price they saw, or nothing: the seller may have changed it since.
+            var price = offer.PriceCents;
+            if (expectedPriceCents is { } expected && expected != price)
+            {
+                throw new GameException("price_changed", "The seller changed the price of power; look at it again.");
+            }
+
             var cents = PowerLines.PowerCents(line.Kw, hours, price);
             long? balance = null;
             if (cents > 0)
@@ -243,6 +265,11 @@ public sealed class PowerLineService(
             if (!((line.FromX == x && line.FromY == y && line.FromTie == id) || (line.ToX == x && line.ToY == y && line.ToTie == id)))
             {
                 throw new GameException("no_line", "There is no such cable at this grid tie.");
+            }
+
+            if (line.FromTie == id && line.PaidUntil != PowerLink.Forever && line.PaidUntil > time.GetUtcNow())
+            {
+                throw new GameException("line_paid", "The other player paid for power along this cable; it stays until that time runs out.");
             }
 
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Build);
@@ -402,7 +429,7 @@ public sealed record TiePriceRequest(int X, int Y, Guid Id, long PriceCents, boo
 
 public sealed record LineBuildRequest(int X, int Y, Guid Id, int FromX, int FromY, Guid FromId, double Kw);
 
-public sealed record LineBuyRequest(Guid Line, int Hours);
+public sealed record LineBuyRequest(Guid Line, int Hours, long? PriceCents = null);
 
 public sealed record LineRemoveRequest(int X, int Y, Guid Id, Guid Line);
 
@@ -494,7 +521,7 @@ public sealed class BuyLineHandler(IServiceScopeFactory scopes) : TieHandler(sco
     protected override Task<TieReply> RunAsync(PowerLineService lines, Guid player, JsonElement? payload, CancellationToken cancellationToken)
     {
         var request = Payload.Read<LineBuyRequest>(payload);
-        return lines.BuyAsync(player, request.Line, request.Hours, cancellationToken);
+        return lines.BuyAsync(player, request.Line, request.Hours, request.PriceCents, cancellationToken);
     }
 }
 

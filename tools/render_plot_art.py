@@ -4857,6 +4857,30 @@ def build_substation():
     ra.box("ss_sign", (0.2, 0.01, 0.14), (-0.4, -0.92, 0.3), m["yellow"])
 
 
+def build_grid_tie():
+    """A grid tie: a concrete pad with a transformer, a terminal mast where the plot's wires meet the cable,
+    and the cable going down into a duct that leads off the plot, next to a drum of spare cable."""
+    m = big_power_mats()
+    ra.box("gt_pad", (1.8, 1.8, 0.06), (0, 0, 0.03), m["concrete"])
+    transformer_box("gt_tr", (-0.35, 0.3, 0.06), (0.65, 0.45, 0.5), m)
+    lattice("gt_mast", 0.32, 0.14, 1.9, m, levels=4)
+    ra.box("gt_arm", (0.9, 0.08, 0.08), (0, 0, 1.85), m["steel"])
+    for x in (-0.38, 0.0, 0.38):
+        for j in range(3):
+            ra.cylinder("gt_shed", 0.045, 0.022, (x, 0, 1.78 - j * 0.06), m["porcelain"], verts=10)
+    # The cable runs down the mast into a duct in the ground, which leads off towards the other plot.
+    ra.cylinder("gt_cable", 0.04, 1.75, (0.2, -0.12, 0.95), m["dark"], verts=8)
+    ra.box("gt_duct", (0.3, 0.9, 0.12), (0.2, -0.55, 0.12), m["grey"], bevel=0.02)
+    ra.box("gt_duct_band", (0.32, 0.06, 0.13), (0.2, -0.9, 0.125), m["yellow"])
+    drum = ra.cylinder("gt_drum", 0.26, 0.22, (0.62, 0.45, 0.32), ra.plain("gt_wood", (0.32, 0.2, 0.09), 0.8, variation=0.3), verts=20)
+    drum.rotation_euler = (math.radians(90), 0, 0)
+    coil = ra.cylinder("gt_coil", 0.19, 0.24, (0.62, 0.45, 0.32), m["dark"], verts=20)
+    coil.rotation_euler = (math.radians(90), 0, 0)
+    ra.box("gt_cabinet", (0.3, 0.22, 0.45), (-0.55, -0.45, 0.285), m["grey"], bevel=0.015)
+    ra.box("gt_lamp", (0.05, 0.02, 0.05), (-0.55, -0.57, 0.42), m["lamp"])
+    ra.box("gt_sign", (0.16, 0.01, 0.16), (0, -0.17, 0.9), m["yellow"], rotation=(0, math.radians(45), 0))
+
+
 def cooling_tower(prefix, at, radius, height, m, steam=True):
     """A hyperbolic cooling tower of concrete, narrowest two thirds of the way up, with steam rising out of it."""
     x, y = at
@@ -4937,10 +4961,11 @@ def build_nuclear_plant():
     transformer_box("np_tr", (2.9, -3.1, 0.06), (1.0, 0.6, 0.7), m)
 
 
-# name: (canvas width, height, camera target height, builder, where the wires meet it). The pylon and the substation
-# stand on one tile, the energy store on 2 × 2, the coal plant on 3 × 3 and the nuclear plant on 4 × 4.
+# name: (canvas width, height, camera target height, builder, where the wires meet it). The pylon, the substation
+# and the grid tie stand on one tile, the energy store on 2 × 2, the coal plant on 3 × 3 and the nuclear plant on 4 × 4.
 BIG_POWER = {
     "pylon": (96, 288, PYLON_TOP / 2, build_pylon, Vector((0, 0, PYLON_TOP - 0.3))),
+    "grid_tie": (128, 150, 0.8, build_grid_tie, Vector((0, 0, 1.85))),
     "substation": (128, 144, 0.6, build_substation, Vector((0, 0.55, 1.35))),
     "energy_store": (176, 176, 0.5, build_energy_store, Vector((-0.9, -1.35, 0.9))),
     "coal_plant": (256, 384, 2.2, build_coal_plant, Vector((1.9, -2.3, 0.95))),

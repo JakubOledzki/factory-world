@@ -754,6 +754,8 @@ const ITEMS := {
 			"Stół warsztatowy: 6 × sztabka stali + 4 × sztabka miedzi + 10 × kamień (30 s). Wymaga badania: Przesył energii."],
 	"power_coal_plant": ["Elektrownia węglowa", "Na 3 × 3 polach: daje 1 MW z węgla albo węgla drzewnego (węgiel starcza na 20 s pełnej mocy). Na piasku, bez wody do chłodzenia, 70% mocy.",
 			"Stół warsztatowy: 40 × sztabka stali + 60 × cegły + 20 × beton + 2 × transformator + 2 × silnik elektryczny (180 s). Wymaga badania: Energetyka cieplna."],
+	"power_grid_tie": ["Przyłącze sieciowe", "Koniec kabla do innej działki: postaw obok słup, a sieć tej działki połączy się z siecią tamtej. Kabel kosztuje 10 000 $ za każde pole odległości (500 pól to 5 mln $). Między twoimi działkami prąd płynie za darmo; od innego gracza kupujesz godziny prądu po cenie, którą sam ustala za kWh.",
+			"Stół warsztatowy: 2 × transformator + 10 × sztabka stali + 20 × sztabka miedzi + 10 × beton (60 s). Wymaga badania: Przesył energii."],
 	"power_energy_store": ["Magazyn energii", "Na 2 × 2 polach: mieści 3,6 GJ (jak dziesięć akumulatorów), bierze i oddaje do 400 kW. Ładuje się i rozładowuje razem z akumulatorami w sieci.",
 			"Stół warsztatowy: 8 × akumulator + 20 × sztabka stali + 2 × transformator + 10 × beton (120 s). Wymaga badania: Magazynowanie energii."],
 	"fuel_rod": ["Pręt paliwowy", "Paliwo elektrowni jądrowej: 1,5 GJ, dziesięć minut jej pełnej mocy.",

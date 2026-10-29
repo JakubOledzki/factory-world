@@ -8,7 +8,10 @@
 			"Magazyn energii (badanie „Magazynowanie energii”): na 2 × 2 polach mieści tyle co dziesięć akumulatorów i oddaje do 400 kW. Ładuje się i rozładowuje razem z akumulatorami w tej samej sieci.",
 			"Elektrownia jądrowa (badanie „Energetyka jądrowa”): na 4 × 4 polach daje 2,5 MW. Pali pręty paliwowe z zakładu chemicznego, jeden na 10 minut pełnej mocy.",
 			"Ruda uranu: trafia się w głębokich kopalniach w górach, na 4. poziomie w 1% urobków, na 5. w 2%, także z wiertła. Handlarz płaci za nią 80 $.",
-			"Elektrownie parowe, węglowe i jądrowe na piasku dają 70% mocy: brakuje wody do chłodzenia."
+			"Elektrownie parowe, węglowe i jądrowe na piasku dają 70% mocy: brakuje wody do chłodzenia.",
+			"Kable między działkami: postaw przyłącze sieciowe przy słupie, a w jego oknie poprowadzisz kabel z przyłącza na innej działce. Kabel kosztuje 10 000 $ za każde pole odległości (500 pól to 5 mln $) i przesyła od 10 do 5000 kW.",
+			"Między twoimi działkami prąd płynie kablem za darmo. Właściciel przyłącza może też sprzedawać prąd innym: ustawia cenę za kWh i zaznacza „sprzedawaj innym”, a kupujący płaci z góry za godziny prądu, a pieniądze od razu trafiają na konto sprzedawcy. Kupujesz zawsze po cenie, którą widzisz, a sprzedawca nie zwinie kabla, póki prąd jest opłacony.",
+			"Póki prąd jest opłacony, kabel obciąża sieć sprzedawcy pełną mocą, jak jeszcze jedna maszyna. Gdy tamtej sieci brakuje prądu, kabel i maszyny sprzedawcy zwalniają razem, po równo."
 		]
 	},
 	{
