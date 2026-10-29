@@ -15,6 +15,7 @@ using FactoryWorld.Modules.Market;
 using FactoryWorld.Modules.Power;
 using FactoryWorld.Modules.Recycling;
 using FactoryWorld.Modules.Research;
+using FactoryWorld.Modules.Rivalry;
 using FactoryWorld.Modules.Session;
 using FactoryWorld.Modules.Tutorial;
 using FactoryWorld.Modules.Statistics;
@@ -44,6 +45,7 @@ IGameModule[] modules =
     new CompaniesModule(),
     new ResearchModule(),
     new AchievementsModule(),
+    new RivalryModule(),
     new BotsModule(),
     new LawModule(),
     new ChatModule(),

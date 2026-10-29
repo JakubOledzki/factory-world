@@ -19,6 +19,7 @@
     <Project Path="src/Modules/FactoryWorld.Modules.Power/FactoryWorld.Modules.Power.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Recycling/FactoryWorld.Modules.Recycling.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Research/FactoryWorld.Modules.Research.csproj" />
+    <Project Path="src/Modules/FactoryWorld.Modules.Rivalry/FactoryWorld.Modules.Rivalry.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Session/FactoryWorld.Modules.Session.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Tutorial/FactoryWorld.Modules.Tutorial.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Statistics/FactoryWorld.Modules.Statistics.csproj" />

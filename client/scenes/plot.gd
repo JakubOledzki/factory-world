@@ -42,6 +42,7 @@ const ACTIONS := {
 	"hotbar_4": [KEY_4],
 	"hotbar_5": [KEY_5],
 	"plan": [KEY_V],
+	"clear": [KEY_X],
 	"pipette": [KEY_F],
 }
 
@@ -388,6 +389,8 @@ const NOT_IN_PLANS := ["furniture_drill", "furniture_heavy_drill", "furniture_pu
 	"furniture_lighthouse", "furniture_export_chest"]
 ## The most objects one plan holds (as the server's PlotObjects.MaxPlan), and the most steps Ctrl+Z undoes.
 const MAX_PLAN := 100
+## The most objects one cleared area takes back at once (PlotObjects.MaxArea on the server).
+const MAX_AREA := 400
 const MAX_UNDO := 20
 ## How far (px) the screen shakes at a felled tree or a broken rock, and how fast that dies down (px a second).
 const SHAKE := 5.0
@@ -633,11 +636,14 @@ var _shake := 0.0
 ## Building plans: "copy" while the player marks the corners of what to copy, "paste" while the copy follows the mouse; "" otherwise.
 var _plan_mode := ""
 var _plan_corner := Vector2i(-1, -1)
+## When clearing an area: its far corner, which stays marked while the player is asked.
+var _clear_to := Vector2i(-1, -1)
 ## The copied plan, kept while the game runs, also on other plots: [{ kind, dx, dy, rotation }] from its top left tile.
 static var _plan: Array[Dictionary] = []
 ## What Ctrl+Z undoes, newest last: { placed: [ids] } to take back what was put up, or { picked: [objects] } to put back what was picked up.
 var _undo: Array[Dictionary] = []
 var _plan_button: Button
+var _clear_button: Button
 var _undo_button: Button
 ## The chat in the corner, and whether the next click on the plot points at a place for the others.
 var _chat: ChatBox
@@ -2112,7 +2118,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_Z and (event.ctrl_pressed or event.meta_pressed):
 		_undo_last()
 	elif event.is_action_pressed("cancel"):
-		if _plan_mode != "":
+		if ConfirmDialog.asking():
+			ConfirmDialog.close()
+		elif _plan_mode != "":
 			_stop_plan()
 		elif _placing != "":
 			_stop_placing()
@@ -2180,6 +2188,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		Game.open_garage()
 	elif event.is_action_pressed("plan"):
 		_toggle_plan()
+	elif event.is_action_pressed("clear"):
+		_toggle_clear()
 	elif event.is_action_pressed("pipette"):
 		_update_hover()
 		_pipette(_hovered)
@@ -2236,7 +2246,7 @@ func _visitor_input(event: InputEvent) -> bool:
 				_walk_to(cell)
 		get_viewport().set_input_as_handled()
 		return true
-	for action: String in ["interact", "rotate", "plant", "upgrade_mine", "station", "market", "plan", "pipette"]:
+	for action: String in ["interact", "rotate", "plant", "upgrade_mine", "station", "market", "plan", "clear", "pipette"]:
 		if event.is_action_pressed(action):
 			_show_toast("To nie twoja działka: możesz tu tylko chodzić i oglądać.", UI.MUTED)
 			return true
@@ -3377,6 +3387,7 @@ func _toggle_plan() -> void:
 
 
 func _stop_plan() -> void:
+	ConfirmDialog.close()
 	_plan_mode = ""
 	_plan_corner = Vector2i(-1, -1)
 	_marks.queue_redraw()
@@ -3384,12 +3395,16 @@ func _stop_plan() -> void:
 
 
 func _plan_click(cell: Vector2i) -> void:
-	if _plan_mode == "copy":
+	if ConfirmDialog.asking():
+		return
+	if _plan_mode in ["copy", "clear"]:
 		if _plan_corner.x < 0:
 			_plan_corner = cell
 			_update_hint()
-		else:
+		elif _plan_mode == "copy":
 			_copy_plan(Rect2i(_plan_corner, Vector2i.ZERO).expand(cell))
+		else:
+			_ask_clear(Rect2i(_plan_corner, Vector2i.ZERO).expand(cell))
 	elif _plan_mode == "paste":
 		_paste_plan(cell)
 
@@ -3425,6 +3440,117 @@ func _copy_plan(area: Rect2i) -> void:
 	_show_toast("Skopiowano: %d obiektów%s. Kliknij, gdzie postawić kopię." % [copied.size(),
 		" (bez %d, które stoją tylko w jednym miejscu)" % skipped if skipped > 0 else ""], UI.GOOD)
 	_update_hint()
+
+
+# --- Clearing an area ------------------------------------------------------------------------
+
+func _toggle_clear() -> void:
+	if _visitor:
+		_show_toast("Na cudzej działce niczego nie schowasz.", UI.ERROR)
+		return
+	if _plan_mode == "clear":
+		_stop_plan()
+		return
+	_stop_placing()
+	_set_planting(false)
+	_stop_releasing()
+	_stop_work()
+	_plan_mode = "clear"
+	_plan_corner = Vector2i(-1, -1)
+	_show_toast("Usuwanie obszaru: kliknij dwa przeciwne rogi prostokąta. Wszystko, co w nim stoi, wróci do ekwipunku.")
+	_update_hint()
+
+
+## The objects standing in the rectangle (both corners included): every one whose tile is inside it, once each.
+func _objects_in(area: Rect2i) -> Array[Dictionary]:
+	var found: Array[Dictionary] = []
+	var seen := {}
+	for cell: Vector2i in _placed:
+		var object: Dictionary = _placed[cell]
+		if seen.has(object["id"]) or not area.has_point(_anchor(cell)):
+			continue
+		seen[object["id"]] = true
+		found.append(object)
+	return found
+
+
+## Says what stands in the marked rectangle and asks before it all goes back into the inventory.
+func _ask_clear(area: Rect2i) -> void:
+	var corner := _plan_corner
+	area.size += Vector2i.ONE
+	var objects := _objects_in(area)
+	if objects.is_empty():
+		_plan_corner = Vector2i(-1, -1)
+		_show_toast("W zaznaczonym miejscu nic nie stoi.", UI.ERROR)
+		_update_hint()
+		return
+	if objects.size() > MAX_AREA:
+		_plan_corner = Vector2i(-1, -1)
+		_show_toast("Naraz schowasz najwyżej %d obiektów, a tu jest %d. Zaznacz mniejszy kawałek." % [MAX_AREA, objects.size()], UI.ERROR)
+		_update_hint()
+		return
+	var counts := {}
+	for object: Dictionary in objects:
+		counts[object["kind"]] = int(counts.get(object["kind"], 0)) + 1
+	var kinds: Array = counts.keys()
+	kinds.sort_custom(func(a: String, b: String) -> bool: return counts[a] > counts[b])
+	var lines: Array[String] = []
+	for kind: String in kinds.slice(0, 6):
+		lines.append("%s × %d" % [_item_name(kind), counts[kind]])
+	if kinds.size() > 6:
+		lines.append("i %d innych rodzajów" % (kinds.size() - 6))
+	var text := "%s.\n\nTo, co jest w środku (w skrzyniach, maszynach, na taśmach), też wróci do ekwipunku." % ", ".join(lines)
+	# A kind the inventory does not have yet needs a free tile; it still comes back without one, but then nothing new fits.
+	var have := {}
+	for stack: Dictionary in _items:
+		if int(stack["quantity"]) > 0:
+			have[stack["id"]] = true
+	var new_kinds := kinds.filter(func(kind: String) -> bool: return not have.has(kind)).size()
+	var free := maxi(0, _slots.slots - have.size())
+	if new_kinds > free:
+		text += "\n\nUwaga: w ekwipunku są tylko %d wolne miejsca, a to %d nowych rodzajów przedmiotów. Nic nie przepadnie, ale ekwipunek się przepełni i nic nowego do niego nie trafi, dopóki nie zrobisz miejsca." % [free, new_kinds]
+	_clear_to = Vector2i(area.position.x + area.end.x - 1 - corner.x, area.position.y + area.end.y - 1 - corner.y)
+	ConfirmDialog.ask(_hud, "Schować %d obiektów do ekwipunku?" % objects.size(), text, "Schowaj wszystko", func() -> void: _clear_area(area))
+
+
+## Takes everything of the player's off the rectangle in one go.
+func _clear_area(area: Rect2i) -> void:
+	_plan_corner = Vector2i(-1, -1)
+	_update_hint()
+	var reply := await Net.request("plot.pickupArea", {"x": _at.x, "y": _at.y,
+		"fromX": area.position.x, "fromY": area.position.y, "toX": area.end.x - 1, "toY": area.end.y - 1})
+	if reply["type"] != "plot.pickedUpArea":
+		_show_error(reply)
+		return
+	var taken: Array = reply["payload"]["objects"]
+	var left := int(reply["payload"]["left"])
+	var forester := false
+	var farm := false
+	var picked: Array[Dictionary] = []
+	for object: Dictionary in taken:
+		var id := str(object["id"])
+		forester = forester or _foresters.has(id)
+		farm = farm or _farmsteads.has(id)
+		_forget_placed(id)
+		picked.append(object)
+	_placed_changed()
+	_hide_placed_windows()
+	_update_market_button()
+	_using = Vector2i(-1, -1)
+	# Ctrl+Z puts it all back up, as long as it fits in one building plan.
+	if not picked.is_empty() and picked.size() <= MAX_PLAN:
+		_remember({"picked": picked})
+	if taken.is_empty():
+		_show_toast("Nic stąd nie schowano%s." % (": to, co tu stoi, postawił ktoś inny albo zasypał je śnieg" if left > 0 else ""), UI.ERROR)
+	else:
+		_show_toast("Schowano do ekwipunku: %d obiektów%s." % [taken.size(),
+			" (%d zostało: postawił je ktoś inny albo zasypał je śnieg)" % left if left > 0 else ""], UI.GOOD)
+	_reload_inventory()
+	_poll_logistics()
+	if forester:
+		_poll_forestry()
+	if farm:
+		_poll_farmsteads()
 
 
 ## The plan's objects as they would stand with its top left tile on `corner`.
@@ -3494,13 +3620,21 @@ func _paste_plan(corner: Vector2i) -> void:
 
 ## Ghost of the copy under the mouse in green where it fits, red where it does not; in copy mode, the marked rectangle.
 func _draw_plan(ground: Vector2i) -> void:
-	if _plan_mode == "copy" and ground.x >= 0:
-		var from := _plan_corner if _plan_corner.x >= 0 else ground
-		var area := Rect2i(from, Vector2i.ZERO).expand(ground)
+	if _plan_mode in ["copy", "clear"] and ground.x >= 0:
+		# While the question is asked, the rectangle stays where it was marked.
+		var to: Vector2i = _clear_to if _plan_mode == "clear" and ConfirmDialog.asking() else ground
+		var from := _plan_corner if _plan_corner.x >= 0 else to
+		var area := Rect2i(from, Vector2i.ZERO).expand(to)
 		area.size += Vector2i.ONE
+		var tint := Color(0.36, 0.7, 0.9) if _plan_mode == "copy" else Color(1.0, 0.42, 0.35)
 		var rect := Rect2(Vector2(area.position) * TILE, Vector2(area.size) * TILE)
-		_marks.draw_rect(rect, Color(0.36, 0.7, 0.9, 0.12))
-		_marks.draw_rect(rect, Color(0.36, 0.7, 0.9, 0.85), false, 2.0)
+		_marks.draw_rect(rect, Color(tint, 0.12))
+		_marks.draw_rect(rect, Color(tint, 0.85), false, 2.0)
+		if _plan_mode == "clear":
+			# What would go: every object standing in the rectangle, outlined.
+			for object: Dictionary in _objects_in(area):
+				for at in _footprint(object["kind"], Vector2i(object["tileX"], object["tileY"])):
+					_marks.draw_rect(Rect2(Vector2(at) * TILE, TILE).grow(-2.0), Color(tint, 0.25))
 	elif _plan_mode == "paste" and ground.x >= 0:
 		var tint := Color(0.56, 0.84, 0.35, 0.8) if _plan_fits(ground) else Color(1.0, 0.42, 0.35, 0.8)
 		for o: Dictionary in _plan_at(ground):
@@ -4859,13 +4993,15 @@ func _build_hud() -> void:
 	bar.add_child(UI.toolbar_button("stats", "Statystyki  [L]", func() -> void: _stats_window.toggle()))
 	_plan_button = UI.toolbar_button("blueprint", "Plany budowy  [V]\nZaznacz kawałek fabryki i postaw jego kopię gdzie indziej", _toggle_plan)
 	bar.add_child(_plan_button)
+	_clear_button = UI.toolbar_button("clear", "Usuń obszar  [X]\nZaznacz prostokąt i schowaj wszystko, co w nim stoi, do ekwipunku", _toggle_clear)
+	bar.add_child(_clear_button)
 	_undo_button = UI.toolbar_button("undo", "Cofnij  [Ctrl+Z]\nCofa ostatnie postawienie albo schowanie", _undo_last)
 	_undo_button.visible = false
 	bar.add_child(_undo_button)
 	bar.add_child(UI.toolbar_button("world_map", "Mapa świata  [N]", Game.open_world_map))
 	bar.add_child(UI.toolbar_button("gallery", "Galeria fabryk\nNajczęściej lubiane działki: odwiedź je", func() -> void: _gallery_window.toggle()))
 	bar.add_child(UI.toolbar_button("chat", "Czat  [Enter]\nDo graczy na działce albo do wszystkich", func() -> void: _chat.toggle()))
-	bar.add_child(UI.toolbar_button("achievements", "Osiągnięcia  [O]", func() -> void: _achievements_window.toggle()))
+	bar.add_child(UI.toolbar_button("achievements", "Osiągnięcia, rankingi i rywalizacja  [O]", func() -> void: _achievements_window.toggle()))
 	bar.add_child(UI.toolbar_button("garage", "Garaż  [G]", Game.open_garage))
 	_hud.add_child(bar)
 	bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 10)
@@ -5013,6 +5149,10 @@ func _update_hint() -> void:
 		return
 	if _plan_mode == "copy":
 		_hint.text = "Plan budowy: kliknij %s róg kawałka fabryki do skopiowania. Esc kończy." % ("pierwszy" if _plan_corner.x < 0 else "drugi, przeciwny")
+		return
+	if _plan_mode == "clear":
+		_hint.text = "Usuwanie obszaru: %s Esc kończy." % ("kliknij pierwszy róg prostokąta, z którego wszystko schować do ekwipunku." if _plan_corner.x < 0
+			else "kliknij drugi, przeciwny róg.")
 		return
 	if _plan_mode == "paste":
 		_hint.text = "Plan budowy (%d obiektów): kliknij, gdzie postawić kopię; lewy górny róg jest pod myszą. [V] kopiuje inny kawałek, Esc kończy." % _plan.size()
@@ -5309,6 +5449,8 @@ func _build_windows() -> void:
 	layer.add_child(_city_window)
 	_achievements_window = AchievementsWindow.new()
 	_achievements_window.failed.connect(_show_error)
+	_achievements_window.toast.connect(func(text: String) -> void: _show_toast(text, UI.GOLD))
+	_achievements_window.inventory_changed.connect(_reload_inventory)
 	layer.add_child(_achievements_window)
 	_character_window = CharacterWindow.new()
 	_character_window.position = Vector2(280, 60)
@@ -5413,6 +5555,7 @@ func _load() -> void:
 		_subtitle.text += "  ·  zwiedzanie"
 		_plant_button.visible = false
 		_plan_button.visible = false
+		_clear_button.visible = false
 		_show_toast("Działka publiczna: możesz po niej chodzić i oglądać.", UI.MUTED)
 	_update_hint()
 	_loading.queue_free()

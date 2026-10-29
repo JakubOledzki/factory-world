@@ -55,6 +55,13 @@ public interface ICharacterNames
     Task<IReadOnlyDictionary<Guid, string>> FindAsync(string prefix, int limit, CancellationToken cancellationToken);
 }
 
+/// <summary>Messages from the server itself in everybody's chat, e.g. that a player was the first in the world to do something.</summary>
+public interface IAnnouncements
+{
+    /// <summary>Says <paramref name="text"/> (in Polish) to everybody; call it once the change it tells of is committed.</summary>
+    void Announce(string text);
+}
+
 /// <summary>How a character looks, e.g. to draw other players walking on the same plot.</summary>
 public interface ICharacterLooks
 {
@@ -201,6 +208,9 @@ public interface IPlotRegistry
 {
     /// <summary>The plot if somebody bought it, otherwise null.</summary>
     Task<OwnedPlot?> FindAsync(int x, int y, CancellationToken cancellationToken);
+
+    /// <summary>How many plots each owner has; owners without any are left out.</summary>
+    Task<IReadOnlyDictionary<Guid, int>> CountsAsync(CancellationToken cancellationToken);
 }
 
 /// <summary>The company a plot belongs to, as one player sees it.</summary>

@@ -511,6 +511,26 @@ namespace FactoryWorld.Modules.Companies.Migrations
                             t.HasCheckConstraint("ck_warehouse_quantity", "quantity >= 0");
                         });
                 });
+
+            modelBuilder.Entity("FactoryWorld.Modules.Companies.WonderRow", b =>
+                {
+                    b.Property<string>("Project")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("project");
+
+                    b.Property<DateTimeOffset>("ClaimedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("claimed_at");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.HasKey("Project");
+
+                    b.ToTable("wonders", "companies");
+                });
 #pragma warning restore 612, 618
         }
     }
