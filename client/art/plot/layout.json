@@ -1070,5 +1070,101 @@
   "anchorY": 93,
   "wireX": 64,
   "wireY": 51
+ },
+ "pig": {
+  "anchorX": 56,
+  "anchorY": 62
+ },
+ "goat": {
+  "anchorX": 56,
+  "anchorY": 62
+ },
+ "sprinkler": {
+  "anchorX": 56,
+  "anchorY": 67
+ },
+ "sugar_beet_young": {
+  "anchorX": 64,
+  "anchorY": 54
+ },
+ "sugar_beet_ripe": {
+  "anchorX": 64,
+  "anchorY": 58
+ },
+ "flax_young": {
+  "anchorX": 64,
+  "anchorY": 59
+ },
+ "flax_ripe": {
+  "anchorX": 64,
+  "anchorY": 68
+ },
+ "hemp_young": {
+  "anchorX": 64,
+  "anchorY": 69
+ },
+ "hemp_ripe": {
+  "anchorX": 64,
+  "anchorY": 87
+ },
+ "coke_oven": {
+  "anchorX": 128,
+  "anchorY": 209
+ },
+ "jeweler": {
+  "anchorX": 96,
+  "anchorY": 127
+ },
+ "tree_nursery": {
+  "anchorX": 96,
+  "anchorY": 102
+ },
+ "spinning_mill": {
+  "anchorX": 96,
+  "anchorY": 114
+ },
+ "loom": {
+  "anchorX": 96,
+  "anchorY": 116
+ },
+ "auto_barn": {
+  "anchorX": 96,
+  "anchorY": 127
+ },
+ "sugar_factory": {
+  "anchorX": 96,
+  "anchorY": 164
+ },
+ "mechanized_farm": {
+  "anchorX": 176,
+  "anchorY": 236
+ },
+ "electrolyzer": {
+  "anchorX": 96,
+  "anchorY": 102
+ },
+ "biomass_plant": {
+  "anchorX": 128,
+  "anchorY": 211,
+  "wireX": 189,
+  "wireY": 242
+ },
+ "chp_plant": {
+  "anchorX": 128,
+  "anchorY": 226,
+  "wireX": 115,
+  "wireY": 254
+ },
+ "geothermal_plant": {
+  "anchorX": 128,
+  "anchorY": 181,
+  "wireX": 192,
+  "wireY": 210
+ },
+ "fuel_cell": {
+  "anchorX": 96,
+  "anchorY": 102,
+  "wireX": 125,
+  "wireY": 105
  }
 }
