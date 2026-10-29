@@ -49,13 +49,29 @@ public static class CompanyPerks
 
     public const double StationResearchFactor = 0.8;
 
+    /// <summary>A wonder of the world, which only one company on the server builds: the great library, research of members takes 15% less time.</summary>
+    public const string Library = "great_library";
+
+    public const double LibraryResearchFactor = 0.85;
+
+    /// <summary>A wonder of the world: the world railway hub, members pay 15% less on every route.</summary>
+    public const string Hub = "world_rail_hub";
+
+    public const double HubFactor = 0.85;
+
+    /// <summary>A wonder of the world: the colossus of industry, members get 10% more experience for everything.</summary>
+    public const string Colossus = "colossus";
+
+    public const int ColossusXpPercent = 10;
+
     /// <summary>The fee factor for a member sending goods, by rail or sea.</summary>
     public static double FeeFactor(IReadOnlySet<string> projects, bool bySea) =>
         (projects.Contains(Railway) ? RailwayFactor : 1) * (bySea && projects.Contains(Harbour) ? HarbourShipFactor : 1)
-        * (projects.Contains(Orbit) ? OrbitFactor : 1);
+        * (projects.Contains(Orbit) ? OrbitFactor : 1) * (projects.Contains(Hub) ? HubFactor : 1);
 
     /// <summary>What a member's research time is multiplied by.</summary>
-    public static double ResearchFactor(IReadOnlySet<string> projects) => projects.Contains(Station) ? StationResearchFactor : 1;
+    public static double ResearchFactor(IReadOnlySet<string> projects) =>
+        (projects.Contains(Station) ? StationResearchFactor : 1) * (projects.Contains(Library) ? LibraryResearchFactor : 1);
 }
 
 /// <summary>Technologies only a company can research, together; they open company features.</summary>

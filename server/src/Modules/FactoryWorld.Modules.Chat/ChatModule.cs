@@ -14,6 +14,9 @@ public static class ChatRules
 
     public const int MaxLength = 200;
 
+    /// <summary>Who the server's own announcements (<see cref="ChatRoom.Announce"/>) come from; they carry an empty sender id.</summary>
+    public const string ServerName = "Serwer";
+
     /// <summary>Messages kept for everybody, and for each plot; older ones are forgotten (chat is not stored in the database).</summary>
     public const int WorldKept = 100;
     public const int PlotKept = 30;
@@ -112,6 +115,18 @@ public sealed class ChatRoom(TimeProvider time)
                 Keep(_world, message, ChatRules.WorldKept);
             }
 
+            return message;
+        }
+    }
+
+    /// <summary>A message of the server's own in everybody's channel, from <see cref="ChatRules.ServerName"/>; no limit on how often.</summary>
+    public ChatMessage Announce(string text)
+    {
+        var now = time.GetUtcNow();
+        lock (_gate)
+        {
+            var message = new ChatMessage(++_last, ChatRules.World, null, null, Guid.Empty, ChatRules.ServerName, ChatRules.Clean(text), null, null, now);
+            Keep(_world, message, ChatRules.WorldKept);
             return message;
         }
     }
@@ -247,6 +262,12 @@ public sealed class ChatService(ChatRoom room, ICharacterNames names, IPlotObjec
     };
 }
 
+/// <summary>Announcements go into everybody's chat.</summary>
+public sealed class ChatAnnouncements(ChatRoom room) : IAnnouncements
+{
+    public void Announce(string text) => room.Announce(text);
+}
+
 public sealed record ChatSendRequest(string? Channel, int? X, int? Y, string? Text, int? PingX, int? PingY);
 
 public sealed record ChatGetRequest(long After, int? X, int? Y);
@@ -291,6 +312,7 @@ public sealed class ChatModule : IGameModule
     {
         services.AddSingleton<ChatRoom>();
         services.AddScoped<ChatService>();
+        services.AddSingleton<IAnnouncements, ChatAnnouncements>();
         services.AddSingleton<IMessageHandler, ChatSendHandler>();
         services.AddSingleton<IMessageHandler, ChatGetHandler>();
     }

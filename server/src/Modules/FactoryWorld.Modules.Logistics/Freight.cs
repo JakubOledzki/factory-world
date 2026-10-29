@@ -99,3 +99,52 @@ public sealed class FreightChests(GameDb db, LogisticsService logistics) : IFrei
         state.Objects.Where(o => kind(o.Kind)).OrderBy(o => o.TileY).ThenBy(o => o.TileX)
             .Select(o => (o, state.Contents.GetValueOrDefault(o.Id) ?? new Contents())).ToList();
 }
+
+/// <summary>Every storage on a plot (chests, piles, silos, tanks) as a police search sees it.</summary>
+public sealed class PlotStorage(GameDb db, LogisticsService logistics) : IPlotStorage
+{
+    public Task<IReadOnlyDictionary<string, long>> ContentsAsync(int x, int y, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            var state = await logistics.RunAsync(x, y, cancellationToken);
+            return (IReadOnlyDictionary<string, long>)Stored(state)
+                .SelectMany(c => c.Contents.Items ?? [])
+                .GroupBy(s => s.Item)
+                .ToDictionary(g => g.Key, g => g.Sum(s => (long)s.Quantity));
+        }, cancellationToken);
+
+    public Task<IReadOnlyDictionary<string, long>> SeizeAsync(int x, int y, IReadOnlyDictionary<string, long> goods, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            var state = await logistics.RunAsync(x, y, cancellationToken);
+            var storages = Stored(state);
+            var taken = new Dictionary<string, long>();
+            var changed = new List<(Guid, Contents)>();
+            foreach (var (item, quantity) in goods)
+            {
+                var left = quantity;
+                foreach (var (o, contents) in storages)
+                {
+                    if (left == 0)
+                    {
+                        break;
+                    }
+
+                    var n = Storages.Remove(contents.Items ??= [], item, (int)Math.Min(left, int.MaxValue));
+                    if (n > 0)
+                    {
+                        left -= n;
+                        taken[item] = taken.GetValueOrDefault(item) + n;
+                        changed.Add((o.Id, contents));
+                    }
+                }
+            }
+
+            await logistics.WriteAsync(x, y, changed.DistinctBy(c => c.Item1).ToList(), cancellationToken);
+            return (IReadOnlyDictionary<string, long>)taken;
+        }, cancellationToken);
+
+    private static List<(PlotObject Object, Contents Contents)> Stored(LogisticsState state) =>
+        state.Objects.Where(o => Storages.Find(o.Kind) is not null && state.Contents.ContainsKey(o.Id))
+            .Select(o => (o, state.Contents[o.Id])).ToList();
+}

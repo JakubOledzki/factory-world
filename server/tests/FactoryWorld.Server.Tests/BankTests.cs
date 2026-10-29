@@ -29,6 +29,7 @@ public sealed class BankTests(ServerFactory factory) : ExportTestBase(factory), 
     {
         var company = (await owner.SendAsync("company.create", new { name = "Bank " + Guid.NewGuid().ToString("N")[..8] })).Payload().GetProperty("company");
         var id = company.GetProperty("id").GetGuid();
+        await Factory.CompanyLevelAsync(owner.AccountId);
         foreach (var plot in plots)
         {
             await BuyAsync(owner, plot);

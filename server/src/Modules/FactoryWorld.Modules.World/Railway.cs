@@ -185,7 +185,7 @@ public sealed record Shipment(
 /// <param name="Problem">Why the last train did not leave: <c>empty</c>, <c>no_money</c> or <c>no_station</c>.</param>
 public sealed record TrainRoute(
     long Id, int ToX, int ToY, IReadOnlyList<string> Items, int EveryMinutes, DateTimeOffset NextAt,
-    DateTimeOffset? LastAt, long LastQuantity, string? Problem, string? Receiver);
+    DateTimeOffset? LastAt, long LastQuantity, string? Problem, string? Receiver, bool Smuggle = false);
 
 public sealed record StationState(
     int X, int Y, IReadOnlyDictionary<string, long> Items, IReadOnlyList<Shipment> Incoming, IReadOnlyList<Shipment> Outgoing,
@@ -298,7 +298,8 @@ internal static class StationStock
 
 public sealed class StationService(
     GameDb db, WorldMap map, PlotService plots, IInventory inventory, IWallet wallet, ICharacterNames names,
-    IEnumerable<IPlotAutomation> automation, BeachService beach, CityService cities, IEnumerable<ICompanies> companies, TimeProvider time)
+    IEnumerable<IPlotAutomation> automation, BeachService beach, CityService cities, IEnumerable<ICompanies> companies, IBorderControl border,
+    TimeProvider time)
 {
     /// <summary>What the player's company's big projects take off their rail or sea fees.</summary>
     internal async Task<double> PerksAsync(Guid player, bool bySea, CancellationToken cancellationToken)
@@ -335,9 +336,11 @@ public sealed class StationService(
         }, cancellationToken);
 
     /// <summary>Sends items from this station by train to the station of another owned plot; <paramref name="bySea"/>, by
-    /// ship from this plot's port to the other's: slower, but for a quarter of the fee (<see cref="SeaRules"/>).</summary>
+    /// ship from this plot's port to the other's: slower, but for a quarter of the fee (<see cref="SeaRules"/>). Into another
+    /// country the goods pay its duty, or are smuggled (<paramref name="smuggle"/>) past customs that may seize them.</summary>
     public Task<StationState> SendAsync(
-        Guid player, int x, int y, int toX, int toY, string item, long quantity, CancellationToken cancellationToken, bool bySea = false, bool bySled = false) =>
+        Guid player, int x, int y, int toX, int toY, string item, long quantity, CancellationToken cancellationToken, bool bySea = false, bool bySled = false,
+        bool smuggle = false) =>
         ChangeAsync(player, x, y, PlotRight.Take, async () =>
         {
             CheckQuantity(item, quantity);
@@ -377,7 +380,19 @@ public sealed class StationService(
             {
                 await wallet.DebitAsync(player, fee, $"{(bySea ? "ship" : "rail")} {quantity} {item} {x}:{y}->{toX}:{toY}", cancellationToken);
             }
-            await StationStock.DispatchAsync(db, x, y, toX, toY, item, quantity, player, time.GetUtcNow() + trip, cancellationToken);
+
+            var goods = new Dictionary<string, long> { [item] = quantity };
+            var crossing = await border.CrossAsync(player, (x, y), (toX, toY), goods, smuggle, cancellationToken);
+            if (crossing.Refused is { } refused)
+            {
+                throw Border.Refusal(refused);
+            }
+
+            // What customs seized at the border does not arrive.
+            if (crossing.Left(goods).GetValueOrDefault(item) is var left and > 0)
+            {
+                await StationStock.DispatchAsync(db, x, y, toX, toY, item, left, player, time.GetUtcNow() + trip, cancellationToken);
+            }
         }, cancellationToken);
 
     /// <summary>How long a sled takes for <paramref name="km"/>, given a train's <paramref name="railTrip"/>: a snowmobile when there is petrol in the
@@ -444,7 +459,7 @@ public sealed class StationService(
     /// <summary>Sets up a train that leaves this station by itself every <paramref name="everyMinutes"/>,
     /// the first one now, with the chosen items (or everything) for another owned plot.</summary>
     public async Task<StationState> AddRouteAsync(
-        Guid player, int x, int y, int toX, int toY, IReadOnlyList<string> items, int everyMinutes, CancellationToken cancellationToken)
+        Guid player, int x, int y, int toX, int toY, IReadOnlyList<string> items, int everyMinutes, CancellationToken cancellationToken, bool smuggle = false)
     {
         await ChangeAsync(player, x, y, PlotRight.Routes, async () =>
         {
@@ -472,8 +487,8 @@ public sealed class StationService(
 
             await using var insert = await db.CommandAsync(
                 """
-                INSERT INTO world.train_routes (owner_id, from_x, from_y, to_x, to_y, items, every_minutes, next_departure_at, last_quantity)
-                VALUES (@owner, @fx, @fy, @tx, @ty, @items, @every, @next, 0)
+                INSERT INTO world.train_routes (owner_id, from_x, from_y, to_x, to_y, items, every_minutes, next_departure_at, last_quantity, smuggle)
+                VALUES (@owner, @fx, @fy, @tx, @ty, @items, @every, @next, 0, @smuggle)
                 """, cancellationToken);
             insert.Parameters.AddWithValue("owner", player);
             insert.Parameters.AddWithValue("fx", x);
@@ -483,6 +498,7 @@ public sealed class StationService(
             insert.Parameters.AddWithValue("items", items.Distinct().ToArray());
             insert.Parameters.AddWithValue("every", everyMinutes);
             insert.Parameters.AddWithValue("next", time.GetUtcNow());
+            insert.Parameters.AddWithValue("smuggle", smuggle);
             await insert.ExecuteNonQueryAsync(cancellationToken);
         }, cancellationToken);
 
@@ -616,9 +632,10 @@ public sealed class StationService(
             int toX, toY, every;
             string[] items;
             DateTimeOffset next;
+            bool smuggle;
             await using (var route = await db.CommandAsync(
                 """
-                SELECT owner_id, to_x, to_y, items, every_minutes, next_departure_at FROM world.train_routes
+                SELECT owner_id, to_x, to_y, items, every_minutes, next_departure_at, smuggle FROM world.train_routes
                 WHERE id = @id AND next_departure_at <= @now FOR UPDATE
                 """, cancellationToken))
             {
@@ -631,8 +648,8 @@ public sealed class StationService(
                     return;
                 }
 
-                (owner, toX, toY, items, every, next) = (reader.GetGuid(0), reader.GetInt32(1), reader.GetInt32(2),
-                    reader.GetFieldValue<string[]>(3), reader.GetInt32(4), reader.GetFieldValue<DateTimeOffset>(5));
+                (owner, toX, toY, items, every, next, smuggle) = (reader.GetGuid(0), reader.GetInt32(1), reader.GetInt32(2),
+                    reader.GetFieldValue<string[]>(3), reader.GetInt32(4), reader.GetFieldValue<DateTimeOffset>(5), reader.GetBoolean(6));
             }
 
             if (await StationStock.OwnerAsync(db, x, y, cancellationToken) != owner)
@@ -663,9 +680,15 @@ public sealed class StationService(
                 var quantity = cargo.Sum(c => c.Quantity);
                 var fee = (long)Math.Ceiling(RailRules.FeeCents(km, quantity) * await cities.RailFactorAsync(x, y, cancellationToken)
                     * await PerksAsync(owner, false, cancellationToken));
+                var goods = cargo.GroupBy(c => c.Item).ToDictionary(g => g.Key, g => g.Sum(c => c.Quantity));
                 if (await wallet.BalanceAsync(owner, cancellationToken) < fee)
                 {
                     problem = "no_money";
+                }
+                else if (await border.CrossAsync(owner, (x, y), (toX, toY), goods, smuggle, cancellationToken, fee) is var crossing
+                    && crossing.Refused is { } refused)
+                {
+                    problem = refused;
                 }
                 else
                 {
@@ -677,12 +700,12 @@ public sealed class StationService(
 
                     var trip = await StationStock.FuelAsync(db, x, y, km, cancellationToken) ? DieselRules.TripTime(RailRules.TripTime(km)) : RailRules.TripTime(km);
                     trip *= await IceTrackAsync(x, y, toX, toY, cancellationToken);
-                    foreach (var (item, count) in cargo)
+                    sent = quantity;
+                    // What customs seized at the border does not arrive.
+                    foreach (var (item, count) in crossing.Left(goods))
                     {
                         await StationStock.DispatchAsync(db, x, y, toX, toY, item, count, owner, departure + trip, cancellationToken);
                     }
-
-                    sent = quantity;
                 }
             }
 
@@ -808,7 +831,7 @@ public sealed class StationService(
         var routes = new List<TrainRoute>();
         await using (var command = await db.CommandAsync(
             """
-            SELECT id, to_x, to_y, items, every_minutes, next_departure_at, last_departed_at, last_quantity, last_problem
+            SELECT id, to_x, to_y, items, every_minutes, next_departure_at, last_departed_at, last_quantity, last_problem, smuggle
             FROM world.train_routes WHERE from_x = @x AND from_y = @y ORDER BY id
             """, cancellationToken))
         {
@@ -820,7 +843,7 @@ public sealed class StationService(
                 routes.Add(new TrainRoute(reader.GetInt64(0), reader.GetInt32(1), reader.GetInt32(2), reader.GetFieldValue<string[]>(3),
                     reader.GetInt32(4), reader.GetFieldValue<DateTimeOffset>(5),
                     reader.IsDBNull(6) ? null : reader.GetFieldValue<DateTimeOffset>(6), reader.GetInt64(7),
-                    reader.IsDBNull(8) ? null : reader.GetString(8), null));
+                    reader.IsDBNull(8) ? null : reader.GetString(8), null, reader.GetBoolean(9)));
             }
         }
 
@@ -996,9 +1019,9 @@ public sealed record StationRequest(int X, int Y);
 
 public sealed record StockRequest(int X, int Y, string Item, long Quantity);
 
-public sealed record SendRequest(int X, int Y, int ToX, int ToY, string Item, long Quantity, bool Sea = false, bool Sled = false);
+public sealed record SendRequest(int X, int Y, int ToX, int ToY, string Item, long Quantity, bool Sea = false, bool Sled = false, bool Smuggle = false);
 
-public sealed record RouteRequest(int X, int Y, int ToX, int ToY, List<string>? Items, int EveryMinutes);
+public sealed record RouteRequest(int X, int Y, int ToX, int ToY, List<string>? Items, int EveryMinutes, bool Smuggle = false);
 
 public sealed record RemoveRouteRequest(int X, int Y, long Id);
 
@@ -1044,6 +1067,7 @@ public abstract class StationHandler(IServiceScopeFactory scopes) : IMessageHand
                 lastAt = r.LastAt?.ToUnixTimeMilliseconds(),
                 lastQuantity = r.LastQuantity,
                 problem = r.Problem,
+                smuggle = r.Smuggle,
             }),
             serverTime = state.Now.ToUnixTimeMilliseconds(),
             rates = new
@@ -1118,7 +1142,7 @@ public sealed class SendHandler(IServiceScopeFactory scopes) : StationHandler(sc
     protected override Task<StationState> RunAsync(StationService station, Guid player, JsonElement? payload, CancellationToken cancellationToken)
     {
         var r = Payload.Read<SendRequest>(payload);
-        return station.SendAsync(player, r.X, r.Y, r.ToX, r.ToY, r.Item, r.Quantity, cancellationToken, r.Sea, r.Sled);
+        return station.SendAsync(player, r.X, r.Y, r.ToX, r.ToY, r.Item, r.Quantity, cancellationToken, r.Sea, r.Sled, r.Smuggle);
     }
 }
 
@@ -1129,7 +1153,7 @@ public sealed class AddRouteHandler(IServiceScopeFactory scopes) : StationHandle
     protected override Task<StationState> RunAsync(StationService station, Guid player, JsonElement? payload, CancellationToken cancellationToken)
     {
         var r = Payload.Read<RouteRequest>(payload);
-        return station.AddRouteAsync(player, r.X, r.Y, r.ToX, r.ToY, r.Items ?? [], r.EveryMinutes, cancellationToken);
+        return station.AddRouteAsync(player, r.X, r.Y, r.ToX, r.ToY, r.Items ?? [], r.EveryMinutes, cancellationToken, r.Smuggle);
     }
 }
 

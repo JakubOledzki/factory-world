@@ -281,15 +281,25 @@ func _render_company(company: Dictionary) -> void:
 			b.tooltip_text = "Działka przestanie być wspólna. To, co postawili na niej inni, zostanie na miejscu."
 			line.add_child(b)
 		_body.add_child(line)
+	# New accounts can't bring plots in, so nobody buys cheap first plots on fresh accounts for the company.
+	var can_bring := int(Game.character.get("level", 1)) >= Game.COMPANY_PLOT_LEVEL
+	var shown_level_note := false
 	for plot: Dictionary in _my_plots:
 		var at := Vector2i(int(plot["x"]), int(plot["y"]))
 		if brought.has(at):
 			continue
+		if not can_bring and not shown_level_note:
+			_body.add_child(UI.label("Swoje działki wniesiesz do spółki od %d poziomu postaci." % Game.COMPANY_PLOT_LEVEL, UI.MUTED))
+			shown_level_note = true
 		var line := _row()
 		var text := UI.label("%s %d:%d  ·  tylko twoja" % [_biome_names.get(int(plot["biome"]), "Działka"), at.x, at.y], UI.MUTED)
 		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		line.add_child(text)
-		line.add_child(UI.button("Wnieś do spółki", _send.bind("company.addPlot", {"x": at.x, "y": at.y})))
+		var bring := UI.button("Wnieś do spółki", _send.bind("company.addPlot", {"x": at.x, "y": at.y}))
+		if not can_bring:
+			bring.disabled = true
+			bring.tooltip_text = "Od %d poziomu postaci." % Game.COMPANY_PLOT_LEVEL
+		line.add_child(bring)
 		_body.add_child(line)
 
 	# Warehouse.
@@ -451,11 +461,19 @@ func _render_projects(company: Dictionary) -> void:
 			status = "gotowy" if float(built_at) <= now else "w budowie, gotowy %s" % _in(int(built_at))
 		elif project["started"]:
 			status = "zbieranie części"
-		_body.add_child(_heading("%s  (%s)" % [project["name"], status]))
+		var taken_by: Variant = project.get("takenBy")
+		if taken_by != null:
+			status = "zbudowała już spółka %s" % taken_by
+		_body.add_child(_heading("%s%s  (%s)" % ["Cud świata: " if project.get("wonder", false) else "", project["name"], status]))
 		_body.add_child(UI.label("%s Budowa trwa %d dni." % [project["description"], int(float(project["buildSeconds"]) / 86400.0)], UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 		var requires: Array = project.get("requires", [])
 		if not requires.is_empty():
 			_body.add_child(UI.label("Wymaga: %s." % ", ".join(requires), UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+		if project.get("wonder", false) and taken_by == null:
+			_body.add_child(UI.label("Wyścig spółek: buduje tylko ta, która pierwsza zbierze wszystkie części. Pozostałe dostaną swoje części z powrotem do magazynu.",
+				UI.GOLD, HORIZONTAL_ALIGNMENT_LEFT, true))
+		if taken_by != null:
+			continue
 		if not project["started"]:
 			if company["leads"] and economy["mayBuild"]:
 				_body.add_child(UI.button("Rozpocznij projekt", _send.bind("company.project.start", {"project": project["id"]}), true))
@@ -818,6 +836,8 @@ static func _log_text(entry: Dictionary) -> String:
 			return "%s dokłada do projektu %d × %s" % [who, quantity, name]
 		"projectDone":
 			return "Wielki projekt gotowy!"
+		"wonderLost":
+			return "Inna spółka zbudowała cud świata pierwsza; części wróciły do magazynu"
 		"order", "orderPart":
 			return "%s dostarcza zlecenie: %s%s" % [who, name, " (nagroda %s)" % UI.money(quantity) if entry["action"] == "order" else " × %d" % quantity]
 		"task":

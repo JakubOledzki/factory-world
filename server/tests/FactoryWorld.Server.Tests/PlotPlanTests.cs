@@ -164,6 +164,41 @@ public sealed class PlotPlanTests(ServerFactory factory) : IClassFixture<ServerF
     }
 
     [Fact]
+    public async Task Clearing_an_area_takes_everything_in_it_back_into_the_inventory_with_what_it_holds()
+    {
+        using var client = await PlayerAsync();
+        using var stranger = await PlayerAsync();
+        var (x, y, tx, ty) = await PlotAsync(client);
+        await GiveAsync(client, Items.Belt, 4);
+        await GiveAsync(client, Items.Furnace, 1);
+        await GiveAsync(client, Items.IronOre, 2);
+        await client.SendAsync("plot.placeMany", new { x, y, objects = new[] { Belt(tx, ty), Belt(tx + 1, ty), Belt(tx + 2, ty), Belt(tx + 7, ty) } });
+        var furnace = (await client.SendAsync("plot.place", new { x, y, kind = Items.Furnace, tileX = tx + 4, tileY = ty + 1, rotation = 0 }))
+            .Payload().GetProperty("object").GetProperty("id").GetString()!;
+        Assert.Equal("furnace", (await client.SendAsync("furnace.load", new { furnace, item = Items.IronOre, quantity = 2 })).Type());
+
+        // Only the owner clears their plot, and only inside it.
+        Assert.Equal("not_owner", (await stranger.SendAsync("plot.pickupArea", new { x, y, fromX = tx, fromY = ty, toX = tx + 5, toY = ty + 2 })).ErrorCode());
+        Assert.Equal("bad_area", (await client.SendAsync("plot.pickupArea", new { x, y, fromX = -1, fromY = ty, toX = tx, toY = ty })).ErrorCode());
+
+        // Corners in any order; the belt east of the rectangle stays.
+        var reply = await client.SendAsync("plot.pickupArea", new { x, y, fromX = tx + 5, fromY = ty + 2, toX = tx, toY = ty });
+        Assert.Equal("plot.pickedUpArea", reply.Type());
+        Assert.Equal(4, reply.Payload().GetProperty("objects").GetArrayLength());
+        Assert.Equal(0, reply.Payload().GetProperty("left").GetInt32());
+        var inventory = await client.InventoryAsync();
+        Assert.Equal(3, inventory[Items.Belt]);
+        Assert.Equal(1, inventory[Items.Furnace]);
+        Assert.Equal(2, inventory[Items.IronOre]);
+        var kinds = Kinds((await client.SendAsync("plot.enter", new { x, y })).Payload()).ToList();
+        Assert.Equal([Items.Belt], kinds.Where(k => k is Items.Belt or Items.Furnace));
+
+        // An empty area takes nothing and is no error.
+        var empty = await client.SendAsync("plot.pickupArea", new { x, y, fromX = tx, fromY = ty, toX = tx + 5, toY = ty + 2 });
+        Assert.Equal(0, empty.Payload().GetProperty("objects").GetArrayLength());
+    }
+
+    [Fact]
     public async Task The_plot_tells_which_machines_stand_still_and_what_they_wait_for()
     {
         using var client = await PlayerAsync();
