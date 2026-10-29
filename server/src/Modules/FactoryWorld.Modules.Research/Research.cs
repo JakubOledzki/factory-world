@@ -100,6 +100,7 @@ public static class TechTree
     public const string PolarTourism = "polar_tourism";
     public const string PolarTransport = "polar_transport";
     public const string Assembly = "assembly";
+    public const string Appliances = "appliances";
     public const string Commerce = "commerce";
     public const string Assembling = "assembling";
     public const string FastAssembling = "fast_assembling";
@@ -464,7 +465,10 @@ public static class TechTree
             [Items.DogKennel, Items.SnowmobileGarage, Items.TrackFoundation]),
         new(Assembly, "Montaż", "Hala montażowa na prąd składa płytki drukowane i silniki z towarów innych biomów; w mieście o 25% szybciej.",
             [Automation, Petrochemistry], [(Items.SteelIngot, 30), (Items.Plastic, 20), (Items.CopperIngot, 20)], TimeSpan.FromMinutes(4), 100,
-            [Items.AssemblyHall, Items.CircuitBoard, Items.ElectricMotor]),
+            [Items.AssemblyHall, Items.CircuitBoard, Items.ElectricMotor, Items.Bicycle, Items.Radio]),
+        new(Appliances, "AGD i motoryzacja", "Hala montażowa składa pralki dla dużych miast i samochody, na które czekają metropolie.",
+            [Assembly, Gearbox, PaintedSheet], [(Items.ElectricMotor, 20), (Items.CircuitBoard, 20), (Items.SteelIngot, 200)], TimeSpan.FromMinutes(10), 150,
+            [Items.WashingMachine, Items.Car]),
         new(Commerce, "Handel", "Sklep w mieście sprzedaje twoje towary mieszkańcom przez całą dobę, po cenach, które sam ustawisz.",
             [], [(Items.Planks, 20), (Items.Bread, 20), (Items.Glass, 10)], TimeSpan.FromMinutes(2), 40,
             [Items.Shop]),
@@ -758,7 +762,7 @@ public static class TechTree
         new("glacier", "Lodowiec", Items.Ice,
             [Heating, PolarTransport, Refrigeration, Glaciology, PolarTourism, DataCenter]),
         new("city", "Miasta", Items.Shop,
-            [Commerce, CityServices, WasteManagement, FreightHub, ExportMarket, Assembly, UrbanConstruction, Headquarters, Tailoring]),
+            [Commerce, CityServices, WasteManagement, FreightHub, ExportMarket, Assembly, Appliances, UrbanConstruction, Headquarters, Tailoring]),
         new("materials", "Materiały", Items.CarbonComposite,
             [Lubricant, Paint, CaseinGlue, InsulationBoard, Firebrick, PrecastConcrete, GlassLaminate, Coolant, IridiumAlloy,
              ElectricWire, PaintedSheet, RefractoryLining, CarbonComposite, SuperconductingWire, RocketFuel]),
