@@ -63,6 +63,7 @@ const ERRORS := {
 	"not_stored_here": "Tu tego nie przyjmie: magazyn bierze inne rzeczy albo ma ustawiony filtr na inny przedmiot.",
 	"not_filterable": "Temu nie ustawisz filtra.",
 	"bad_filter": "Nie ma takiego przedmiotu.",
+	"bad_condition": "Warunek liczy od 0 do 1 000 000 sztuk.",
 	"bad_plot": "Nie ma takiej działki.",
 	"not_buyable": "Wody nie da się kupić.",
 	"plot_taken": "Ktoś już kupił tę działkę.",

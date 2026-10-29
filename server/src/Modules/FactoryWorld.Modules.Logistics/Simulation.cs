@@ -175,6 +175,14 @@ public sealed class Contents
     /// picks up nothing else, a storage or a machine lets nothing else in. Null takes anything.</summary>
     public string? Only { get; set; }
 
+    /// <summary>An inserter's or a pump's condition: it drops nothing more into the storage in front while that holds this
+    /// many of the item (fills it up to this many). 0 for none.</summary>
+    public int Below { get; set; }
+
+    /// <summary>An inserter's or a pump's condition: it leaves this many of each item in the storage behind it (keeps a
+    /// reserve there). 0 for none.</summary>
+    public int Keep { get; set; }
+
     /// <summary>The side a splitter sends filtered items to: 0 left, 1 right (as the splitter runs).</summary>
     public int FilterSide { get; set; }
 
@@ -252,6 +260,28 @@ public sealed class StoragePort(StorageKind kind, Contents contents, Action chan
     public bool Predictable => true;
 
     public Task SaveAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+}
+
+/// <summary>A storage as an inserter with a condition sees it: in front, it takes an item only while it holds fewer than
+/// <paramref name="below"/> of it; behind, it gives an item up only while it holds more than <paramref name="keep"/> of it.</summary>
+public sealed class ConditionPort(IMachinePort port, Func<List<ItemStack>?> stacks, int below, int keep) : IMachinePort
+{
+    private int Count(string item) => stacks()?.Where(s => s.Item == item).Sum(s => s.Quantity) ?? 0;
+
+    public string? Output(DateTimeOffset now, Func<string, bool> wanted) =>
+        port.Output(now, keep > 0 ? item => wanted(item) && Count(item) > keep : wanted);
+
+    public void Take(string item, DateTimeOffset now) => port.Take(item, now);
+
+    public bool Accepts(string item, DateTimeOffset now) => (below <= 0 || Count(item) < below) && port.Accepts(item, now);
+
+    public void Put(string item, DateTimeOffset now) => port.Put(item, now);
+
+    public DateTimeOffset? NextChange(DateTimeOffset now) => port.NextChange(now);
+
+    public bool Predictable => port.Predictable;
+
+    public Task SaveAsync(CancellationToken cancellationToken) => port.SaveAsync(cancellationToken);
 }
 
 /// <summary>A machine or a storage as inserters dropping into it see it while it has a filter: it takes its one item only.</summary>
@@ -524,9 +554,16 @@ public sealed class PlotLogistics
                 // Standing on the belt's right, it reaches over to the left lane first.
                 inserter.Lanes = [0, 1];
             }
+            var condition = inserter.Contents;
             if (at.TryGetValue(from, out var source) && !belts.ContainsKey(from))
             {
                 inserter.FromPort = inserter.FromTracked = ports.TryGetValue(source.Id, out var port) ? tracked[port] : null;
+                if (condition.Keep > 0 && inserter.FromTracked is not null && Storages.Find(source.Kind) is not null)
+                {
+                    // It keeps a reserve in the storage behind it.
+                    var stored = Contents(contents, source.Id);
+                    inserter.FromPort = new ConditionPort(inserter.FromTracked, () => stored.Items, 0, condition.Keep);
+                }
             }
 
             if (at.TryGetValue(to, out var target) && !belts.ContainsKey(to) && ports.TryGetValue(target.Id, out var into))
@@ -534,6 +571,12 @@ public sealed class PlotLogistics
                 // A storage or a machine with a filter lets in only its item.
                 inserter.ToTracked = tracked[into];
                 inserter.ToPort = contents.GetValueOrDefault(target.Id)?.Only is { } only ? new FilteredPort(inserter.ToTracked, only) : inserter.ToTracked;
+                if (condition.Below > 0 && Storages.Find(target.Kind) is not null)
+                {
+                    // It fills the storage in front up to so many.
+                    var stored = Contents(contents, target.Id);
+                    inserter.ToPort = new ConditionPort(inserter.ToPort, () => stored.Items, condition.Below, 0);
+                }
             }
 
             _inserters.Add(inserter);

@@ -3731,7 +3731,7 @@ func _open_filter(object: Dictionary, role: String) -> void:
 	var only: Variant = _logistics.storage(object["id"]).get("only")
 	if only != null:
 		allowed = (only as Array).map(func(i: Dictionary) -> String: return i["id"])
-	_filter_window.open_at(_at, object["id"], object["name"], _logistics.filter(object["id"]), role, allowed)
+	_filter_window.open_at(_at, object["id"], object["name"], _logistics.filter(object["id"]), role, allowed, _logistics.condition(object["id"]))
 	if _filter_window.names.is_empty():
 		# Names come with the plot's logistics when asked for.
 		var reply := await Net.request("logistics.get", {"x": _at.x, "y": _at.y, "names": true})

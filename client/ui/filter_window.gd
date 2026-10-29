@@ -3,6 +3,8 @@ extends GameWindow
 ## The filter of an inserter, a storage or a machine: the one item it takes. An inserter with a
 ## filter picks up only that item; a storage or a machine lets in nothing else. Without one it
 ## takes anything, as before. The item shows as a small icon on the object on the plot.
+## An inserter or a pump also has a condition: it fills a storage in front up to so many pieces and
+## keeps so many in a storage behind it.
 
 ## The server answered with the plot's logistics after a change.
 signal applied(state: Dictionary)
@@ -30,6 +32,10 @@ var _about: Label
 var _chosen := VBoxContainer.new()
 var _search := LineEdit.new()
 var _choices := VBoxContainer.new()
+## The condition of an inserter or a pump: fill the storage in front up to so many, keep so many in the one behind.
+var _condition := VBoxContainer.new()
+var _below := SpinBox.new()
+var _keep := SpinBox.new()
 
 
 func _init() -> void:
@@ -46,15 +52,27 @@ func _init() -> void:
 	content.add_child(_search)
 	_choices.add_theme_constant_override("separation", 4)
 	content.add_child(_choices)
+	_condition.add_theme_constant_override("separation", 4)
+	_condition.add_child(HSeparator.new())
+	_condition.add_child(_heading("Warunek pracy"))
+	_condition.add_child(UI.label("Działa tylko ze skrzynią albo zbiornikiem. 0 to brak warunku.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	_condition.add_child(_spin_row("Napełniaj skrzynię przed sobą do", _below))
+	_condition.add_child(_spin_row("Zostawiaj w skrzyni za sobą", _keep))
+	_condition.add_child(UI.button("Zapisz warunek", _apply_condition, true))
+	content.add_child(_condition)
 
 
 ## Opens the filter of object `id` on the plot at `at`. `name` is what the object is called, `role`
 ## "inserter", "storage" or "machine", `allowed` the only items it takes at all (empty for any).
-func open_at(at: Vector2i, id: String, name: String, item: String, role: String, allowed: Array = []) -> void:
+## `condition` is the inserter's { below, keep }.
+func open_at(at: Vector2i, id: String, name: String, item: String, role: String, allowed: Array = [], condition := {}) -> void:
 	object_id = id
 	plot = at
 	_filter = item
 	_allowed = allowed
+	_condition.visible = role == "inserter"
+	_below.value = int(condition.get("below", 0))
+	_keep.value = int(condition.get("keep", 0))
 	_what = "podnosi" if role == "inserter" else "przyjmuje"
 	set_title("Filtr: %s" % name)
 	_about.text = ABOUT.get(role, ABOUT["machine"])
@@ -130,6 +148,28 @@ func _apply(item: String) -> void:
 		names = reply["payload"]["names"]
 	applied.emit(reply["payload"])
 	_render()
+
+
+func _apply_condition() -> void:
+	var reply := await Net.request("inserter.condition",
+		{"x": plot.x, "y": plot.y, "id": object_id, "below": int(_below.value), "keep": int(_keep.value)})
+	if reply["type"] != "logistics":
+		failed.emit(reply)
+		return
+	applied.emit(reply["payload"])
+
+
+func _spin_row(text: String, spin: SpinBox) -> HBoxContainer:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	var name_label := UI.label(text, UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(name_label)
+	spin.min_value = 0
+	spin.max_value = 1000000
+	spin.custom_minimum_size.x = 110
+	row.add_child(spin)
+	return row
 
 
 func _heading(text: String) -> Label:

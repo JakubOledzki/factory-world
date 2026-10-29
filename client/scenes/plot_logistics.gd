@@ -107,6 +107,8 @@ var _drone_speeds := {}
 var _storages := {}
 ## The one item each inserter, storage or machine with a filter takes, by object id.
 var _filters := {}
+## The conditions inserters and pumps work on, by object id: { below, keep }.
+var _conditions := {}
 ## Server time (ms) of the last tick worked out here.
 var _time := 0.0
 var _textures := {}
@@ -142,6 +144,12 @@ func filter(id: String) -> String:
 ## Objects with a filter: object id → item.
 func filters() -> Dictionary:
 	return _filters
+
+
+## The condition an inserter or a pump works on: { below: fill the storage in front up to so many
+## (0 no limit), keep: leave so many in the storage behind it (0 none) }.
+func condition(id: String) -> Dictionary:
+	return _conditions.get(id, {"below": 0, "keep": 0})
 
 
 func is_belt(object: Dictionary) -> bool:
@@ -290,6 +298,9 @@ func apply(state: Dictionary) -> void:
 	_filters = {}
 	for f: Dictionary in state.get("filters", []):
 		_filters[f["id"]] = f["item"]
+	_conditions = {}
+	for c: Dictionary in state.get("conditions", []):
+		_conditions[c["id"]] = {"below": int(c["below"]), "keep": int(c["keep"])}
 	_drone_speeds = {}
 	for port: Dictionary in state.get("drones", []):
 		_drone_speeds[port["id"]] = float(port.get("speed", 0.0))
