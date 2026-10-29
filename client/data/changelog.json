@@ -1,6 +1,15 @@
 [
 	{
 		"date": "2026-10-29",
+		"title": "Usuwanie całego obszaru",
+		"changes": [
+			"Nowy przycisk „Usuń obszar” na dolnym pasku (klawisz X): kliknij dwa przeciwne rogi prostokąta na działce, a wszystko, co w nim stoi, wróci do ekwipunku razem z zawartością skrzyń, maszyn i taśm. Na telefonie wystarczą dwa stuknięcia.",
+			"Przed schowaniem gra pokazuje, co zniknie z działki, i pyta o potwierdzenie. Gdy w ekwipunku zabraknie miejsca na nowe rodzaje przedmiotów, ostrzega: nic nie przepadnie, ale ekwipunek się przepełni.",
+			"Naraz schowasz do 400 obiektów. Ctrl+Z stawia z powrotem do 100 z nich. Zużycie maszyn zostaje jak przy zwykłym chowaniu: postawienie ich ponownie nie zastępuje przeglądu."
+		]
+	},
+	{
+		"date": "2026-10-29",
 		"title": "Rywalizacja między graczami",
 		"changes": [
 			"Nowa zakładka „Rywalizacja” w oknie osiągnięć (klawisz O): wyzwanie tygodnia, meteoryt, cuda świata i tytuły „Pierwszy na świecie”.",
