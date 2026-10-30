@@ -159,28 +159,52 @@ public static class BotRules
         _ => [Items.WoodenChest],
     };
 
-    /// <summary>What the bot makes at the workbench for the market, when it has the ingredients and the technology; the dearest first.</summary>
+    /// <summary>
+    /// What the bot makes at the workbench for the market, once the technology allows: belts, inserters, chests and the
+    /// like, the things players build their factories of. It picks whichever pays best over what the ingredients fetch
+    /// and is not already plentiful on the market, and makes the parts first (nails, belts, an inserter) when it has to.
+    /// </summary>
     public static string[] Products(BotTrade trade) => trade switch
     {
-        BotTrade.Forester => [Items.WoodenChest, Items.WoodPile],
-        BotTrade.Miner => [Items.Nails],
-        BotTrade.Smelter => [Items.Nails],
-        BotTrade.Industrialist => [Items.Inserter, Items.IronChest, Items.WoodenChest, Items.Pole, Items.Belt, Items.Nails],
+        BotTrade.Forester => [Items.WoodenChest, Items.WoodPile, Items.Heap],
+        BotTrade.Miner => [Items.IronChest, Items.Heap, Items.Belt, Items.Nails],
+        // Copper a smelter has goes into its line's inserters and poles, so it makes nothing of copper for sale.
+        BotTrade.Smelter => [Items.IronChest, Items.Belt, Items.Nails],
+        BotTrade.Industrialist =>
+        [
+            Items.FastInserter, Items.LongInserter, Items.Splitter, Items.FastBelt, Items.UndergroundBelt,
+            Items.LoadingChest, Items.ReceivingChest, Items.Inserter, Items.IronChest, Items.WoodenChest, Items.Pole, Items.Belt, Items.Nails,
+        ],
         _ => [],
     };
 
     /// <summary>How many of a product the bot makes ahead before it waits for them to sell.</summary>
     public static long Stock(string product) => product switch
     {
-        Items.Inserter or Items.IronChest => 10,
+        Items.FastInserter or Items.LongInserter or Items.Splitter or Items.LoadingChest or Items.ReceivingChest => 5,
+        Items.Inserter or Items.IronChest or Items.FastBelt or Items.UndergroundBelt => 10,
         _ => 20,
     };
+
+    /// <summary>
+    /// What all the pieces of one item on the players' market (every seller's together) may be worth, at what the trader
+    /// pays, before bots stop making more of it for sale: a few thousand bots each making a little still swamp a market.
+    /// </summary>
+    public const long MarketValueCap = 4000_00;
+
+    /// <summary>Pieces of an item on the players' market past which bots make no more of it for sale.</summary>
+    public static long MarketCap(long floorCents) => Math.Clamp(MarketValueCap / Math.Max(floorCents, 1), 10, 300);
+
+    /// <summary>How far down a product the bot works out which parts to make first (fast inserter, inserter, nails).</summary>
+    public const int PartsDepth = 3;
 
     /// <summary>Technologies the bot researches, in order, when it can pay for them; the line needs the first ones.</summary>
     public static string[] Research(BotTrade trade) => trade switch
     {
         BotTrade.Forester => ["logistics", "automation", "forestry_industry", "storage"],
-        BotTrade.Miner or BotTrade.Smelter or BotTrade.Industrialist => ["logistics", "automation", "storage"],
+        BotTrade.Miner => ["logistics", "automation", "storage"],
+        BotTrade.Smelter => ["logistics", "automation", "storage"],
+        BotTrade.Industrialist => ["logistics", "automation", "storage", "sorting", "fast_logistics", "underground_belts", "rail_freight", "long_inserters"],
         BotTrade.Farmer => ["milling", "logistics", "automation"],
         _ => [],
     };
@@ -196,6 +220,12 @@ public static class BotRules
         BotTrade.Smelter => [Items.IronOre, Items.CopperOre, Items.TinOre, Items.Coal, Items.Wood],
         _ => [],
     };
+
+    /// <summary>
+    /// A bot buys what its trade works with while it has fewer than this, and does not sell it below this either:
+    /// a crafter that bought iron to make belts of only to put the iron itself up for sale got nowhere.
+    /// </summary>
+    public const long BuyUpTo = 200;
 
     /// <summary>How many of an item the bot holds back from selling, for its own work.</summary>
     public static long Keep(BotTrade trade, string item) => (trade, item) switch
@@ -218,6 +248,9 @@ public static class BotRules
         (BotTrade.Industrialist, Items.Coal) => 30,
         (BotTrade.Industrialist, Items.IronIngot or Items.CopperIngot) => 30,
         (BotTrade.Industrialist, Items.Wood or Items.Nails) => 30,
+        // Parts of its dearer products, so that not every belt and inserter goes on the market.
+        (BotTrade.Industrialist, Items.Belt) => 8,
+        (BotTrade.Industrialist, Items.Inserter) => 2,
         _ => 0,
     };
 
@@ -228,6 +261,8 @@ public static class BotRules
         Items.IronOre, Items.CopperOre, Items.TinOre, Items.SilverOre, Items.GoldOre,
         Items.IronIngot, Items.CopperIngot, Items.TinIngot, Items.SilverIngot, Items.GoldIngot,
         Items.Nails, Items.Belt, Items.WoodenChest, Items.IronChest, Items.WoodPile, Items.Inserter, Items.Pole,
+        Items.Heap, Items.Splitter, Items.FastBelt, Items.UndergroundBelt, Items.FastInserter, Items.LongInserter,
+        Items.LoadingChest, Items.ReceivingChest,
         Items.Wheat, Items.Carrot, Items.Cabbage, Items.Corn, Items.Potato, Items.Sunflower,
         Items.Flour, Items.Planks,
     };

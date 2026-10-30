@@ -134,6 +134,9 @@ public sealed class Bot(
     private int _sortQueue;
     private DateTimeOffset _sortDoneAt;
     private int _craftQueue;
+
+    /// <summary>The product the bot is making the parts of, to finish it before it starts on another.</summary>
+    private string? _making;
     private int _openListings;
     private int _openOrders;
     private DateTimeOffset _lastListingAt;
@@ -358,16 +361,9 @@ public sealed class Bot(
             Add(8, "craft furnace", ct => CraftAsync(Items.Furnace, ct));
         }
 
-        if (_workbench is not null && _craftQueue < 5)
+        if (_workbench is not null && _craftQueue < 5 && ProductToMake(world, null) is not null)
         {
-            foreach (var product in BotRules.Products(trade))
-            {
-                if (!IsLocked(product) && Has(Recipe(product)) && Have(product) < BotRules.Stock(product) && !UsesNeeded(product))
-                {
-                    Add(5, "craft", ct => CraftAsync(product, ct));
-                    break;
-                }
-            }
+            Add(trade == BotTrade.Industrialist ? 8 : 5, "craft", ct => CraftForMarketAsync(world, ct));
         }
 
         if (_craftQueue > 0)
@@ -1440,9 +1436,155 @@ public sealed class Bot(
         return reserved;
     }
 
-    /// <summary>Whether crafting <paramref name="product"/> for the market would eat into what the line needs.</summary>
-    private bool UsesNeeded(string product) =>
-        !_reserved.ContainsKey(product) && Recipe(product).Any(i => Have(i.Item) - i.Quantity < _reserved.GetValueOrDefault(i.Item));
+    /// <summary>The weight of a product the bot's research or line needs: made before anything for the market.</summary>
+    private const long Needed = -1;
+
+    /// <summary>
+    /// Which of its trade's products the bot makes next for the market, and what it crafts now towards it (the product,
+    /// or a part it lacks); null when nothing is worth making. Only products it can finish from what it has, short of
+    /// what it keeps for its own work, of which it has fewer than it makes ahead and of which the players' market does
+    /// not have plenty already; the better a product pays over what its ingredients fetch, the likelier it is picked.
+    /// Something its research or line needs it makes regardless of the market.
+    /// </summary>
+    /// <param name="listed">Pieces of each item on the players' market; null to leave the market out, as a first look.</param>
+    private (string Product, string Craft)? ProductToMake(BotWorld world, IReadOnlyDictionary<string, long>? listed)
+    {
+        var options = new List<(string Product, string Craft, long Weight)>();
+        foreach (var product in BotRules.Products(Profile.Trade))
+        {
+            var needed = _reserved.GetValueOrDefault(product);
+            if (IsLocked(product) || Have(product) >= BotRules.Stock(product) + needed)
+            {
+                continue;
+            }
+
+            if (needed <= Have(product) && listed is not null && listed.GetValueOrDefault(product) >= BotRules.MarketCap(Floor(product)))
+            {
+                continue;
+            }
+
+            var margin = Margin(product);
+            if (NextCraft(product) is not { } craft || margin <= 0 && needed <= Have(product))
+            {
+                continue;
+            }
+
+            options.Add((product, craft, needed > Have(product) ? Needed : margin));
+        }
+
+        if (options.Count == 0)
+        {
+            return null;
+        }
+
+        // What its research or line needs comes first; otherwise the better a product pays, the likelier, so that bots
+        // do not all make the same thing.
+        if (options.FirstOrDefault(o => o.Weight == Needed) is { Product: not null } urgent)
+        {
+            return (urgent.Product, urgent.Craft);
+        }
+
+        // Having made the nails for an inserter, it goes on to the inserter rather than leave the nails lying about.
+        if (options.FirstOrDefault(o => o.Product == _making) is { Product: not null } started)
+        {
+            return (started.Product, started.Craft);
+        }
+
+        var roll = (long)(world.Random.NextDouble() * options.Sum(o => o.Weight));
+        foreach (var (product, craft, weight) in options)
+        {
+            roll -= weight;
+            if (roll < 0)
+            {
+                return (product, craft);
+            }
+        }
+
+        return (options[^1].Product, options[^1].Craft);
+    }
+
+    /// <summary>Looks at the market first, like a player would before making a stack of something to sell, then crafts towards the product chosen.</summary>
+    private async Task<bool> CraftForMarketAsync(BotWorld world, CancellationToken cancellationToken)
+    {
+        if (await OverviewAsync(world, cancellationToken) is not { } overview)
+        {
+            return false;
+        }
+
+        var listed = new Dictionary<string, long>(StringComparer.Ordinal);
+        foreach (var entry in overview.Each("items"))
+        {
+            listed[entry.Text("id")!] = entry.Long("listed");
+        }
+
+        if (ProductToMake(world, listed) is not { } making)
+        {
+            _making = null;
+            return false;
+        }
+
+        _making = making.Craft == making.Product ? null : making.Product;
+        return await CraftAsync(making.Craft, cancellationToken);
+    }
+
+    /// <summary>What one craft of <paramref name="product"/> fetches over what its ingredients do, at what the trader pays for each.</summary>
+    private long Margin(string product) =>
+        _recipes.TryGetValue(product, out var recipe) && Floor(product) > 0
+            ? Floor(product) * recipe.Makes - recipe.Ingredients.Sum(i => Floor(i.Item) * i.Quantity)
+            : 0;
+
+    /// <summary>
+    /// What the bot crafts first to make one <paramref name="product"/>: the product itself when it has the ingredients,
+    /// else the deepest part it lacks (nails before an inserter before a fast inserter); null when even with the parts made
+    /// from what it has, it cannot finish the product. What the bot keeps for its work and its line stays untouched.
+    /// </summary>
+    private string? NextCraft(string product)
+    {
+        var products = BotRules.Products(Profile.Trade);
+        var stock = new Dictionary<string, long>(StringComparer.Ordinal);
+        long Spare(string item) => stock.TryGetValue(item, out var left)
+            ? left
+            : stock[item] = Math.Max(0, Have(item) - (products.Contains(item) || item == product ? _reserved.GetValueOrDefault(item) : KeepForWork(item)));
+
+        string? first = null;
+        return Make(product, 1, 0) ? first : null;
+
+        bool Make(string item, long crafts, int depth)
+        {
+            if (!_recipes.TryGetValue(item, out var recipe) || recipe.Locked || recipe.Station != Items.Workbench)
+            {
+                return false;
+            }
+
+            foreach (var (ingredient, each) in recipe.Ingredients)
+            {
+                var need = each * crafts;
+                var spare = Spare(ingredient);
+                if (spare >= need)
+                {
+                    stock[ingredient] = spare - need;
+                    continue;
+                }
+
+                if (depth >= BotRules.PartsDepth || !_recipes.TryGetValue(ingredient, out var part))
+                {
+                    return false;
+                }
+
+                var parts = (need - spare + part.Makes - 1) / part.Makes;
+                if (!Make(ingredient, parts, depth + 1))
+                {
+                    return false;
+                }
+
+                stock[ingredient] = Spare(ingredient) + parts * part.Makes - need;
+            }
+
+            // The first craft whose ingredients are all at hand is the one to start with.
+            first ??= item;
+            return true;
+        }
+    }
 
     /// <summary>What the bot could do about its line: look at its plots, tend it, build it or get its parts together.</summary>
     private void LineCandidates(BotLine line, BotWorld world, Action<int, string, Func<CancellationToken, Task<bool>>> add)
@@ -1928,15 +2070,21 @@ public sealed class Bot(
         return true;
     }
 
-    /// <summary>What the bot has more of than it keeps, worth the most first.</summary>
+    /// <summary>What the bot has more of than it keeps: what it made itself first (a crafter sells its belts and chests rather than
+    /// the iron it makes them of), then worth the most first.</summary>
     private IEnumerable<(string Item, long Quantity)> Surplus() =>
         _inventory
             .Where(i => (BotRules.Goods.Contains(i.Key) || Profile.Trade == BotTrade.Trader && Floor(i.Key) > 0) && i.Value > Keep(i.Key))
             .Select(i => (Item: i.Key, Quantity: i.Value - Keep(i.Key)))
-            .OrderByDescending(s => s.Quantity * Math.Max(Floor(s.Item), 1));
+            .OrderByDescending(s => BotRules.Products(Profile.Trade).Contains(s.Item))
+            .ThenByDescending(s => s.Quantity * Math.Max(Floor(s.Item), 1));
 
-    /// <summary>What the bot holds back: what its trade keeps, whatever it still means to build on its plots, and its line's parts and their makings.</summary>
+    /// <summary>What the bot holds back from selling: what it keeps for its work, and what it buys for its trade up to as much as it buys.</summary>
     private long Keep(string item) =>
+        Math.Max(KeepForWork(item), BotRules.Buys(Profile.Trade).Contains(item) ? BotRules.BuyUpTo : 0);
+
+    /// <summary>What the bot holds back for its work: what its trade keeps, whatever it still means to build on its plots, and its line's parts and their makings.</summary>
+    private long KeepForWork(string item) =>
         BotRules.Keep(Profile.Trade, item) + _plots.Where(p => p.Tiles is not null).Sum(p => StillToBuild(p).Count(k => k == item))
         + _reserved.GetValueOrDefault(item);
 
@@ -1957,6 +2105,12 @@ public sealed class Bot(
             {
                 price = Math.Min(price, (long)Math.Round(cheapest * (0.93 + world.Random.NextDouble() * 0.07)));
             }
+        }
+
+        // No player buys from a bot what the trader sells for less.
+        if (_traderSells.TryGetValue(item, out var shop))
+        {
+            price = Math.Min(price, shop * 97 / 100);
         }
 
         price = Math.Max(price, (long)Math.Ceiling(floor * BotRules.MinMarkup));
@@ -2063,7 +2217,7 @@ public sealed class Bot(
             return null;
         }
 
-        var limit = (BotRules.Buys(Profile.Trade).Contains(item) || _needs.ContainsKey(item)) && Have(item) < 200 ? floor * 2.0
+        var limit = (BotRules.Buys(Profile.Trade).Contains(item) || _needs.ContainsKey(item)) && Have(item) < BotRules.BuyUpTo ? floor * 2.0
             : Profile.Trade == BotTrade.Trader ? floor * 1.5
             : BotRules.Goods.Contains(item) ? floor * 1.3
             : 0;
