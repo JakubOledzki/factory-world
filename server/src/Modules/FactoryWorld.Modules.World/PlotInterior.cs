@@ -873,6 +873,8 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             city = new { name = town.Name, population = town.Population, level, levelName = CityRules.LevelNames[level] };
         }
 
+        object? county = cities.CountyOf(request.X, request.Y) is { } seat ? new { name = seat.Name } : null;
+
         using var packed = new MemoryStream();
         using (var gzip = new GZipStream(packed, CompressionLevel.Optimal))
         {
@@ -897,6 +899,8 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             spawn = new { x = PlotLayout.Spawn.X, y = PlotLayout.Spawn.Y },
             // The town a city plot belongs to, with its level; null elsewhere.
             city,
+            // The town whose county the plot lies in (its mayor's laws hold here); null outside any.
+            county,
             tools = tools.Select(t => new { id = t, name = Items.Names[t] }),
             harvestSeconds = HarvestRules.Time.TotalSeconds,
             // Rocks break and mines are worked this many percent faster here; better pickaxes are faster still.

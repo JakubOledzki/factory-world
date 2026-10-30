@@ -1,9 +1,12 @@
 shader_type canvas_item;
 // Colours one strip of the world map. The texture holds one byte per plot: its biome id. The countries
-// texture holds the country of every plot (0 for none), and the map draws their borders.
+// texture holds the country of every plot (0 for none), and the map draws their borders. The counties
+// texture says which sides of a plot are the border of a county (the land a town governs), drawn thinner than
+// a country's.
 
 uniform vec3 colors[13];
 uniform sampler2D countries : filter_nearest;
+uniform sampler2D counties : filter_nearest;
 // Plots in this strip of the map, and the column it starts at.
 uniform vec2 strip_size;
 uniform int strip_from = 0;
@@ -48,6 +51,24 @@ void fragment() {
 		vec2 edge = min(fract(plot), 1.0 - fract(plot)) * zoom;
 		float border = 1.0 - smoothstep(0.0, 1.0, min(edge.x, edge.y));
 		color = mix(color, color * 0.55, border * lines * 0.8);
+	}
+
+	// County borders: a brick-red line of about a pixel along the flagged sides, half in each plot, fading in
+	// from 2 pixels per plot (zoomed out further they would cover the map). Not dark, so it stands out from the plot grid.
+	float counties_in = smoothstep(2.0, 4.0, zoom);
+	if (counties_in > 0.0) {
+		int sides = int(texture(counties, UV).r * 255.0 + 0.5);
+		if (sides > 0) {
+			vec2 at = fract(plot) * zoom;
+			vec2 to = (1.0 - fract(plot)) * zoom;
+			float d = 1e6;
+			d = (sides & 1) != 0 ? min(d, at.x) : d;
+			d = (sides & 2) != 0 ? min(d, to.x) : d;
+			d = (sides & 4) != 0 ? min(d, at.y) : d;
+			d = (sides & 8) != 0 ? min(d, to.y) : d;
+			float line = 1.0 - smoothstep(0.1, 0.9, d);
+			color = mix(color, vec3(0.86, 0.42, 0.3), line * counties_in * 0.9);
+		}
 	}
 
 	// Country borders: a pixel either way lies in another country (both on land), a thin pale line at any zoom.

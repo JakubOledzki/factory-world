@@ -14,6 +14,11 @@ signal failed(reply: Dictionary)
 signal toast(text: String)
 
 const TABS := ["Potrzeby", "Przetarg", "Rozwój", "Wysypisko", "Usługi", "Ratusz", "Wybory", "Kasa"]
+## Tabs only a city plot has: the town buys, takes rubbish and sells services in the city; the rest of its county
+## (the countryside it governs) has the town hall, the election, the treasury and the tender.
+const CITY_TABS := [0, 3, 4]
+## Where the window opens on a plot of the county outside the city: the town hall.
+const HALL_TAB := 5
 
 var plot := Vector2i(-1, -1)
 
@@ -69,16 +74,24 @@ func _show_tab(i: int) -> void:
 
 
 func _render() -> void:
+	var town: Dictionary = _state.get("town", {})
+	var in_city := bool(town.get("inCity", true))
+	if not in_city and _tab in CITY_TABS:
+		_tab = HALL_TAB
 	for i in _tab_buttons.size():
 		_tab_buttons[i].set_pressed_no_signal(i == _tab)
+		_tab_buttons[i].visible = in_city or i not in CITY_TABS
 	UI.clear(_body)
 	if _state.is_empty():
 		return
-	var town: Dictionary = _state["town"]
 	set_title(town["name"])
 	var distance := float(town["distance"])
-	_header.text = "%s · %s · %s mieszkańców · %s" % [town["name"], town["levelName"], _thousands(int(town["population"])),
-		"w samym centrum" if distance < 0.5 else "%s działki od centrum (im bliżej, tym więcej klientów)" % str(snappedf(distance, 0.1)).replace(".", ",")]
+	if in_city:
+		_header.text = "%s · %s · %s mieszkańców · %s" % [town["name"], town["levelName"], _thousands(int(town["population"])),
+			"w samym centrum" if distance < 0.5 else "%s działki od centrum (im bliżej, tym więcej klientów)" % str(snappedf(distance, 0.1)).replace(".", ",")]
+	else:
+		_header.text = "Powiat miasta %s · %s · %s działki od centrum. Prawa burmistrza obowiązują tu tak samo jak w mieście." \
+			% [town["name"], town["levelName"], str(snappedf(distance, 0.1)).replace(".", ",")]
 	match _tab:
 		0: _render_needs()
 		1: _render_tender()
@@ -176,7 +189,7 @@ func _render_tender() -> void:
 	_body.add_child(head)
 	match str(t["state"]):
 		"open":
-			_body.add_child(UI.label(("Miasto zamawia dużą partię. Właściciele działek w mieście składają ukryte oferty: cenę za sztukę. " +
+			_body.add_child(UI.label(("Miasto zamawia dużą partię. Właściciele działek w powiecie składają ukryte oferty: cenę za sztukę. " +
 				"Wygrywa najniższa (przy równych: wcześniejsza). Oferta kosztuje wadium %d%% wartości zamówienia, które wraca, gdy przegrasz " +
 				"albo dostarczysz całość; zwycięzca, który nie zdąży do końca tygodnia, traci je. Oferty do końca za %s.") % [
 				int(t["depositPercent"]), _left(int(t["closesAt"]))], UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
@@ -282,8 +295,8 @@ func _render_hall() -> void:
 	for b: Dictionary in hall["bonuses"]:
 		if b["id"] == hall["bonus"]:
 			bonus_name = b["name"]
-	_body.add_child(UI.label("Podatek od sklepów i usług: %d%% · Premia: %s" % [int(hall["taxPercent"]), bonus_name], UI.TEXT,
-		HORIZONTAL_ALIGNMENT_LEFT, true))
+	_body.add_child(UI.label("Podatek od sklepów i usług: %d%% · Od działek powiatu: %d‰ dziennie · Premia: %s" \
+		% [int(hall["taxPercent"]), int(hall.get("plotTaxPerMille", 0)), bonus_name], UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true))
 	if hall["isMayor"]:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 6)
@@ -301,8 +314,19 @@ func _render_hall() -> void:
 		pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		pick.clip_text = true
 		row.add_child(pick)
-		row.add_child(UI.button("Ustaw", func() -> void: _set_policy(int(tax.value), pick.get_item_metadata(pick.selected)), true))
 		_body.add_child(row)
+		# The tax on the county's plots, on top of the country's plot tax; the mayor's own plots don't pay it.
+		var plots := HBoxContainer.new()
+		plots.add_theme_constant_override("separation", 6)
+		plots.add_child(UI.label("Od działek powiatu ‰ dziennie"))
+		var plot_tax := _spin(0, int(hall.get("maxPlotTaxPerMille", 0)), int(hall.get("plotTaxPerMille", 0)))
+		plots.add_child(plot_tax)
+		var spacer := Control.new()
+		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		plots.add_child(spacer)
+		plots.add_child(UI.button("Ustaw", func() -> void:
+			_set_policy(int(tax.value), pick.get_item_metadata(pick.selected), int(plot_tax.value)), true))
+		_body.add_child(plots)
 	# A festival with fine dishes from the mayor's inventory: the town pays more for what it wants for a day.
 	var festival: Variant = hall.get("festivalUntil")
 	if festival != null:
@@ -372,7 +396,7 @@ func _render_hall() -> void:
 func _render_election() -> void:
 	var hall: Dictionary = _state["hall"]
 	var politics: Dictionary = hall["politics"]
-	_body.add_child(UI.label("Wybory na przyszły tydzień (koniec za %s). Głosują i mogą wygrać właściciele działek w mieście." \
+	_body.add_child(UI.label("Wybory na przyszły tydzień (koniec za %s). Głosują i mogą wygrać właściciele działek w powiecie miasta, także poza samym miastem." \
 		% _left(int(hall["weekEndsAt"])), UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	for c: Dictionary in politics["people"]:
 		var row := HBoxContainer.new()
@@ -519,9 +543,9 @@ func _vote(candidate: String) -> void:
 		toast.emit("Oddano głos na: %s" % candidate)
 
 
-func _set_policy(tax: int, bonus: String) -> void:
-	if _apply(await Net.request("city.policy", {"x": plot.x, "y": plot.y, "taxPercent": tax, "bonus": bonus})):
-		toast.emit("Ustawiono podatek i premię miasta na ten tydzień")
+func _set_policy(tax: int, bonus: String, plot_tax: int) -> void:
+	if _apply(await Net.request("city.policy", {"x": plot.x, "y": plot.y, "taxPercent": tax, "bonus": bonus, "plotTaxPerMille": plot_tax})):
+		toast.emit("Ustawiono podatki i premię miasta na ten tydzień")
 
 
 func _recall() -> void:

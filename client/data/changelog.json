@@ -1,6 +1,16 @@
 [
 	{
 		"date": "2026-10-30",
+		"title": "Powiaty miast",
+		"changes": [
+			"Każde miasto rządzi swoim powiatem: lasami, polami, górami i innymi działkami wokół, aż do sąsiedniego powiatu, morza albo granicy państwa. Mapa świata pokazuje granice powiatów cienką linią, cieńszą od granic państw.",
+			"Właściciele działek w powiecie, także poza miastem, głosują na burmistrza, mogą kandydować, głosować nad uchwałami i startować w przetargu. Przycisk Powiat na pasku działki otwiera ratusz miasta, które nią rządzi.",
+			"Premie burmistrza dla kolei i działek, dworzec i ulga osiedleńcza obowiązują w całym powiecie.",
+			"Burmistrz ustala osobny podatek od działek powiatu, od 0 do 2‰ wartości działki dziennie, płacony razem z podatkiem od działek. 20% z niego dostaje burmistrz, reszta idzie do kasy miasta. Działki samego burmistrza go nie płacą."
+		]
+	},
+	{
+		"date": "2026-10-30",
 		"title": "Leśniczówki pracują, gdy cię nie ma",
 		"changes": [
 			"Chaty leśnika, leśniczówki i stacje leśne, z których podajnik wynosi drewno na długi taśmociąg, nie stają już po pół godzinie twojej nieobecności. Po powrocie w skrzyni jest tyle drewna, ile byłoby, gdybyś cały czas grał. To samo dotyczy każdej linii, którą ciągle zasila pracująca maszyna."

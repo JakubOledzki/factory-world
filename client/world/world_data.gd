@@ -1,12 +1,14 @@
 class_name WorldData
 extends RefCounted
-## The world map as plots of 5 × 5 km: the biome of every plot, the towns and the countries, read from the
-## files made by tools/build_world.py and tools/build_countries.py. The grid is the Behrmann equal-area projection: column 0 starts at
-## 180° W, row 0 is the North Pole, and the map wraps around east to west.
+## The world map as plots of 5 × 5 km: the biome of every plot, the towns, the countries and the counties, read
+## from the files made by tools/build_world.py, tools/build_countries.py and tools/build_counties.py. The grid is
+## the Behrmann equal-area projection: column 0 starts at 180° W, row 0 is the North Pole, and the map wraps around
+## east to west.
 
 const BIOMES_FILE := "res://world/biomes.bin.gz"
 const TOWNS_FILE := "res://world/towns.tsv.gz"
 const COUNTRIES_FILE := "res://world/countries.bin.gz"
+const COUNTIES_FILE := "res://world/counties.bin.gz"
 
 const RADIUS_KM := 6371.0072
 const PLOT_KM := 5.0
@@ -43,6 +45,9 @@ var country_labels := PackedVector2Array()
 var country_plots := PackedInt32Array()
 ## One byte per plot: 0 for none (the sea, Antarctica), i + 1 for the i-th country.
 var countries := PackedByteArray()
+## One byte per plot whose low bits say which of its sides (1 west, 2 east, 4 north, 8 south) is the border of a
+## county: the land a town governs, its city plots and the countryside around.
+var county_sides := PackedByteArray()
 ## Bucket index → Array of town indices in it, largest first.
 var _buckets := {}
 var _buckets_across := 0
@@ -58,6 +63,7 @@ func load_files() -> bool:
 	biomes = raw.slice(8)
 	_load_towns()
 	_load_countries()
+	_load_counties()
 	return biomes.size() == width * height
 
 
@@ -99,6 +105,17 @@ func country_index(code: String) -> int:
 ## Part of the countries as a texture for the map shader, like texture(): one byte per plot, the country.
 func country_texture(from_x: int, columns: int) -> ImageTexture:
 	var data := countries
+	if data.size() != width * height:
+		data = PackedByteArray()
+		data.resize(width * height)
+	var image := Image.create_from_data(width, height, false, Image.FORMAT_R8, data)
+	return ImageTexture.create_from_image(image.get_region(Rect2i(from_x, 0, columns, height)))
+
+
+## Part of the county borders as a texture for the map shader, like texture(): one byte per plot, the sides of
+## it that are a county's border.
+func county_texture(from_x: int, columns: int) -> ImageTexture:
+	var data := county_sides
 	if data.size() != width * height:
 		data = PackedByteArray()
 		data.resize(width * height)
@@ -240,6 +257,15 @@ func _load_countries() -> void:
 		country_plots.append(fields[4].to_int())
 		at = end + 1
 	countries = raw.slice(at)
+
+
+## The counties file (tools/build_counties.py): "FWK1", width and height (u16), then one byte per plot.
+func _load_counties() -> void:
+	var raw := _read_gzip(COUNTIES_FILE)
+	if raw.size() < 8 or raw.slice(0, 4).get_string_from_ascii() != "FWK1" or raw.decode_u16(4) != width:
+		push_error("Counties file is missing or broken: %s" % COUNTIES_FILE)
+		return
+	county_sides = raw.slice(8)
 
 
 static func _read_gzip(path: String) -> PackedByteArray:

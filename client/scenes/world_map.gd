@@ -1,6 +1,6 @@
 extends Control
-## The world map: the Earth in plots of 5 × 5 km, coloured by biome, with the borders of the countries and
-## town names. Drag to move it, scroll or pinch to zoom, click a plot to see its biome, country, owner and
+## The world map: the Earth in plots of 5 × 5 km, coloured by biome, with the borders of the countries, the
+## thinner borders of the counties (the land each town governs) and town names. Drag to move it, scroll or pinch to zoom, click a plot to see its biome, country, owner and
 ## price, and buy it. The countries' governments open from here (CountryWindow).
 
 ## Keyboard actions of this screen: name and keys.
@@ -148,6 +148,7 @@ func _build_map() -> void:
 		material.set_shader_parameter("strip_size", Vector2(columns, _data.height))
 		material.set_shader_parameter("strip_from", part * strip)
 		material.set_shader_parameter("countries", _data.country_texture(part * strip, columns))
+		material.set_shader_parameter("counties", _data.county_texture(part * strip, columns))
 		_materials.append(material)
 		for copy in [-1, 0, 1]:
 			var sprite := Sprite2D.new()

@@ -1026,6 +1026,7 @@ public sealed class WorldDbContext(DbContextOptions<WorldDbContext> options, Gam
             e.Property(p => p.TaxPercent).HasColumnName("tax_percent");
             e.Property(p => p.Bonus).HasColumnName("bonus").HasMaxLength(16);
             e.Property(p => p.Recalled).HasColumnName("recalled");
+            e.Property(p => p.PlotTaxPerMille).HasColumnName("plot_tax_per_mille").HasDefaultValue(0);
         });
         model.Entity<TownTreasuryRow>(e =>
         {

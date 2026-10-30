@@ -395,7 +395,7 @@ public sealed partial class CityService
     public Task BidAsync(Guid player, int x, int y, long priceCents, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var town = RequireTown(x, y);
+            var town = RequireCounty(x, y);
             if (!(await TownsfolkAsync(town, cancellationToken)).Contains(player))
             {
                 throw new GameException("not_townsman", "Only players who own a plot in the town bid here.");
@@ -439,7 +439,7 @@ public sealed partial class CityService
     public Task WithdrawBidAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var town = RequireTown(x, y);
+            var town = RequireCounty(x, y);
             await LockTownAsync(town, cancellationToken);
             var tender = await TenderAsync(town, CityRules.Level(await DeliveredAsync(town, cancellationToken)), cancellationToken);
             if (tender.State != TenderRules.Open)
@@ -453,13 +453,13 @@ public sealed partial class CityService
             await wallet.CreditAsync(player, bid.DepositCents, $"tender {town.Name}: bid withdrawn, deposit back", cancellationToken);
         }, cancellationToken);
 
-    /// <summary>The winner delivers towards the tender, from the inventory or from the station of their city plot, and is paid their
+    /// <summary>The winner delivers towards the tender, from the inventory or from the station of their plot in the county, and is paid their
     /// price for every piece; the last piece brings the deposit back.</summary>
     public Task<(long Quantity, long Cents, XpGain Xp)> DeliverTenderAsync(
         Guid player, int x, int y, long quantity, bool fromStation, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var town = RequireTown(x, y);
+            var town = RequireCounty(x, y);
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, fromStation ? PlotRight.Take : PlotRight.Work);
             if (quantity < 1)
             {

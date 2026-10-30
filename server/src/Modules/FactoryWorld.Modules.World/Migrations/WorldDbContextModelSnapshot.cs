@@ -1750,6 +1750,12 @@ namespace FactoryWorld.Modules.World.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("mayor_id");
 
+                    b.Property<int>("PlotTaxPerMille")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("plot_tax_per_mille");
+
                     b.Property<bool>("Recalled")
                         .HasColumnType("boolean")
                         .HasColumnName("recalled");
