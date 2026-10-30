@@ -370,9 +370,34 @@ def police():
     p.save("police")
 
 
+def photo():
+    p = Pen()
+    p.rect(20, 12, 36, 20, INK, 2)  # the top of a camera
+    p.rect(6, 17, 58, 52, INK, 5)  # its body
+    p.dot(32, 34, 13, CUT)  # the lens, with a ring and glass inside
+    p.ring(32, 34, 10, SHADE, 3)
+    p.dot(32, 34, 5, INK)
+    p.dot(29, 31, 1.6, CUT)
+    p.rect(46, 21, 53, 25, SHADE, 1)  # the flash
+    p.save("photo")
+
+
+def adventures():
+    p = Pen()
+    p.ring(32, 32, 25, INK, 5)  # a compass: its rim
+    for i in range(4):  # marks of the four directions
+        a = math.radians(i * 90)
+        p.line([(32 + math.cos(a) * 17, 32 + math.sin(a) * 17), (32 + math.cos(a) * 20, 32 + math.sin(a) * 20)], SHADE, 2.5)
+    p.poly([(32, 12), (38, 32), (32, 29), (26, 32)], INK)  # its needle, north lit, south in shade
+    p.poly([(32, 52), (26, 32), (32, 35), (38, 32)], SHADE)
+    p.dot(32, 32, 3, CUT)
+    p.save("adventures")
+
+
 def main() -> None:
     for draw in (backpack, garage, market, contracts, company, stats, achievements, world_map, logout,
-                 station, plant, mine_upgrade, garage_upgrade, city, bank, politics, blueprint, clear, undo, chat, gallery, like, bell, settings, police):
+                 station, plant, mine_upgrade, garage_upgrade, city, bank, politics, blueprint, clear, undo, chat, gallery, like, bell, settings, police,
+                 photo, adventures):
         draw()
 
 

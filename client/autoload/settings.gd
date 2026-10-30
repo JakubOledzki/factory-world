@@ -45,6 +45,7 @@ const ACTION_NAMES := {
 	"hotbar_5": "Pasek: slot 5",
 	"plan": "Plany budowy",
 	"pipette": "Pipeta: weź taki sam obiekt",
+	"photo": "Tryb zdjęć",
 	"contracts": "Zlecenia",
 	"upgrades": "Ulepszenia garażu",
 	"zoom_in": "Przybliż",
