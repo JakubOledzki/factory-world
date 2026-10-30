@@ -104,6 +104,8 @@ func dock_right(gap := 12.0, top := 64.0) -> void:
 
 
 func show_window() -> void:
+	if not visible:
+		Sound.play("open", -8.0)
 	visible = true
 	_opened += 1
 	set_meta("opened", _opened)
@@ -144,6 +146,7 @@ func _dock() -> void:
 func hide_window() -> void:
 	if visible:
 		visible = false
+		Sound.play("close", -8.0)
 		closed.emit()
 
 

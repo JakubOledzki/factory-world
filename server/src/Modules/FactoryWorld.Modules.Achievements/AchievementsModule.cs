@@ -70,6 +70,8 @@ public sealed class AchievementsModule : IGameModule
         services.AddSingleton<IMessageHandler, GetAchievementsHandler>();
         services.AddSingleton<IMessageHandler, WatchAchievementsHandler>();
         services.AddSingleton<IMessageHandler, GetRankingsHandler>();
+        services.AddScoped<IHonours, BadgeHonours>();
+        services.AddSingleton<IMessageHandler, GetShowcaseHandler>();
     }
 
     public Task InitializeAsync(IServiceProvider services, CancellationToken cancellationToken) =>

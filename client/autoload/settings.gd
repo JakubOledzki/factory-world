@@ -37,6 +37,7 @@ const ACTION_NAMES := {
 	"market": "Rynek",
 	"stats": "Statystyki",
 	"achievements": "Osiągnięcia",
+	"adventures": "Przygody",
 	"character": "Postać",
 	"hotbar_1": "Pasek: slot 1",
 	"hotbar_2": "Pasek: slot 2",
@@ -45,6 +46,7 @@ const ACTION_NAMES := {
 	"hotbar_5": "Pasek: slot 5",
 	"plan": "Plany budowy",
 	"pipette": "Pipeta: weź taki sam obiekt",
+	"photo": "Tryb zdjęć",
 	"contracts": "Zlecenia",
 	"upgrades": "Ulepszenia garażu",
 	"zoom_in": "Przybliż",
@@ -71,6 +73,9 @@ var ui_scale := 1.0
 var effects := true
 ## Frames per second at most; 0 for no limit.
 var fps_limit := 0
+## Loudness of the music and of the effects, 0 (off) to 1.
+var music_volume := 0.5
+var sfx_volume := 0.8
 
 ## Keys the player chose: action → physical keycode, in place of the first default key.
 var _keys := {}
@@ -85,6 +90,7 @@ var _controls_tab: Button
 var _scale_label: Label
 var _effects_button: Button
 var _fps_buttons: Array[Button] = []
+var _volume_labels := {}
 ## The action waiting for its new key, and the button that shows it.
 var _capturing := ""
 var _capture_button: Button
@@ -97,6 +103,8 @@ func _ready() -> void:
 		ui_scale = float(config.get_value("view", "scale", 1.0))
 		effects = bool(config.get_value("view", "effects", true))
 		fps_limit = int(config.get_value("view", "fps", 0))
+		music_volume = clampf(float(config.get_value("sound", "music", 0.5)), 0.0, 1.0)
+		sfx_volume = clampf(float(config.get_value("sound", "effects", 0.8)), 0.0, 1.0)
 		for action: String in config.get_section_keys("keys") if config.has_section("keys") else []:
 			_keys[action] = int(config.get_value("keys", action))
 	if not SCALES.has(ui_scale):
@@ -222,6 +230,8 @@ func _save() -> void:
 	config.set_value("view", "scale", ui_scale)
 	config.set_value("view", "effects", effects)
 	config.set_value("view", "fps", fps_limit)
+	config.set_value("sound", "music", music_volume)
+	config.set_value("sound", "effects", sfx_volume)
 	for action: String in _keys:
 		config.set_value("keys", action, _keys[action])
 	config.save(FILE)
@@ -240,6 +250,17 @@ func _set_scale(step: int) -> void:
 func _set_fps(limit: int) -> void:
 	fps_limit = limit
 	_apply_view()
+	_save()
+	_render_general()
+
+
+## Turns the music ("music") or the effects ("effects") up or down by a tenth.
+func _set_volume(which: String, step: int) -> void:
+	var value := snappedf(clampf((music_volume if which == "music" else sfx_volume) + step * 0.1, 0.0, 1.0), 0.1)
+	if which == "music":
+		music_volume = value
+	else:
+		sfx_volume = value
 	_save()
 	_render_general()
 
@@ -294,6 +315,22 @@ func _build() -> void:
 	_general.add_child(UI.label("Litery, przyciski, okna i paski. Świat na działce zostaje tej samej wielkości.", UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
 	_general.add_child(HSeparator.new())
 
+	_general.add_child(_heading("Dźwięk"))
+	for which: Array in [["music", "Muzyka"], ["effects", "Efekty dźwiękowe"]]:
+		var volume_row := HBoxContainer.new()
+		volume_row.add_theme_constant_override("separation", 6)
+		var name_label := UI.label(which[1])
+		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		volume_row.add_child(name_label)
+		volume_row.add_child(UI.button("−", _set_volume.bind(which[0], -1)))
+		var value_label := UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_CENTER)
+		value_label.custom_minimum_size.x = 70
+		_volume_labels[which[0]] = value_label
+		volume_row.add_child(value_label)
+		volume_row.add_child(UI.button("+", _set_volume.bind(which[0], 1)))
+		_general.add_child(volume_row)
+	_general.add_child(HSeparator.new())
+
 	_general.add_child(_heading("Efekty"))
 	_effects_button = UI.button("", _toggle_effects)
 	_general.add_child(_effects_button)
@@ -330,6 +367,9 @@ func _show_tab(controls: bool) -> void:
 func _render_general() -> void:
 	_scale_label.text = "%d%%" % roundi(ui_scale * 100.0)
 	_effects_button.text = "Włączone" if effects else "Wyłączone"
+	for which: String in _volume_labels:
+		var value := music_volume if which == "music" else sfx_volume
+		(_volume_labels[which] as Label).text = "Wyłączone" if value <= 0.0 else "%d%%" % roundi(value * 100.0)
 	_mark(_effects_button, effects)
 	for i in FPS_LIMITS.size():
 		_mark(_fps_buttons[i], FPS_LIMITS[i] == fps_limit)

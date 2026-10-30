@@ -73,11 +73,13 @@ public sealed class AchievementTests(ServerFactory factory) : IClassFixture<Serv
         await ChopATreeAsync(client, factory);
         await client.SendAsync("ping");
 
-        var told = client.Notices.Select(n => n.Payload().GetProperty("id").GetString()).ToList();
-        Assert.All(client.Notices, n => Assert.Equal("achievement.unlocked", n.Type()));
+        // A holiday treat ("season.drop") may come with the tree, as it does for players.
+        var badgeNotices = client.Notices.Where(n => n.Type() != "season.drop").ToList();
+        var told = badgeNotices.Select(n => n.Payload().GetProperty("id").GetString()).ToList();
+        Assert.All(badgeNotices, n => Assert.Equal("achievement.unlocked", n.Type()));
         Assert.Contains("landowner", told);
         Assert.Contains("first_tree", told);
-        Assert.Equal("Pierwsze drzewo", client.Notices.Single(n => n.Payload().GetProperty("id").GetString() == "first_tree").Payload().GetProperty("name").GetString());
+        Assert.Equal("Pierwsze drzewo", badgeNotices.Single(n => n.Payload().GetProperty("id").GetString() == "first_tree").Payload().GetProperty("name").GetString());
 
         var reply = await client.SendAsync("achievements.get");
         Assert.Equal("achievements", reply.Type());

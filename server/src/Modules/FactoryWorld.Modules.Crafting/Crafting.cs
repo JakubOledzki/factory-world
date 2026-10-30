@@ -68,6 +68,7 @@ public static class Workshop
         new(Items.Pole, 2, TimeSpan.FromSeconds(5), [(Items.Wood, 2), (Items.CopperIngot, 1)], 1),
         new(Items.Anvil, 1, TimeSpan.FromSeconds(60), [(Items.IronIngot, 15), (Items.Stone, 10)], 20),
         new(Items.ClothesWardrobe, 1, TimeSpan.FromSeconds(40), [(Items.Wood, 20), (Items.Nails, 10)], 10),
+        new(Items.TrophyCase, 1, TimeSpan.FromSeconds(60), [(Items.Wood, 25), (Items.Nails, 12), (Items.Glass, 6)], 15),
         new(Items.Axe, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 3), (Items.Wood, 2)], 5, Items.Anvil),
         new(Items.Shovel, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 2), (Items.Wood, 2)], 5, Items.Anvil),
         new(Items.Pickaxe, 1, TimeSpan.FromSeconds(20), [(Items.IronIngot, 3), (Items.Wood, 2)], 5, Items.Anvil),

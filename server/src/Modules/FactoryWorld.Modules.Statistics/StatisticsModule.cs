@@ -144,6 +144,30 @@ public sealed record ProductionReport(
     public double Elapsed => Math.Max(1.0 / 60, (Now - Start).TotalMinutes);
 }
 
+public sealed class ProductionHistory(GameDb db) : IProductionHistory
+{
+    public async Task<IReadOnlyDictionary<string, long>> MadeAsync(Guid owner, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            """
+            SELECT item, sum(produced)::bigint FROM stats.production
+            WHERE owner_id = @owner AND minute >= @from AND minute < @to AND produced > 0
+            GROUP BY item
+            """, cancellationToken);
+        command.Parameters.AddWithValue("owner", owner);
+        command.Parameters.AddWithValue("from", ProductionRules.MinuteOf(from));
+        command.Parameters.AddWithValue("to", to);
+        var made = new Dictionary<string, long>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            made[reader.GetString(0)] = reader.GetInt64(1);
+        }
+
+        return made;
+    }
+}
+
 public sealed class ProductionReports(GameDb db, IEnumerable<IMachineStatuses> machines, IPlotObjects plots, TimeProvider time)
 {
     /// <summary>Drops the player's minutes older than the statistics reach.</summary>
@@ -349,6 +373,7 @@ public sealed class StatisticsModule : IGameModule
         services.AddModuleDbContext<StatisticsDbContext>(StatisticsDbContext.Schema);
         services.AddScoped<IProductionStats, ProductionStats>();
         services.AddScoped<ProductionReports>();
+        services.AddScoped<IProductionHistory, ProductionHistory>();
         services.AddSingleton<EfficiencyScores>();
         services.AddScoped<IPlayerRanking, EfficiencyRanking>();
         services.AddSingleton<IMessageHandler, GetProductionHandler>();

@@ -216,6 +216,22 @@ func _render() -> void:
 		return query == "" or recipe["name"].to_lower().contains(query))
 	_categories.show_counts(CategoryList.count(found.map(func(recipe: Dictionary) -> String: return recipe["id"])), _category, true)
 	var grids := {}
+	# The starred and the recently made recipes stand above the categories (all of them shown, no search).
+	if _category == -1 and query == "":
+		var top: Dictionary = RecipeFavorites.first(found.map(func(recipe: Dictionary) -> String: return recipe["id"]))
+		for part: Array in [["starred", "★ ULUBIONE"], ["recent", "OSTATNIO WYTWARZANE"]]:
+			if top[part[0]].is_empty():
+				continue
+			var heading := UI.label(part[1], UI.GOLD)
+			heading.add_theme_font_override("font", UI.bold())
+			_recipes.add_child(heading)
+			var grid := GridContainer.new()
+			grid.columns = 1 if UI.touch() else 2
+			grid.add_theme_constant_override("h_separation", 6)
+			grid.add_theme_constant_override("v_separation", 4)
+			for id: String in top[part[0]]:
+				grid.add_child(_recipe_button(_recipe(id)))
+			_recipes.add_child(grid)
 	for recipe: Dictionary in found:
 		var category := ItemInfo.category_of(recipe["id"])
 		if _category != -1 and category != _category:
@@ -225,23 +241,7 @@ func _render() -> void:
 			grids[category].columns = 1 if UI.touch() else 2
 			grids[category].add_theme_constant_override("h_separation", 6)
 			grids[category].add_theme_constant_override("v_separation", 4)
-		var b := Button.new()
-		b.set_meta("item", recipe["id"])
-		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
-		b.icon = UI.item_texture(recipe["id"])
-		b.expand_icon = false
-		b.add_theme_constant_override("icon_max_width", 30)
-		var amount := int(recipe["quantity"])
-		b.text = "%s%s  ·  %s" % [recipe["name"], "  ×%d" % amount if amount > 1 else "", _seconds(float(recipe["seconds"]))]
-		if recipe["id"] == _selected:
-			b.theme_type_variation = "AccentButton"
-		elif not _can_make(recipe):
-			b.modulate = Color(1, 1, 1, 0.6)
-		b.pressed.connect(func() -> void:
-			_selected = recipe["id"]
-			_render())
-		grids[category].add_child(b)
+		grids[category].add_child(_recipe_button(recipe))
 	# In the order of the categories, under their names when all are shown.
 	var order := grids.keys()
 	order.sort()
@@ -266,6 +266,11 @@ func _render() -> void:
 		head.add_child(UI.item_icon(_selected, 40))
 		title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		head.add_child(title)
+		var star := UI.button("★" if RecipeFavorites.starred(_selected) else "☆", func() -> void:
+			RecipeFavorites.toggle(_selected)
+			_render())
+		star.tooltip_text = "Ulubiony przepis: stoi na górze listy przy każdym stole i kowadle."
+		head.add_child(star)
 		_details.add_child(head)
 		var about := ItemInfo.description(_selected)
 		if about != "":
@@ -342,6 +347,27 @@ func _process(_delta: float) -> void:
 		refresh()
 
 
+func _recipe_button(recipe: Dictionary) -> Button:
+	var b := Button.new()
+	b.set_meta("item", recipe["id"])
+	b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.icon = UI.item_texture(recipe["id"])
+	b.expand_icon = false
+	b.add_theme_constant_override("icon_max_width", 30)
+	var amount := int(recipe["quantity"])
+	b.text = "%s%s%s  ·  %s" % ["★ " if RecipeFavorites.starred(recipe["id"]) else "", recipe["name"],
+		"  ×%d" % amount if amount > 1 else "", _seconds(float(recipe["seconds"]))]
+	if recipe["id"] == _selected:
+		b.theme_type_variation = "AccentButton"
+	elif not _can_make(recipe):
+		b.modulate = Color(1, 1, 1, 0.6)
+	b.pressed.connect(func() -> void:
+		_selected = recipe["id"]
+		_render())
+	return b
+
+
 func _craft() -> void:
 	if workbench == "" or _selected == "":
 		return
@@ -351,6 +377,7 @@ func _craft() -> void:
 	_busy = false
 	_apply(reply)
 	if reply["type"] == "crafting":
+		RecipeFavorites.used(_selected)
 		inventory_changed.emit()
 
 

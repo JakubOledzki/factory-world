@@ -252,6 +252,12 @@ func _place_smoke() -> void:
 	var view := _view()
 	var middle := view.get_center()
 	var working: Array = []
+	var humming := 0
+	for id: String in _statuses:
+		if _statuses[id]["state"] == "working" and _objects.has(id) \
+				and view.has_point((Vector2(_objects[id]["cell"]) + Vector2(0.5, 0.5)) * tile):
+			humming += 1
+	Sound.set_machines(humming)
 	for id: String in _statuses if Settings.effects else {}:
 		var status: Dictionary = _statuses[id]
 		if status["state"] != "working" or not status["fired"] or not _objects.has(id):

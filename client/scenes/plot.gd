@@ -44,6 +44,8 @@ const ACTIONS := {
 	"plan": [KEY_V],
 	"clear": [KEY_X],
 	"pipette": [KEY_F],
+	"photo": [KEY_H],
+	"adventures": [KEY_Y],
 }
 
 const LAYOUT_FILE := "res://art/plot/layout.json"
@@ -219,6 +221,8 @@ const PLACED_SPRITES := {
 	"furniture_sugar_factory": "sugar_factory", "furniture_sprinkler": "sprinkler", "furniture_mechanized_farm": "mechanized_farm",
 	"power_biomass_plant": "biomass_plant", "power_chp_plant": "chp_plant", "power_geothermal_plant": "geothermal_plant",
 	"furniture_electrolyzer": "electrolyzer", "power_fuel_cell": "fuel_cell",
+	"decor_pumpkin_lantern": "pumpkin_lantern", "decor_scarecrow": "scarecrow", "decor_christmas_tree": "christmas_tree",
+	"decor_snowman": "snowman",
 }
 ## A placed computer opens the market on the plot.
 const COMPUTER := "furniture_computer"
@@ -584,6 +588,7 @@ var _station: Sprite2D
 var _player: GaragePlayer
 var _camera := Camera2D.new()
 var _zoom := 1.0
+var _photo := PhotoMode.new()
 ## Fingers on the screen, by index, and their distance at the last step of a pinch.
 var _touches := {}
 var _pinch := 0.0
@@ -688,6 +693,8 @@ var _likes := 0
 var _liked := false
 var _like_button: Button
 var _gallery_window: GalleryWindow
+var _adventures_window: AdventuresWindow
+var _timelapse_window: TimelapseWindow
 var _company_window: CompanyWindow
 var _stats_window: StatsWindow
 var _machine_window: MachineWindow
@@ -2263,6 +2270,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	elif event.is_action_pressed("pipette"):
 		_update_hover()
 		_pipette(_hovered)
+	elif event.is_action_pressed("photo"):
+		_photo.enter()
+	elif event.is_action_pressed("adventures"):
+		_adventures_window.toggle()
 	else:
 		for slot in Hotbar.SLOTS:
 			if event.is_action_pressed("hotbar_%d" % (slot + 1)):
@@ -2347,7 +2358,7 @@ func _pinch_zoom(event: InputEvent) -> bool:
 
 
 func _set_zoom(value: float) -> void:
-	_zoom = clampf(value, MIN_ZOOM, MAX_ZOOM)
+	_zoom = clampf(value, PhotoMode.MIN_ZOOM if _photo.active else MIN_ZOOM, MAX_ZOOM)
 	# A bigger interface (Settings) would make the world bigger too; the camera takes it back.
 	_camera.zoom = Vector2.ONE * _zoom / Settings.ui_scale
 
@@ -5084,6 +5095,12 @@ func _update_prompt() -> void:
 func _build_hud() -> void:
 	var layer := CanvasLayer.new()
 	add_child(layer)
+	add_child(_photo)
+	_photo.zoom_by = func(factor: float) -> void: _set_zoom(_zoom * factor)
+	_photo.caption_source = func() -> String: return "%s  ·  %s" % [_title.text, _subtitle.text]
+	_photo.toggled.connect(func(on: bool) -> void:
+		if not on:
+			_set_zoom(_zoom))
 	_hud = Control.new()
 	# The theme of the root window does not reach through the canvas layer.
 	_hud.theme = UI.theme()
@@ -5239,9 +5256,12 @@ func _build_hud() -> void:
 	_undo_button.visible = false
 	bar.add_child(_undo_button)
 	bar.add_child(UI.toolbar_button("world_map", "Mapa świata  [N]", Game.open_world_map))
+	bar.add_child(UI.toolbar_button("photo", "Tryb zdjęć  [H]\nUkryj interfejs, oddal widok i zapisz zdjęcie fabryki", _photo.enter))
+	bar.add_child(UI.toolbar_button("timelapse", "Timelapse\nObejrzyj, jak ta fabryka rosła dzień po dniu", func() -> void: _timelapse_window.open(Game.plot)))
 	bar.add_child(UI.toolbar_button("gallery", "Galeria fabryk\nNajczęściej lubiane działki: odwiedź je", func() -> void: _gallery_window.toggle()))
 	bar.add_child(UI.toolbar_button("chat", "Czat  [Enter]\nDo graczy na działce albo do wszystkich", func() -> void: _chat.toggle()))
 	bar.add_child(UI.toolbar_button("achievements", "Osiągnięcia, rankingi i rywalizacja  [O]", func() -> void: _achievements_window.toggle()))
+	bar.add_child(UI.toolbar_button("adventures", "Przygody  [Y]\nŚwięta, album znalezisk, wyprawy, zagadki, mentor i gablota", func() -> void: _adventures_window.toggle()))
 	bar.add_child(UI.toolbar_button("garage", "Garaż  [G]", Game.open_garage))
 	_hud.add_child(bar)
 	bar.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 10)
@@ -5709,6 +5729,14 @@ func _build_windows() -> void:
 	_achievements_window.toast.connect(func(text: String) -> void: _show_toast(text, UI.GOLD))
 	_achievements_window.inventory_changed.connect(_reload_inventory)
 	layer.add_child(_achievements_window)
+	_adventures_window = AdventuresWindow.new()
+	_adventures_window.failed.connect(_show_error)
+	_adventures_window.toast.connect(func(text: String) -> void: _show_toast(text, UI.GOLD))
+	_adventures_window.inventory_changed.connect(_reload_inventory)
+	layer.add_child(_adventures_window)
+	_timelapse_window = TimelapseWindow.new()
+	_timelapse_window.position = Vector2(240, 60)
+	layer.add_child(_timelapse_window)
 	_character_window = CharacterWindow.new()
 	_character_window.position = Vector2(280, 60)
 	_character_window.failed.connect(_show_error)

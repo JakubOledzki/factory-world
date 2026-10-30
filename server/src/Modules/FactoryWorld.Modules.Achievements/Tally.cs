@@ -86,6 +86,27 @@ public static class Tally
                 }
 
                 break;
+            case "album.claim" when Flag(reply, "claimed"):
+                Add(counts, Stats.AlbumPages, 1);
+                break;
+            case "expedition.claim":
+                Add(counts, Stats.Expeditions, 1);
+                break;
+            case "puzzle.submit":
+                if (Flag(reply, "firstSolve"))
+                {
+                    Add(counts, Stats.Puzzles, 1);
+                }
+
+                if (Flag(reply, "firstGold"))
+                {
+                    Add(counts, Stats.PuzzleGold, 1);
+                }
+
+                break;
+            case "mentor.claim" when Text(reply, "role") == "mentor":
+                Add(counts, Stats.Mentored, 1);
+                break;
             case "plot.plantTree":
                 Add(counts, Stats.TreesPlanted, 1);
                 break;
@@ -253,6 +274,9 @@ public static class Tally
             }
         }
     }
+
+    private static bool Flag(JsonElement reply, string property) =>
+        reply.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.True;
 
     private static string? Text(JsonElement? element, string property) =>
         element is { ValueKind: JsonValueKind.Object } e && e.TryGetProperty(property, out var value) && value.ValueKind == JsonValueKind.String

@@ -22,6 +22,13 @@ using FactoryWorld.Modules.Tutorial;
 using FactoryWorld.Modules.Statistics;
 using FactoryWorld.Modules.Wallet;
 using FactoryWorld.Modules.World;
+using FactoryWorld.Modules.Reports;
+using FactoryWorld.Modules.Collections;
+using FactoryWorld.Modules.Expeditions;
+using FactoryWorld.Modules.Seasons;
+using FactoryWorld.Modules.Mentoring;
+using FactoryWorld.Modules.Puzzles;
+using FactoryWorld.Modules.Timelapse;
 using FactoryWorld.Server;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -51,6 +58,13 @@ IGameModule[] modules =
     new BotsModule(),
     new LawModule(),
     new ChatModule(),
+    new ReportsModule(),
+    new CollectionsModule(),
+    new ExpeditionsModule(),
+    new SeasonsModule(),
+    new MentoringModule(),
+    new PuzzlesModule(),
+    new TimelapseModule(),
 ];
 
 foreach (var module in modules)

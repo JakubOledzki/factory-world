@@ -77,6 +77,7 @@ public static class GarageLayout
             [Items.Furnace] = (2, 2),
             [Items.Anvil] = (2, 1),
             [Items.ClothesWardrobe] = (3, 1),
+            [Items.TrophyCase] = (3, 1),
             [Items.ResearchTable] = (3, 2),
         };
 

@@ -370,9 +370,50 @@ def police():
     p.save("police")
 
 
+def photo():
+    p = Pen()
+    p.rect(20, 12, 36, 20, INK, 2)  # the top of a camera
+    p.rect(6, 17, 58, 52, INK, 5)  # its body
+    p.dot(32, 34, 13, CUT)  # the lens, with a ring and glass inside
+    p.ring(32, 34, 10, SHADE, 3)
+    p.dot(32, 34, 5, INK)
+    p.dot(29, 31, 1.6, CUT)
+    p.rect(46, 21, 53, 25, SHADE, 1)  # the flash
+    p.save("photo")
+
+
+def adventures():
+    p = Pen()
+    p.ring(32, 32, 25, INK, 5)  # a compass: its rim
+    for i in range(4):  # marks of the four directions
+        a = math.radians(i * 90)
+        p.line([(32 + math.cos(a) * 17, 32 + math.sin(a) * 17), (32 + math.cos(a) * 20, 32 + math.sin(a) * 20)], SHADE, 2.5)
+    p.poly([(32, 12), (38, 32), (32, 29), (26, 32)], INK)  # its needle, north lit, south in shade
+    p.poly([(32, 52), (26, 32), (32, 35), (38, 32)], SHADE)
+    p.dot(32, 32, 3, CUT)
+    p.save("adventures")
+
+
+def timelapse():
+    p = Pen()
+    p.rect(6, 14, 58, 50, INK, 4)  # a strip of film
+    for x in range(10, 58, 9):  # its sprocket holes, top and bottom
+        p.rect(x, 17, x + 4, 21, CUT, 1)
+        p.rect(x, 43, x + 4, 47, CUT, 1)
+    p.rect(11, 25, 23, 39, SHADE, 1)  # three frames, a factory growing in them
+    p.rect(26, 25, 38, 39, SHADE, 1)
+    p.rect(41, 25, 53, 39, SHADE, 1)
+    p.rect(15, 33, 19, 39, INK, 0)
+    p.rect(29, 31, 35, 39, INK, 0)
+    p.rect(43, 29, 51, 39, INK, 0)
+    p.rect(47, 26, 49, 29, INK, 0)
+    p.save("timelapse")
+
+
 def main() -> None:
     for draw in (backpack, garage, market, contracts, company, stats, achievements, world_map, logout,
-                 station, plant, mine_upgrade, garage_upgrade, city, bank, politics, blueprint, clear, undo, chat, gallery, like, bell, settings, police):
+                 station, plant, mine_upgrade, garage_upgrade, city, bank, politics, blueprint, clear, undo, chat, gallery, like, bell, settings, police,
+                 photo, adventures, timelapse):
         draw()
 
 

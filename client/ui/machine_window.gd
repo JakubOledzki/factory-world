@@ -128,15 +128,22 @@ func _render() -> void:
 	for child in _recipes.get_children():
 		child.free()
 	# Recipes still to be researched can't be picked...
-	for recipe: Dictionary in _state["recipes"].filter(func(r: Dictionary) -> bool: return r.get("locked") == null):
+	for recipe: Dictionary in RecipeFavorites.sorted(_state["recipes"].filter(func(r: Dictionary) -> bool: return r.get("locked") == null)):
 		var chosen: bool = recipe["id"] == _state.get("recipe")
-		var b := UI.button(recipe["name"], _choose.bind(recipe["id"]), chosen)
+		var b := UI.button(("★ " if RecipeFavorites.starred(recipe["id"]) else "") + recipe["name"], _choose.bind(recipe["id"]), chosen)
 		b.icon = UI.item_texture(recipe["id"])
 		b.set_meta("item", recipe["id"])
 		b.add_theme_constant_override("icon_max_width", 24)
 		b.tooltip_text = _formula_text(recipe)
 		_recipes.add_child(b)
 	# ...but named below, with the research each needs, so the machine doesn't look like it can't make them at all.
+	var current: Variant = _state.get("recipe")
+	if current != null and str(current) != "":
+		var star := UI.button("★ Ulubiony" if RecipeFavorites.starred(str(current)) else "☆ Do ulubionych", func() -> void:
+			RecipeFavorites.toggle(str(current))
+			_render())
+		star.tooltip_text = "Ulubione przepisy stoją na początku listy w każdej maszynie."
+		_recipes.add_child(star)
 	var locked: Array[String] = []
 	for recipe: Dictionary in _state["recipes"]:
 		if recipe.get("locked") != null:
@@ -322,6 +329,7 @@ func _process(_delta: float) -> void:
 
 
 func _choose(recipe: String) -> void:
+	RecipeFavorites.used(recipe)
 	_changed(await Net.request("machine.recipe", {"machine": machine, "recipe": recipe}))
 
 

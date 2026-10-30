@@ -127,6 +127,34 @@ public sealed class WalletService(GameDb db, TimeProvider time, GameCounters cou
     }
 }
 
+public sealed class MoneyHistory(GameDb db) : IMoneyHistory
+{
+    public async Task<IReadOnlyList<(string Reason, long Cents)>> ByReasonAsync(
+        Guid owner, DateTimeOffset from, DateTimeOffset to, int limit, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            """
+            SELECT reason, sum(amount_cents)::bigint AS cents FROM wallet.ledger
+            WHERE owner_id = @owner AND created_at >= @from AND created_at < @to
+            GROUP BY reason
+            ORDER BY abs(sum(amount_cents)) DESC
+            LIMIT @limit
+            """, cancellationToken);
+        command.Parameters.AddWithValue("owner", owner);
+        command.Parameters.AddWithValue("from", from);
+        command.Parameters.AddWithValue("to", to);
+        command.Parameters.AddWithValue("limit", limit);
+        var rows = new List<(string, long)>();
+        await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+        while (await reader.ReadAsync(cancellationToken))
+        {
+            rows.Add((reader.GetString(0), reader.GetInt64(1)));
+        }
+
+        return rows;
+    }
+}
+
 public sealed class GetWalletHandler(IServiceScopeFactory scopes) : IMessageHandler
 {
     public string Type => "wallet.get";
@@ -148,6 +176,7 @@ public sealed class WalletModule : IGameModule
     {
         services.AddModuleDbContext<WalletDbContext>(WalletDbContext.Schema);
         services.AddScoped<IWallet, WalletService>();
+        services.AddScoped<IMoneyHistory, MoneyHistory>();
         services.AddScoped<IPlayerRanking, WalletRanking>();
         services.AddSingleton<IMessageHandler, GetWalletHandler>();
     }

@@ -109,6 +109,7 @@ public sealed class RivalryModule : IGameModule
         services.AddSingleton<RivalryCache>();
         services.AddScoped<RivalryService>();
         services.AddScoped<IPlayerRanking, ChallengeRanking>();
+        services.AddScoped<IHonours, RivalryHonours>();
         services.AddSingleton<IMessageObserver, RivalryObserver>();
         services.AddSingleton<IMessageHandler, GetRivalryHandler>();
     }

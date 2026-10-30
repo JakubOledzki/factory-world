@@ -5,6 +5,8 @@ extends Node
 signal connected
 signal disconnected
 signal message_received(type: String, payload: Variant, id: String)
+## The server answered one of this client's requests: its type as sent, and the reply {type, payload}.
+signal replied(request_type: String, reply: Dictionary)
 
 const PROTOCOL_VERSION := 1
 const RECONNECT_DELAY := 3.0
@@ -24,6 +26,8 @@ class Pending:
 
 var _socket := WebSocketPeer.new()
 var _pending := {}
+## Request id → its type, until the reply comes.
+var _sent := {}
 var _last_state := WebSocketPeer.STATE_CLOSED
 var _next_id := 0
 var _reconnect_in := 0.0
@@ -62,6 +66,7 @@ func send(type: String, payload: Variant = null) -> String:
 	if payload != null:
 		envelope["payload"] = payload
 	_socket.send_text(JSON.stringify(envelope))
+	_sent[id] = type
 	return id
 
 
@@ -130,11 +135,15 @@ func _handle_packet(text: String) -> void:
 		_pending.erase(id)
 		pending.finish({"type": data["type"], "payload": data.get("payload")})
 	message_received.emit(data["type"], data.get("payload"), id)
+	if _sent.has(id):
+		replied.emit(_sent[id], {"type": data["type"], "payload": data.get("payload")})
+		_sent.erase(id)
 
 
 func _fail_pending() -> void:
 	var waiting := _pending.values()
 	_pending.clear()
+	_sent.clear()
 	for pending: Pending in waiting:
 		pending.finish(_disconnected_reply())
 

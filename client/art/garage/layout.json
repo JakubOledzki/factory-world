@@ -323,6 +323,24 @@
     "anchorX": 69,
     "anchorY": 193
    }
+  ],
+  "furniture_trophy_case": [
+   {
+    "anchorX": 123,
+    "anchorY": 153
+   },
+   {
+    "anchorX": 90,
+    "anchorY": 248
+   },
+   {
+    "anchorX": 122,
+    "anchorY": 153
+   },
+   {
+    "anchorX": 90,
+    "anchorY": 248
+   }
   ]
  },
  "projection": {
