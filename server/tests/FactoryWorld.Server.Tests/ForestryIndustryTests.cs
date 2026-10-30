@@ -321,7 +321,8 @@ public sealed class ForestryIndustryTests(ServerFactory factory) : IClassFixture
     public async Task An_inserter_next_to_a_forester_takes_its_wood_into_a_chest()
     {
         using var client = await PlayerAsync();
-        var (x, y, tx, ty, _) = await PlotAsync(client);
+        // No wild tree in its forest: it would be cut first and bring a piece of wood more.
+        var (x, y, tx, ty, _) = await PlotAsync(client, reach: 5);
         await GiveAsync(client, Items.ForesterHut, 1);
         await GiveAsync(client, Items.Inserter, 1);
         await GiveAsync(client, Items.WoodenChest, 1);
