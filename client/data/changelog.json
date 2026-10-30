@@ -1,6 +1,25 @@
 [
 	{
 		"date": "2026-10-30",
+		"title": "Przygody, dźwięk i raport „Gdy cię nie było”",
+		"changes": [
+			"Gra ma dźwięk: kliknięcia, siekiera, kilof, monety, rzemiosło, awans, pociągi i szum pracujących maszyn, a do tego muzykę w garażu, na działce i na mapie świata. Głośność muzyki i efektów ustawisz w Ustawieniach.",
+			"Raport „Gdy cię nie było”: po powrocie do gry po przerwie (od 30 minut) garaż pokazuje, ile zarobiłeś i wydałeś (eksport, sklepy, banki, podatki…) i co wyprodukowały twoje maszyny.",
+			"Nowe okno Przygody (klawisz Y) z sześcioma zakładkami: Wydarzenie, Album, Wyprawy, Zagadki, Mentor i Gablota.",
+			"Święta: w Halloween (24.10–7.11) i w Boże Narodzenie (15.12–6.01) co szósty zbiór, kamień albo ścięte zboże daje cukierek lub bombkę (do 40 dziennie). Wymienisz je na dekoracje na działkę: lampion z dyni, strach na wróble, bałwana i choinkę.",
+			"Album znalezisk: rzadkie rzeczy, które znajdziesz pierwszy raz (skamieliny, minerały, ryby, grzyby, pamiątki, świąteczne ozdoby), trafiają do albumu same. Pełna strona daje 1000 XP i odznakę.",
+			"Wyprawy: wyślij drużynę z prowiantem do puszczy, na pustynię, w góry, na morze albo do tundry. Wraca po 2–8 godzinach z surowcami, a czasem z pamiątką do albumu. Drugą drużynę masz od 25 poziomu.",
+			"Zagadki inżynierskie: pięć placów, na których z taśm, podajników i maszyn układasz linię o zadanej wydajności. Medal zależy od liczby elementów; pierwsze rozwiązanie i pierwsze złoto dają XP.",
+			"Mentor: gracz poniżej 10 poziomu wybiera mentora od 20 poziomu. Gdy podopieczny dojdzie do 10 poziomu, obaj dostają nagrodę (2000 i 3000 XP).",
+			"Gablota z trofeami do garażu (stół warsztatowy: drewno, gwoździe i szkło): pokazuje twoje odznaki, tytuły „Pierwszy na świecie” i wygrane wyzwania. Obejrzysz w niej też gablotę innego gracza.",
+			"Timelapse fabryki: przycisk na pasku działki odtwarza, jak twoja fabryka rosła dzień po dniu.",
+			"Tryb zdjęć (klawisz H): chowa interfejs, pozwala oddalić widok bardziej niż zwykle i zapisuje zdjęcie fabryki z podpisem.",
+			"Ulubione przepisy: gwiazdka przy przepisie przypina go na górze listy stołu, kowadła i maszyn, a ostatnio robione przepisy też są pod ręką.",
+			"Kalkulator produkcji w kompendium: wpisz, ile sztuk na minutę chcesz, a policzy, ile maszyn i ile surowców na minutę potrzeba w całym łańcuchu."
+		]
+	},
+	{
+		"date": "2026-10-30",
 		"title": "Uczciwszy handel i firmy",
 		"changes": [
 			"Działka wyjęta z firmy zabiera ze sobą akcje, które jej właściciel dostał za jej wniesienie; tak samo, gdy członek odchodzi albo zostaje wyrzucony. Wnoszenie i wyjmowanie tej samej działki nie daje już nowych akcji.",

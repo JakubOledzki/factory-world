@@ -165,7 +165,13 @@ public sealed class PuzzleService(GameDb db, ICharacterProgress progress, TimePr
                 return (evaluation, 0, false, false, null);
             }
 
-            // The row is locked, so two solutions sent at once cannot both be the first.
+            // One solution of a player is judged at a time, so two sent at once cannot both be the first, even before the row exists.
+            await using (var lockOwner = await db.CommandAsync("SELECT pg_advisory_xact_lock(@key)", cancellationToken))
+            {
+                lockOwner.Parameters.AddWithValue("key", BitConverter.ToInt64(owner.ToByteArray()) ^ 0x70757a7a_6c650000);
+                await lockOwner.ExecuteNonQueryAsync(cancellationToken);
+            }
+
             var before = 0;
             var objectsBefore = int.MaxValue;
             await using (var read = await db.CommandAsync(

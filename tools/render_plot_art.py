@@ -8,7 +8,7 @@ Every picture is stored at SS times that size and the game draws it back at scre
 stays sharp when the window or the camera zoom enlarges it. Anchors and sizes in layout.json are
 in screen pixels.
 
-    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [tree] [assemblers] [machine_levels] [logistics] [husbandry] [export] [freight] [banks] [big_power] [<sprite>...] [icons | item_<id>...]
+    .venv-art/bin/python tools/render_plot_art.py [floors] [nature] [station] [rail] [farming] [forestry] [mine] [crafting] [processing] [forestry_industry] [office] [power] [mountain] [coast] [oil] [tree] [assemblers] [machine_levels] [logistics] [husbandry] [export] [freight] [banks] [big_power] [holidays] [<sprite>...] [icons | item_<id>...]
 
 Writes client/art/plot/layout.json with each sprite's anchor: the pixel that stands on the
 centre of the tile (or, for the station and the mine, the middle of its south edge).
@@ -6859,7 +6859,7 @@ def husbandry_icon_models():
 
 def render_icons(only=()):
     ICONS.mkdir(parents=True, exist_ok=True)
-    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models(), **city_icon_models(), **forest_icon_models(), **tree_icon_models(), **husbandry_icon_models(), **big_power_icon_models(), **branch_icon_models()}.items():
+    for name, build in {**icon_models(), **desert_icon_models(), **glacier_icon_models(), **city_icon_models(), **forest_icon_models(), **tree_icon_models(), **husbandry_icon_models(), **big_power_icon_models(), **branch_icon_models(), **adventure_icon_models()}.items():
         if only and name not in only:
             continue
         random.seed(zlib.crc32(name.encode()))
@@ -7816,8 +7816,197 @@ def branch_icon_models():
     }
 
 
+# --- Holidays and expeditions: decorations, treats and souvenirs ----------------------------------------
+# A decoration stands on one tile (a 2 m square) and only looks nice.
+
+def holiday_mats():
+    return {
+        "pumpkin": ra.plain("hol_pumpkin", (0.75, 0.28, 0.02), 0.55, variation=0.2, bump=0.4),
+        "stem": ra.plain("hol_stem", (0.12, 0.17, 0.05), 0.7, variation=0.2),
+        "glow": ra.emission("hol_glow", (1.0, 0.55, 0.12), 12),
+        "straw": ra.plain("hol_straw", (0.62, 0.48, 0.17), 0.9, variation=0.3, scale=30, bump=0.8),
+        "cloth": ra.plain("hol_cloth", (0.35, 0.08, 0.06), 0.85, variation=0.2, bump=0.3),
+        "denim": ra.plain("hol_denim", (0.1, 0.15, 0.3), 0.85, variation=0.2, bump=0.3),
+        "pole": ra.wood("hol_pole", (0.25, 0.15, 0.07)),
+        "hat": ra.plain("hol_hat", (0.2, 0.14, 0.07), 0.9, variation=0.2),
+        "needles": foliage("hol_needles", (0.06, 0.26, 0.09), 0.2),
+        "snow": ra.plain("hol_snow", (0.85, 0.88, 0.92), 0.6, variation=0.05, grime=0.05, bump=0.3),
+        "coal": ra.plain("hol_coal", (0.03, 0.03, 0.03), 0.6),
+        "carrot": ra.plain("hol_carrot", (0.8, 0.3, 0.04), 0.6),
+        "red": ra.plain("hol_red", (0.65, 0.04, 0.04), 0.2, 0.6, variation=0.05, grime=0.05),
+        "gold": ra.plain("hol_gold", (0.85, 0.6, 0.15), 0.2, 1.0, variation=0.05, grime=0.05),
+        "blue": ra.plain("hol_blue", (0.05, 0.2, 0.65), 0.2, 0.6, variation=0.05, grime=0.05),
+        "star": ra.emission("hol_star", (1.0, 0.85, 0.3), 10),
+        "lights": ra.emission("hol_lights", (1.0, 0.75, 0.35), 14),
+        "scarf": ra.plain("hol_scarf", (0.6, 0.05, 0.05), 0.9, variation=0.2, bump=0.3),
+    }
+
+
+def pumpkin(m, at, r=0.35, carved=True):
+    """A ribbed pumpkin; carved ones have a glowing face."""
+    for k in range(8):
+        a = k / 8 * 2 * math.pi
+        ra.sphere("hol_rib", r * 0.55, at + Vector((math.cos(a) * r * 0.42, math.sin(a) * r * 0.42, r * 0.75)), m["pumpkin"],
+                  scale=(1, 1, 1.3), segments=16)
+    ra.cylinder("hol_stem", r * 0.08, r * 0.35, at + Vector((0, 0, r * 1.55)), m["stem"], verts=8, rotation=(0.2, 0, 0))
+    if carved:
+        front = at + Vector((0, -r * 0.92, r * 0.8))
+        for x in (-0.13, 0.13):
+            ra.box("hol_eye", (r * 0.18, 0.02, r * 0.16), front + Vector((x * r * 2, 0, r * 0.25)), m["glow"], rotation=(0, math.radians(45), 0))
+        ra.box("hol_mouth", (r * 0.6, 0.02, r * 0.12), front + Vector((0, 0, -r * 0.15)), m["glow"])
+
+
+def build_pumpkin_lantern():
+    m = holiday_mats()
+    pumpkin(m, Vector((0.15, -0.1, 0)), 0.42)
+    pumpkin(m, Vector((-0.5, 0.35, 0)), 0.28)
+    pumpkin(m, Vector((0.55, 0.45, 0)), 0.22, carved=False)
+    ra.light("POINT", (0.15, -0.1, 0.4), 40, (1.0, 0.55, 0.15), size=0.1)
+
+
+def build_scarecrow():
+    m = holiday_mats()
+    ra.cylinder("hol_post", 0.05, 2.0, (0, 0, 1.0), m["pole"], verts=10)
+    ra.cylinder("hol_arms", 0.04, 1.5, (0, 0, 1.45), m["pole"], verts=10, rotation=(0, math.radians(90), 0))
+    ra.box("hol_shirt", (0.55, 0.26, 0.6), (0, 0, 1.3), m["cloth"], bevel=0.08)
+    for x in (-0.45, 0.45):
+        ra.box("hol_sleeve", (0.4, 0.2, 0.2), (x, 0, 1.45), m["cloth"], bevel=0.06)
+        ra.sphere("hol_hand", 0.1, (x * 1.65, 0, 1.43), m["straw"], scale=(1.4, 1, 0.8), segments=12)
+    for x in (-0.13, 0.13):
+        ra.box("hol_leg", (0.2, 0.2, 0.55), (x, 0, 0.75), m["denim"], bevel=0.05)
+    ra.sphere("hol_head", 0.2, (0, 0, 1.82), m["straw"], segments=16)
+    ra.cylinder("hol_brim", 0.32, 0.03, (0, 0, 1.98), m["hat"], verts=24)
+    ra.cylinder("hol_crown", 0.17, 0.25, (0, 0, 2.1), m["hat"], verts=20, radius2=0.13)
+    pumpkin(m, Vector((0.55, -0.45, 0)), 0.18, carved=False)
+
+
+def build_christmas_tree():
+    m = holiday_mats()
+    ra.cylinder("hol_trunk", 0.1, 0.4, (0, 0, 0.2), m["pole"], verts=10)
+    for k, (r, z) in enumerate(((0.85, 0.35), (0.68, 0.95), (0.5, 1.5), (0.3, 2.0))):
+        ra.cylinder("hol_tier", r, 0.8, (0, 0, z + 0.4), m["needles"], verts=20, radius2=0.04)
+        for i in range(7):
+            a = i / 7 * 2 * math.pi + k
+            ra.sphere("hol_bauble", 0.07, (math.cos(a) * r * 0.75, math.sin(a) * r * 0.75, z + 0.12),
+                      (m["red"], m["gold"], m["blue"])[(i + k) % 3], segments=12)
+            ra.sphere("hol_light", 0.03, (math.cos(a + 0.4) * r * 0.6, math.sin(a + 0.4) * r * 0.6, z + 0.35), m["lights"], segments=8)
+    ra.sphere("hol_star", 0.12, (0, 0, 2.85), m["star"], scale=(1, 0.4, 1), segments=10)
+    for x, y, c in ((0.55, -0.55, "red"), (-0.5, -0.45, "blue")):
+        ra.box("hol_gift", (0.3, 0.3, 0.25), (x, y, 0.125), m[c], bevel=0.02)
+        ra.box("hol_ribbon", (0.32, 0.06, 0.27), (x, y, 0.125), m["gold"])
+
+
+def build_snowman():
+    m = holiday_mats()
+    ra.cylinder("hol_drift", 0.85, 0.08, (0, 0, 0.04), m["snow"], verts=24, radius2=0.6)
+    for r, z in ((0.5, 0.45), (0.36, 1.12), (0.25, 1.6)):
+        ra.sphere("hol_ball", r, (0, 0, z), m["snow"], segments=20)
+    for z in (0.98, 1.15, 1.32):
+        ra.sphere("hol_button", 0.035, (0, -0.35 + abs(z - 1.15) * 0.4, z), m["coal"], segments=8)
+    for x in (-0.09, 0.09):
+        ra.sphere("hol_eye", 0.03, (x, -0.23, 1.67), m["coal"], segments=8)
+    ra.cylinder("hol_nose", 0.04, 0.22, (0, -0.33, 1.6), m["carrot"], verts=10, radius2=0.002, rotation=(math.radians(90), 0, 0))
+    ra.torus("hol_scarf", 0.27, 0.06, (0, 0, 1.38), m["scarf"])
+    ra.box("hol_scarf_end", (0.12, 0.06, 0.3), (0.18, -0.25, 1.2), m["scarf"], bevel=0.02)
+    ra.cylinder("hol_brim", 0.25, 0.03, (0, 0, 1.82), m["coal"], verts=20)
+    ra.cylinder("hol_hat", 0.16, 0.28, (0, 0, 1.97), m["coal"], verts=20)
+    for x in (-1, 1):
+        ra.cylinder("hol_twig", 0.02, 0.5, (x * 0.5, 0, 1.2), m["pole"], verts=6, rotation=(0, math.radians(90 + x * 30), 0))
+
+
+HOLIDAYS = {
+    # name: (canvas width, height, camera target height, builder); every decoration stands on one tile.
+    "pumpkin_lantern": (96, 96, 0.4, build_pumpkin_lantern),
+    "scarecrow": (96, 128, 1.1, build_scarecrow),
+    "christmas_tree": (96, 144, 1.4, build_christmas_tree),
+    "snowman": (96, 128, 1.0, build_snowman),
+}
+
+
+def render_holidays(layout: dict, only=()):
+    for name, (w, h, tz, build) in HOLIDAYS.items():
+        if only and name not in only:
+            continue
+        random.seed(zlib.crc32(name.encode()))
+        layout[name] = render_sprite(name, w, h, Vector((0, 0, tz)), crafted(build), true_scale=True)
+        ra.icon_from(Image.open(OUT / f"{name}.png").convert("RGBA"), ICONS / f"item_decor_{name}.png")
+
+
+def adventure_icon_models():
+    def candy():
+        wrap = ra.plain("hol_wrap", (0.7, 0.1, 0.45), 0.3, variation=0.1, grime=0.05)
+        stripe = ra.plain("hol_wrap2", (0.95, 0.85, 0.2), 0.3, variation=0.1, grime=0.05)
+        ra.sphere("candy", 0.12, (0, 0, 0.1), wrap, scale=(1.3, 1, 0.9), segments=20)
+        ra.torus("candy_stripe", 0.115, 0.012, (0, 0, 0.1), stripe, rotation=(0, math.radians(90), 0))
+        for x in (-1, 1):
+            ra.cylinder("candy_twist", 0.09, 0.12, (x * 0.22, 0, 0.1), wrap, verts=8, radius2=0.01, rotation=(0, math.radians(-x * 90), 0))
+
+    def bauble():
+        m = holiday_mats()
+        ra.sphere("bauble", 0.16, (0, 0, 0.17), m["red"], segments=24)
+        ra.torus("bauble_band", 0.155, 0.012, (0, 0, 0.17), m["gold"], rotation=(math.radians(90), 0, 0))
+        ra.cylinder("bauble_cap", 0.04, 0.05, (0, 0, 0.35), m["gold"], verts=12)
+        ra.torus("bauble_loop", 0.025, 0.006, (0, 0, 0.39), m["gold"], rotation=(math.radians(90), 0, 0))
+
+    def mammoth_tusk():
+        ivory = ra.plain("tusk", (0.82, 0.76, 0.6), 0.4, variation=0.15, grime=0.4, bump=0.2)
+        for k in range(8):
+            a = k / 7 * math.radians(110)
+            r = 0.075 - k * 0.008
+            ra.sphere("tusk", r, (math.cos(a) * 0.22 - 0.1, 0, math.sin(a) * 0.22 + 0.05), ivory, segments=14, scale=(1.6, 1, 1.6))
+
+    def desert_rose():
+        sand = ra.plain("rose", (0.72, 0.5, 0.32), 0.85, variation=0.25, bump=0.6)
+        for k in range(9):
+            a = k / 9 * 2 * math.pi
+            tilt = (math.radians(60), 0, a)
+            ra.cylinder("rose_petal", 0.11, 0.015, (math.cos(a) * 0.08, math.sin(a) * 0.08, 0.1 + (k % 3) * 0.04), sand, verts=14,
+                        rotation=tilt)
+
+    def edelweiss():
+        frame = ra.wood("frame", (0.25, 0.14, 0.06))
+        paper = ra.plain("frame_paper", (0.85, 0.82, 0.72), 0.8, variation=0.1)
+        petal = ra.plain("edelweiss", (0.88, 0.88, 0.84), 0.9, variation=0.1, bump=0.4)
+        ra.box("frame", (0.4, 0.4, 0.03), (0, 0, 0.015), frame, bevel=0.01)
+        ra.box("frame_paper", (0.32, 0.32, 0.01), (0, 0, 0.035), paper)
+        for k in range(7):
+            a = k / 7 * 2 * math.pi
+            ra.sphere("edelweiss_petal", 0.045, (math.cos(a) * 0.06, math.sin(a) * 0.06, 0.045), petal, scale=(1.6, 0.6, 0.3), segments=10)
+        ra.sphere("edelweiss_heart", 0.03, (0, 0, 0.05), ra.plain("edelweiss_heart", (0.75, 0.7, 0.3), 0.8), segments=10)
+
+    def nautilus():
+        shell = ra.plain("nautilus", (0.85, 0.72, 0.55), 0.35, variation=0.2, bump=0.2)
+        stripe = ra.plain("nautilus_stripe", (0.5, 0.25, 0.12), 0.4, variation=0.1)
+        for k in range(14):
+            a = k * 0.45
+            r = 0.02 + k * 0.012
+            ra.sphere("nautilus", r, (math.cos(a) * k * 0.012, math.sin(a) * k * 0.012, 0.12), shell if k % 3 else stripe, segments=14)
+
+    def totem():
+        wood = ra.wood("totem", (0.35, 0.2, 0.09))
+        paint = ra.plain("totem_paint", (0.6, 0.12, 0.05), 0.7)
+        ra.cylinder("totem", 0.08, 0.5, (0, 0, 0.25), wood, verts=12)
+        for z in (0.12, 0.27, 0.42):
+            ra.box("totem_eye", (0.1, 0.02, 0.03), (0, -0.08, z), paint)
+        ra.box("totem_wings", (0.36, 0.05, 0.06), (0, 0, 0.47), wood, bevel=0.02)
+
+    def golden_compass():
+        m = holiday_mats()
+        glass = ra.plain("compass_face", (0.9, 0.88, 0.8), 0.3, variation=0.05, grime=0.05)
+        ra.cylinder("compass", 0.17, 0.05, (0, 0, 0.025), m["gold"], verts=32)
+        ra.cylinder("compass_face", 0.14, 0.01, (0, 0, 0.055), glass, verts=32)
+        ra.box("compass_needle", (0.02, 0.22, 0.01), (0, 0, 0.065), m["red"], rotation=(0, 0, math.radians(30)))
+        ra.torus("compass_ring", 0.03, 0.008, (0, 0.2, 0.03), m["gold"])
+
+    return {
+        "item_candy": candy, "item_bauble": bauble, "item_souvenir_mammoth_tusk": mammoth_tusk,
+        "item_souvenir_desert_rose": desert_rose, "item_souvenir_edelweiss": edelweiss, "item_souvenir_nautilus": nautilus,
+        "item_souvenir_totem": totem, "item_souvenir_golden_compass": golden_compass,
+    }
+
+
 if __name__ == "__main__":
-    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "assemblers", "machine_levels", "office", "logistics", "husbandry", "export", "freight", "banks", "big_power", "branches", "icons"]
+    args = sys.argv[1:] or ["floors", "nature", "station", "rail", "trains", "farming", "forestry", "mine", "crafting", "processing", "forestry_industry", "power", "mountain", "coast", "oil", "desert", "glacier", "city", "forest", "tree", "assemblers", "machine_levels", "office", "logistics", "husbandry", "export", "freight", "banks", "big_power", "branches", "holidays", "icons"]
     TMP.mkdir(parents=True, exist_ok=True)
     OUT.mkdir(parents=True, exist_ok=True)
     layout_file = OUT / "layout.json"
@@ -7907,6 +8096,9 @@ if __name__ == "__main__":
     if "branches" in args or any(a in BRANCHES for a in args):
         # Names of the buildings of the raw-material branches render just those.
         render_branches(layout, [a for a in args if a in BRANCHES])
+    if "holidays" in args or any(a in HOLIDAYS for a in args):
+        # Names of holiday decorations render just those.
+        render_holidays(layout, [a for a in args if a in HOLIDAYS])
     # "item_<id>" arguments render just those icons.
     if "icons" in args or any(a.startswith("item_") for a in args):
         render_icons([a for a in args if a.startswith("item_")])

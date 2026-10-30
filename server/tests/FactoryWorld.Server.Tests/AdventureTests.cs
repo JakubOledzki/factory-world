@@ -151,7 +151,7 @@ public sealed class ExpeditionTests(ServerFactory factory) : IClassFixture<Serve
     {
         using var client = await Adventure.PlayerAsync(factory);
         Assert.Equal("not_enough_items", (await client.SendAsync("expedition.send", new { region = "forest" })).ErrorCode());
-        Assert.Equal("level_too_low", (await client.SendAsync("expedition.send", new { region = "tundra" })).ErrorCode());
+        Assert.Equal("expedition_level", (await client.SendAsync("expedition.send", new { region = "tundra" })).ErrorCode());
 
         await Adventure.GiveAsync(factory, client, Items.Provisions, 6);
         var sent = await client.SendAsync("expedition.send", new { region = "forest" });
@@ -179,14 +179,14 @@ public sealed class ExpeditionTests(ServerFactory factory) : IClassFixture<Serve
     }
 
     [Fact]
-    public void Expeditions_bring_back_less_than_their_supplies_sell_for()
+    public void Expeditions_bring_back_less_than_the_trader_pays_for_their_supplies()
     {
-        // Expeditions are for finds and experience, not for money: what they bring sells to the trader for less than the
-        // supplies cost at the trader.
+        // Expeditions are for finds and experience, not for money: on average what they bring sells to the trader for less
+        // than the supplies would.
         var random = new Random(7);
         foreach (var region in ExpeditionRules.Regions)
         {
-            var supplies = region.Supplies.Sum(s => FactoryWorld.Modules.Market.NpcPrices.Sells[s.Item] * s.Quantity);
+            var supplies = region.Supplies.Sum(s => FactoryWorld.Modules.Market.NpcPrices.Buys[s.Item] * s.Quantity);
             var brought = Enumerable.Range(0, 2000)
                 .Select(_ => ExpeditionRules.Roll(region, random).Sum(l => FactoryWorld.Modules.Market.NpcPrices.Buys.GetValueOrDefault(l.Item) * l.Quantity))
                 .Average();

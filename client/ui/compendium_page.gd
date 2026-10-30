@@ -34,6 +34,9 @@ var _furnace_coal := {}
 var _canteen := {}
 var _locked := {}
 var _prices := {}
+## The production calculator: pieces a minute wanted of the selected item, and where its answer goes.
+var _calc_rate := 0.0
+var _calc_box := VBoxContainer.new()
 
 
 func _init() -> void:
@@ -196,6 +199,8 @@ func _item_button(item: String) -> Button:
 
 ## Shows `item`; from a link in the details, the list follows to its category.
 func _select(item: String, follow := false) -> void:
+	if item != _selected:
+		_calc_rate = 0.0
 	_selected = item
 	_all_uses = false
 	if follow and _category != -1:
@@ -211,6 +216,9 @@ func _select(item: String, follow := false) -> void:
 
 
 func _render_details() -> void:
+	# The calculator's box is kept, not freed with the rest.
+	if _calc_box.get_parent():
+		_calc_box.get_parent().remove_child(_calc_box)
 	UI.clear(_details)
 	var item := _selected
 	if item == "":
@@ -245,6 +253,7 @@ func _render_details() -> void:
 		_section("Gdzie się wytwarza")
 		for recipe: Dictionary in made:
 			_details.add_child(_recipe_row(recipe, item))
+		_calculator(item)
 	var uses: Array = _used_in.get(item, [])
 	if not uses.is_empty():
 		_section("Do czego się przydaje (%d)" % uses.size())
@@ -285,6 +294,108 @@ func _render_details() -> void:
 		if sell != null:
 			_details.add_child(_text("Kupuje po %s/szt." % UI.money(int(sell))))
 		_details.add_child(_text("Ceny handlarza zmieniają się w ciągu dnia; między graczami handlujesz na rynku.", UI.MUTED))
+
+
+## Belt lanes are counted at the plain belt's pace, as on the server.
+const BELT_PER_MINUTE := 300.0
+## How deep the calculator follows ingredients made from other ingredients.
+const PLAN_DEPTH := 8
+
+
+## How many machines and how much of each raw material a wanted pace of `item` takes, following the first
+## recipe of every ingredient down to what is gathered or bought.
+func _calculator(item: String) -> void:
+	var recipe := _main_recipe(item)
+	if recipe.is_empty():
+		return
+	_section("Kalkulator produkcji")
+	if _calc_rate <= 0.0:
+		_calc_rate = _per_machine(recipe, item)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 6)
+	row.add_child(_small("Chcę"))
+	var rate := SpinBox.new()
+	rate.min_value = 0.1
+	rate.max_value = 100000
+	rate.step = 0.1
+	rate.value = snappedf(_calc_rate, 0.1)
+	rate.suffix = "szt./min"
+	rate.custom_minimum_size.x = 150
+	rate.value_changed.connect(func(value: float) -> void:
+		_calc_rate = value
+		_render_plan(item))
+	row.add_child(rate)
+	var one := UI.button("1 maszyna", func() -> void: rate.value = snappedf(_per_machine(recipe, item), 0.1))
+	row.add_child(one)
+	_details.add_child(row)
+	_calc_box.add_theme_constant_override("separation", 2)
+	_details.add_child(_calc_box)
+	_render_plan(item)
+
+
+func _render_plan(item: String) -> void:
+	for child in _calc_box.get_children():
+		_calc_box.remove_child(child)
+		child.queue_free()
+	var steps: Array[Dictionary] = []
+	var raw := {}
+	_plan(item, _calc_rate, 0, {}, steps, raw)
+	var machines := {}
+	for step: Dictionary in steps:
+		var line := "%s%s %s/min" % ["    ".repeat(step["depth"]), _name(step["item"]), _number(step["rate"])]
+		if step.has("station"):
+			line += "  ←  %s × %s" % [_number(step["machines"]), _name(step["station"])]
+			machines[step["station"]] = machines.get(step["station"], 0.0) + float(step["machines"])
+		_calc_box.add_child(_text(line, UI.TEXT if step["depth"] == 0 else UI.MUTED))
+	if not machines.is_empty():
+		var parts: Array[String] = []
+		for station: String in machines:
+			parts.append("%d × %s" % [ceili(machines[station] - 0.001), _name(station)])
+		_calc_box.add_child(_text("Maszyny razem: " + ", ".join(parts) + ".", UI.GOLD))
+	if not raw.is_empty():
+		var parts: Array[String] = []
+		for r: String in raw:
+			parts.append("%s %s/min" % [_name(r), _number(raw[r])])
+		_calc_box.add_child(_text("Surowce do dowiezienia: " + ", ".join(parts) + ".", UI.GOLD))
+	var lanes := ceili(_calc_rate / BELT_PER_MINUTE - 0.001)
+	_calc_box.add_child(_text("Gotowy towar zmieści się na %d %s zwykłej taśmy (%d szt./min na pas). Maszyny liczone na pierwszym poziomie, bez premii."
+		% [lanes, "pasie" if lanes == 1 else "pasach", int(BELT_PER_MINUTE)], UI.MUTED))
+
+
+## Adds the step making `rate` of `item` a minute and, under it, the steps making its ingredients.
+func _plan(item: String, rate: float, depth: int, path: Dictionary, steps: Array[Dictionary], raw: Dictionary) -> void:
+	var recipe := _main_recipe(item)
+	if recipe.is_empty() or depth >= PLAN_DEPTH or path.has(item):
+		steps.append({"item": item, "rate": rate, "depth": depth})
+		raw[item] = raw.get(item, 0.0) + rate
+		return
+	var machines := rate / _per_machine(recipe, item)
+	steps.append({"item": item, "rate": rate, "depth": depth, "station": recipe["station"], "machines": machines})
+	var inner := path.duplicate()
+	inner[item] = true
+	var runs := machines * 60.0 / float(recipe["seconds"])
+	for ingredient: Dictionary in recipe["ingredients"]:
+		_plan(ingredient["id"], runs * float(ingredient["quantity"]), depth + 1, inner, steps, raw)
+
+
+## The recipe that makes `item` as its product (not as a by-product), the first one listed; {} if none.
+func _main_recipe(item: String) -> Dictionary:
+	for recipe: Dictionary in _made_by.get(item, []):
+		if recipe["id"] == item and float(recipe["seconds"]) > 0.0:
+			return recipe
+	return {}
+
+
+## Pieces of `item` a minute one machine makes with `recipe`, kept busy.
+static func _per_machine(recipe: Dictionary, item: String) -> float:
+	var made := float(recipe["quantity"]) if recipe["id"] == item else 0.0
+	return made * 60.0 / float(recipe["seconds"])
+
+
+static func _number(value: float) -> String:
+	if is_equal_approx(value, roundf(value)):
+		return str(int(roundf(value)))
+	return String.num(value, 2 if value < 1.0 else 1).replace(".", ",")
 
 
 ## "1 porcję", "2 porcje", "5 porcji".

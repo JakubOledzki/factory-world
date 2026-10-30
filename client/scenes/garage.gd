@@ -27,9 +27,10 @@ const RESEARCH := "furniture_research_table"
 const SHELF := "furniture_shelf"
 const PALLET := "furniture_pallet"
 const WARDROBE := "furniture_wardrobe"
+const TROPHY_CASE := "furniture_trophy_case"
 ## What [E] does next to each piece of furniture that can be used.
 const USE := {BIN: "Segreguj", WORKBENCH: "Wytwarzaj", ANVIL: "Kuj narzędzia", RESEARCH: "Badania", FURNACE: "Piec kamienny", SORTER: "Sortownia",
-	SHELF: "Regał", PALLET: "Paleta dostaw", WARDROBE: "Szafa"}
+	SHELF: "Regał", PALLET: "Paleta dostaw", WARDROBE: "Szafa", TROPHY_CASE: "Gablota z trofeami"}
 ## How much brighter each level of the lighting upgrade makes the room.
 const LIGHT_STEP := 0.06
 
@@ -53,6 +54,7 @@ const ACTIONS := {
 	"achievements": [KEY_O],
 	"character": [KEY_C],
 	"upgrades": [KEY_U],
+	"adventures": [KEY_Y],
 }
 
 var _garage := {}
@@ -121,6 +123,8 @@ var _inventory_window: GameWindow
 var _market_window: MarketWindow
 var _contracts_window: ContractsWindow
 var _achievements_window: AchievementsWindow
+var _adventures_window: AdventuresWindow
+var _away_window: AwayReportWindow
 var _character_window: CharacterWindow
 var _portrait: CharacterPreview
 var _crafting_window: CraftingWindow
@@ -165,6 +169,7 @@ func _ready() -> void:
 	_build_menu()
 	_refresh_character()
 	_load()
+	_away_window.check()
 
 
 # --- Room ------------------------------------------------------------------------
@@ -342,6 +347,8 @@ func _use(object: Furniture) -> void:
 			_storage_window.open_in_garage(object.id)
 		WARDROBE:
 			_wardrobe_window.open_at(object.id)
+		TROPHY_CASE:
+			_adventures_window.open_tab(AdventuresWindow.SHOWCASE)
 
 
 ## The windows of furniture used where it stands; they close when the player walks away.
@@ -586,6 +593,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		_bank_window.toggle()
 	elif event.is_action_pressed("achievements"):
 		_achievements_window.toggle()
+	elif event.is_action_pressed("adventures"):
+		_adventures_window.toggle()
 	elif event.is_action_pressed("character"):
 		_character_window.toggle()
 	elif event.is_action_pressed("upgrades"):
@@ -880,6 +889,7 @@ func _build_hud() -> void:
 	bar.add_child(UI.toolbar_button("garage_upgrade", "Ulepszenia garażu  [U]", func() -> void: _upgrades_window.toggle()))
 	bar.add_child(UI.toolbar_button("stats", "Statystyki  [L]", func() -> void: _stats_window.toggle()))
 	bar.add_child(UI.toolbar_button("achievements", "Osiągnięcia, rankingi i rywalizacja  [O]", func() -> void: _achievements_window.toggle()))
+	bar.add_child(UI.toolbar_button("adventures", "Przygody  [Y]\nŚwięta, album znalezisk, wyprawy, zagadki, mentor i gablota", func() -> void: _adventures_window.toggle()))
 	bar.add_child(UI.toolbar_button("world_map", "Mapa świata  [N]", Game.open_world_map))
 	bar.add_child(UI.toolbar_button("logout", "Wyloguj", Game.logout))
 	add_child(bar)
@@ -974,6 +984,12 @@ func _build_windows() -> void:
 	_achievements_window.failed.connect(_show_error)
 	_achievements_window.toast.connect(func(text: String) -> void: _show_toast(text, UI.GOLD))
 	_achievements_window.inventory_changed.connect(_reload_inventory)
+	_adventures_window = AdventuresWindow.new()
+	_adventures_window.failed.connect(_show_error)
+	_adventures_window.toast.connect(func(text: String) -> void: _show_toast(text, UI.GOLD))
+	_adventures_window.inventory_changed.connect(_reload_inventory)
+	_away_window = AwayReportWindow.new()
+	_away_window.position = Vector2(280, 80)
 	_upgrades_window = UpgradesWindow.new()
 	_upgrades_window.dock_right()
 	_upgrades_window.upgraded.connect(_on_upgraded)
@@ -1002,7 +1018,7 @@ func _build_windows() -> void:
 
 ## The windows of this screen (but the character's), for Esc to close them all.
 func _windows() -> Array[GameWindow]:
-	var windows: Array[GameWindow] = [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _research_window, _furnace_window, _sorter_window, _stats_window, _company_window, _bank_window, _country_window, _police_window, _achievements_window, _upgrades_window, _storage_window, _wardrobe_window]
+	var windows: Array[GameWindow] = [_sorting_window, _inventory_window, _market_window, _contracts_window, _crafting_window, _research_window, _furnace_window, _sorter_window, _stats_window, _company_window, _bank_window, _country_window, _police_window, _achievements_window, _adventures_window, _away_window, _upgrades_window, _storage_window, _wardrobe_window]
 	return windows
 
 

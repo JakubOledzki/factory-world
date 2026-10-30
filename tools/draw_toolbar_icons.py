@@ -394,10 +394,26 @@ def adventures():
     p.save("adventures")
 
 
+def timelapse():
+    p = Pen()
+    p.rect(6, 14, 58, 50, INK, 4)  # a strip of film
+    for x in range(10, 58, 9):  # its sprocket holes, top and bottom
+        p.rect(x, 17, x + 4, 21, CUT, 1)
+        p.rect(x, 43, x + 4, 47, CUT, 1)
+    p.rect(11, 25, 23, 39, SHADE, 1)  # three frames, a factory growing in them
+    p.rect(26, 25, 38, 39, SHADE, 1)
+    p.rect(41, 25, 53, 39, SHADE, 1)
+    p.rect(15, 33, 19, 39, INK, 0)
+    p.rect(29, 31, 35, 39, INK, 0)
+    p.rect(43, 29, 51, 39, INK, 0)
+    p.rect(47, 26, 49, 29, INK, 0)
+    p.save("timelapse")
+
+
 def main() -> None:
     for draw in (backpack, garage, market, contracts, company, stats, achievements, world_map, logout,
                  station, plant, mine_upgrade, garage_upgrade, city, bank, politics, blueprint, clear, undo, chat, gallery, like, bell, settings, police,
-                 photo, adventures):
+                 photo, adventures, timelapse):
         draw()
 
 

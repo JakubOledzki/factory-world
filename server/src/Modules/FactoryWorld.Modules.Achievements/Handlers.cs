@@ -8,8 +8,6 @@ namespace FactoryWorld.Modules.Achievements;
 /// <summary>Counts what each player does and tells them, on a connection that asked to be told, of every badge they unlock.</summary>
 public sealed class AchievementObserver(IServiceScopeFactory scopes) : IMessageObserver
 {
-    public const string Watching = "achievements.watching";
-
     /// <summary>The highest values (level, balance...) this connection has recorded, by stat.</summary>
     private const string Recorded = "achievements.recorded";
 
@@ -48,7 +46,7 @@ public sealed class AchievementObserver(IServiceScopeFactory scopes) : IMessageO
         {
             recorded[stat] = value;
         }
-        if (!client.Items.ContainsKey(Watching))
+        if (!client.Watching)
         {
             return;
         }
@@ -107,7 +105,7 @@ public sealed class WatchAchievementsHandler : IMessageHandler
     public Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken)
     {
         client.RequireAccount();
-        client.Items[AchievementObserver.Watching] = true;
+        client.Watching = true;
         return Task.FromResult(new Reply("achievements.watching"));
     }
 }

@@ -82,7 +82,7 @@ public static class ExpeditionRules
             Items.DesertRose),
         new("mountains", "Góry", "Wspinaczka do starych sztolni: kamień, rudy i minerały.", 10, TimeSpan.FromHours(4),
             [(Items.Provisions, 6)], 100,
-            [new(Items.Stone, 30, 60), new(Items.IronOre, 5, 12), new(Items.CopperOre, 2, 5), new(Items.Quartz, 1, 1, 50), new(Items.Marble, 1, 2, 30),
+            [new(Items.Stone, 20, 40), new(Items.IronOre, 5, 12), new(Items.CopperOre, 2, 5), new(Items.Quartz, 1, 1, 50), new(Items.Marble, 1, 2, 30),
              new(Items.SilverOre, 1, 3, 10), new(Items.GoldOre, 1, 1, 2)],
             Items.Edelweiss),
         new("sea", "Morze", "Rejs kutrem na dalekie łowiska: ryby, małże, algi i bursztyn.", 15, TimeSpan.FromHours(6),
@@ -181,7 +181,7 @@ public sealed class ExpeditionService(GameDb db, IInventory inventory, ICharacte
         };
     }
 
-    /// <summary>Packs the supplies and sends a party. Fails with <c>unknown_region</c>, <c>level_too_low</c>,
+    /// <summary>Packs the supplies and sends a party. Fails with <c>unknown_region</c>, <c>expedition_level</c>,
     /// <c>parties_out</c> (all parties are out) or <c>not_enough_items</c>.</summary>
     public Task SendAsync(Guid owner, string regionId, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -190,7 +190,7 @@ public sealed class ExpeditionService(GameDb db, IInventory inventory, ICharacte
             var level = await levels.LevelAsync(owner, cancellationToken);
             if (level < region.Level)
             {
-                throw new GameException("level_too_low", $"Expeditions there need level {region.Level}.");
+                throw new GameException("expedition_level", $"Expeditions there need level {region.Level}.");
             }
 
             // One send at a time per player, so two at once cannot both slip under the limit of parties.

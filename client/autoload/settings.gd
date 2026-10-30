@@ -37,6 +37,7 @@ const ACTION_NAMES := {
 	"market": "Rynek",
 	"stats": "Statystyki",
 	"achievements": "Osiągnięcia",
+	"adventures": "Przygody",
 	"character": "Postać",
 	"hotbar_1": "Pasek: slot 1",
 	"hotbar_2": "Pasek: slot 2",

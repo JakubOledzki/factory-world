@@ -67,6 +67,26 @@ const ERRORS := {
 	"character_exists": "To konto ma już postać.",
 	"no_character": "Najpierw stwórz postać.",
 	"not_enough_items": "Nie masz tylu przedmiotów.",
+	"unknown_region": "Nie ma takiego celu wyprawy.",
+	"expedition_level": "Twoja postać ma za niski poziom na tę wyprawę.",
+	"parties_out": "Wszystkie twoje wyprawy są w drodze. Odbierz łup jednej z nich, zanim wyślesz następną.",
+	"unknown_trip": "Nie ma takiej wyprawy albo jej łup został już odebrany.",
+	"not_back": "Wyprawa jeszcze nie wróciła.",
+	"unknown_page": "Nie ma takiej strony albumu.",
+	"page_incomplete": "Najpierw znajdź wszystko z tej strony albumu.",
+	"already_claimed": "Ta nagroda została już odebrana.",
+	"no_season": "Teraz nie trwają żadne święta.",
+	"unknown_offer": "Tej dekoracji nie ma w obecnych świętach.",
+	"unknown_player": "Nie ma gracza o takiej nazwie.",
+	"own_mentor": "Nie możesz być swoim własnym mentorem.",
+	"has_mentor": "Masz już mentora.",
+	"too_experienced": "Mentora wybierają tylko gracze poniżej 10 poziomu.",
+	"mentor_level": "Mentor musi mieć co najmniej 20 poziom.",
+	"mentor_full": "Ten mentor opiekuje się już trzema nowymi graczami.",
+	"no_mentorship": "Ten gracz nie jest twoim podopiecznym.",
+	"goal_not_reached": "Podopieczny nie osiągnął jeszcze 10 poziomu.",
+	"unknown_puzzle": "Nie ma takiej zagadki.",
+	"too_many_pieces": "Układ może mieć najwyżej 80 elementów.",
 	"inventory_full": "Ekwipunek pełny. Zrób miejsce albo załóż większy plecak (kupisz go u handlarza).",
 	"bad_slot": "Nie ma takiego miejsca.",
 	"bad_hotbar_slot": "Pasek ma tylko sloty od 1 do 5.",
@@ -487,6 +507,12 @@ func logout() -> void:
 ## game goes back to the login screen without logging in again by itself, so the two do not take turns.
 ## The saved token stays: another tab of the same browser plays with it now.
 func _on_message(type: String, payload: Variant, _id: String) -> void:
+	if type == "album.found" and payload is Dictionary:
+		notices.show_notice("Nowe znalezisko w albumie: %s (%s)" % [payload.get("name", ""), payload.get("page", "")], UI.GOLD)
+		return
+	if type == "season.drop" and payload is Dictionary:
+		notices.show_notice("Znalazłeś: %s! Wymień je na dekoracje w oknie Przygody." % payload.get("name", ""), UI.GOLD)
+		return
 	if type != "auth.kicked":
 		return
 	token = ""

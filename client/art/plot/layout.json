@@ -1174,5 +1174,21 @@
  "scrubber": {
   "anchorX": 56,
   "anchorY": 57
+ },
+ "pumpkin_lantern": {
+  "anchorX": 48,
+  "anchorY": 57
+ },
+ "scarecrow": {
+  "anchorX": 48,
+  "anchorY": 89
+ },
+ "christmas_tree": {
+  "anchorX": 48,
+  "anchorY": 104
+ },
+ "snowman": {
+  "anchorX": 48,
+  "anchorY": 87
  }
 }

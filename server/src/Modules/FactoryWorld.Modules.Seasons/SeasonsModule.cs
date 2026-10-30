@@ -186,7 +186,7 @@ public sealed class SeasonObserver(IServiceScopeFactory scopes, TimeProvider tim
         }
 
         await using var scope = scopes.CreateAsyncScope();
-        if (await scope.ServiceProvider.GetRequiredService<SeasonService>().GiveTreatAsync(owner, season, cancellationToken))
+        if (await scope.ServiceProvider.GetRequiredService<SeasonService>().GiveTreatAsync(owner, season, cancellationToken) && client.Watching)
         {
             client.Outbox.Enqueue(new Envelope("season.drop", null, JsonSerializer.SerializeToElement(new
             {

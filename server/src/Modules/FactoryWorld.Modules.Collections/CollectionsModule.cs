@@ -263,6 +263,11 @@ public sealed class AlbumObserver(IServiceScopeFactory scopes) : IMessageObserve
 
         foreach (var item in await album.RecordAsync(owner, unknown, cancellationToken))
         {
+            if (!client.Watching)
+            {
+                continue;
+            }
+
             var page = Album.Pages.First(p => p.Items.Contains(item));
             client.Outbox.Enqueue(new Envelope("album.found", null, JsonSerializer.SerializeToElement(new
             {

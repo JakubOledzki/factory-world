@@ -23,6 +23,10 @@ public sealed class ClientContext
     /// sent right after the reply being handled.</summary>
     public Queue<Envelope> Outbox { get; } = new();
 
+    /// <summary>Whether the player's game asked ("achievements.watch") to be told of badges, finds and treats as they come;
+    /// bots and tests that did not ask get replies only.</summary>
+    public bool Watching { get; set; }
+
     /// <summary>Set by the connection: sends the player this message and closes the connection, e.g. when the
     /// account logged in somewhere else (<see cref="OnlinePlayers"/>). Null where there is no socket (bots).</summary>
     public Action<Envelope>? Close { get; set; }
