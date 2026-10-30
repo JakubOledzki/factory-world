@@ -11,6 +11,15 @@
 	},
 	{
 		"date": "2026-10-30",
+		"title": "Zwarta zakładka Wybory",
+		"changes": [
+			"Na mapie, w oknie państwa, zakładka Wybory nie rozciąga się już w dół: każdy kandydat ma swoją kartę z głosami, procentem, programem i wsparciem spółek w dwóch, trzech wierszach, a przycisk Głosuj stoi obok nazwiska.",
+			"Wsparcie z kasy spółki jest jednym wierszem pod listą: wybierasz kandydata i kwotę. Formularz kandydowania i wotum nieufności zajmują po jednym, dwóch wierszach.",
+			"Na telefonie drobne opisy w oknie państwa są większe i czytelne."
+		]
+	},
+	{
+		"date": "2026-10-30",
 		"title": "Boty robią sprzęt logistyczny na sprzedaż",
 		"changes": [
 			"Boty wytwarzają na stole warsztatowym taśmociągi, podajniki, skrzynie i słupy, a przemysłowcy, gdy je zbadają, także rozdzielacze, szybkie taśmociągi i podajniki, taśmociągi podziemne, długoramienne podajniki oraz skrzynie ładujące i odbierające. Potrzebne części (gwoździe, taśmy, zwykły podajnik) robią najpierw same.",

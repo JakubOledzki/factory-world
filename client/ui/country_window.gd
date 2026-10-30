@@ -291,67 +291,112 @@ func _render_election() -> void:
 		return
 	var election: Dictionary = _state["election"]
 	var voter: bool = _state["me"]["voter"]
-	_body.add_child(UI.label("Wybory prezydenta na następną kadencję (koniec za %s). Głosują i kandydują obywatele z działką w kraju." \
-		% _left(int(_state["termEndsAt"])), UI.MUTED, HORIZONTAL_ALIGNMENT_LEFT, true))
+	_body.add_child(_note("Wybory prezydenta na następną kadencję, koniec za %s. Głosują i kandydują obywatele z działką w kraju." \
+		% _left(int(_state["termEndsAt"]))))
 	var candidates: Array = election["candidates"]
 	if candidates.is_empty():
 		_body.add_child(_note("Nikt jeszcze nie kandyduje."))
+	var total := 0
 	for c: Dictionary in candidates:
-		var mine: bool = election["myVote"] == c["name"]
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 6)
-		var text := UI.label("%s%s%s: %d głosów%s" % [c["name"], " (ty)" if c["me"] else "", _party(c["party"]), int(c["votes"]),
-			" · twój głos" if mine else ""], UI.GOLD if mine else UI.TEXT)
-		text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(Online.with_dot(text, c["name"]))
-		var vote := UI.button("Głosuj", _vote.bind(str(c["name"])))
-		vote.disabled = not voter or mine
-		row.add_child(vote)
-		_body.add_child(row)
-		var program := "Program: podatek %s‰, opłata od cudzoziemców %d%%" % [str(int(c["plotTaxPerMille"])), int(c["foreignerFeePercent"])]
-		if str(c["slogan"]) != "":
-			program += " · „%s”" % c["slogan"]
-		_body.add_child(_note(program))
-		for s: Dictionary in c["sponsors"]:
-			_body.add_child(_small("Wsparcie: %s, %s" % [s["company"], UI.money(int(s["cents"]))], UI.MUTED))
-		var sponsor := HBoxContainer.new()
-		sponsor.add_theme_constant_override("separation", 6)
+		total += int(c["votes"])
+	for c: Dictionary in candidates:
+		_body.add_child(_candidate_card(c, election["myVote"] == c["name"], voter, total))
+
+	if not candidates.is_empty():
+		var sponsor := _flow()
+		sponsor.add_child(_middle(UI.label("Wesprzyj z kasy spółki:", UI.MUTED)))
+		var whom := OptionButton.new()
+		for c: Dictionary in candidates:
+			whom.add_item(str(c["name"]))
+		sponsor.add_child(whom)
 		var amount := _spin(1, 1000000, 100)
 		amount.suffix = "$"
-		sponsor.add_child(_small("Wesprzyj z kasy swojej spółki:", UI.MUTED))
 		sponsor.add_child(amount)
-		sponsor.add_child(UI.button("Wesprzyj", func() -> void: _sponsor(str(c["name"]), int(amount.value) * 100)))
+		sponsor.add_child(UI.button("Wesprzyj", func() -> void:
+			_sponsor(whom.get_item_text(whom.selected), int(amount.value) * 100)))
 		_body.add_child(sponsor)
 
 	if voter:
 		_body.add_child(HSeparator.new())
 		var laws: Dictionary = _state["government"]["laws"]
 		_body.add_child(UI.label("Kandyduj" if not election["standing"] else "Zmień swój program", UI.GOLD))
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 6)
-		row.add_child(UI.label("Podatek ‰"))
+		var form := _flow()
+		form.add_child(_middle(UI.label("Podatek ‰")))
 		var tax := _spin(int(laws["minPlotTaxPerMille"]), int(laws["maxPlotTaxPerMille"]), int(laws["plotTaxPerMille"]))
-		row.add_child(tax)
-		row.add_child(UI.label("Opłata %"))
+		form.add_child(tax)
+		form.add_child(_middle(UI.label("Opłata %")))
 		var fee := _spin(0, int(laws["maxForeignerFeePercent"]), int(laws["foreignerFeePercent"]))
-		row.add_child(fee)
-		_body.add_child(row)
+		form.add_child(fee)
 		var slogan := UI.line_edit("Hasło wyborcze")
 		slogan.max_length = 80
-		_body.add_child(slogan)
+		slogan.custom_minimum_size.x = 200
+		slogan.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		form.add_child(slogan)
+		_body.add_child(form)
+		var stand_row := HBoxContainer.new()
+		stand_row.add_theme_constant_override("separation", 8)
 		var stand := UI.button("Kandyduj (kaucja %s)" % UI.money(int(election["depositCents"])) if not election["standing"] else "Zapisz program",
 			func() -> void: _stand(int(tax.value), int(fee.value), slogan.text), true)
-		_body.add_child(stand)
-		_body.add_child(_note("Kaucja wraca, gdy dostaniesz co najmniej %d%% głosów; inaczej trafia do skarbca." % int(election["depositBackPercent"])))
+		stand_row.add_child(stand)
+		var refund := _note("Kaucja wraca przy co najmniej %d%% głosów, inaczej trafia do skarbca." % int(election["depositBackPercent"]))
+		refund.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		stand_row.add_child(_middle(refund))
+		_body.add_child(stand_row)
 
 	var recall: Dictionary = _state["recall"]
 	if _state["government"]["president"] != null:
 		_body.add_child(HSeparator.new())
-		_body.add_child(UI.label("Wotum nieufności: %d z %d podpisów (2/3 obywateli)" % [int(recall["signatures"]), int(recall["needed"])], UI.TEXT,
-			HORIZONTAL_ALIGNMENT_LEFT, true))
-		var sign := UI.button("Podpisz wniosek o odwołanie prezydenta", _recall)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 8)
+		var count := UI.label("Wotum nieufności: %d z %d podpisów (2/3 obywateli)" % [int(recall["signatures"]), int(recall["needed"])], UI.TEXT,
+			HORIZONTAL_ALIGNMENT_LEFT, true)
+		count.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(_middle(count))
+		var sign := UI.button("Podpisz odwołanie", _recall)
+		sign.tooltip_text = "Podpisz wniosek o odwołanie prezydenta"
 		sign.disabled = not voter or recall["signed"]
-		_body.add_child(sign)
+		row.add_child(sign)
+		_body.add_child(row)
+
+
+## One candidate on a card: the name and the votes with the vote button beside them, under it the
+## program and who backs it, each on one line.
+func _candidate_card(c: Dictionary, mine: bool, voter: bool, total: int) -> Control:
+	var card := PanelContainer.new()
+	var frame := StyleBoxFlat.new()
+	frame.bg_color = Color(UI.GOLD, 0.08) if mine else Color(1, 1, 1, 0.04)
+	frame.set_corner_radius_all(4)
+	frame.set_content_margin_all(6)
+	card.add_theme_stylebox_override("panel", frame)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 0)
+	card.add_child(box)
+	var top := HBoxContainer.new()
+	top.add_theme_constant_override("separation", 8)
+	var who := UI.label("%s%s%s" % [c["name"], " (ty)" if c["me"] else "", _party(c["party"])], UI.GOLD if mine else UI.TEXT)
+	who.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(Online.with_dot(who, c["name"]))
+	var votes := int(c["votes"])
+	top.add_child(_middle(UI.label("%s · %d%%" % [_votes(votes), roundi(100.0 * votes / total) if total > 0 else 0], UI.MUTED)))
+	if mine:
+		top.add_child(_middle(UI.label("twój głos", UI.GOLD)))
+	else:
+		var vote := UI.button("Głosuj", _vote.bind(str(c["name"])))
+		vote.disabled = not voter
+		top.add_child(vote)
+	box.add_child(top)
+	var program := "Podatek %s‰ · opłata od cudzoziemców %d%%" % [str(int(c["plotTaxPerMille"])), int(c["foreignerFeePercent"])]
+	if str(c["slogan"]) != "":
+		program += " · „%s”" % c["slogan"]
+	box.add_child(_note(program))
+	var sponsors: Array = c["sponsors"]
+	if not sponsors.is_empty():
+		var cents := 0
+		for s: Dictionary in sponsors:
+			cents += int(s["cents"])
+		box.add_child(_note("Wsparcie: %s (%s)" % [UI.money(cents), ", ".join(sponsors.map(func(s: Dictionary) -> String: return str(s["company"])))]))
+	return card
 
 
 # --- Diplomacy --------------------------------------------------------------------------------
@@ -549,12 +594,33 @@ func _spin(low: int, high: int, value: int) -> SpinBox:
 
 func _small(text: String, color: Color) -> Label:
 	var l := UI.label(text, color, HORIZONTAL_ALIGNMENT_LEFT, true)
-	l.add_theme_font_size_override("font_size", 13)
+	l.add_theme_font_size_override("font_size", roundi(13 * UI.TOUCH_SCALE) if UI.touch() else 13)
 	return l
 
 
 func _note(text: String) -> Label:
 	return _small(text, UI.MUTED)
+
+
+func _flow() -> HFlowContainer:
+	var flow := HFlowContainer.new()
+	flow.add_theme_constant_override("h_separation", 6)
+	flow.add_theme_constant_override("v_separation", 4)
+	return flow
+
+
+## A label centred on the height of the buttons and fields beside it.
+func _middle(label: Label) -> Label:
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return label
+
+
+func _votes(n: int) -> String:
+	if n == 1:
+		return "1 głos"
+	if n % 10 in [2, 3, 4] and not (n % 100 in [12, 13, 14]):
+		return "%d głosy" % n
+	return "%d głosów" % n
 
 
 ## Time from now until `at` (ms since the epoch), as "5 h 12 min" or "2 dni 3 h".
