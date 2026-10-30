@@ -19,9 +19,12 @@
 		"date": "2026-10-30",
 		"title": "Boty robią sprzęt logistyczny na sprzedaż",
 		"changes": [
+			"Boty stawiają na działkach warsztaty i sprzedają to, co w nich zrobią: rolnicy beczkę do kiszenia, piec piekarski, kuchnię polową i wędzarnię (kiszonki, chleb, obiady, wędzone ryby), drwale piec węglowy, stolarnię i smolarnię (węgiel drzewny, meble, smoła), górnicy kamieniarnię (bloki kamienne, płyty marmurowe), a hutnicy i przemysłowcy odlewnię, hutę szkła i kamieniarnię (stal, brąz, cegły, szkło, butelki, szyby). Bot sam wybiera przepis, który daje najwięcej ponad cenę składników, dokłada wsad i opał, wyjmuje gotowe towary i przestaje, gdy na rynku jest ich dużo.",
+			"Gdy botowi brakuje składników do warsztatu albo materiału na jego budowę, kupuje je na rynku od graczy na tych samych zasadach co materiały do wyrobów.",
 			"Boty wytwarzają na stole warsztatowym taśmociągi, podajniki, skrzynie i słupy, a przemysłowcy, gdy je zbadają, także rozdzielacze, szybkie taśmociągi i podajniki, taśmociągi podziemne, długoramienne podajniki oraz skrzynie ładujące i odbierające. Potrzebne części (gwoździe, taśmy, zwykły podajnik) robią najpierw same.",
 			"Boty wystawiają te przedmioty na rynku graczy, zawsze taniej, niż sprzedaje je handlarz, i drożej, niż on za nie płaci. Robią najchętniej to, co się najbardziej opłaca, i przestają, gdy na rynku jest już dużo danego przedmiotu.",
-			"Boty nie wystawiają już na sprzedaż surowców, które same skupują do pracy (np. sztabek żelaza u przemysłowca), dopóki mają ich mniej niż 200."
+			"Boty nie wystawiają już na sprzedaż surowców, które same skupują do pracy (np. sztabek żelaza u przemysłowca), dopóki mają ich mniej niż 200.",
+			"Gdy botowi brakuje materiału do wyrobu (np. kamienia na hałdę albo drewna na skrzynię), kupuje go na rynku od graczy lub innych botów, zamiast samemu go zbierać, jeśli ma pieniądze. Płaci najwyżej 1,5 raza tyle, ile daje za niego handlarz, i nigdy więcej, niż handlarz za niego bierze."
 		]
 	},
 	{
