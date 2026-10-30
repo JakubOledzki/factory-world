@@ -206,7 +206,7 @@ public sealed partial class CityService
     }
 
     /// <summary>Puts money into the treasury or takes it out (fails with <c>treasury_short</c> when it has less), with a line in its ledger.</summary>
-    /// <summary>The mayor's tax on the plots of the town's county, paid with the plot tax (<see cref="PlotTaxService"/>): the mayor
+    /// <summary>The mayor's tax on the plots of the town's county (<see cref="TownPolicy.PlotTaxPerMille"/>), paid with the plot tax (<see cref="PlotTaxService"/>): the mayor
     /// gets their pay out of it and the rest goes into the treasury. Nothing without a mayor.</summary>
     public async Task CollectPlotTaxAsync(Town town, long cents, string reason, CancellationToken cancellationToken)
     {
@@ -362,7 +362,7 @@ public sealed partial class CityService
 
             await using var recall = await db.CommandAsync(
                 """
-                UPDATE world.town_policies SET mayor_id = NULL, tax_percent = 0, bonus = NULL, recalled = TRUE
+                UPDATE world.town_policies SET mayor_id = NULL, tax_percent = 0, bonus = NULL, plot_tax_per_mille = 0, recalled = TRUE
                 WHERE town_x = @x AND town_y = @y AND week = @week
                 """, cancellationToken);
             recall.Parameters.AddWithValue("x", town.X);

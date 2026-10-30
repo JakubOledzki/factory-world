@@ -295,8 +295,8 @@ func _render_hall() -> void:
 	for b: Dictionary in hall["bonuses"]:
 		if b["id"] == hall["bonus"]:
 			bonus_name = b["name"]
-	_body.add_child(UI.label("Podatek od sklepów i usług: %d%% · Premia: %s" % [int(hall["taxPercent"]), bonus_name], UI.TEXT,
-		HORIZONTAL_ALIGNMENT_LEFT, true))
+	_body.add_child(UI.label("Podatek od sklepów i usług: %d%% · Od działek powiatu: %d‰ dziennie · Premia: %s" \
+		% [int(hall["taxPercent"]), int(hall.get("plotTaxPerMille", 0)), bonus_name], UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true))
 	if hall["isMayor"]:
 		var row := HBoxContainer.new()
 		row.add_theme_constant_override("separation", 6)
@@ -314,8 +314,19 @@ func _render_hall() -> void:
 		pick.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		pick.clip_text = true
 		row.add_child(pick)
-		row.add_child(UI.button("Ustaw", func() -> void: _set_policy(int(tax.value), pick.get_item_metadata(pick.selected)), true))
 		_body.add_child(row)
+		# The tax on the county's plots, on top of the country's plot tax; the mayor's own plots don't pay it.
+		var plots := HBoxContainer.new()
+		plots.add_theme_constant_override("separation", 6)
+		plots.add_child(UI.label("Od działek powiatu ‰ dziennie"))
+		var plot_tax := _spin(0, int(hall.get("maxPlotTaxPerMille", 0)), int(hall.get("plotTaxPerMille", 0)))
+		plots.add_child(plot_tax)
+		var spacer := Control.new()
+		spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		plots.add_child(spacer)
+		plots.add_child(UI.button("Ustaw", func() -> void:
+			_set_policy(int(tax.value), pick.get_item_metadata(pick.selected), int(plot_tax.value)), true))
+		_body.add_child(plots)
 	# A festival with fine dishes from the mayor's inventory: the town pays more for what it wants for a day.
 	var festival: Variant = hall.get("festivalUntil")
 	if festival != null:
@@ -532,9 +543,9 @@ func _vote(candidate: String) -> void:
 		toast.emit("Oddano głos na: %s" % candidate)
 
 
-func _set_policy(tax: int, bonus: String) -> void:
-	if _apply(await Net.request("city.policy", {"x": plot.x, "y": plot.y, "taxPercent": tax, "bonus": bonus})):
-		toast.emit("Ustawiono podatek i premię miasta na ten tydzień")
+func _set_policy(tax: int, bonus: String, plot_tax: int) -> void:
+	if _apply(await Net.request("city.policy", {"x": plot.x, "y": plot.y, "taxPercent": tax, "bonus": bonus, "plotTaxPerMille": plot_tax})):
+		toast.emit("Ustawiono podatki i premię miasta na ten tydzień")
 
 
 func _recall() -> void:

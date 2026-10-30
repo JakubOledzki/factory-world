@@ -38,8 +38,9 @@ public sealed record PlotTax(long DailyCents, DateTimeOffset PaidUntil, int Days
 /// The daily tax on plots. Nothing runs in the background: whenever a player's plot is entered or built on, or they open
 /// the map or buy a plot, the whole days since <see cref="PlotTaxRow.PaidUntil"/> are paid from their wallet, as many as it covers.
 /// Each plot is taxed at the rate of the country it lies in, and the country's treasury gets its share. On a plot of a town's county
-/// with a mayor the mayor's tax adds its percent of that on top, for the town (<see cref="CityService.CollectPlotTaxAsync"/>), except
-/// on the mayor's own plots; the mayor and the rate are this week's, for all the days paid at once.
+/// with a mayor the mayor's own rate (<see cref="TownPolicy.PlotTaxPerMille"/>) comes on top, for the town
+/// (<see cref="CityService.CollectPlotTaxAsync"/>), except on the mayor's own plots; the mayor and the rate are this week's, for all
+/// the days paid at once.
 /// </summary>
 public sealed class PlotTaxService(
     GameDb db, IWallet wallet, IMarketPrices prices, Countries countries, INationalPolicy nation, IServiceProvider services, TimeProvider time)
@@ -76,9 +77,9 @@ public sealed class PlotTaxService(
                 var national = PlotTaxRules.DailyCents(
                     cents, country == "" ? PlotTaxRules.PerMillePerDay : await nation.PlotTaxPerMilleAsync(country, cancellationToken));
                 byCountry[country] = byCountry.GetValueOrDefault(country) + national;
-                if (town is not null && await Cities.PolicyAsync(town, cancellationToken) is { Mayor: { } mayor, TaxPercent: > 0 } policy && mayor != owner)
+                if (town is not null && await Cities.PolicyAsync(town, cancellationToken) is { Mayor: { } mayor, PlotTaxPerMille: > 0 } policy && mayor != owner)
                 {
-                    byTown[town] = byTown.GetValueOrDefault(town) + national * policy.TaxPercent / 100;
+                    byTown[town] = byTown.GetValueOrDefault(town) + PlotTaxRules.DailyCents(cents, policy.PlotTaxPerMille);
                 }
             }
 

@@ -97,8 +97,15 @@ public sealed class CountyTests(ServerFactory factory) : IClassFixture<ServerFac
         var after = await PriceAsync(townsman, other);
         Assert.InRange(after, (long)(before * CityRules.CheapPlots) - 1, (long)(before * CityRules.CheapPlots) + 1);
 
-        // The mayor's tax adds its percent to the plot tax on the county's plots: a fifth is the mayor's pay, the rest the treasury's.
-        State(await farmer.SendAsync("city.policy", new { x = field.X, y = field.Y, taxPercent = 10, bonus = "" }));
+        // The mayor's own tax on the county's plots comes on top of the country's: a fifth is the mayor's pay, the rest the treasury's.
+        Assert.Equal("bad_plot_tax", (await farmer.SendAsync("city.policy",
+            new { x = field.X, y = field.Y, taxPercent = 0, bonus = "", plotTaxPerMille = CityRules.MaxPlotTaxPerMille + 1 })).ErrorCode());
+        var hall = State(await farmer.SendAsync("city.policy", new { x = field.X, y = field.Y, taxPercent = 0, bonus = "", plotTaxPerMille = 2 }))
+            .GetProperty("hall");
+        Assert.Equal(2, hall.GetProperty("plotTaxPerMille").GetInt32());
+        // Setting the rest of the policy without it keeps the plot tax.
+        hall = State(await farmer.SendAsync("city.policy", new { x = field.X, y = field.Y, taxPercent = 5, bonus = "" })).GetProperty("hall");
+        Assert.Equal(2, hall.GetProperty("plotTaxPerMille").GetInt32());
         Assert.Equal("world.bought", (await townsman.SendAsync("world.buy", new { x = other.X, y = other.Y })).Type());
         var pay = await farmer.BalanceAsync();
         factory.Time.Advance(TimeSpan.FromDays(1) + TimeSpan.FromMinutes(1));

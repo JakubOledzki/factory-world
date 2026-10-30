@@ -4,6 +4,7 @@ using System.Text.Json;
 using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Abstractions.Contracts;
 using Microsoft.Extensions.DependencyInjection;
+using NpgsqlTypes;
 
 namespace FactoryWorld.Modules.World;
 
@@ -313,6 +314,10 @@ public static class CityRules
     /// <summary>The highest tax a mayor sets on shops and services, in percent.</summary>
     public const int MaxTaxPercent = 10;
 
+    /// <summary>The highest tax a mayor sets on the plots of the county, in thousandths of their worth a day, on top of the
+    /// country's (3-7): see <see cref="PlotTaxService"/>.</summary>
+    public const int MaxPlotTaxPerMille = 2;
+
     /// <summary>The bonuses a mayor picks one of, for the week.</summary>
     public static readonly IReadOnlyDictionary<string, string> Bonuses = new Dictionary<string, string>
     {
@@ -445,9 +450,12 @@ public sealed class TownPolicyRow
 
     /// <summary>Two thirds of the townsfolk recalled the mayor before the week was out.</summary>
     public bool Recalled { get; set; }
+
+    /// <summary>The mayor's tax on the plots of the county, in thousandths of their worth a day.</summary>
+    public int PlotTaxPerMille { get; set; }
 }
 
-public sealed record TownPolicy(Guid? Mayor, int TaxPercent, string? Bonus, bool Recalled = false);
+public sealed record TownPolicy(Guid? Mayor, int TaxPercent, string? Bonus, bool Recalled = false, int PlotTaxPerMille = 0);
 
 /// <summary>A town's festival, which the mayor holds with fine dishes: it wants goods dearer until <see cref="Until"/>.</summary>
 public sealed class TownFestivalRow
@@ -541,13 +549,15 @@ public sealed partial class CityService(
     private async Task<TownPolicy?> ReadPolicyAsync(Town town, int week, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync(
-            "SELECT mayor_id, tax_percent, bonus, recalled FROM world.town_policies WHERE town_x = @x AND town_y = @y AND week = @week", cancellationToken);
+            "SELECT mayor_id, tax_percent, bonus, recalled, plot_tax_per_mille FROM world.town_policies WHERE town_x = @x AND town_y = @y AND week = @week",
+            cancellationToken);
         command.Parameters.AddWithValue("x", town.X);
         command.Parameters.AddWithValue("y", town.Y);
         command.Parameters.AddWithValue("week", week);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         return await reader.ReadAsync(cancellationToken)
-            ? new TownPolicy(reader.IsDBNull(0) ? null : reader.GetGuid(0), reader.GetInt32(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetBoolean(3))
+            ? new TownPolicy(reader.IsDBNull(0) ? null : reader.GetGuid(0), reader.GetInt32(1), reader.IsDBNull(2) ? null : reader.GetString(2), reader.GetBoolean(3),
+                reader.GetInt32(4))
             : null;
     }
 
@@ -905,8 +915,8 @@ public sealed partial class CityService(
             await vote.ExecuteNonQueryAsync(cancellationToken);
         }, cancellationToken);
 
-    /// <summary>The mayor sets this week's tax on shops and services and the town's bonus.</summary>
-    public Task SetPolicyAsync(Guid player, int x, int y, int taxPercent, string? bonus, CancellationToken cancellationToken) =>
+    /// <summary>The mayor sets this week's tax on shops and services, the town's bonus and, unless null, the tax on the county's plots.</summary>
+    public Task SetPolicyAsync(Guid player, int x, int y, int taxPercent, string? bonus, int? plotTaxPerMille, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
             var town = RequireCounty(x, y);
@@ -920,13 +930,22 @@ public sealed partial class CityService(
                 throw new GameException("bad_tax", $"The tax is 0-{CityRules.MaxTaxPercent}%.");
             }
 
+            if (plotTaxPerMille is < 0 or > CityRules.MaxPlotTaxPerMille)
+            {
+                throw new GameException("bad_plot_tax", $"The plot tax is 0-{CityRules.MaxPlotTaxPerMille} per mille a day.");
+            }
+
             if (bonus is not null && !CityRules.Bonuses.ContainsKey(bonus))
             {
                 throw new GameException("bad_bonus", "There is no such bonus.");
             }
 
             await using var update = await db.CommandAsync(
-                "UPDATE world.town_policies SET tax_percent = @tax, bonus = @bonus WHERE town_x = @x AND town_y = @y AND week = @week", cancellationToken);
+                """
+                UPDATE world.town_policies SET tax_percent = @tax, bonus = @bonus, plot_tax_per_mille = COALESCE(@plot_tax, plot_tax_per_mille)
+                WHERE town_x = @x AND town_y = @y AND week = @week
+                """, cancellationToken);
+            update.Parameters.AddWithValue("plot_tax", NpgsqlDbType.Integer, (object?)plotTaxPerMille ?? DBNull.Value);
             update.Parameters.AddWithValue("x", town.X);
             update.Parameters.AddWithValue("y", town.Y);
             update.Parameters.AddWithValue("week", CityRules.WeekOf(time.GetUtcNow()));
@@ -1079,6 +1098,8 @@ public sealed partial class CityService(
                 isMayor = policy.Mayor == player,
                 taxPercent = policy.TaxPercent,
                 maxTaxPercent = CityRules.MaxTaxPercent,
+                plotTaxPerMille = policy.PlotTaxPerMille,
+                maxPlotTaxPerMille = CityRules.MaxPlotTaxPerMille,
                 bonus = policy.Bonus,
                 bonuses = CityRules.Bonuses.Select(b => new { id = b.Key, name = b.Value }),
                 // A festival the mayor holds with fine dishes: the town pays festivalPercent more while it lasts (Unix milliseconds).
@@ -1407,7 +1428,7 @@ public sealed record ServiceRequest(int X, int Y, Guid Id);
 
 public sealed record VoteRequest(int X, int Y, string Candidate);
 
-public sealed record PolicyRequest(int X, int Y, int TaxPercent, string? Bonus);
+public sealed record PolicyRequest(int X, int Y, int TaxPercent, string? Bonus, int? PlotTaxPerMille = null);
 
 public sealed record ShopRequest(Guid Id, string? Item = null, long Quantity = 0, long PriceCents = 0);
 
@@ -1491,7 +1512,7 @@ public sealed class CityPolicyHandler(IServiceScopeFactory scopes) : CityHandler
     protected override async Task<object?> RunAsync(CityService cities, Guid player, JsonElement? payload, CancellationToken cancellationToken)
     {
         var r = Payload.Read<PolicyRequest>(payload);
-        await cities.SetPolicyAsync(player, r.X, r.Y, r.TaxPercent, string.IsNullOrEmpty(r.Bonus) ? null : r.Bonus, cancellationToken);
+        await cities.SetPolicyAsync(player, r.X, r.Y, r.TaxPercent, string.IsNullOrEmpty(r.Bonus) ? null : r.Bonus, r.PlotTaxPerMille, cancellationToken);
         return null;
     }
 }

@@ -212,6 +212,7 @@ const ERRORS := {
 	"service_busy": "Biuro obsłużyło już dziś komplet klientów. Wróć jutro.",
 	"not_townsman": "Głosują i składają oferty w przetargu tylko właściciele działek w powiecie tego miasta.",
 	"not_county": "Ta działka nie leży w powiecie żadnego miasta.",
+	"bad_plot_tax": "Podatek od działek powiatu może wynosić od 0 do 2‰ dziennie.",
 	"tender_closed": "Oferty w przetargu tego tygodnia już zamknięte.",
 	"bad_bid": "Oferta musi wynosić od 0,01 $ do najwyższej ceny przetargu za sztukę.",
 	"no_bid": "Nie masz oferty w tym przetargu.",
