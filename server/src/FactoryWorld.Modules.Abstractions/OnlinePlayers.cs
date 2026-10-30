@@ -70,5 +70,8 @@ public sealed class OnlinePlayers
     /// <summary>Whether the account is one of the server's bots (<see cref="AddBotAccount"/>).</summary>
     public bool IsBot(Guid accountId) => _botAccounts.ContainsKey(accountId);
 
+    /// <summary>Every account of the server's bots (<see cref="AddBotAccount"/>), online or not.</summary>
+    public Guid[] BotAccounts => _botAccounts.Keys.ToArray();
+
     public bool IsOnline(Guid accountId) => _connections.ContainsKey(accountId) || _bots.ContainsKey(accountId);
 }

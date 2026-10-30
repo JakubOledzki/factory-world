@@ -163,7 +163,7 @@ public sealed class MarketSummary
 
 public sealed class PlayerMarketService(
     GameDb db, IInventory inventory, IWallet wallet, ICharacterNames names, TimeProvider time, ITechnologies technologies,
-    IEnumerable<IGarageDeliveries> deliveries, MarketSummary summary)
+    IEnumerable<IGarageDeliveries> deliveries, MarketSummary summary, GameCounters counters)
     : IExportMarket
 {
     /// <summary>Puts items up for sale: they leave the inventory now and wait on the listing.</summary>
@@ -215,6 +215,7 @@ public sealed class PlayerMarketService(
             var cents = request.Quantity * listing.PriceCents;
             var balance = await wallet.DebitAsync(buyer, cents, $"market buy {request.Quantity} {listing.ItemId}", cancellationToken);
             await PayAsync(listing.OwnerId, cents, $"market sold {request.Quantity} {listing.ItemId}", cancellationToken);
+            db.AfterCommit(() => counters.Trade(GameCounters.Players, listing.ItemId, request.Quantity, cents));
             await Delivery.OverflowAsync(inventory, deliveries, buyer, listing.ItemId, request.Quantity, cancellationToken);
             return balance;
         }, cancellationToken);
@@ -226,6 +227,7 @@ public sealed class PlayerMarketService(
             var order = await TakeAsync(OfferKind.Order, seller, request, cancellationToken);
             await inventory.RemoveAsync(seller, order.ItemId, request.Quantity, cancellationToken);
             await inventory.AddAsync(order.OwnerId, order.ItemId, request.Quantity, cancellationToken);
+            db.AfterCommit(() => counters.Trade(GameCounters.Players, order.ItemId, request.Quantity, request.Quantity * order.PriceCents));
             return await PayAsync(seller, request.Quantity * order.PriceCents, $"filled order {request.Quantity} {order.ItemId}", cancellationToken);
         }, cancellationToken);
 
