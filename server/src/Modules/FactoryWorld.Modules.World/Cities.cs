@@ -184,6 +184,9 @@ public static class CityRules
     public static long NeedPriceCents(long traderCents, int level, bool demandBonus, bool festival = false) =>
         (long)Math.Round(traderCents * (Premium + PremiumPerLevel * level) * (demandBonus ? DemandBonus : 1) * (festival ? FestivalBonus : 1));
 
+    /// <summary>The most a town pays for goods the trader sells, in percent of what he asks for them at his cheapest.</summary>
+    public const int MaxPayOfChargePercent = 90;
+
     /// <summary>What the town pays for each piece of rubbish taken away.</summary>
     public const long TrashFeeCents = 20;
 
@@ -201,8 +204,10 @@ public static class CityRules
         CustomersPerHour * PopulationFactor(town.Population) * (1 + 0.25 * level) / (1 + distance / 4) * (shoppers ? ShoppersBonus : 1);
 
     /// <summary>Chance that a customer buys a piece at <paramref name="priceCents"/>: always at the trader's price,
-    /// half the time at twice that, never at three times.</summary>
-    public static double Accepts(long priceCents, long traderCents) => Math.Clamp(1.5 - priceCents / (2.0 * traderCents), 0, 1);
+    /// half the time at twice that, never at three times, and never at what the trader himself asks for it at his cheapest
+    /// (<paramref name="cheapestChargeCents"/>), or goods bought from him would sell here at a profit.</summary>
+    public static double Accepts(long priceCents, long traderCents, long? cheapestChargeCents = null) =>
+        priceCents >= cheapestChargeCents ? 0 : Math.Clamp(1.5 - priceCents / (2.0 * traderCents), 0, 1);
 
     /// <summary>A shop's sales are worked out for at most a day back.</summary>
     public static readonly TimeSpan ShopCatchUp = TimeSpan.FromDays(1);
@@ -476,9 +481,14 @@ public sealed partial class CityService(
         var hall = 1 + TownHallRules.MarketHallPremium * await InvestmentAsync(town, "market_hall", cancellationToken);
         return CityRules.Needs(town, level, day, item => prices.BuysCents(item) is not null)
             .Select(n => (n.Item, n.Wanted, delivered.GetValueOrDefault(n.Item),
-                (long)Math.Round(CityRules.NeedPriceCents(prices.BuysCents(n.Item)!.Value, level, policy.Bonus == "demand", festival) * hall)))
+                BelowTrader(n.Item, (long)Math.Round(CityRules.NeedPriceCents(prices.BuysCents(n.Item)!.Value, level, policy.Bonus == "demand", festival) * hall))))
             .ToList();
     }
+
+    /// <summary>What the town pays a piece, less than the trader asks for it even in a sale: the town pays from nothing, and
+    /// goods bought from the trader to deliver here must not pay.</summary>
+    private long BelowTrader(string item, long priceCents) =>
+        prices.CheapestSellsCents(item) is { } cheapest ? Math.Min(priceCents, cheapest * CityRules.MaxPayOfChargePercent / 100) : priceCents;
 
     /// <summary>When the town's festival ends, or null when it never held one.</summary>
     public async Task<DateTimeOffset?> FestivalUntilAsync(Town town, CancellationToken cancellationToken)
@@ -613,7 +623,7 @@ public sealed partial class CityService(
 
             // The town's chief supplier of last week gets a little more for everything it wants.
             var price = await SupplierAsync(town, CityRules.WeekOf(time.GetUtcNow()), cancellationToken) == player
-                ? CityRules.SupplierPriceCents(need.PriceCents)
+                ? BelowTrader(item, CityRules.SupplierPriceCents(need.PriceCents))
                 : need.PriceCents;
             var cents = taken * price;
             await AddDayDeliveryAsync(town, CityRules.DayOf(time.GetUtcNow()), item, taken, cancellationToken);
@@ -1110,7 +1120,7 @@ public sealed partial class CityService(
 
             var pick = shelf[random.Next(shelf.Count)];
             var trader = prices.BuysCents(pick.Item) ?? 0;
-            if (trader > 0 && random.NextDouble() < CityRules.Accepts(pick.PriceCents, trader))
+            if (trader > 0 && random.NextDouble() < CityRules.Accepts(pick.PriceCents, trader, prices.CheapestSellsCents(pick.Item)))
             {
                 pick.Quantity--;
                 revenue += pick.PriceCents;
@@ -1174,7 +1184,7 @@ public sealed partial class CityService(
                 quantity = s.Quantity,
                 priceCents = s.PriceCents,
                 traderCents = prices.BuysCents(s.Item),
-                buyPercent = prices.BuysCents(s.Item) is { } trader ? (int)Math.Round(100 * CityRules.Accepts(s.PriceCents, trader)) : 0,
+                buyPercent = prices.BuysCents(s.Item) is { } trader ? (int)Math.Round(100 * CityRules.Accepts(s.PriceCents, trader, prices.CheapestSellsCents(s.Item))) : 0,
             }),
         };
     }

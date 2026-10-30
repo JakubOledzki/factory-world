@@ -204,6 +204,9 @@ public sealed class CompanyPlotRow
 
     /// <summary>The member in charge of building on it, if any.</summary>
     public Guid? ManagerId { get; set; }
+
+    /// <summary>The shares its owner got for bringing it in; they go when the plot leaves the company.</summary>
+    public long Shares { get; set; }
 }
 
 /// <summary>How many of one item lie in a company's warehouse.</summary>
@@ -389,6 +392,7 @@ public sealed class CompaniesDbContext(DbContextOptions<CompaniesDbContext> opti
             e.Property(p => p.CompanyId).HasColumnName("company_id");
             e.Property(p => p.OwnerId).HasColumnName("owner_id");
             e.Property(p => p.ManagerId).HasColumnName("manager_id");
+            e.Property(p => p.Shares).HasColumnName("shares");
             e.HasIndex(p => p.CompanyId);
         });
         model.Entity<WarehouseRow>(e =>

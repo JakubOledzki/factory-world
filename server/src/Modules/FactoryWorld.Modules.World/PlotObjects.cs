@@ -64,6 +64,9 @@ public static class PlotObjects
         Items.ReceivingChest, Items.ReceivingChest2, Items.ReceivingChest3, Items.ReceivingChest4,
     };
 
+    /// <summary>Ice hotels and viewpoints one plot takes, together.</summary>
+    public const int MaxTouristSpots = 3;
+
     /// <summary>What stands on the glacier only, or on the glacier and the tundra.</summary>
     private static readonly IReadOnlyDictionary<string, Biome[]> Polar = new Dictionary<string, Biome[]>
     {
@@ -115,6 +118,12 @@ public static class PlotObjects
             throw polar.Length == 1
                 ? new GameException("no_glacier", "It stands on the glacier only.")
                 : new GameException("no_polar", "It stands on the glacier or the tundra only.");
+        }
+
+        // Tourists come to see the place, not each viewpoint: a plot takes a few attractions, or rows of them would print money.
+        if (kind is Items.IceHotel or Items.Viewpoint && others.Count(o => o.Kind is Items.IceHotel or Items.Viewpoint) >= MaxTouristSpots)
+        {
+            throw new GameException("tourists_full", $"A plot has room for at most {MaxTouristSpots} hotels and viewpoints.");
         }
 
         if (kind == Items.TrackFoundation && others.Any(o => o.Kind == Items.TrackFoundation))

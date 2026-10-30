@@ -1,5 +1,17 @@
 [
 	{
+		"date": "2026-10-30",
+		"title": "Uczciwszy handel i firmy",
+		"changes": [
+			"Działka wyjęta z firmy zabiera ze sobą akcje, które jej właściciel dostał za jej wniesienie; tak samo, gdy członek odchodzi albo zostaje wyrzucony. Wnoszenie i wyjmowanie tej samej działki nie daje już nowych akcji.",
+			"Mieszkańcy nie kupią w sklepie towaru po cenie, za którą handlarz sam go sprzedaje w najtańszej wyprzedaży.",
+			"Miasta płacą za dostawy towarów, które sprzedaje handlarz, najwyżej 90% jego najniższej ceny.",
+			"Handlarz także z premią za strój i certyfikatem lasu płaci najwyżej 90% ceny, za którą sam sprzedaje dany towar.",
+			"Zlecenia firm NPC na gwoździe, mąkę, taśmy i skrzynie drewniane płacą mniej, niż handlarz bierze za ten towar: 4,50 $, 3,60 $, 7,20 $ i 52 $ za sztukę.",
+			"Na jednej działce stoją najwyżej 3 atrakcje turystyczne: hotele lodowe i punkty widokowe razem."
+		]
+	},
+	{
 		"date": "2026-10-29",
 		"title": "Ciężarówki, smog, deszcz, AGD dla miast i szkicownik",
 		"changes": [

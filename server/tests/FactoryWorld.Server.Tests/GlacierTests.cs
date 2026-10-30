@@ -390,6 +390,32 @@ public sealed class GlacierTests(ServerFactory factory) : IClassFixture<ServerFa
         Assert.Equal(before + 20 * Processing.TakingsCents, await client.BalanceAsync());
         Assert.False((await client.InventoryAsync()).ContainsKey(Items.Takings));
 
+        // A plot takes three attractions at most, hotels and viewpoints together.
+        await GiveAsync(client, Items.Viewpoint, 3);
+        var spots = Enumerable.Range(PlotLayout.Size * 30, tiles.Length - PlotLayout.Size * 32)
+            .Where(i => i % 4 == 0 && i % PlotLayout.Size is > 2 and < PlotLayout.Size - 4
+                && Enumerable.Range(0, 3).All(dy => Enumerable.Range(0, 3).All(dx => tiles[i + dy * PlotLayout.Size + dx] == 0)))
+            .Where((_, n) => n % 8 == 0);
+        var placed = 0;
+        string? refused = null;
+        foreach (var spot in spots)
+        {
+            var reply = await client.SendAsync("plot.place",
+                new { x, y, kind = Items.Viewpoint, tileX = spot % PlotLayout.Size, tileY = spot / PlotLayout.Size, rotation = 0 });
+            if (reply.Type() == "plot.placed")
+            {
+                placed++;
+            }
+            else if (reply.ErrorCode() != "blocked")
+            {
+                refused = reply.ErrorCode();
+                break;
+            }
+        }
+
+        Assert.Equal(PlotObjects.MaxTouristSpots - 1, placed);
+        Assert.Equal("tourists_full", refused);
+
         // Tourists come to the glacier and the tundra only.
         var (fx, fy, forest) = await BuyAsync(client, Biome.Forest);
         await GiveAsync(client, Items.Viewpoint, 1);

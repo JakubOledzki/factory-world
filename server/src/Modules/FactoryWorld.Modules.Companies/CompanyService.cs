@@ -348,17 +348,18 @@ public sealed partial class CompanyService(
             }
 
             await using (var insert = await db.CommandAsync(
-                "INSERT INTO companies.plots (x, y, company_id, owner_id) VALUES (@x, @y, @company, @owner) ON CONFLICT DO NOTHING",
+                "INSERT INTO companies.plots (x, y, company_id, owner_id, shares) VALUES (@x, @y, @company, @owner, @shares) ON CONFLICT DO NOTHING",
                 cancellationToken))
             {
+                // What the plot cost buys its owner shares, at the price they have now; they go back when the plot leaves.
+                var shares = plot.PriceCents / await SharePriceAsync(company, cancellationToken);
                 insert.Parameters.AddWithValue("x", x);
                 insert.Parameters.AddWithValue("y", y);
                 insert.Parameters.AddWithValue("company", company);
                 insert.Parameters.AddWithValue("owner", player);
+                insert.Parameters.AddWithValue("shares", shares);
                 if (await insert.ExecuteNonQueryAsync(cancellationToken) > 0)
                 {
-                    // What the plot cost buys its owner shares, at the price they have now.
-                    var shares = plot.PriceCents / await SharePriceAsync(company, cancellationToken);
                     await IssueSharesAsync(company, player, shares, cancellationToken);
                     await LogAsync(company, player, "plotAdded", cancellationToken, item: $"{x}:{y}", quantity: shares);
                 }
@@ -373,15 +374,19 @@ public sealed partial class CompanyService(
         {
             var (company, _) = await RequireMemberAsync(player, cancellationToken);
             await using (var delete = await db.CommandAsync(
-                "DELETE FROM companies.plots WHERE x = @x AND y = @y AND owner_id = @owner", cancellationToken))
+                "DELETE FROM companies.plots WHERE x = @x AND y = @y AND owner_id = @owner AND company_id = @company RETURNING shares", cancellationToken))
             {
                 delete.Parameters.AddWithValue("x", x);
                 delete.Parameters.AddWithValue("y", y);
                 delete.Parameters.AddWithValue("owner", player);
-                if (await delete.ExecuteNonQueryAsync(cancellationToken) == 0)
+                delete.Parameters.AddWithValue("company", company);
+                if (await delete.ExecuteScalarAsync(cancellationToken) is not long shares)
                 {
                     throw new GameException("not_owner", "This is not your plot.");
                 }
+
+                // The shares the plot bought go with it, as far as the owner still has them.
+                await IssueSharesAsync(company, player, -shares, cancellationToken);
             }
 
             await LogAsync(company, player, "plotRemoved", cancellationToken, item: $"{x}:{y}");
@@ -527,10 +532,19 @@ public sealed partial class CompanyService(
 
     private async Task RemoveMemberAsync(Guid company, Guid player, CancellationToken cancellationToken)
     {
-        // Their shares stay theirs; tasks given to them and plots they were in charge of are free again.
+        // Their shares stay theirs, but for those their plots bought, which leave with the plots; tasks given to them and plots
+        // they were in charge of are free again.
+        await using (var plotsOut = await db.CommandAsync(
+            "WITH gone AS (DELETE FROM companies.plots WHERE company_id = @company AND owner_id = @player RETURNING shares) SELECT COALESCE(sum(shares), 0)::bigint FROM gone",
+            cancellationToken))
+        {
+            plotsOut.Parameters.AddWithValue("company", company);
+            plotsOut.Parameters.AddWithValue("player", player);
+            await IssueSharesAsync(company, player, -(long)(await plotsOut.ExecuteScalarAsync(cancellationToken))!, cancellationToken);
+        }
+
         await using var delete = await db.CommandAsync(
             """
-            DELETE FROM companies.plots WHERE company_id = @company AND owner_id = @player;
             UPDATE companies.plots SET manager_id = NULL WHERE company_id = @company AND manager_id = @player;
             UPDATE companies.tasks SET assignee_id = NULL WHERE company_id = @company AND assignee_id = @player AND done_at IS NULL;
             DELETE FROM companies.members WHERE company_id = @company AND account_id = @player;

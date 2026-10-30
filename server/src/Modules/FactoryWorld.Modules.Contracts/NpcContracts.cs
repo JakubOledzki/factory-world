@@ -4,7 +4,8 @@ namespace FactoryWorld.Modules.Contracts;
 
 /// <summary>
 /// One kind of order an NPC company gives: what it wants, between how many pieces, what it pays per piece
-/// (cents, well above the trader's floor price) and how many hours the player has to deliver.
+/// (cents, well above the trader's floor price, but below what the trader charges for it even in a sale, so buying from him to
+/// deliver never pays) and how many hours the player has to deliver.
 /// </summary>
 public sealed record NpcTemplate(string Item, int Min, int Max, int Step, long CentsPerPiece, int Hours, string[] Issuers);
 
@@ -28,18 +29,18 @@ public static class NpcContracts
         new(Items.CopperOre, 10, 30, 5, 2400, 8, Steelworks),
         new(Items.IronIngot, 10, 50, 5, 1800, 12, Steelworks),
         new(Items.CopperIngot, 10, 30, 5, 3200, 12, Steelworks),
-        new(Items.Nails, 20, 100, 10, 600, 8, Builders),
+        new(Items.Nails, 20, 100, 10, 450, 8, Builders),
         new(Items.Wheat, 20, 100, 10, 120, 6, Bakers),
         new(Items.Carrot, 10, 60, 10, 180, 6, Shops),
         new(Items.Potato, 10, 50, 10, 300, 8, Shops),
         new(Items.Cabbage, 10, 40, 5, 500, 8, Shops),
-        new(Items.Flour, 10, 40, 5, 400, 12, Bakers),
+        new(Items.Flour, 10, 40, 5, 360, 12, Bakers),
         new(Items.Bread, 5, 20, 5, 1400, 12, Bakers),
         new(Items.Sauerkraut, 5, 20, 5, 700, 24, Shops),
         new(Items.Fries, 5, 15, 5, 1800, 12, Bakers),
         new(Items.VegetableSoup, 3, 10, 1, 2200, 12, Bakers),
-        new(Items.Belt, 8, 32, 4, 1400, 12, Factories),
-        new(Items.WoodenChest, 1, 4, 1, 10_000, 24, Factories),
+        new(Items.Belt, 8, 32, 4, 720, 12, Factories),
+        new(Items.WoodenChest, 1, 4, 1, 5200, 24, Factories),
         new(Items.Planks, 20, 100, 10, 250, 8, Builders),
         new(Items.Beams, 5, 30, 5, 1200, 12, Builders),
         new(Items.Plywood, 5, 20, 5, 1000, 24, Factories),

@@ -164,6 +164,7 @@ const ERRORS := {
 	"no_polar": "To działa tylko na lodowcu albo w tundrze; gdzie indziej wóz konny rusza ze stajni na działce.",
 	"no_glacier": "To stawia się tylko na lodowcu.",
 	"has_foundation": "Na tej działce leży już fundament torów.",
+	"tourists_full": "Na działce zmieszczą się najwyżej 3 atrakcje turystyczne: hotele lodowe i punkty widokowe razem.",
 	"no_sled": "Sanie wyruszają z psiarni albo garażu skuterów: postaw jedno z nich na działce.",
 	"no_petrol": "Skuter potrzebuje benzyny na stacji (1 sztuka na każde 50 km).",
 	"not_boost": "Badania przyspieszają tylko dane badawcze i moc obliczeniowa.",

@@ -354,6 +354,10 @@ public interface IMarketPrices
 
     /// <summary>The usual price the trader asks for one piece, in cents, or null when it sells none.</summary>
     long? SellsCents(string item);
+
+    /// <summary>The least the trader ever asks for one piece (in the market event that makes it cheapest), in cents, or null when it sells none.
+    /// Whoever pays a player for goods from nothing pays less than this, or buying from the trader to sell on would pay.</summary>
+    long? CheapestSellsCents(string item);
 }
 
 /// <summary>Lists goods on the players' market for a seller who is not at a computer: what an export train brings to a buying market.</summary>

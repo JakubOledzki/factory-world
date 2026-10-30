@@ -611,4 +611,32 @@ public sealed class CompanyEconomyTests(ServerFactory factory) : IClassFixture<S
         var after = (await progress.AddXpAsync(owner.Id, 100, CancellationToken.None)).Xp;
         Assert.Equal(100 + CompanyPerks.ColossusXpPercent, after - before);
     }
+
+    [Fact]
+    public async Task A_plot_taken_out_of_the_company_takes_the_shares_it_bought_with_it()
+    {
+        var (owner, members, id, _) = await CompanyAsync(Roles.Worker);
+        using var o = owner;
+        using var member = members[0];
+        var (x, y) = FreePlot(Biome.Grassland);
+        Assert.Equal("world.bought", (await member.SendAsync("world.buy", new { x, y })).Type());
+        await factory.CompanyLevelAsync(member.Id);
+
+        // Bringing the same plot in and out again buys no more than bringing it in once.
+        long Yours(JsonElement company) => Economy(company).GetProperty("shares").GetProperty("yours").GetInt64();
+        var first = Yours(await member.CompanyAsync("company.addPlot", new { x, y }));
+        Assert.True(first > 0);
+        for (var i = 0; i < 4; i++)
+        {
+            Assert.Equal(0, Yours(await member.CompanyAsync("company.removePlot", new { x, y })));
+            Assert.Equal(first, Yours(await member.CompanyAsync("company.addPlot", new { x, y })));
+        }
+
+        Assert.Equal("no_majority", (await member.SendAsync("company.takeover", new { company = id })).ErrorCode());
+
+        // A member who is kicked takes their plot out, and its shares with it.
+        await owner.CompanyAsync("company.kick", new { name = member.Name });
+        var holders = Economy(await owner.CompanyAsync("company.get")).GetProperty("shares").GetProperty("holders");
+        Assert.DoesNotContain(holders.EnumerateArray(), h => h.GetProperty("name").GetString() == member.Name);
+    }
 }
