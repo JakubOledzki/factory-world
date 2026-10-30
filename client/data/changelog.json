@@ -1,9 +1,12 @@
 [
 	{
 		"date": "2026-10-30",
-		"title": "Granice powiatów na mapie świata",
+		"title": "Powiaty miast",
 		"changes": [
-			"Mapa świata pokazuje granice powiatów: cienka linia otacza działki miejskie należące do jednego miasta i oddziela sąsiednie miasta. Jest cieńsza od granic państw i pojawia się po przybliżeniu mapy."
+			"Każde miasto rządzi swoim powiatem: lasami, polami, górami i innymi działkami wokół, aż do sąsiedniego powiatu, morza albo granicy państwa. Mapa świata pokazuje granice powiatów cienką linią, cieńszą od granic państw.",
+			"Właściciele działek w powiecie, także poza miastem, głosują na burmistrza, mogą kandydować, głosować nad uchwałami i startować w przetargu. Przycisk Powiat na pasku działki otwiera ratusz miasta, które nią rządzi.",
+			"Premie burmistrza dla kolei i działek, dworzec i ulga osiedleńcza obowiązują w całym powiecie.",
+			"Podatek burmistrza obejmuje też działki powiatu: dolicza tyle procent do podatku od działek. 20% z niego dostaje burmistrz, reszta idzie do kasy miasta. Działki samego burmistrza go nie płacą."
 		]
 	},
 	{

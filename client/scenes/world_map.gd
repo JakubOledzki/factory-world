@@ -1,6 +1,6 @@
 extends Control
 ## The world map: the Earth in plots of 5 × 5 km, coloured by biome, with the borders of the countries, the
-## thinner borders of the counties (the city plots of each town) and town names. Drag to move it, scroll or pinch to zoom, click a plot to see its biome, country, owner and
+## thinner borders of the counties (the land each town governs) and town names. Drag to move it, scroll or pinch to zoom, click a plot to see its biome, country, owner and
 ## price, and buy it. The countries' governments open from here (CountryWindow).
 
 ## Keyboard actions of this screen: name and keys.

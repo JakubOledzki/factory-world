@@ -1,5 +1,6 @@
 using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Abstractions.Contracts;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FactoryWorld.Modules.World;
 
@@ -36,10 +37,16 @@ public sealed record PlotTax(long DailyCents, DateTimeOffset PaidUntil, int Days
 /// <summary>
 /// The daily tax on plots. Nothing runs in the background: whenever a player's plot is entered or built on, or they open
 /// the map or buy a plot, the whole days since <see cref="PlotTaxRow.PaidUntil"/> are paid from their wallet, as many as it covers.
-/// Each plot is taxed at the rate of the country it lies in, and the country's treasury gets its share.
+/// Each plot is taxed at the rate of the country it lies in, and the country's treasury gets its share. On a plot of a town's county
+/// with a mayor the mayor's tax adds its percent of that on top, for the town (<see cref="CityService.CollectPlotTaxAsync"/>), except
+/// on the mayor's own plots; the mayor and the rate are this week's, for all the days paid at once.
 /// </summary>
-public sealed class PlotTaxService(GameDb db, IWallet wallet, IMarketPrices prices, Countries countries, INationalPolicy nation, TimeProvider time)
+public sealed class PlotTaxService(
+    GameDb db, IWallet wallet, IMarketPrices prices, Countries countries, INationalPolicy nation, IServiceProvider services, TimeProvider time)
 {
+    // Asked for when needed: the town hall works with plots, whose service settles this tax.
+    private CityService Cities => services.GetRequiredService<CityService>();
+
     public Task<PlotTax> SettleAsync(Guid owner, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
@@ -63,13 +70,19 @@ public sealed class PlotTaxService(GameDb db, IWallet wallet, IMarketPrices pric
             }
 
             var byCountry = new Dictionary<string, long>();
-            foreach (var (country, cents) in await TaxedCentsAsync(owner, cancellationToken))
+            var byTown = new Dictionary<Town, long>();
+            foreach (var ((country, town), cents) in await TaxedCentsAsync(owner, cancellationToken))
             {
-                byCountry[country] = PlotTaxRules.DailyCents(
+                var national = PlotTaxRules.DailyCents(
                     cents, country == "" ? PlotTaxRules.PerMillePerDay : await nation.PlotTaxPerMilleAsync(country, cancellationToken));
+                byCountry[country] = byCountry.GetValueOrDefault(country) + national;
+                if (town is not null && await Cities.PolicyAsync(town, cancellationToken) is { Mayor: { } mayor, TaxPercent: > 0 } policy && mayor != owner)
+                {
+                    byTown[town] = byTown.GetValueOrDefault(town) + national * policy.TaxPercent / 100;
+                }
             }
 
-            var daily = byCountry.Values.Sum();
+            var daily = byCountry.Values.Sum() + byTown.Values.Sum();
             var days = (int)Math.Min(int.MaxValue, Math.Max(0, (now - paidUntil).Ticks / PlotTaxRules.Day.Ticks));
             if (days == 0)
             {
@@ -83,6 +96,11 @@ public sealed class PlotTaxService(GameDb db, IWallet wallet, IMarketPrices pric
                 foreach (var (country, cents) in byCountry.Where(c => c.Key != "" && c.Value > 0))
                 {
                     await nation.CollectPlotTaxAsync(country, paid * cents, cancellationToken);
+                }
+
+                foreach (var (town, cents) in byTown.Where(t => t.Value > 0))
+                {
+                    await Cities.CollectPlotTaxAsync(town, paid * cents, $"podatek od działek powiatu: {paid} dni", cancellationToken);
                 }
             }
 
@@ -118,9 +136,10 @@ public sealed class PlotTaxService(GameDb db, IWallet wallet, IMarketPrices pric
     public static GameException Due(PlotTax tax) =>
         new("plot_tax_due", $"The plot tax of {tax.OwedCents / 100.0:0.00} $ is due; nothing can be built until it is paid.");
 
-    /// <summary>What the player's plots are worth, all but the first one they bought, by the country they lie in ("" for none): what
-    /// they paid for each plot, and for everything standing on it what the trader pays for one (or, for what it does not buy, asks).</summary>
-    private async Task<Dictionary<string, long>> TaxedCentsAsync(Guid owner, CancellationToken cancellationToken)
+    /// <summary>What the player's plots are worth, all but the first one they bought, by the country they lie in ("" for none) and the
+    /// town whose county they lie in (null for none): what they paid for each plot, and for everything standing on it what the trader
+    /// pays for one (or, for what it does not buy, asks).</summary>
+    private async Task<Dictionary<(string Country, Town? Town), long>> TaxedCentsAsync(Guid owner, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync(
             """
@@ -131,14 +150,15 @@ public sealed class PlotTaxService(GameDb db, IWallet wallet, IMarketPrices pric
             """, cancellationToken);
         command.Parameters.AddWithValue("owner", owner);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        var cents = new Dictionary<string, long>();
+        var cents = new Dictionary<(string, Town?), long>();
         while (await reader.ReadAsync(cancellationToken))
         {
-            var country = countries.At(reader.GetInt32(0), reader.GetInt32(1))?.Code;
+            var (x, y) = (reader.GetInt32(0), reader.GetInt32(1));
+            var key = (countries.At(x, y)?.Code ?? "", Cities.CountyOf(x, y));
             var worth = reader.IsDBNull(2)
                 ? reader.GetInt64(3)
                 : reader.GetInt64(3) * (prices.BuysCents(reader.GetString(2)) ?? prices.SellsCents(reader.GetString(2)) ?? 0);
-            cents[country ?? ""] = cents.GetValueOrDefault(country ?? "") + worth;
+            cents[key] = cents.GetValueOrDefault(key) + worth;
         }
 
         return cents;

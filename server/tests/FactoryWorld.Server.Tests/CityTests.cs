@@ -227,7 +227,8 @@ public sealed class CityTests(ServerFactory factory) : IClassFixture<ServerFacto
         Assert.Equal("no_trash", (await client.SendAsync("city.trash", new { x = plot.X, y = plot.Y, quantity = 1 })).ErrorCode());
 
         var (fx, fy) = await FreeForestAsync(client);
-        Assert.Equal("not_city", (await client.SendAsync("city.get", new { x = fx, y = fy })).ErrorCode());
+        // Outside the city the town hall of the county opens, but the town takes nothing there.
+        Assert.Equal("not_city", (await client.SendAsync("city.trash", new { x = fx, y = fy, quantity = 1 })).ErrorCode());
     }
 
     [Fact]

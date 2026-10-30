@@ -5830,9 +5830,15 @@ func _load() -> void:
 	_title.text = "Działka %d × %d" % [_at.x, _at.y]
 	_subtitle.text = "%s  ·  5 × 5 km" % _biome_names.get(int(plot["payload"]["biome"]), "?")
 	var city: Variant = plot["payload"].get("city")
-	_city_button.visible = city != null
+	var county: Variant = plot["payload"].get("county")
+	# Outside the city the window opens on the town hall of the county the plot lies in.
+	_city_button.visible = city != null or county != null
+	_city_button.tooltip_text = "Miasto\nPotrzeby, rozwój, śmieci, usługi i ratusz" if city != null \
+		else "Powiat\nRatusz miasta, które rządzi tą okolicą: wybory, uchwały, przetarg"
 	if city != null:
 		_subtitle.text = "%s %s  ·  5 × 5 km" % [city["levelName"], city["name"]]
+	elif county != null:
+		_subtitle.text += "  ·  powiat %s" % county["name"]
 	_chat.plot = _at
 	_likes = int(plot["payload"].get("likes", 0))
 	_liked = bool(plot["payload"].get("liked", false))

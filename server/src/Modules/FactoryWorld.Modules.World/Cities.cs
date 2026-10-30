@@ -10,15 +10,36 @@ namespace FactoryWorld.Modules.World;
 /// <summary>A town of the map, which the city plots around it belong to; its centre is the plot (<paramref name="X"/>, <paramref name="Y"/>).</summary>
 public sealed record Town(int X, int Y, long Population, string Name);
 
-/// <summary>The towns the city plots belong to, made by tools/build_cities.py from the map's towns.</summary>
+/// <summary>The towns the city plots belong to, made by tools/build_cities.py from the map's towns, and their counties: the land
+/// each town governs, its city plots and the countryside around them, made by tools/build_counties.py.</summary>
 public sealed class Towns
 {
     private readonly Dictionary<(int, int), Town> _ofPlot;
+    private readonly ushort[] _county;
+    private readonly int _width;
+    private readonly Dictionary<Town, (int Left, int Top, int Right, int Bottom)> _bounds = [];
 
-    public Towns(IReadOnlyList<Town> all, IReadOnlyDictionary<(int X, int Y), int> plots)
+    /// <param name="county">For every plot, row by row and <paramref name="width"/> to a row, 0 for none or 1 + the index in
+    /// <paramref name="all"/> of the town whose county it is in; empty for no counties.</param>
+    public Towns(IReadOnlyList<Town> all, IReadOnlyDictionary<(int X, int Y), int> plots, int width = 0, ushort[]? county = null)
     {
         All = all;
         _ofPlot = plots.ToDictionary(p => p.Key, p => all[p.Value]);
+        _width = width;
+        _county = county ?? [];
+        for (var i = 0; i < _county.Length; i++)
+        {
+            if (_county[i] == 0)
+            {
+                continue;
+            }
+
+            int x = i % width, y = i / width;
+            var town = all[_county[i] - 1];
+            _bounds[town] = _bounds.TryGetValue(town, out var b)
+                ? (Math.Min(b.Left, x), Math.Min(b.Top, y), Math.Max(b.Right, x), Math.Max(b.Bottom, y))
+                : (x, y, x, y);
+        }
     }
 
     public IReadOnlyList<Town> All { get; }
@@ -26,33 +47,80 @@ public sealed class Towns
     /// <summary>The town a city plot belongs to; a city plot no town is near is a town of its own.</summary>
     public Town Of(int x, int y) => _ofPlot.TryGetValue((x, y), out var town) ? town : new Town(x, y, CityRules.LoneTownPopulation, "Miasto");
 
-    /// <summary>Reads the file: the number of towns, the towns ("column, row, population, name"), then "column, row, town" for each city plot.</summary>
-    public static Towns Read(Stream gzipped)
+    /// <summary>The town whose county the plot lies in, by the counties file; null for none (the sea, land no town reaches, and
+    /// city plots no town is near, which are counties of their own: see <see cref="CityService.CountyOf"/>).</summary>
+    public Town? CountyOf(int x, int y)
     {
-        using var reader = new StreamReader(new GZipStream(gzipped, CompressionMode.Decompress), Encoding.UTF8);
-        var count = int.Parse(reader.ReadLine()!);
-        var towns = new List<Town>(count);
-        for (var i = 0; i < count; i++)
-        {
-            var parts = reader.ReadLine()!.Split('\t');
-            towns.Add(new Town(int.Parse(parts[0]), int.Parse(parts[1]), long.Parse(parts[2]), parts[3]));
-        }
+        var i = (long)y * _width + x;
+        return x < 0 || x >= _width || i < 0 || i >= _county.Length || _county[i] == 0 ? null : All[_county[i] - 1];
+    }
 
+    /// <summary>The columns and rows a town's county spans; the town's own plot when the counties file does not know it.
+    /// A county across the edge of the map spans it all from one side to the other.</summary>
+    public (int Left, int Top, int Right, int Bottom) CountyBounds(Town town) =>
+        _bounds.TryGetValue(town, out var bounds) ? bounds : (town.X, town.Y, town.X, town.Y);
+
+    /// <summary>Reads the file: the number of towns, the towns ("column, row, population, name"), then "column, row, town" for each city plot.</summary>
+    public static Towns Read(Stream gzipped, Stream? counties = null)
+    {
+        List<Town> towns;
         var plots = new Dictionary<(int, int), int>();
-        while (reader.ReadLine() is { Length: > 0 } line)
+        using (var reader = new StreamReader(new GZipStream(gzipped, CompressionMode.Decompress), Encoding.UTF8))
         {
-            var parts = line.Split('\t');
-            plots[(int.Parse(parts[0]), int.Parse(parts[1]))] = int.Parse(parts[2]);
+            var count = int.Parse(reader.ReadLine()!);
+            towns = new List<Town>(count);
+            for (var i = 0; i < count; i++)
+            {
+                var parts = reader.ReadLine()!.Split('\t');
+                towns.Add(new Town(int.Parse(parts[0]), int.Parse(parts[1]), long.Parse(parts[2]), parts[3]));
+            }
+
+            while (reader.ReadLine() is { Length: > 0 } line)
+            {
+                var parts = line.Split('\t');
+                plots[(int.Parse(parts[0]), int.Parse(parts[1]))] = int.Parse(parts[2]);
+            }
         }
 
-        return new Towns(towns, plots);
+        if (counties is null)
+        {
+            return new Towns(towns, plots);
+        }
+
+        var (width, county) = ReadCounties(counties);
+        return new Towns(towns, plots, width, county);
+    }
+
+    /// <summary>The counties file: gzip of "FWK1", width and height as little-endian u16, then a u16 per plot, row by row
+    /// (0 for none, i + 1 for the i-th town).</summary>
+    private static (int Width, ushort[] County) ReadCounties(Stream gzipped)
+    {
+        using var stream = new GZipStream(gzipped, CompressionMode.Decompress);
+        using var reader = new BinaryReader(stream);
+        if (Encoding.ASCII.GetString(reader.ReadBytes(4)) != "FWK1")
+        {
+            throw new InvalidDataException("Not a Factory World counties file.");
+        }
+
+        int width = reader.ReadUInt16(), height = reader.ReadUInt16();
+        var bytes = reader.ReadBytes(width * height * 2);
+        if (bytes.Length != width * height * 2)
+        {
+            throw new InvalidDataException("The counties file is cut short.");
+        }
+
+        var county = new ushort[width * height];
+        Buffer.BlockCopy(bytes, 0, county, 0, bytes.Length);
+        return (width, county);
     }
 
     public static Towns Load()
     {
         using var resource = typeof(Towns).Assembly.GetManifestResourceStream("cities.tsv.gz")
             ?? throw new InvalidOperationException("The towns resource is missing.");
-        return Read(resource);
+        using var counties = typeof(Towns).Assembly.GetManifestResourceStream("counties.bin.gz")
+            ?? throw new InvalidOperationException("The counties resource is missing.");
+        return Read(resource, counties);
     }
 }
 
@@ -231,7 +299,8 @@ public static class CityRules
     /// up. Less than what the trader pays for what the buyer gets keeps an office from turning a second account's money into goods for free.</summary>
     public const int ServiceOwnerPercent = 25;
 
-    /// <summary>Rail fees from a city plot (−10%), with a freight terminal on it (another −25%), with the mayor's "rail" bonus (another −20%).</summary>
+    /// <summary>Rail fees from a city plot (−10%), with a freight terminal on it (another −25%), from any plot of the county with the
+    /// mayor's "rail" bonus (another −20%).</summary>
     public const double CityRail = 0.9;
 
     public const double TerminalRail = 0.75;
@@ -249,8 +318,8 @@ public static class CityRules
     {
         ["demand"] = "Popyt: miasto płaci za dostawy 15% więcej",
         ["shoppers"] = "Zakupy: o 30% więcej klientów w sklepach",
-        ["rail"] = "Kolej: opłaty kolejowe z działek miasta o 20% niższe",
-        ["plots"] = "Działki: działki w mieście o 20% tańsze",
+        ["rail"] = "Kolej: opłaty kolejowe z działek powiatu o 20% niższe",
+        ["plots"] = "Działki: działki w powiecie o 20% tańsze",
     };
 
     public const double CheapPlots = 0.8;
@@ -408,6 +477,13 @@ public sealed partial class CityService(
 
     public Town? TownOf(int x, int y) => map.Contains(x, y) && map.BiomeAt(x, y) == Biome.City ? towns.Of(x, y) : null;
 
+    /// <summary>The town whose county the plot lies in, whose mayor's laws hold there: a city plot's own town, or the town that
+    /// governs the countryside around (<see cref="Towns.CountyOf"/>); null for the sea and land no town reaches.</summary>
+    public Town? CountyOf(int x, int y) => TownOf(x, y) ?? (map.Contains(x, y) ? towns.CountyOf(x, y) : null);
+
+    /// <summary>The town whose county the plot lies in; fails for a plot in none.</summary>
+    public Town RequireCounty(int x, int y) => CountyOf(x, y) ?? throw new GameException("not_county", "This plot is in no town's county.");
+
     public async Task<long> DeliveredAsync(Town town, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync(
@@ -509,7 +585,7 @@ public sealed partial class CityService(
     public Task<DateTimeOffset> FestivalAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var town = RequireTown(x, y);
+            var town = RequireCounty(x, y);
             if ((await PolicyAsync(town, cancellationToken)).Mayor != player)
             {
                 throw new GameException("not_mayor", "Only this week's mayor holds a festival.");
@@ -776,22 +852,21 @@ public sealed partial class CityService(
     private async Task<int> ServiceSalesPerDayAsync(Town town, CancellationToken cancellationToken) =>
         await InForceAsync(town, "busy_offices", cancellationToken) ? TownHallRules.BusyOfficeSales : CityRules.ServiceSalesPerDay;
 
-    /// <summary>The owners of plots in a town: who may vote and be elected there.</summary>
+    /// <summary>The players who own a plot in the town's county: they elect its mayor and vote on its ordinances.</summary>
     private async Task<IReadOnlyList<Guid>> TownsfolkAsync(Town town, CancellationToken cancellationToken)
     {
+        var (left, top, right, bottom) = towns.CountyBounds(town);
         await using var command = await db.CommandAsync(
-            """
-            SELECT x, y, owner_id FROM world.plots
-            WHERE biome = @city AND x BETWEEN @x - 40 AND @x + 40 AND y BETWEEN @y - 40 AND @y + 40
-            """, cancellationToken);
-        command.Parameters.AddWithValue("city", (short)Biome.City);
-        command.Parameters.AddWithValue("x", town.X);
-        command.Parameters.AddWithValue("y", town.Y);
+            "SELECT x, y, owner_id FROM world.plots WHERE x BETWEEN @left AND @right AND y BETWEEN @top AND @bottom", cancellationToken);
+        command.Parameters.AddWithValue("left", Math.Min(left, town.X));
+        command.Parameters.AddWithValue("right", Math.Max(right, town.X));
+        command.Parameters.AddWithValue("top", Math.Min(top, town.Y));
+        command.Parameters.AddWithValue("bottom", Math.Max(bottom, town.Y));
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
         var owners = new List<Guid>();
         while (await reader.ReadAsync(cancellationToken))
         {
-            if (TownOf(reader.GetInt32(0), reader.GetInt32(1)) == town)
+            if (CountyOf(reader.GetInt32(0), reader.GetInt32(1)) == town)
             {
                 owners.Add(reader.GetGuid(2));
             }
@@ -804,11 +879,11 @@ public sealed partial class CityService(
     public Task VoteAsync(Guid player, int x, int y, string candidate, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var town = RequireTown(x, y);
+            var town = RequireCounty(x, y);
             var folk = await TownsfolkAsync(town, cancellationToken);
             if (!folk.Contains(player))
             {
-                throw new GameException("not_townsman", "Only players who own a plot in the town vote here.");
+                throw new GameException("not_townsman", "Only players who own a plot in the town's county vote here.");
             }
 
             var chosen = await names.AccountAsync(candidate ?? "", cancellationToken);
@@ -834,7 +909,7 @@ public sealed partial class CityService(
     public Task SetPolicyAsync(Guid player, int x, int y, int taxPercent, string? bonus, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var town = RequireTown(x, y);
+            var town = RequireCounty(x, y);
             if ((await PolicyAsync(town, cancellationToken)).Mayor != player)
             {
                 throw new GameException("not_mayor", "Only this week's mayor sets the town's policy.");
@@ -860,10 +935,10 @@ public sealed partial class CityService(
             await update.ExecuteNonQueryAsync(cancellationToken);
         }, cancellationToken);
 
-    /// <summary>Everything the town window shows.</summary>
+    /// <summary>Everything the town window shows, from any plot of the town's county.</summary>
     public async Task<object> ViewAsync(Guid player, int x, int y, CancellationToken cancellationToken)
     {
-        var town = RequireTown(x, y);
+        var town = RequireCounty(x, y);
         await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
         var now = time.GetUtcNow();
         var delivered = await DeliveredAsync(town, cancellationToken);
@@ -951,6 +1026,8 @@ public sealed partial class CityService(
                 deliveredCents = delivered,
                 levelCents = CityRules.LevelCents,
                 distance = Math.Round(CityRules.Distance(map.Width, x, y, town.X, town.Y), 1),
+                // False on a plot of the county outside the city: the town hall works from there, deliveries, rubbish and services do not.
+                inCity = TownOf(x, y) is not null,
             },
             dayEndsAt = CityRules.DayStart(day + 1).ToUnixTimeMilliseconds(),
             needs = needs.Select(n => new
@@ -1281,19 +1358,23 @@ public sealed partial class CityService(
     // --- What cities change elsewhere -----------------------------------------------------------------
 
     /// <summary>What rail fees from a plot are multiplied by: less with the country's railway, in a city, with a freight terminal,
-    /// the town's station and the mayor's bonus.</summary>
+    /// and anywhere in a town's county with the town's station and the mayor's bonus.</summary>
     public async Task<double> RailFactorAsync(int x, int y, CancellationToken cancellationToken)
     {
         var national = countries.At(x, y) is { } country ? await nation.RailFactorAsync(country.Code, cancellationToken) : 1;
-        if (TownOf(x, y) is not { } town)
+        if (CountyOf(x, y) is not { } town)
         {
             return national;
         }
 
-        var factor = national * CityRules.CityRail * (1 - TownHallRules.StationRail * await InvestmentAsync(town, "station", cancellationToken));
-        if (await beach.HasAsync(x, y, Items.FreightTerminal, 0, cancellationToken))
+        var factor = national * (1 - TownHallRules.StationRail * await InvestmentAsync(town, "station", cancellationToken));
+        if (TownOf(x, y) is not null)
         {
-            factor *= CityRules.TerminalRail;
+            factor *= CityRules.CityRail;
+            if (await beach.HasAsync(x, y, Items.FreightTerminal, 0, cancellationToken))
+            {
+                factor *= CityRules.TerminalRail;
+            }
         }
 
         if ((await PolicyAsync(town, cancellationToken)).Bonus == "rail")
@@ -1307,9 +1388,10 @@ public sealed partial class CityService(
     public async Task<int> MaxRoutesAsync(int x, int y, CancellationToken cancellationToken) =>
         TownOf(x, y) is not null && await beach.HasAsync(x, y, Items.FreightTerminal, 0, cancellationToken) ? CityRules.TerminalRoutes : RailRules.MaxRoutes;
 
-    /// <summary>What a city plot's price is multiplied by: less with the mayor's "plots" bonus and with the settlers' ordinance.</summary>
+    /// <summary>What the price of a plot in a town's county is multiplied by: less with the mayor's "plots" bonus and with the
+    /// settlers' ordinance.</summary>
     public async Task<double> PlotPriceFactorAsync(int x, int y, CancellationToken cancellationToken) =>
-        TownOf(x, y) is { } town
+        CountyOf(x, y) is { } town
             ? ((await PolicyAsync(town, cancellationToken)).Bonus == "plots" ? CityRules.CheapPlots : 1)
                 * (await InForceAsync(town, "settlers", cancellationToken) ? TownHallRules.SettlersPlots : 1)
             : 1;

@@ -33,7 +33,7 @@ public static class TownHallRules
         new Dictionary<string, (string, string, int)>
         {
             ["park"] = ("Park miejski", "o 10% więcej klientów w sklepach na poziom", 3),
-            ["station"] = ("Dworzec", "opłaty kolejowe z działek miasta o 5% niższe na poziom", 3),
+            ["station"] = ("Dworzec", "opłaty kolejowe z działek powiatu o 5% niższe na poziom", 3),
             ["market_hall"] = ("Hala targowa", "miasto płaci za dostawy o 5% więcej na poziom", 3),
         };
 
@@ -49,7 +49,7 @@ public static class TownHallRules
     /// <summary>Ordinances the mayor puts to the vote; one that passes holds for the rest of the week.</summary>
     public static readonly IReadOnlyDictionary<string, string> Ordinances = new Dictionary<string, string>
     {
-        ["settlers"] = "Ulga osiedleńcza: działki w mieście o 10% tańsze",
+        ["settlers"] = "Ulga osiedleńcza: działki w powiecie o 10% tańsze",
         ["late_shops"] = "Handel do późna: o 15% więcej klientów w sklepach",
         ["busy_offices"] = "Więcej petentów: biura obsługują 30 klientów dziennie zamiast 20",
         ["recycling"] = "Program recyklingu: kasa miasta dopłaca połowę do wywozu śmieci",
@@ -206,6 +206,24 @@ public sealed partial class CityService
     }
 
     /// <summary>Puts money into the treasury or takes it out (fails with <c>treasury_short</c> when it has less), with a line in its ledger.</summary>
+    /// <summary>The mayor's tax on the plots of the town's county, paid with the plot tax (<see cref="PlotTaxService"/>): the mayor
+    /// gets their pay out of it and the rest goes into the treasury. Nothing without a mayor.</summary>
+    public async Task CollectPlotTaxAsync(Town town, long cents, string reason, CancellationToken cancellationToken)
+    {
+        if (cents <= 0 || (await PolicyAsync(town, cancellationToken)).Mayor is not { } mayor)
+        {
+            return;
+        }
+
+        var pay = cents * TownHallRules.MayorSharePercent / 100;
+        if (pay > 0)
+        {
+            await wallet.CreditAsync(mayor, pay, $"mayor's pay in {town.Name}: {reason}", cancellationToken);
+        }
+
+        await ChangeTreasuryAsync(town, cents - pay, reason, cancellationToken);
+    }
+
     private async Task ChangeTreasuryAsync(Town town, long cents, string reason, CancellationToken cancellationToken)
     {
         if (cents == 0)
@@ -271,7 +289,7 @@ public sealed partial class CityService
     {
         if (!(await TownsfolkAsync(town, cancellationToken)).Contains(player))
         {
-            throw new GameException("not_townsman", "Only players who own a plot in the town take part in its politics.");
+            throw new GameException("not_townsman", "Only players who own a plot in the town's county take part in its politics.");
         }
     }
 
@@ -279,7 +297,7 @@ public sealed partial class CityService
     public Task InvestAsync(Guid player, int x, int y, string? kind, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var town = RequireTown(x, y);
+            var town = RequireCounty(x, y);
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             await RequireMayorAsync(player, town, "builds for the town", cancellationToken);
             if (kind is null || !TownHallRules.Investments.TryGetValue(kind, out var building))
@@ -311,12 +329,12 @@ public sealed partial class CityService
     public Task<bool> RecallAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var town = RequireTown(x, y);
+            var town = RequireCounty(x, y);
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             var folk = await TownsfolkAsync(town, cancellationToken);
             if (!folk.Contains(player))
             {
-                throw new GameException("not_townsman", "Only players who own a plot in the town take part in its politics.");
+                throw new GameException("not_townsman", "Only players who own a plot in the town's county take part in its politics.");
             }
 
             await LockTownAsync(town, cancellationToken);
@@ -375,7 +393,7 @@ public sealed partial class CityService
     public Task StandAsync(Guid player, int x, int y, int taxPercent, string? bonus, string? slogan, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var town = RequireTown(x, y);
+            var town = RequireCounty(x, y);
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             await RequireTownsmanAsync(player, town, cancellationToken);
             if (taxPercent < 0 || taxPercent > CityRules.MaxTaxPercent)
@@ -469,7 +487,7 @@ public sealed partial class CityService
     public Task SponsorAsync(Guid player, int x, int y, string? candidate, long cents, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var town = RequireTown(x, y);
+            var town = RequireCounty(x, y);
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             if (cents < 1_00 || cents > TownHallRules.MaxSponsorCents)
             {
@@ -606,7 +624,7 @@ public sealed partial class CityService
     public Task ProposeAsync(Guid player, int x, int y, string? kind, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var town = RequireTown(x, y);
+            var town = RequireCounty(x, y);
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             await RequireMayorAsync(player, town, "proposes ordinances", cancellationToken);
             if (kind is null || !TownHallRules.Ordinances.ContainsKey(kind))
@@ -648,7 +666,7 @@ public sealed partial class CityService
     public Task VoteOrdinanceAsync(Guid player, int x, int y, Guid id, bool yes, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
-            var town = RequireTown(x, y);
+            var town = RequireCounty(x, y);
             await plots.RequireOwnerAsync(player, x, y, cancellationToken, PlotRight.Work);
             await RequireTownsmanAsync(player, town, cancellationToken);
             var ordinance = (await OrdinancesAsync(town, CityRules.WeekOf(time.GetUtcNow()), cancellationToken)).FirstOrDefault(o => o.Id == id);
