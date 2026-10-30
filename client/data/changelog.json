@@ -1,6 +1,13 @@
 [
 	{
 		"date": "2026-10-30",
+		"title": "Leśniczówki pracują, gdy cię nie ma",
+		"changes": [
+			"Chaty leśnika, leśniczówki i stacje leśne, z których podajnik wynosi drewno na długi taśmociąg, nie stają już po pół godzinie twojej nieobecności. Po powrocie w skrzyni jest tyle drewna, ile byłoby, gdybyś cały czas grał. To samo dotyczy każdej linii, którą ciągle zasila pracująca maszyna."
+		]
+	},
+	{
+		"date": "2026-10-30",
 		"title": "Boty robią sprzęt logistyczny na sprzedaż",
 		"changes": [
 			"Boty wytwarzają na stole warsztatowym taśmociągi, podajniki, skrzynie i słupy, a przemysłowcy, gdy je zbadają, także rozdzielacze, szybkie taśmociągi i podajniki, taśmociągi podziemne, długoramienne podajniki oraz skrzynie ładujące i odbierające. Potrzebne części (gwoździe, taśmy, zwykły podajnik) robią najpierw same.",
