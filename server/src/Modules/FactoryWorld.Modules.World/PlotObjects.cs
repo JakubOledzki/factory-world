@@ -62,6 +62,7 @@ public static class PlotObjects
         Items.ExportChest, Items.BuyMarket, Items.RailPort, Items.Bank, Items.BankBranch,
         Items.LoadingChest, Items.LoadingChest2, Items.LoadingChest3, Items.LoadingChest4,
         Items.ReceivingChest, Items.ReceivingChest2, Items.ReceivingChest3, Items.ReceivingChest4,
+        Items.PumpkinLantern, Items.Scarecrow, Items.ChristmasTree, Items.Snowman,
     };
 
     /// <summary>Ice hotels and viewpoints one plot takes, together.</summary>

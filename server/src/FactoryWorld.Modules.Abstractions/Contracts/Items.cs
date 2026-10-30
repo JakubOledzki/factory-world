@@ -294,6 +294,25 @@ public static class Items
     public const string AncientCoin = "ancient_coin";
     public const string DinosaurBone = "dinosaur_bone";
 
+    // The trophy case: in the garage and on plots it shows its owner's badges and trophies to whoever looks.
+    public const string TrophyCase = "furniture_trophy_case";
+
+    // Seasonal treats that turn up while gathering during a holiday, and the decorations they buy.
+    public const string Candy = "candy";
+    public const string Bauble = "bauble";
+    public const string PumpkinLantern = "decor_pumpkin_lantern";
+    public const string Scarecrow = "decor_scarecrow";
+    public const string ChristmasTree = "decor_christmas_tree";
+    public const string Snowman = "decor_snowman";
+
+    // Souvenirs that expeditions bring back now and then: for the album, not for the trader.
+    public const string MammothTusk = "souvenir_mammoth_tusk";
+    public const string DesertRose = "souvenir_desert_rose";
+    public const string Edelweiss = "souvenir_edelweiss";
+    public const string Nautilus = "souvenir_nautilus";
+    public const string Totem = "souvenir_totem";
+    public const string GoldenCompass = "souvenir_golden_compass";
+
     public const string Glassworks = "furniture_glassworks";
     public const string ArcFurnace = "furniture_arc_furnace";
     public const string WaterWell = "furniture_water_well";
@@ -807,6 +826,19 @@ public static class Items
         [Ammonite] = "Amonit",
         [AncientCoin] = "Starożytna moneta",
         [DinosaurBone] = "Kość dinozaura",
+        [TrophyCase] = "Gablota z trofeami",
+        [Candy] = "Cukierek",
+        [Bauble] = "Bombka",
+        [PumpkinLantern] = "Lampion z dyni",
+        [Scarecrow] = "Strach na wróble",
+        [ChristmasTree] = "Choinka",
+        [Snowman] = "Bałwan",
+        [MammothTusk] = "Kieł mamuta",
+        [DesertRose] = "Róża pustyni",
+        [Edelweiss] = "Szarotka w ramce",
+        [Nautilus] = "Muszla łodzika",
+        [Totem] = "Drewniany totem",
+        [GoldenCompass] = "Złoty kompas",
         [Glassworks] = "Huta szkła",
         [ArcFurnace] = "Piec łukowy",
         [WaterWell] = "Studnia głębinowa",
@@ -1267,6 +1299,12 @@ public static class Items
 
     /// <summary>What else than itself goes into a machine for <paramref name="ingredient"/>.</summary>
     public static IReadOnlyList<string> StandIns(string ingredient) => ingredient == Coal ? [Charcoal] : [];
+
+    /// <summary>Things an expedition brings back for the album; the trader neither buys nor sells them.</summary>
+    public static bool IsSouvenir(string id) => id.StartsWith("souvenir_", StringComparison.Ordinal);
+
+    /// <summary>Decorations that only stand on a plot and look nice.</summary>
+    public static bool IsDecoration(string id) => id.StartsWith("decor_", StringComparison.Ordinal);
 
     /// <summary>Fossils the dunes give up now and then, a collection of three.</summary>
     public static bool IsFossil(string id) => id is Ammonite or AncientCoin or DinosaurBone;

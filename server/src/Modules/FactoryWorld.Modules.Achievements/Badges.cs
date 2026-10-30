@@ -33,6 +33,11 @@ public static class Stats
     public const string Mushrooms = "mushrooms";
     public const string Honey = "honey";
     public const string Furniture = "furniture";
+    public const string AlbumPages = "album_pages";
+    public const string Expeditions = "expeditions";
+    public const string Puzzles = "puzzles";
+    public const string PuzzleGold = "puzzle_gold";
+    public const string Mentored = "mentored";
 
     /// <summary>Everything the player made by hand or with machines: gathered, mined, smelted, crafted, grown, processed.</summary>
     public const string Produced = "produced";
@@ -54,6 +59,9 @@ public sealed record Badge(string Id, string Group, string Name, string Descript
 /// <summary>Every achievement badge, in the order the player sees them. Ids are stored, so never rename one.</summary>
 public static class Badges
 {
+    /// <summary>The pages of the album of finds (<c>Album.Pages</c> in the collections module).</summary>
+    public const int AlbumSize = 7;
+
     public static readonly IReadOnlyList<Badge> All =
     [
         new("first_tree", "Las", "Pierwsze drzewo", "Zetnij pierwsze drzewo.", Stats.Wood, 1),
@@ -124,6 +132,14 @@ public static class Badges
         new("level_25", "Postać", "Mistrz", "Osiągnij 25. poziom.", Stats.Level, 25),
         new("level_50", "Postać", "Legenda", "Osiągnij 50. poziom.", Stats.Level, 50),
         new("collector", "Postać", "Kolekcjoner", "Zdobądź 20 innych odznak.", Stats.Badges, 20),
+
+        new("album_page", "Przygody", "Zbieracz", "Uzupełnij pierwszą stronę albumu znalezisk.", Stats.AlbumPages, 1),
+        new("curator", "Przygody", "Kustosz", "Uzupełnij wszystkie strony albumu znalezisk.", Stats.AlbumPages, AlbumSize),
+        new("explorer", "Przygody", "Odkrywca", "Wróć z pierwszej wyprawy.", Stats.Expeditions, 1),
+        new("traveller", "Przygody", "Podróżnik", "Wróć z 25 wypraw.", Stats.Expeditions, 25),
+        new("puzzle_solver", "Przygody", "Łamigłówka", "Rozwiąż pierwszą zagadkę inżynierską.", Stats.Puzzles, 1),
+        new("puzzle_master", "Przygody", "Złota rączka", "Zdobądź 5 złotych medali w zagadkach inżynierskich.", Stats.PuzzleGold, 5),
+        new("mentor", "Przygody", "Mentor", "Doprowadź podopiecznego do 10. poziomu.", Stats.Mentored, 1),
     ];
 
     public static readonly ILookup<string, Badge> ByStat = All.ToLookup(b => b.Stat);

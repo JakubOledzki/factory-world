@@ -507,6 +507,7 @@ FURNITURE_AT = {
     "furniture_furnace": (5.0, 2.5),
     "furniture_anvil": (5.0, 2.25),
     "furniture_wardrobe": (5.75, 3.25),
+    "furniture_trophy_case": (5.75, 3.25),
 }
 ROTATIONS = 4
 
@@ -757,6 +758,55 @@ def build_wardrobe(coll, at: Vector):
     box("wardrobe_coat", (0.08, 0.36, 0.85), at + Vector((w / 2 + 0.06, -0.05, 1.3)), coat, coll, bevel=0.03)
 
 
+def build_trophy_case(coll, at: Vector):
+    """An open cabinet of dark wood, lit inside, with three shelves of cups, medals and a plaque."""
+    oak = wood("trophy_case", (0.2, 0.1, 0.05))
+    dark = wood("trophy_trim", (0.1, 0.05, 0.025))
+    gold = plain("trophy_gold", (0.85, 0.6, 0.15), 0.2, metallic=1.0, variation=0.05, grime=0.1)
+    silver = plain("trophy_silver", (0.75, 0.76, 0.78), 0.2, metallic=1.0, variation=0.05, grime=0.1)
+    bronze = plain("trophy_bronze", (0.55, 0.28, 0.12), 0.3, metallic=1.0, variation=0.05, grime=0.2)
+    felt = plain("trophy_felt", (0.25, 0.03, 0.04), 0.9, variation=0.1, grime=0.1)
+    w, d, h = 1.4, 0.45, 1.8
+    box("trophy_back", (w, 0.04, h), at + Vector((0, d / 2 - 0.02, h / 2 + 0.08)), felt, coll)
+    for x in (-w / 2 + 0.03, w / 2 - 0.03):
+        box("trophy_side", (0.06, d, h), at + Vector((x, 0, h / 2 + 0.08)), oak, coll, bevel=0.008)
+    box("trophy_crown", (w + 0.08, d + 0.06, 0.08), at + Vector((0, 0, h + 0.12)), dark, coll, bevel=0.01)
+    box("trophy_plinth", (w, d, 0.1), at + Vector((0, 0, 0.05)), dark, coll, bevel=0.008)
+    shelves = (0.12, 0.7, 1.28)
+    for z in shelves:
+        box("trophy_shelf", (w - 0.08, d - 0.06, 0.03), at + Vector((0, 0.01, z)), oak, coll)
+    box("trophy_top", (w - 0.08, d - 0.06, 0.03), at + Vector((0, 0.01, h + 0.06)), oak, coll)
+
+    def cup(x, z, metal, s):
+        base = at + Vector((x, 0.02, z + 0.015))
+        box("trophy_foot", (0.1 * s, 0.1 * s, 0.05 * s), base + Vector((0, 0, 0.025 * s)), dark, coll)
+        cylinder("trophy_stem", 0.015 * s, 0.12 * s, base + Vector((0, 0, 0.11 * s)), metal, coll, verts=16)
+        cylinder("trophy_bowl", 0.08 * s, 0.16 * s, base + Vector((0, 0, 0.25 * s)), metal, coll, radius2=0.03 * s, verts=24)
+        for side in (-1, 1):
+            torus("trophy_handle", 0.035 * s, 0.008 * s, base + Vector((side * 0.085 * s, 0, 0.26 * s)), metal, coll, rotation=(math.pi / 2, 0, 0))
+
+    cup(0, shelves[2], gold, 1.5)
+    cup(-0.42, shelves[2], silver, 1.1)
+    cup(0.42, shelves[2], bronze, 1.1)
+    cup(-0.3, shelves[1], gold, 1.0)
+    cup(0.3, shelves[1], silver, 1.0)
+    for i, metal in enumerate((gold, silver, bronze)):
+        cylinder("trophy_medal", 0.06, 0.012, at + Vector((-0.35 + i * 0.35, d / 2 - 0.05, shelves[0] + 0.22)), metal, coll,
+                 rotation=(math.pi / 2, 0, 0), verts=24)
+        box("trophy_ribbon", (0.05, 0.006, 0.16), at + Vector((-0.35 + i * 0.35, d / 2 - 0.045, shelves[0] + 0.35)), felt, coll)
+    # A warm strip light under each shelf shows the trophies off; the glass is left out so the light reaches them.
+    for z in (shelves[1], shelves[2], h + 0.06):
+        box("trophy_light", (w - 0.2, 0.03, 0.012), at + Vector((0, -0.1, z - 0.025)), emission("trophy_light", (1.0, 0.85, 0.6), 6.0), coll)
+    box("trophy_plaque", (0.4, 0.02, 0.07), at + Vector((0, -d / 2 + 0.02, 0.06)), gold, coll, bevel=0.004)
+    front = -d / 2 - 0.006
+    for x in (-w / 4, w / 4):
+        fw, fh = w / 2 - 0.04, h - 0.06
+        for dz in (-fh / 2 + 0.03, fh / 2 - 0.03):
+            box("trophy_frame", (fw, 0.02, 0.06), at + Vector((x, front, h / 2 + 0.1 + dz)), dark, coll)
+        for dx in (-fw / 2 + 0.03, fw / 2 - 0.03):
+            box("trophy_frame", (0.06, 0.02, fh), at + Vector((x + dx, front, h / 2 + 0.1)), dark, coll)
+
+
 def build_gas(coll, at: Vector):
     gas = rusty_metal("gas", (0.35, 0.05, 0.03), 0.3)
     steel = rusty_metal("gas_valve", (0.18, 0.18, 0.19), 0.3)
@@ -994,6 +1044,7 @@ FURNITURE_BUILDERS = {
     "furniture_tyres": build_tyres,
     "furniture_pallet": build_pallet,
     "furniture_wardrobe": build_wardrobe,
+    "furniture_trophy_case": build_trophy_case,
 }
 
 

@@ -452,3 +452,37 @@ public interface ICompanyCash
     /// <c>not_allowed</c> (not the owner or the treasurer) or <c>company_short</c>.</summary>
     Task<string> SpendAsync(Guid player, long cents, string reason, CancellationToken cancellationToken);
 }
+
+/// <summary>Something a player earned to show off: a badge, a world first, a place on a weekly podium.</summary>
+/// <param name="Kind"><c>badge</c>, <c>first</c> or <c>trophy</c>.</param>
+public sealed record Honour(string Kind, string Name, string Description, DateTimeOffset At);
+
+/// <summary>Offered by each module that hands out honours, so a trophy case can show them all.</summary>
+public interface IHonours
+{
+    /// <summary>The player's honours, newest first.</summary>
+    Task<IReadOnlyList<Honour>> HonoursAsync(Guid player, CancellationToken cancellationToken);
+}
+
+/// <summary>Where a player's money came from and went, from the wallet's ledger.</summary>
+public interface IMoneyHistory
+{
+    /// <summary>The changes between <paramref name="from"/> and <paramref name="to"/>, summed by reason, at most
+    /// <paramref name="limit"/> reasons with the largest sums (in or out) first.</summary>
+    Task<IReadOnlyList<(string Reason, long Cents)>> ByReasonAsync(Guid owner, DateTimeOffset from, DateTimeOffset to, int limit, CancellationToken cancellationToken);
+}
+
+/// <summary>What a player's factory made over a while, from the production statistics.</summary>
+public interface IProductionHistory
+{
+    /// <summary>Pieces made of each item between <paramref name="from"/> and <paramref name="to"/>; only what the
+    /// statistics still keep (a day), and only once the machines caught up with that time.</summary>
+    Task<IReadOnlyDictionary<string, long>> MadeAsync(Guid owner, DateTimeOffset from, DateTimeOffset to, CancellationToken cancellationToken);
+}
+
+/// <summary>The album of finds, for modules that hand out album items other than in a reply to the player (seasonal treats).</summary>
+public interface IAlbumFinds
+{
+    /// <summary>Writes down that the player found these items; items not in the album, or found before, change nothing.</summary>
+    Task RecordAsync(Guid owner, IReadOnlyCollection<string> items, CancellationToken cancellationToken);
+}

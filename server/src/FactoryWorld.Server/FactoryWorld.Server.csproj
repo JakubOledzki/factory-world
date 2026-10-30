@@ -24,6 +24,13 @@
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Rivalry\FactoryWorld.Modules.Rivalry.csproj" />
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Bots\FactoryWorld.Modules.Bots.csproj" />
     <ProjectReference Include="..\Modules\FactoryWorld.Modules.Law\FactoryWorld.Modules.Law.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Reports\FactoryWorld.Modules.Reports.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Collections\FactoryWorld.Modules.Collections.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Expeditions\FactoryWorld.Modules.Expeditions.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Seasons\FactoryWorld.Modules.Seasons.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Mentoring\FactoryWorld.Modules.Mentoring.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Puzzles\FactoryWorld.Modules.Puzzles.csproj" />
+    <ProjectReference Include="..\Modules\FactoryWorld.Modules.Timelapse\FactoryWorld.Modules.Timelapse.csproj" />
   </ItemGroup>
 
   <ItemGroup>

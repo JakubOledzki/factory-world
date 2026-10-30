@@ -26,6 +26,13 @@
     <Project Path="src/Modules/FactoryWorld.Modules.Statistics/FactoryWorld.Modules.Statistics.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.Wallet/FactoryWorld.Modules.Wallet.csproj" />
     <Project Path="src/Modules/FactoryWorld.Modules.World/FactoryWorld.Modules.World.csproj" />
+    <Project Path="src/Modules/FactoryWorld.Modules.Reports/FactoryWorld.Modules.Reports.csproj" />
+    <Project Path="src/Modules/FactoryWorld.Modules.Collections/FactoryWorld.Modules.Collections.csproj" />
+    <Project Path="src/Modules/FactoryWorld.Modules.Expeditions/FactoryWorld.Modules.Expeditions.csproj" />
+    <Project Path="src/Modules/FactoryWorld.Modules.Seasons/FactoryWorld.Modules.Seasons.csproj" />
+    <Project Path="src/Modules/FactoryWorld.Modules.Mentoring/FactoryWorld.Modules.Mentoring.csproj" />
+    <Project Path="src/Modules/FactoryWorld.Modules.Puzzles/FactoryWorld.Modules.Puzzles.csproj" />
+    <Project Path="src/Modules/FactoryWorld.Modules.Timelapse/FactoryWorld.Modules.Timelapse.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/FactoryWorld.Server.Tests/FactoryWorld.Server.Tests.csproj" />
