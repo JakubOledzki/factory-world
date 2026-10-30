@@ -16,6 +16,7 @@ Touch="*res://autoload/touch.gd"
 Tutorial="*res://autoload/tutorial.gd"
 Online="*res://autoload/online.gd"
 Settings="*res://autoload/settings.gd"
+Sound="*res://autoload/sound.gd"
 
 [display]
 

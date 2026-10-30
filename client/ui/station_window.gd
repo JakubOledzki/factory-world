@@ -556,10 +556,10 @@ func _update_send() -> void:
 		var rates: Dictionary = _state["rates"]
 		var km := float(trip["km"])
 		var max_km := float(rates.get("truckMaxKm", 60))
-		var diesel := maxi(1, ceili(km / float(rates.get("truckKmPerDiesel", 25))))
+		var truck_diesel := maxi(1, ceili(km / float(rates.get("truckKmPerDiesel", 25))))
 		var seconds := maxf(float(rates.get("truckMinTripSeconds", 5)), km / 100.0 * float(rates["secondsPer100Km"]) * float(rates.get("truckTrip", 0.5)))
 		_send_info.text = "%s  ·  %s km  ·  w drodze %s  ·  bez opłaty" % [_where(), _grouped(roundi(km)), _clock(seconds)]
-		_send_info.text += "\nCiężarówka spali %d × olej napędowy ze stacji i zabierze najwyżej %s sztuk." % [diesel, _grouped(int(rates.get("truckCapacity", 1000)))]
+		_send_info.text += "\nCiężarówka spali %d × olej napędowy ze stacji i zabierze najwyżej %s sztuk." % [truck_diesel, _grouped(int(rates.get("truckCapacity", 1000)))]
 		_send_button.disabled = _destination == plot or km > max_km or quantity > int(rates.get("truckCapacity", 1000))
 		if km > max_km:
 			_send_info.text += "\nZa daleko: ciężarówka jedzie najwyżej %d km." % int(max_km)
