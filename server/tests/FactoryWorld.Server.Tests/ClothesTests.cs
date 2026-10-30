@@ -230,10 +230,12 @@ public sealed class ClothesTests(ServerFactory factory) : IClassFixture<ServerFa
             await using var insert = await db.CommandAsync(
                 """
                 INSERT INTO research.technologies (owner_id, technology, starts_at, finishes_at, rewarded)
-                VALUES (@owner, @tech, now() - interval '2 hours', now() - interval '1 hour', true)
+                VALUES (@owner, @tech, @starts, @finishes, true)
                 """, CancellationToken.None);
             insert.Parameters.AddWithValue("owner", client.AccountId);
             insert.Parameters.AddWithValue("tech", TechTree.Tailoring);
+            insert.Parameters.AddWithValue("starts", factory.Time.GetUtcNow() - TimeSpan.FromHours(2));
+            insert.Parameters.AddWithValue("finishes", factory.Time.GetUtcNow() - TimeSpan.FromHours(1));
             await insert.ExecuteNonQueryAsync(CancellationToken.None);
         }
 
