@@ -15,7 +15,8 @@ env:
 
 jobs:
   images:
-    runs-on: ubuntu-latest
+    # Repository variable RELEASE_RUNNER (e.g. self-hosted) moves the build off GitHub-hosted minutes, see docs/deploy.md.
+    runs-on: ${{ vars.RELEASE_RUNNER || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -62,7 +63,7 @@ jobs:
   # Rolls the new images out on the server over SSH. Skipped until the DEPLOY_* secrets are set.
   deploy:
     needs: images
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RELEASE_RUNNER || 'ubuntu-latest' }}
     concurrency:
       group: deploy
       cancel-in-progress: false

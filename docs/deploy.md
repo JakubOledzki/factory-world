@@ -135,6 +135,24 @@ i czeka, aż serwer gry odpowie `Healthy`. Dopóki sekrety poniżej nie są usta
 
 Plik `.env` zostaje na serwerze i workflow go nie zmienia.
 
+### Gdy skończą się minuty GitHub Actions
+
+W prywatnym repozytorium GitHub daje ograniczoną pulę minut Actions na miesiąc. Gdy się skończy, joby kończą się
+błędem po kilku sekundach bez logów albo w ogóle się nie uruchamiają, więc obrazy się nie budują i nic nie trafia
+na serwer. Stan minut: *GitHub → Settings → Billing and plans*.
+
+Workflow *Release images* może wtedy działać na własnej maszynie (self-hosted runner), która nie zużywa minut:
+
+1. Na serwerze (albo innym komputerze z Linuxem i Dockerem): *repozytorium → Settings → Actions → Runners →
+   New self-hosted runner → Linux* i wykonaj pokazane polecenia. Uruchom runner jako usługę:
+   `sudo ./svc.sh install && sudo ./svc.sh start`. Użytkownik runnera musi należeć do grupy `docker`, potrzebne są
+   też `curl` i `unzip` (`sudo apt install -y unzip`).
+2. *Settings → Secrets and variables → Actions → Variables → New repository variable*: `RELEASE_RUNNER` = `self-hosted`.
+3. *Actions → Release images → Run workflow*, żeby wdrożyć to, co już jest na `main`.
+
+Usunięcie zmiennej `RELEASE_RUNNER` przywraca maszyny GitHuba. Budowanie na serwerze z 2 vCPU trwa kilka minut
+i na ten czas spowalnia grę.
+
 ### Ręczna aktualizacja i powrót do starszej wersji
 
 Ręcznie wdrożysz najnowszą wersję tak:
