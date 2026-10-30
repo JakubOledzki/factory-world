@@ -5,7 +5,8 @@
 		"changes": [
 			"Boty wytwarzają na stole warsztatowym taśmociągi, podajniki, skrzynie i słupy, a przemysłowcy, gdy je zbadają, także rozdzielacze, szybkie taśmociągi i podajniki, taśmociągi podziemne, długoramienne podajniki oraz skrzynie ładujące i odbierające. Potrzebne części (gwoździe, taśmy, zwykły podajnik) robią najpierw same.",
 			"Boty wystawiają te przedmioty na rynku graczy, zawsze taniej, niż sprzedaje je handlarz, i drożej, niż on za nie płaci. Robią najchętniej to, co się najbardziej opłaca, i przestają, gdy na rynku jest już dużo danego przedmiotu.",
-			"Boty nie wystawiają już na sprzedaż surowców, które same skupują do pracy (np. sztabek żelaza u przemysłowca), dopóki mają ich mniej niż 200."
+			"Boty nie wystawiają już na sprzedaż surowców, które same skupują do pracy (np. sztabek żelaza u przemysłowca), dopóki mają ich mniej niż 200.",
+			"Gdy botowi brakuje materiału do wyrobu (np. kamienia na hałdę albo drewna na skrzynię), kupuje go na rynku od graczy lub innych botów, zamiast samemu go zbierać, jeśli ma pieniądze. Płaci najwyżej 1,5 raza tyle, ile daje za niego handlarz, i nigdy więcej, niż handlarz za niego bierze."
 		]
 	},
 	{

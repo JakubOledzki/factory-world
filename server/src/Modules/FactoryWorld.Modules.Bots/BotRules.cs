@@ -195,6 +195,15 @@ public static class BotRules
     /// <summary>Pieces of an item on the players' market past which bots make no more of it for sale.</summary>
     public static long MarketCap(long floorCents) => Math.Clamp(MarketValueCap / Math.Max(floorCents, 1), 10, 300);
 
+    /// <summary>Crafts of a product the bot buys the missing materials for at once (wood for five chests, say).</summary>
+    public const long ShortfallCrafts = 5;
+
+    /// <summary>
+    /// What a bot pays at most for materials it lacks for its products, times what the trader pays for them (and never more
+    /// than the trader charges): dear enough to buy what players have up, cheap enough that the product still pays.
+    /// </summary>
+    public const double MaterialsMarkup = 1.5;
+
     /// <summary>How far down a product the bot works out which parts to make first (fast inserter, inserter, nails).</summary>
     public const int PartsDepth = 3;
 

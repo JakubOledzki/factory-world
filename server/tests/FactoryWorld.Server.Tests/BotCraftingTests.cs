@@ -108,6 +108,48 @@ public sealed class BotCraftingTests(ServerFactory factory) : IClassFixture<Serv
         Assert.Contains(Items.IronChest, await MadeAsync(bot));
     }
 
+    [Fact]
+    public async Task A_bot_buys_from_players_the_materials_it_lacks_for_its_products()
+    {
+        await Engine.EnsureBotsAsync(CancellationToken.None);
+        var bot = Engine.Bots.First(b => b.Profile.Trade == BotTrade.Forester);
+        await LeadAsync();
+        foreach (var technology in new[] { TechTree.Logistics, TechTree.Storage })
+        {
+            await ResearchAsync(bot, technology);
+        }
+
+        // Wood and nails for its chests and piles, but no stone for heaps.
+        await GiveAsync(bot, (Items.Wood, 400), (Items.Nails, 100));
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(bot.Row.AccountId, 200_00, "test", CancellationToken.None);
+        }
+
+        // A player sells stone dearer than a bot pays for a mere bargain, but for what heaps still pay off at.
+        using var player = await factory.ConnectAsync();
+        await player.RegisterWithCharacterAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IInventory>().AddAsync(player.AccountId, Items.Stone, 200, CancellationToken.None);
+        }
+
+        var floor = (await PricesAsync(bot))[Items.Stone].Pays;
+        var price = floor * 145 / 100;
+        Assert.True(price > floor * 1.3 && price <= floor * BotRules.MaterialsMarkup);
+        Assert.Equal("market.done", (await player.SendAsync("market.list", new { item = Items.Stone, quantity = 200, priceCents = price })).Type());
+
+        for (var i = 0; i < 200; i++)
+        {
+            factory.Time.Advance(TimeSpan.FromMinutes(1));
+            await Engine.StepAsync(bot.Profile.Name, CancellationToken.None);
+        }
+
+        var sold = (await player.SendAsync("market.mine", null)).Payload().GetProperty("listings")[0].GetProperty("done").GetInt64();
+        Assert.True(sold > 0, "The bot bought no stone");
+        Assert.Contains(Items.Heap, await MadeAsync(bot));
+    }
+
     /// <summary>A player far ahead, so that the bots are not held at a low XP cap.</summary>
     private async Task LeadAsync()
     {
