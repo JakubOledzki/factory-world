@@ -1,8 +1,8 @@
 namespace FactoryWorld.Modules.Abstractions;
 
 /// <summary>
-/// What happened in the game since the server started, for <c>/metrics</c>: pieces of each item made and used up, and
-/// money paid in and out by kind of reason, players apart from bots. Counted only once the change is committed.
+/// What happened in the game since the server started, for <c>/metrics</c>: pieces of each item made and used up,
+/// money paid in and out by kind of reason, players apart from bots, and goods traded on the markets. Counted only once the change is committed.
 /// Kept in memory and never reset; Prometheus works out the rates and starts over across a restart.
 /// </summary>
 public sealed class GameCounters(OnlinePlayers online)
@@ -10,6 +10,12 @@ public sealed class GameCounters(OnlinePlayers online)
     private readonly object _lock = new();
     private readonly Dictionary<(string Item, bool Bot), ItemCount> _items = [];
     private readonly Dictionary<(string Reason, bool Bot), MoneyCount> _money = [];
+    private readonly Dictionary<(string Market, string Item), TradeCount> _trades = [];
+
+    /// <summary>The <c>market</c> label of a trade: bought from the trader, sold to the trader, or between players.</summary>
+    public const string TraderBuy = "trader_buy";
+    public const string TraderSell = "trader_sell";
+    public const string Players = "players";
 
     /// <summary>Who did it, as the <c>who</c> label says: <c>bot</c> or <c>player</c>.</summary>
     public static string Who(bool bot) => bot ? "bot" : "player";
@@ -51,6 +57,22 @@ public sealed class GameCounters(OnlinePlayers online)
         }
     }
 
+    /// <summary>Pieces of an item changed hands on a market (<see cref="TraderBuy"/>, <see cref="TraderSell"/>,
+    /// <see cref="Players"/>) for so many cents, before any fee.</summary>
+    public void Trade(string market, string item, long quantity, long cents)
+    {
+        lock (_lock)
+        {
+            if (!_trades.TryGetValue((market, item), out var count))
+            {
+                _trades[(market, item)] = count = new TradeCount();
+            }
+
+            count.Quantity += quantity;
+            count.Cents += cents;
+        }
+    }
+
     public IReadOnlyList<ItemTotal> Items()
     {
         lock (_lock)
@@ -66,6 +88,15 @@ public sealed class GameCounters(OnlinePlayers online)
         {
             return _money.Select(p => new MoneyTotal(p.Key.Reason, p.Key.Bot, p.Value.In, p.Value.Out))
                 .OrderBy(t => t.Reason, StringComparer.Ordinal).ThenBy(t => t.Bot).ToList();
+        }
+    }
+
+    public IReadOnlyList<TradeTotal> Trades()
+    {
+        lock (_lock)
+        {
+            return _trades.Select(p => new TradeTotal(p.Key.Market, p.Key.Item, p.Value.Quantity, p.Value.Cents))
+                .OrderBy(t => t.Market, StringComparer.Ordinal).ThenBy(t => t.Item, StringComparer.Ordinal).ToList();
         }
     }
 
@@ -106,7 +137,15 @@ public sealed class GameCounters(OnlinePlayers online)
         public long Out;
     }
 
+    private sealed class TradeCount
+    {
+        public long Quantity;
+        public long Cents;
+    }
+
     public sealed record ItemTotal(string Item, bool Bot, long Produced, long Consumed);
 
     public sealed record MoneyTotal(string Reason, bool Bot, long InCents, long OutCents);
+
+    public sealed record TradeTotal(string Market, string Item, long Quantity, long Cents);
 }

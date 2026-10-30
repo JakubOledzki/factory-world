@@ -118,6 +118,7 @@ public sealed class ResearchModule : IGameModule
         services.AddScoped<ResearchService>();
         services.AddScoped<ITechnologies>(provider => provider.GetRequiredService<ResearchService>());
         services.AddScoped<ICompanyTechnologies>(provider => provider.GetRequiredService<ResearchService>());
+        services.AddScoped<IGameGauges, ResearchGauges>();
         services.AddSingleton<IMessageHandler, GetResearchHandler>();
         services.AddSingleton<IMessageHandler, StartResearchHandler>();
         services.AddSingleton<IMessageHandler, CancelResearchHandler>();
