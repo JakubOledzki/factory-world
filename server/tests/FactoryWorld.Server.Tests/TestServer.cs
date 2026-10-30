@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Time.Testing;
 using Npgsql;
 
@@ -25,8 +26,25 @@ public class ServerFactory : WebApplicationFactory<Program>
 
     private readonly string _database = $"fw_test_{Guid.NewGuid():N}";
 
-    /// <summary>The server's clock; tests move it forward instead of waiting.</summary>
-    public FakeTimeProvider Time { get; } = new(DateTimeOffset.UtcNow);
+    /// <summary>The server's clock; tests move it forward instead of waiting. It starts at <see cref="Start"/>, not at the real time,
+    /// so the weather over the fields and the holidays are the same on every run.</summary>
+    public FakeTimeProvider Time { get; } = new(Start);
+
+    /// <summary>A summer noon (no holiday) with at least <see cref="ClearFields"/> of clear weather over the fields ahead, so
+    /// crops grow for their own time unless a test moves the clock into the rain or a drought.</summary>
+    public static readonly DateTimeOffset Start = ClearFrom(new DateTimeOffset(2026, 6, 1, 12, 0, 0, TimeSpan.Zero));
+
+    public static readonly TimeSpan ClearFields = TimeSpan.FromHours(6);
+
+    private static DateTimeOffset ClearFrom(DateTimeOffset at)
+    {
+        while (FieldWeather.Next(at) is var (start, end, _) && start - at < ClearFields)
+        {
+            at = end;
+        }
+
+        return at;
+    }
 
     /// <summary>Whether the trader's prices drift and its events run; off, tests can count on the usual prices.</summary>
     protected virtual bool PriceChanges => false;
@@ -40,6 +58,12 @@ public class ServerFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Game",
             new NpgsqlConnectionStringBuilder(_admin) { Database = _database }.ConnectionString);
         builder.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(Time));
+        // Every test starts on an empty database, where EF Core logs a failed query for each module's missing migrations
+        // table; those lines buried the names of failing tests in the CI log.
+        builder.ConfigureLogging(logging => logging
+            .AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.None)
+            .AddFilter("Microsoft.EntityFrameworkCore.Database.Connection", LogLevel.None)
+            .AddFilter("FactoryWorld.Server.MessageDispatcher", LogLevel.Warning));
     }
 
     public override async ValueTask DisposeAsync()
