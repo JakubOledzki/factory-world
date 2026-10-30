@@ -11,6 +11,9 @@ Output: server/src/Modules/FactoryWorld.Modules.World/Data/cities.tsv.gz, gzip o
 - the number of towns N on the first line;
 - N lines "column, row, population, name" (tab-separated), largest first; a town's index is its line;
 - one line "column, row, town index" for every city plot that has a town.
+
+and client/world/cities.bin.gz for the map's county borders, gzip of "FWT1", u16 width, u16 height,
+u32 count (little endian), then count times u16 column, u16 row, u16 town index: the same city plots.
 """
 import gzip
 import struct
@@ -74,6 +77,14 @@ def main() -> None:
     path = ROOT / "server/src/Modules/FactoryWorld.Modules.World/Data/cities.tsv.gz"
     path.write_bytes(data)
     print("Wrote", path.relative_to(ROOT), f"({len(used):,} towns, {len(owner):,} of {len(plots):,} city plots, {len(data) / 1e6:.2f} MB)")
+
+    ordered = sorted(owner.items(), key=lambda p: (p[0][1], p[0][0]))
+    binary = b"FWT1" + struct.pack("<HHI", width, height, len(ordered))
+    binary += b"".join(struct.pack("<HHH", x, y, renumber[t]) for (x, y), t in ordered)
+    data = gzip.compress(binary, compresslevel=9, mtime=0)
+    path = ROOT / "client/world/cities.bin.gz"
+    path.write_bytes(data)
+    print("Wrote", path.relative_to(ROOT), f"({len(data) / 1e6:.2f} MB)")
 
 
 if __name__ == "__main__":

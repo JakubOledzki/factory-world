@@ -1,6 +1,13 @@
 [
 	{
 		"date": "2026-10-30",
+		"title": "Granice powiatów na mapie świata",
+		"changes": [
+			"Mapa świata pokazuje granice powiatów: cienka linia otacza działki miejskie należące do jednego miasta i oddziela sąsiednie miasta. Jest cieńsza od granic państw i pojawia się po przybliżeniu mapy."
+		]
+	},
+	{
+		"date": "2026-10-30",
 		"title": "Boty robią sprzęt logistyczny na sprzedaż",
 		"changes": [
 			"Boty wytwarzają na stole warsztatowym taśmociągi, podajniki, skrzynie i słupy, a przemysłowcy, gdy je zbadają, także rozdzielacze, szybkie taśmociągi i podajniki, taśmociągi podziemne, długoramienne podajniki oraz skrzynie ładujące i odbierające. Potrzebne części (gwoździe, taśmy, zwykły podajnik) robią najpierw same.",
