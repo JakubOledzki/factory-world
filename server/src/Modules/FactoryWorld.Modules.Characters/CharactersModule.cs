@@ -19,6 +19,7 @@ public sealed class CharactersModule : IGameModule
         services.AddScoped<ICharacterLooks, CharacterLooks>();
         services.AddScoped<ICharacterXp, CharacterXp>();
         services.AddScoped<IPlayerRanking, LevelRanking>();
+        services.AddScoped<IGameGauges, CharacterGauges>();
         services.AddScoped<Equipment>();
         services.AddScoped<IEquipment>(provider => provider.GetRequiredService<Equipment>());
         services.AddScoped<InventorySize>();

@@ -178,6 +178,7 @@ public sealed class WalletModule : IGameModule
         services.AddScoped<IWallet, WalletService>();
         services.AddScoped<IMoneyHistory, MoneyHistory>();
         services.AddScoped<IPlayerRanking, WalletRanking>();
+        services.AddScoped<IGameGauges, WalletGauges>();
         services.AddSingleton<IMessageHandler, GetWalletHandler>();
     }
 

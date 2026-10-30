@@ -8,12 +8,14 @@ namespace FactoryWorld.Server;
 /// <summary>
 /// <c>/metrics</c> in the Prometheus text format, for Grafana Alloy (deploy/alloy) to scrape: how many messages of
 /// each kind the server answered and how long they took, who is online, what the factories made and where money went
-/// (<see cref="GameCounters"/>) and what the process uses. Only containers in the compose network reach it; Caddy
+/// and traded (<see cref="GameCounters"/>), the state of the game the modules report (<see cref="GaugeReadings"/>) and
+/// what the process uses. Only containers in the compose network reach it; Caddy
 /// forwards just <c>/ws</c> and <c>/health</c> to the internet.
 /// </summary>
 public static class MetricsEndpoint
 {
-    public static IResult Handle(ServerLoad load, OnlinePlayers online, GameCounters counters)
+    public static async Task<IResult> HandleAsync(
+        ServerLoad load, OnlinePlayers online, GameCounters counters, GaugeReadings gauges, CancellationToken cancellationToken)
     {
         var text = new StringBuilder();
 
@@ -67,6 +69,35 @@ public static class MetricsEndpoint
             Labelled(text, "factoryworld_money_out_cents_total", total.Reason, total.Bot, "reason", total.OutCents);
         }
 
+        var trades = counters.Trades();
+        Header(text, "factoryworld_trade_pieces_total", "counter",
+            "Pieces of an item traded: bought from the trader (market trader_buy), sold to it (trader_sell) or between players.");
+        foreach (var trade in trades)
+        {
+            Trade(text, "factoryworld_trade_pieces_total", trade, trade.Quantity);
+        }
+
+        Header(text, "factoryworld_trade_cents_total", "counter", "Cents paid for those pieces, before the market's fee.");
+        foreach (var trade in trades)
+        {
+            Trade(text, "factoryworld_trade_cents_total", trade, trade.Cents);
+        }
+
+        foreach (var gauge in (await gauges.ReadAsync(cancellationToken)).GroupBy(g => g.Name))
+        {
+            Header(text, gauge.Key, "gauge", gauge.First().Help);
+            foreach (var sample in gauge.SelectMany(g => g.Samples))
+            {
+                text.Append(gauge.Key);
+                if (sample.Labels.Count > 0)
+                {
+                    text.Append('{').AppendJoin(',', sample.Labels.Select(l => $"{l.Key}=\"{Escape(l.Value)}\"")).Append('}');
+                }
+
+                text.Append(' ').Append(Number(sample.Value)).Append('\n');
+            }
+        }
+
         using var process = Process.GetCurrentProcess();
         Header(text, "process_cpu_seconds_total", "counter", "Processor time used by the server.");
         text.Append("process_cpu_seconds_total ").Append(Number(process.TotalProcessorTime.TotalSeconds)).Append('\n');
@@ -86,6 +117,10 @@ public static class MetricsEndpoint
     private static void Labelled(StringBuilder text, string name, string value, bool bot, string label, long count) =>
         text.Append(name).Append('{').Append(label).Append("=\"").Append(Escape(value)).Append("\",who=\"")
             .Append(GameCounters.Who(bot)).Append("\"} ").Append(count).Append('\n');
+
+    private static void Trade(StringBuilder text, string name, GameCounters.TradeTotal trade, long count) =>
+        text.Append(name).Append("{market=\"").Append(trade.Market).Append("\",item=\"").Append(Escape(trade.Item)).Append("\"} ")
+            .Append(count).Append('\n');
 
     private static void Gauge(StringBuilder text, string name, string help, long value)
     {
