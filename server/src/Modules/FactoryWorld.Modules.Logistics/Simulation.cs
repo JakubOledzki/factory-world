@@ -122,7 +122,8 @@ public static class LogisticsRules
 
     /// <summary>Ticks of work done in one catch-up without a pause: 30 minutes. Machinery that keeps busy for longer
     /// while nobody looks (e.g. items going round a loop of belts) rests for the rest of the time; machinery that
-    /// pauses now and then (e.g. an inserter waiting for room by a generator's fire) works on for as long as it takes.</summary>
+    /// pauses now and then (e.g. an inserter waiting for room by a generator's fire), or that something is taken out
+    /// of a machine for now and then (e.g. wood out of a forester), works on for as long as it takes.</summary>
     public const int MaxTicks = 9000;
 
     /// <summary>The tile a rotation faces, as (dx, dy): 0 south, 1 east, 2 north, 3 west.</summary>
@@ -347,7 +348,8 @@ public sealed class PlotLogistics
     }
 
     /// <summary>A machine or a storage that counts what goes in and comes out, so an inserter can tell nothing has.</summary>
-    private sealed class Tracked(IMachinePort port) : IMachinePort
+    /// <param name="made">Called when something is taken out of a machine (not a storage): what it made goes on.</param>
+    private sealed class Tracked(IMachinePort port, Action? made) : IMachinePort
     {
         public int Version { get; private set; }
 
@@ -357,6 +359,7 @@ public sealed class PlotLogistics
         {
             port.Take(item, now);
             Version++;
+            made?.Invoke();
         }
 
         public bool Accepts(string item, DateTimeOffset now) => port.Accepts(item, now);
@@ -425,6 +428,9 @@ public sealed class PlotLogistics
 
     /// <summary>Ticks drones flew in: they change storages without going through their ports.</summary>
     private int _flights;
+
+    /// <summary>Pieces taken out of machines so far: machinery they keep busy is doing real work, not going round in circles.</summary>
+    private int _made;
     private static readonly StorageKind DroneStorage = Storages.Find(Items.DronePort)!;
 
     /// <summary>Turns belts take in a tick: as many as the fastest one moves places.</summary>
@@ -534,7 +540,7 @@ public sealed class PlotLogistics
             Downstream(start, seen);
         }
 
-        var tracked = ports.Values.Distinct().ToDictionary(p => p, p => new Tracked(p));
+        var tracked = ports.Values.Distinct().ToDictionary(p => p, p => new Tracked(p, p is StoragePort ? null : () => _made++));
         foreach (var o in objects.Where(o => Items.IsInserter(o.Kind)).OrderBy(o => o.TileY).ThenBy(o => o.TileX))
         {
             var (dx, dy) = LogisticsRules.Facing(o.Rotation);
@@ -688,9 +694,15 @@ public sealed class PlotLogistics
         while (t < last)
         {
             t += tick;
+            var made = _made;
             if (Step(t))
             {
-                if (++worked >= LogisticsRules.MaxTicks)
+                // A machine that keeps making things (a forester, a drill) keeps its line busy for as long as it works.
+                if (_made != made)
+                {
+                    worked = 0;
+                }
+                else if (++worked >= LogisticsRules.MaxTicks)
                 {
                     return last;
                 }

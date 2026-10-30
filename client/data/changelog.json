@@ -1,6 +1,13 @@
 [
 	{
 		"date": "2026-10-30",
+		"title": "Leśniczówki pracują, gdy cię nie ma",
+		"changes": [
+			"Chaty leśnika, leśniczówki i stacje leśne, z których podajnik wynosi drewno na długi taśmociąg, nie stają już po pół godzinie twojej nieobecności. Po powrocie w skrzyni jest tyle drewna, ile byłoby, gdybyś cały czas grał. To samo dotyczy każdej linii, którą ciągle zasila pracująca maszyna."
+		]
+	},
+	{
+		"date": "2026-10-30",
 		"title": "Zwarta zakładka Wybory",
 		"changes": [
 			"Na mapie, w oknie państwa, zakładka Wybory nie rozciąga się już w dół: każdy kandydat ma swoją kartę z głosami, procentem, programem i wsparciem spółek w dwóch, trzech wierszach, a przycisk Głosuj stoi obok nazwiska.",
