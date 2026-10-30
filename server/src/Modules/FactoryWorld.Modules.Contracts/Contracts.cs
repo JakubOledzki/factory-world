@@ -104,8 +104,11 @@ public static class ContractRules
     /// <summary>NPC orders every player has at a time.</summary>
     public const int NpcSlots = 3;
 
-    /// <summary>After an NPC order is finished or given up, the next one comes this much later.</summary>
+    /// <summary>After an NPC order is finished, the next one comes this much later.</summary>
     public static readonly TimeSpan NpcRefill = TimeSpan.FromMinutes(5);
+
+    /// <summary>After an NPC order is given up, the next one comes this much later: giving up is no quick way to draw better orders.</summary>
+    public static readonly TimeSpan NpcRefillAbandoned = TimeSpan.FromMinutes(30);
 
     /// <summary>Open orders one player may give at once.</summary>
     public const int MaxIssued = 10;
@@ -335,7 +338,7 @@ public sealed class ContractService(
             {
                 var now = time.GetUtcNow();
                 await CloseAsync(contract, ContractOutcome.Abandoned, now, cancellationToken);
-                await ReplaceNpcAsync(player, contract.ItemId, now + ContractRules.NpcRefill, cancellationToken);
+                await ReplaceNpcAsync(player, contract.ItemId, now + ContractRules.NpcRefillAbandoned, cancellationToken);
             }
             else
             {

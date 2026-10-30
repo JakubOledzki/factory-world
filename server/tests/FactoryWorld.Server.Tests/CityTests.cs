@@ -53,6 +53,9 @@ public sealed class CityTests(ServerFactory factory) : IClassFixture<ServerFacto
         Assert.Equal(1, CityRules.Accepts(100, 100));
         Assert.Equal(0.5, CityRules.Accepts(200, 100), 6);
         Assert.Equal(0, CityRules.Accepts(300, 100));
+        // Never at what the trader himself asks at his cheapest.
+        Assert.Equal(0, CityRules.Accepts(150, 100, 150));
+        Assert.Equal(0.8, CityRules.Accepts(140, 100, 150), 6);
 
         Assert.True(CityRules.InBuildArea(PlotLayout.Spawn.X - 30, 59));
         Assert.False(CityRules.InBuildArea(PlotLayout.Spawn.X + 31, 20));
@@ -295,7 +298,14 @@ public sealed class CityTests(ServerFactory factory) : IClassFixture<ServerFacto
         Assert.Equal(Items.Blueprint, bought.GetProperty("item").GetString());
         Assert.Equal(1, (await neighbour.InventoryAsync())[Items.Blueprint]);
         Assert.Equal(neighbourBefore - 30_00, await neighbour.BalanceAsync());
-        Assert.Equal(ownerBefore + 30_00, await owner.BalanceAsync());
+        Assert.Equal(ownerBefore + 30_00 * CityRules.ServiceOwnerPercent / 100, await owner.BalanceAsync());
+
+        // What the owner gets back is worth less than what the trader pays for the goods, so buying from one's own office
+        // through a second account only loses money.
+        foreach (var (_, (item, quantity, price)) in CityRules.Services)
+        {
+            Assert.True(price * CityRules.ServiceOwnerPercent / 100 < quantity * NpcPrices.Buys.GetValueOrDefault(item, price), item);
+        }
 
         // Both own a plot in the town, so both vote; the mayor rules the week after.
         var ownerName = await NameAsync(owner);
@@ -360,5 +370,25 @@ public sealed class CityTests(ServerFactory factory) : IClassFixture<ServerFacto
         Assert.Equal(30, hq.GetProperty("maxMembers").GetInt32());
         Assert.True(hq.GetProperty("company").GetProperty("hq").GetBoolean());
         Assert.Equal(150_000, hq.GetProperty("company").GetProperty("warehouse").GetProperty("capacity").GetInt64());
+    }
+
+    [Fact]
+    public async Task Townspeople_do_not_pay_for_goods_what_the_trader_asks_for_them_so_buying_from_him_to_sell_in_a_shop_never_pays()
+    {
+        using var client = await PlayerAsync();
+        var (plot, _, _) = TownPlots();
+        await BuyAsync(client, plot.X, plot.Y);
+        await GiveAsync(client, Items.Shop, 1);
+        var item = Items.SortingMachine;
+        await GiveAsync(client, item, 100);
+        var shop = await PlaceAsync(client, plot.X, plot.Y, Items.Shop, PlotLayout.Spawn.X + 5, 30);
+        var cheapest = new MarketPrices().CheapestSellsCents(item)!.Value;
+        Assert.True(cheapest < NpcPrices.Sells[item]);
+        Assert.True(cheapest < 3 * NpcPrices.Buys[item]);
+
+        var stocked = await client.SendAsync("shop.stock", new { id = shop, item, quantity = 100, priceCents = cheapest });
+        Assert.Equal(0, stocked.Payload().GetProperty("items")[0].GetProperty("buyPercent").GetInt32());
+        factory.Time.Advance(TimeSpan.FromHours(10));
+        Assert.Equal(0, (await client.SendAsync("shop.get", new { id = shop })).Payload().GetProperty("soldItems").GetInt64());
     }
 }

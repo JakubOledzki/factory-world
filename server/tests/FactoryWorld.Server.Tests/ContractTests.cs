@@ -1,5 +1,7 @@
 using System.Text.Json;
 using FactoryWorld.Modules.Abstractions.Contracts;
+using FactoryWorld.Modules.Contracts;
+using FactoryWorld.Modules.Market;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FactoryWorld.Server.Tests;
@@ -7,6 +9,17 @@ namespace FactoryWorld.Server.Tests;
 /// <summary>Orders with a reward and a deadline, from NPC companies and between players.</summary>
 public sealed class ContractTests(ServerFactory factory) : IClassFixture<ServerFactory>
 {
+    [Fact]
+    public void An_npc_order_never_pays_more_than_the_trader_charges_for_the_goods_even_in_a_sale()
+    {
+        foreach (var template in NpcContracts.Templates.Where(t => NpcPrices.Sells.ContainsKey(t.Item)))
+        {
+            var cheapest = MarketEvents.Events.Select(e => e.Charges.GetValueOrDefault(template.Item)).Append(0)
+                .Min(percent => NpcPrices.Sells[template.Item] * (100 + percent) / 100);
+            Assert.True(template.CentsPerPiece < cheapest, $"{template.Item}: {template.CentsPerPiece} >= {cheapest}");
+        }
+    }
+
     private async Task<GameClient> PlayerAsync(long cents = 0, string? item = null, long quantity = 0)
     {
         var client = await factory.ConnectAsync();
@@ -119,6 +132,12 @@ public sealed class ContractTests(ServerFactory factory) : IClassFixture<ServerF
         Assert.Equal(2, List(view, "npc").Count);
         Assert.NotEqual(JsonValueKind.Null, view.GetProperty("nextNpcAt").ValueKind);
         Assert.Equal("no_contract", (await player.SendAsync("contracts.deliver", new { id = Id(order), quantity = 1 })).ErrorCode());
+
+        // Giving up is no quick way to draw a better order: the next one takes longer than after a delivery.
+        factory.Time.Advance(ContractRules.NpcRefill);
+        Assert.Equal(2, List(await ViewAsync(player), "npc").Count);
+        factory.Time.Advance(ContractRules.NpcRefillAbandoned - ContractRules.NpcRefill);
+        Assert.Equal(3, List(await ViewAsync(player), "npc").Count);
     }
 
     [Fact]

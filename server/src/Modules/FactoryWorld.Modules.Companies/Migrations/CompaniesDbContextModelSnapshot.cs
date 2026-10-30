@@ -45,6 +45,10 @@ namespace FactoryWorld.Modules.Companies.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("owner_id");
 
+                    b.Property<long>("Shares")
+                        .HasColumnType("bigint")
+                        .HasColumnName("shares");
+
                     b.HasKey("X", "Y");
 
                     b.HasIndex("CompanyId");

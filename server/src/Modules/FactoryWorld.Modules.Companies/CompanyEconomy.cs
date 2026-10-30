@@ -79,6 +79,7 @@ public sealed partial class CompanyService : ICompanyCash
         {
             CheckCents(cents);
             var company = await RequireMoneyAsync(player, cancellationToken);
+            await RequireNoOutsideShareholdersAsync(company, cancellationToken);
             await ChangeMoneyAsync(company, -cents, 0, cancellationToken);
             await wallet.CreditAsync(player, cents, $"company {company} withdrawal", cancellationToken);
             await LogAsync(company, player, "withdraw", cancellationToken, quantity: cents);
@@ -92,6 +93,7 @@ public sealed partial class CompanyService : ICompanyCash
         {
             CheckCents(cents);
             var company = await RequireMoneyAsync(player, cancellationToken);
+            await RequireNoOutsideShareholdersAsync(company, cancellationToken);
             await ChangeMoneyAsync(company, -cents, 0, cancellationToken);
             await LogAsync(company, player, "lobby", cancellationToken, reason.Length > 64 ? reason[..64] : reason, cents);
             await using var command = await db.CommandAsync("SELECT name FROM companies.companies WHERE id = @company", cancellationToken);
@@ -932,14 +934,16 @@ public sealed partial class CompanyService : ICompanyCash
                 {
                     await ChangeStockAsync(deal.Supplier, deal.Item, -deal.PerDay, cancellationToken);
                     await ChangeStockAsync(deal.Buyer, deal.Item, deal.PerDay, cancellationToken);
-                    await ChangeMoneyAsync(deal.Buyer, -deal.Price, -deal.Price, cancellationToken);
-                    await ChangeMoneyAsync(deal.Supplier, deal.Price, deal.Price, cancellationToken);
+                    // Money between companies is not earnings: two companies of one person dealing in a circle would win seasons
+                    // and pump their share price out of nothing.
+                    await ChangeMoneyAsync(deal.Buyer, -deal.Price, 0, cancellationToken);
+                    await ChangeMoneyAsync(deal.Supplier, deal.Price, 0, cancellationToken);
                 }
                 else
                 {
                     var penalty = Math.Min(await CashAsync(deal.Supplier, cancellationToken), deal.Price * Deals.MissPenaltyPercent / 100);
-                    await ChangeMoneyAsync(deal.Supplier, -penalty, -penalty, cancellationToken);
-                    await ChangeMoneyAsync(deal.Buyer, penalty, penalty, cancellationToken);
+                    await ChangeMoneyAsync(deal.Supplier, -penalty, 0, cancellationToken);
+                    await ChangeMoneyAsync(deal.Buyer, penalty, 0, cancellationToken);
                     await LogAsync(deal.Supplier, Guid.Empty, "dealMissed", cancellationToken, deal.Item, penalty);
                     missed++;
                 }
@@ -1191,6 +1195,22 @@ public sealed partial class CompanyService : ICompanyCash
 
         await SettleAsync(company, cancellationToken);
         return company;
+    }
+
+    /// <summary>Money leaves the cash for a member's own ends only while all shareholders are members: investors from the exchange,
+    /// and members who left, are paid by dividends and buybacks, never emptied out by the owner.</summary>
+    private async Task RequireNoOutsideShareholdersAsync(Guid company, CancellationToken cancellationToken)
+    {
+        if (await CountAsync(
+                """
+                SELECT count(*) FROM companies.shares s
+                WHERE s.company_id = @company AND s.shares > 0
+                  AND NOT EXISTS (SELECT 1 FROM companies.members m WHERE m.company_id = s.company_id AND m.account_id = s.account_id)
+                """, company, cancellationToken) > 0)
+        {
+            throw new GameException("outside_shareholders",
+                "Shareholders outside the company own part of the cash: it goes out to them as dividends, not to members.");
+        }
     }
 
     private async Task<Guid> RequireLeadAsync(Guid player, CancellationToken cancellationToken)

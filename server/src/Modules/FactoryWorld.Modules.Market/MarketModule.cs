@@ -557,6 +557,10 @@ public sealed class MarketPrices : IMarketPrices
     public long? BuysCents(string item) => NpcPrices.Buys.TryGetValue(item, out var cents) ? cents : null;
 
     public long? SellsCents(string item) => NpcPrices.Sells.TryGetValue(item, out var cents) ? cents : null;
+
+    public long? CheapestSellsCents(string item) => NpcPrices.Sells.TryGetValue(item, out var cents)
+        ? MarketEvents.Events.Select(e => e.Charges.GetValueOrDefault(item)).Append(0).Min(percent => cents * (100 + percent) / 100)
+        : null;
 }
 
 public sealed record TradeRequest(string Item, int Quantity);
@@ -593,7 +597,8 @@ public sealed class MarketService(
     /// <summary>The player sells to the NPC: items out, money in, both or neither.</summary>
     public Task<Traded> SellAsync(Guid owner, string item, int quantity, CancellationToken cancellationToken)
     {
-        var price = Price(trader.Prices().Buys, item, quantity, "The trader doesn't buy this item.");
+        var prices = trader.Prices();
+        var price = Price(prices.Buys, item, quantity, "The trader doesn't buy this item.");
         return db.InTransactionAsync(async () =>
         {
             await inventory.RemoveAsync(owner, item, quantity, cancellationToken);
@@ -605,6 +610,11 @@ public sealed class MarketService(
 
             // A suit makes the trader pay a few percent more.
             price = price * (100 + await outfit.BonusAsync(owner, Industries.Trade, cancellationToken)) / 100;
+            // With every bonus the trader still pays less than he charges, or buying from him to sell back would pay.
+            if (prices.Sells.TryGetValue(item, out var charge))
+            {
+                price = Math.Min(price, charge * MarketEvents.MaxPayOfCharge / 100);
+            }
 
             return new Traded(await wallet.CreditAsync(owner, price * quantity, $"sell {quantity} {item}", cancellationToken));
         }, cancellationToken);

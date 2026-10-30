@@ -48,6 +48,35 @@ namespace FactoryWorld.Modules.Research.Migrations
                     b.ToTable("company_contributions", "research");
                 });
 
+            modelBuilder.Entity("FactoryWorld.Modules.Research.CompanyContributorRow", b =>
+                {
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("company_id");
+
+                    b.Property<string>("Technology")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("technology");
+
+                    b.Property<Guid>("AccountId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("account_id");
+
+                    b.Property<string>("Item")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("item");
+
+                    b.Property<long>("Delivered")
+                        .HasColumnType("bigint")
+                        .HasColumnName("delivered");
+
+                    b.HasKey("CompanyId", "Technology", "AccountId", "Item");
+
+                    b.ToTable("company_contributors", "research");
+                });
+
             modelBuilder.Entity("FactoryWorld.Modules.Research.CompanyResearchRow", b =>
                 {
                     b.Property<Guid>("CompanyId")

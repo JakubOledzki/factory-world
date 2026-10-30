@@ -14,7 +14,8 @@ public sealed class Underworld(
     LawData data, ICountries countries, IWallet wallet, IInventory inventory, IMarketPrices prices, ICharacterXp xp, ICharacterNames names,
     IForestCertificate certificate) : ILawWatch
 {
-    /// <summary>What the fence pays for one piece: more than the trader, less than the trader asks; null when he does not take it.</summary>
+    /// <summary>What the fence pays for one piece: more than the trader, but at most 90% of what the trader asks even in his
+    /// cheapest sale, so goods bought from him never sell to the fence at a profit; null when he does not take it.</summary>
     public long? FencePrice(string item, IReadOnlySet<string> banned)
     {
         if (!LawRules.AlwaysContraband.Contains(item) && !banned.Contains(item) || prices.BuysCents(item) is not { } buys)
@@ -23,7 +24,7 @@ public sealed class Underworld(
         }
 
         var price = buys * LawRules.FencePercent / 100;
-        return prices.SellsCents(item) is { } sells ? Math.Min(price, sells - 1) : price;
+        return prices.CheapestSellsCents(item) is { } cheapest ? Math.Min(price, cheapest * 90 / 100) : price;
     }
 
     /// <summary>The goods the player's own country bans, which the fence takes too.</summary>
