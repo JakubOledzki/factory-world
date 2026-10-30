@@ -1703,6 +1703,7 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<PlotObjectsQuery>();
         services.AddScoped<IPlotObjects>(sp => sp.GetRequiredService<PlotObjectsQuery>());
         services.AddScoped<IPlotRegistry, PlotRegistry>();
+        services.AddScoped<IGameGauges, PlotGauges>();
         services.AddSingleton<IMessageHandler, InfoHandler>();
         services.AddSingleton<IMessageHandler, AreaHandler>();
         services.AddSingleton<IMessageHandler, GetPlotHandler>();

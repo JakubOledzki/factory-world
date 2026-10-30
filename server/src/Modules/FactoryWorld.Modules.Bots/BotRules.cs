@@ -76,6 +76,9 @@ public static class BotRules
     /// </summary>
     public const long MaxTraderIncome = 100_00;
 
+    /// <summary>The most a bot gets from the trader for a stack it sells off to free a tile of a full inventory.</summary>
+    public const long RoomFor = 5_00;
+
     /// <summary>With this many pieces to sell piling up, a bot gathers less and works its line and the market more.</summary>
     public const long Glut = 600;
 
@@ -151,10 +154,14 @@ public static class BotRules
     /// </summary>
     public static string[] Builds(BotTrade trade, int biome) => (trade, biome) switch
     {
-        (BotTrade.Forester, Biomes.Forest) => [Items.Workbench, Items.WoodPile, Items.WoodPile, Items.WoodenChest],
-        (BotTrade.Miner, Biomes.Mountains) => [Items.Furnace, Items.Furnace, Items.Heap, Items.WoodenChest],
-        (BotTrade.Industrialist, Biomes.Mountains) => [Items.Furnace, Items.Furnace, Items.Anvil, Items.IronChest],
-        (BotTrade.Farmer, Biomes.Farmland) => [Items.Workbench, Items.Mill, Items.WoodenChest, Items.GrainSilo],
+        (BotTrade.Forester, Biomes.Forest) =>
+            [Items.Workbench, Items.WoodPile, Items.WoodPile, Items.WoodenChest, Items.CharcoalKiln, Items.Carpentry, Items.TarKiln],
+        (BotTrade.Miner, Biomes.Mountains) => [Items.Furnace, Items.Furnace, Items.Heap, Items.WoodenChest, Items.Stonemason],
+        (BotTrade.Industrialist, Biomes.Mountains) =>
+            [Items.Furnace, Items.Furnace, Items.Anvil, Items.IronChest, Items.Foundry, Items.Glassworks, Items.Stonemason],
+        (BotTrade.Farmer, Biomes.Farmland) =>
+            [Items.Workbench, Items.Mill, Items.WoodenChest, Items.GrainSilo, Items.PicklingBarrel, Items.Bakery, Items.Kitchen, Items.Smokehouse],
+        (BotTrade.Smelter, Biomes.Mountains or Biomes.Forest) => [Items.WoodenChest, Items.Foundry, Items.Glassworks],
         (_, Biomes.Forest) => [Items.WoodPile, Items.WoodenChest],
         _ => [Items.WoodenChest],
     };
@@ -195,17 +202,51 @@ public static class BotRules
     /// <summary>Pieces of an item on the players' market past which bots make no more of it for sale.</summary>
     public static long MarketCap(long floorCents) => Math.Clamp(MarketValueCap / Math.Max(floorCents, 1), 10, 300);
 
+    /// <summary>
+    /// Machines on its plot the bot keeps working, like a player's workshop: it sets each to whatever pays best of what it has
+    /// the ingredients for, fills it, keeps the fire going and takes the products out for the market (bread, sauerkraut and
+    /// meals, smoked fish, charcoal, furniture and tar, stone blocks, glass, steel, bronze and bricks). Machines on power it
+    /// leaves alone: the bot's generator powers only its line.
+    /// </summary>
+    public static readonly IReadOnlySet<string> Workshops = new HashSet<string>
+    {
+        Items.PicklingBarrel, Items.Bakery, Items.Kitchen, Items.Smokehouse, Items.CharcoalKiln, Items.Carpentry, Items.TarKiln,
+        Items.Stonemason, Items.Foundry, Items.Glassworks,
+    };
+
+    /// <summary>How often a bot looks after one machine of its workshop.</summary>
+    public static readonly TimeSpan WorkshopEvery = TimeSpan.FromMinutes(3);
+
+    /// <summary>With this many of a machine's product unsold, the bot stops filling the machine until they sell.</summary>
+    public const long WorkshopStock = 80;
+
+    /// <summary>Batches of a machine's recipe the bot loads, and buys the missing ingredients for, at once.</summary>
+    public const long WorkshopBatches = 5;
+
+    /// <summary>Crafts of a product the bot buys the missing materials for at once (wood for five chests, say).</summary>
+    public const long ShortfallCrafts = 5;
+
+    /// <summary>
+    /// What a bot pays at most for materials it lacks for its products, times what the trader pays for them (and never more
+    /// than the trader charges): dear enough to buy what players have up, cheap enough that the product still pays.
+    /// </summary>
+    public const double MaterialsMarkup = 1.5;
+
     /// <summary>How far down a product the bot works out which parts to make first (fast inserter, inserter, nails).</summary>
     public const int PartsDepth = 3;
 
     /// <summary>Technologies the bot researches, in order, when it can pay for them; the line needs the first ones.</summary>
     public static string[] Research(BotTrade trade) => trade switch
     {
-        BotTrade.Forester => ["logistics", "automation", "forestry_industry", "storage"],
-        BotTrade.Miner => ["logistics", "automation", "storage"],
-        BotTrade.Smelter => ["logistics", "automation", "storage"],
-        BotTrade.Industrialist => ["logistics", "automation", "storage", "sorting", "fast_logistics", "underground_belts", "rail_freight", "long_inserters"],
-        BotTrade.Farmer => ["milling", "logistics", "automation"],
+        BotTrade.Forester => ["logistics", "automation", "forestry_industry", "storage", "charring", "furniture"],
+        BotTrade.Miner => ["logistics", "automation", "storage", "stonemasonry"],
+        BotTrade.Smelter => ["logistics", "automation", "storage", "metallurgy", "glassmaking"],
+        BotTrade.Industrialist =>
+        [
+            "logistics", "automation", "storage", "sorting", "fast_logistics", "underground_belts", "rail_freight", "long_inserters",
+            "metallurgy", "glassmaking", "stonemasonry",
+        ],
+        BotTrade.Farmer => ["milling", "logistics", "automation", "pickling", "baking", "oil_pressing", "cooking", "fishing"],
         _ => [],
     };
 

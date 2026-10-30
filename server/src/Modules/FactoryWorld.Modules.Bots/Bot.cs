@@ -109,6 +109,16 @@ public sealed class Bot(
     private DateTimeOffset _contractsAt;
     private Dictionary<string, long> _needs = new(StringComparer.Ordinal);
     private Dictionary<string, long> _reserved = new(StringComparer.Ordinal);
+    private Dictionary<string, long> _shortfalls = new(StringComparer.Ordinal);
+
+    /// <summary>When the bot next looks after each machine of its workshop.</summary>
+    private readonly Dictionary<Guid, DateTimeOffset> _workshopAt = [];
+
+    /// <summary>What each machine of its workshop is short of for a few batches of what it is set to, to buy.</summary>
+    private readonly Dictionary<Guid, Dictionary<string, long>> _workshopNeeds = [];
+
+    /// <summary>What its workshop makes, to sell like its workbench products.</summary>
+    private readonly HashSet<string> _workshopGoods = new(StringComparer.Ordinal);
 
     private readonly Dictionary<string, long> _inventory = new(StringComparer.Ordinal);
     private readonly List<BotPlot> _plots = [];
@@ -259,6 +269,7 @@ public sealed class Bot(
         void Add(int weight, string name, Func<CancellationToken, Task<bool>> run) => list.Add((weight, name, run));
         _needs = Needs();
         _reserved = Reserved();
+        _shortfalls = Shortfalls();
         var toSell = Surplus().Sum(s => s.Quantity);
         var traderPays = _traderIncome < BotRules.MaxTraderIncome;
 
@@ -340,6 +351,10 @@ public sealed class Bot(
                 {
                     Add(ore is not null && Have(Items.Coal) >= 1 ? 6 : 2, "plot furnace", ct => FurnaceAsync(id, world, ct));
                 }
+                else if (BotRules.Workshops.Contains(kind) && id != _site?.Machine && _workshopAt.GetValueOrDefault(id) <= world.Now)
+                {
+                    Add(7, "workshop", ct => WorkshopAsync(id, world, ct));
+                }
             }
 
             if (plot.Biome == Biomes.Mountains && plot.Mines.Any(m => m.Upgradable && Have(Items.IronIngot) >= m.UpgradeIron && Have(Items.Wood) >= m.UpgradeWood))
@@ -371,7 +386,7 @@ public sealed class Bot(
             Add(2, "collect crafting", CraftingAsync);
         }
 
-        foreach (var tech in BotRules.Research(trade))
+        foreach (var tech in ResearchNow())
         {
             if (_techs.TryGetValue(tech, out var t) && t.Status == "available" && Has(t.Cost))
             {
@@ -408,7 +423,13 @@ public sealed class Bot(
 
         if (_money > BotRules.Reserve + 5_00 && _purchases < BotRules.MaxPurchases)
         {
-            Add(trade switch { BotTrade.Trader => 10, BotTrade.Industrialist => 8, _ => 6 }, "shop", ct => ShopAsync(world, ct));
+            Add(trade switch { BotTrade.Trader => 10, BotTrade.Industrialist => 8, _ => 6 }, "shop", ct => ShopAsync(world, null, ct));
+
+            // Wood for chests on the market is quicker than planting and chopping it: the bot buys what it lacks, when it can.
+            if (MaterialsOnSale() is { Count: > 0 } materials)
+            {
+                Add(12, "buy materials", ct => ShopAsync(world, materials, ct));
+            }
         }
 
         Add(4, "fill order", ct => FillOrderAsync(world, ct));
@@ -793,6 +814,117 @@ public sealed class Bot(
         await ParseResearchAsync(cancellationToken);
         await InventoryAsync(cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// Looks after one machine of its workshop the way a player does: takes the products out, sets it to whatever pays best
+    /// of what the bot has the ingredients for (and the market is not full of), fills it for a few batches and keeps its
+    /// fire going. What the recipe it is set to still lacks the bot looks for on the market.
+    /// </summary>
+    private async Task<bool> WorkshopAsync(Guid id, BotWorld world, CancellationToken cancellationToken)
+    {
+        _workshopAt[id] = world.Now + BotRules.WorkshopEvery;
+        var reply = await SendAsync("machine.get", new { machine = id }, cancellationToken);
+        if (!reply.Is("machine"))
+        {
+            return false;
+        }
+
+        var machine = reply.Payload;
+        if (machine.True("powered"))
+        {
+            _workshopAt[id] = world.Now + TimeSpan.FromDays(1);
+            return false;
+        }
+
+        var recipes = machine.Each("recipes")
+            .Where(r => r.Text("locked") is null)
+            .Select(r => (Id: r.Text("id")!, Makes: r.Long("quantity"), Ingredients: r.Each("ingredients").Select(i => (Item: i.Text("id")!, Quantity: i.Long("quantity"))).ToList()))
+            .ToList();
+        _workshopGoods.UnionWith(recipes.Select(r => r.Id));
+
+        var acted = false;
+        if (machine.Get("output") is { ValueKind: JsonValueKind.Object } output && output.Long("quantity") > 0)
+        {
+            var taken = await SendAsync("machine.take", new { machine = id, what = "output" }, cancellationToken);
+            if (taken.Error == "inventory_full" && await MakeRoomAsync(output.Text("id")!, cancellationToken))
+            {
+                taken = await SendAsync("machine.take", new { machine = id, what = "output" }, cancellationToken);
+            }
+
+            acted = taken.Ok;
+            await InventoryAsync(cancellationToken);
+        }
+
+        long Spare(string item) => Math.Max(0, Have(item) - KeepForWork(item));
+        long Value((string Id, long Makes, List<(string Item, long Quantity)> Ingredients) r) =>
+            Floor(r.Id) * r.Makes - r.Ingredients.Sum(i => Floor(i.Item) * i.Quantity);
+        var listed = new Dictionary<string, long>(StringComparer.Ordinal);
+        foreach (var entry in _commons.Overview?.Overview.Each("items") ?? [])
+        {
+            listed[entry.Text("id")!] = entry.Long("listed");
+        }
+
+        // Only what pays, and only while what it made before is selling.
+        bool Worth((string Id, long Makes, List<(string Item, long Quantity)> Ingredients) r) =>
+            Value(r) > 0 && Have(r.Id) < BotRules.WorkshopStock && listed.GetValueOrDefault(r.Id) < BotRules.MarketCap(Floor(r.Id));
+        var current = recipes.FirstOrDefault(r => r.Id == machine.Text("recipe"));
+        var best = recipes.Where(r => Worth(r) && r.Ingredients.All(i => Spare(i.Item) >= i.Quantity)).MaxBy(Value);
+        if (best.Id is not null && best.Id != current.Id && machine.Long("batches") == 0)
+        {
+            if (!(await SendAsync("machine.recipe", new { machine = id, recipe = best.Id }, cancellationToken)).Ok)
+            {
+                return acted;
+            }
+
+            current = best;
+            acted = true;
+            await InventoryAsync(cancellationToken);
+        }
+
+        if (current.Id is null)
+        {
+            _workshopNeeds.Remove(id);
+            return acted;
+        }
+
+        var needs = new Dictionary<string, long>(StringComparer.Ordinal);
+        if (Worth(current))
+        {
+            var inside = machine.Each("inputs").ToDictionary(i => i.Text("id")!, i => i.Long("quantity"), StringComparer.Ordinal);
+            foreach (var (item, each) in current.Ingredients)
+            {
+                var wanted = Math.Min(50, each * BotRules.WorkshopBatches) - inside.GetValueOrDefault(item);
+                var quantity = Math.Min(wanted, Spare(item));
+                if (quantity > 0 && (await SendAsync("machine.load", new { machine = id, item, quantity }, cancellationToken)).Ok)
+                {
+                    _inventory[item] = Have(item) - quantity;
+                    acted = true;
+                }
+
+                if (wanted > quantity)
+                {
+                    needs[item] = wanted - quantity + Math.Max(0, KeepForWork(item) - Have(item));
+                }
+            }
+        }
+
+        _workshopNeeds[id] = needs;
+        if (machine.True("fired") && (machine.Get("fuel") is not { ValueKind: JsonValueKind.Object } fuel || fuel.Long("quantity") < 3))
+        {
+            var burn = new[] { Items.Coal, Items.Charcoal, Items.Wood }.FirstOrDefault(f => Spare(f) > 0 && current.Ingredients.All(i => i.Item != f));
+            if (burn is not null)
+            {
+                var quantity = Math.Min(Spare(burn), 10);
+                if ((await SendAsync("machine.load", new { machine = id, item = burn, quantity, fuel = true }, cancellationToken)).Ok)
+                {
+                    _inventory[burn] = Have(burn) - quantity;
+                    acted = true;
+                }
+            }
+        }
+
+        return acted;
     }
 
     private async Task<bool> FurnaceAsync(Guid furnace, BotWorld world, CancellationToken cancellationToken)
@@ -1345,7 +1477,15 @@ public sealed class Bot(
     // ----- The production line -----
 
     /// <summary>What the bot looks for on the market: what its trade works with, and what it lacks for its line and its next research.</summary>
-    private IEnumerable<string> Wanted() => BotRules.Buys(Profile.Trade).Concat(_needs.Keys).Distinct(StringComparer.Ordinal);
+    private IEnumerable<string> Wanted() =>
+        BotRules.Buys(Profile.Trade).Concat(_needs.Keys).Concat(_shortfalls.Keys).Distinct(StringComparer.Ordinal);
+
+    /// <summary>
+    /// The technologies the bot may research now: the first three on its list (what its line takes) always, the rest once its
+    /// line stands, so that a bakery or a foundry does not eat the copper the line's inserters need.
+    /// </summary>
+    private IEnumerable<string> ResearchNow() =>
+        BotRules.Research(Profile.Trade).Where((_, i) => i < 3 || _line is null || _site is not null);
 
     /// <summary>Whether the bot has researched everything its line is made of.</summary>
     private bool LineReady(BotLine line) => line.Kit.All(k => !IsLocked(k.Item) || Have(k.Item) >= k.Quantity);
@@ -1391,7 +1531,7 @@ public sealed class Bot(
             }
         }
 
-        foreach (var tech in BotRules.Research(Profile.Trade))
+        foreach (var tech in ResearchNow())
         {
             if (_techs.TryGetValue(tech, out var t) && t.Status == "available")
             {
@@ -1422,7 +1562,7 @@ public sealed class Bot(
             }
         }
 
-        foreach (var tech in BotRules.Research(Profile.Trade))
+        foreach (var tech in ResearchNow())
         {
             if (_techs.TryGetValue(tech, out var t) && t.Status == "available")
             {
@@ -1540,25 +1680,38 @@ public sealed class Bot(
     /// </summary>
     private string? NextCraft(string product)
     {
+        var (first, missing) = Plan(product, 1);
+        return missing.Count == 0 ? first : null;
+    }
+
+    /// <summary>
+    /// Works out <paramref name="crafts"/> crafts of <paramref name="product"/> from what the bot has spare, making the parts
+    /// it can at the workbench: the first craft to start with, and what it still lacks that it cannot make itself (wood,
+    /// ingots, stone), to gather or to buy.
+    /// </summary>
+    private (string? First, Dictionary<string, long> Missing) Plan(string product, long crafts)
+    {
         var products = BotRules.Products(Profile.Trade);
         var stock = new Dictionary<string, long>(StringComparer.Ordinal);
-        long Spare(string item) => stock.TryGetValue(item, out var left)
-            ? left
-            : stock[item] = Math.Max(0, Have(item) - (products.Contains(item) || item == product ? _reserved.GetValueOrDefault(item) : KeepForWork(item)));
+        var missing = new Dictionary<string, long>(StringComparer.Ordinal);
+        long Held(string item) => products.Contains(item) || item == product ? _reserved.GetValueOrDefault(item) : KeepForWork(item);
+        long Spare(string item) => stock.TryGetValue(item, out var left) ? left : stock[item] = Math.Max(0, Have(item) - Held(item));
+        bool Craftable(string item) => _recipes.TryGetValue(item, out var r) && !r.Locked && r.Station == Items.Workbench;
 
         string? first = null;
-        return Make(product, 1, 0) ? first : null;
-
-        bool Make(string item, long crafts, int depth)
+        if (Craftable(product))
         {
-            if (!_recipes.TryGetValue(item, out var recipe) || recipe.Locked || recipe.Station != Items.Workbench)
-            {
-                return false;
-            }
+            Make(product, crafts, 0);
+        }
 
-            foreach (var (ingredient, each) in recipe.Ingredients)
+        return (first, missing);
+
+        void Make(string item, long count, int depth)
+        {
+            var ready = true;
+            foreach (var (ingredient, each) in _recipes[item].Ingredients)
             {
-                var need = each * crafts;
+                var need = each * count;
                 var spare = Spare(ingredient);
                 if (spare >= need)
                 {
@@ -1566,24 +1719,97 @@ public sealed class Bot(
                     continue;
                 }
 
-                if (depth >= BotRules.PartsDepth || !_recipes.TryGetValue(ingredient, out var part))
+                if (depth >= BotRules.PartsDepth || !Craftable(ingredient))
                 {
-                    return false;
+                    // Bought, it has to cover what the bot holds back of it too before any is spare.
+                    missing[ingredient] = missing.GetValueOrDefault(ingredient, Math.Max(0, Held(ingredient) - Have(ingredient))) + need - spare;
+                    stock[ingredient] = 0;
+                    ready = false;
+                    continue;
                 }
 
-                var parts = (need - spare + part.Makes - 1) / part.Makes;
-                if (!Make(ingredient, parts, depth + 1))
-                {
-                    return false;
-                }
-
-                stock[ingredient] = Spare(ingredient) + parts * part.Makes - need;
+                var makes = _recipes[ingredient].Makes;
+                var parts = (need - spare + makes - 1) / makes;
+                var before = missing.Count;
+                Make(ingredient, parts, depth + 1);
+                ready &= missing.Count == before;
+                stock[ingredient] = Spare(ingredient) + parts * makes - need;
             }
 
             // The first craft whose ingredients are all at hand is the one to start with.
-            first ??= item;
-            return true;
+            if (ready)
+            {
+                first ??= item;
+            }
         }
+    }
+
+    /// <summary>
+    /// What the bot lacks for a few crafts of the products worth making, that it cannot make itself: rather than plant and
+    /// chop for wood it does not have, it buys it from players or other bots when someone sells it cheaply enough.
+    /// </summary>
+    private Dictionary<string, long> Shortfalls()
+    {
+        var shortfalls = new Dictionary<string, long>(StringComparer.Ordinal);
+        if (_workbench is null)
+        {
+            return shortfalls;
+        }
+
+        foreach (var product in BotRules.Products(Profile.Trade))
+        {
+            if (IsLocked(product) || Have(product) >= BotRules.Stock(product) || Margin(product) <= 0)
+            {
+                continue;
+            }
+
+            var crafts = Math.Max(1, (BotRules.Stock(product) - Have(product) + _recipes[product].Makes - 1) / _recipes[product].Makes);
+            foreach (var (item, quantity) in Plan(product, Math.Min(crafts, BotRules.ShortfallCrafts)).Missing)
+            {
+                shortfalls[item] = Math.Max(shortfalls.GetValueOrDefault(item), quantity);
+            }
+        }
+
+        // What it means to put up on its plots (a bakery wants sand), and what its workshop is short of.
+        foreach (var kind in _plots.Where(p => p.Tiles is not null).SelectMany(StillToBuild).Distinct().Where(k => Have(k) == 0 && !IsLocked(k)))
+        {
+            foreach (var (item, quantity) in Plan(kind, 1).Missing)
+            {
+                shortfalls[item] = Math.Max(shortfalls.GetValueOrDefault(item), quantity);
+            }
+        }
+
+        foreach (var (item, quantity) in _workshopNeeds.Values.SelectMany(n => n))
+        {
+            shortfalls[item] = Math.Max(shortfalls.GetValueOrDefault(item), quantity);
+        }
+
+        return shortfalls;
+    }
+
+    /// <summary>
+    /// What the bot lacks for its products that someone has up for sale at a price it pays, as the market overview some bot
+    /// fetched last shows it; empty before any did.
+    /// </summary>
+    private Dictionary<string, long> MaterialsOnSale()
+    {
+        var onSale = new Dictionary<string, long>(StringComparer.Ordinal);
+        if (_shortfalls.Count == 0 || _commons.Overview is not { } overview)
+        {
+            return onSale;
+        }
+
+        foreach (var entry in overview.Overview.Each("items"))
+        {
+            var id = entry.Text("id")!;
+            if (_shortfalls.TryGetValue(id, out var lacking) && entry.LongOrNull("lowestCents") is { } lowest
+                && Limit(id, Floor(id)) is { } limit && lowest <= limit)
+            {
+                onSale[id] = lacking;
+            }
+        }
+
+        return onSale;
     }
 
     /// <summary>What the bot could do about its line: look at its plots, tend it, build it or get its parts together.</summary>
@@ -2074,9 +2300,10 @@ public sealed class Bot(
     /// the iron it makes them of), then worth the most first.</summary>
     private IEnumerable<(string Item, long Quantity)> Surplus() =>
         _inventory
-            .Where(i => (BotRules.Goods.Contains(i.Key) || Profile.Trade == BotTrade.Trader && Floor(i.Key) > 0) && i.Value > Keep(i.Key))
+            .Where(i => (BotRules.Goods.Contains(i.Key) || _workshopGoods.Contains(i.Key) || Profile.Trade == BotTrade.Trader && Floor(i.Key) > 0)
+                && i.Value > Keep(i.Key))
             .Select(i => (Item: i.Key, Quantity: i.Value - Keep(i.Key)))
-            .OrderByDescending(s => BotRules.Products(Profile.Trade).Contains(s.Item))
+            .OrderByDescending(s => BotRules.Products(Profile.Trade).Contains(s.Item) || _workshopGoods.Contains(s.Item))
             .ThenByDescending(s => s.Quantity * Math.Max(Floor(s.Item), 1));
 
     /// <summary>What the bot holds back from selling: what it keeps for its work, and what it buys for its trade up to as much as it buys.</summary>
@@ -2084,6 +2311,28 @@ public sealed class Bot(
         Math.Max(KeepForWork(item), BotRules.Buys(Profile.Trade).Contains(item) ? BotRules.BuyUpTo : 0);
 
     /// <summary>What the bot holds back for its work: what its trade keeps, whatever it still means to build on its plots, and its line's parts and their makings.</summary>
+    /// <summary>
+    /// Frees a tile of a full inventory for <paramref name="incoming"/> the way a player would: sells the trader the
+    /// whole of its cheapest stack it has no work for, if that is worth little.
+    /// </summary>
+    private async Task<bool> MakeRoomAsync(string incoming, CancellationToken cancellationToken)
+    {
+        var junk = _inventory
+            .Where(i => i.Value > 0 && i.Key != incoming && Floor(i.Key) > 0 && KeepForWork(i.Key) == 0
+                && !BotRules.Products(Profile.Trade).Contains(i.Key) && !_workshopGoods.Contains(i.Key)
+                && !_workshopNeeds.Values.Any(n => n.ContainsKey(i.Key)) && Floor(i.Key) * i.Value <= BotRules.RoomFor)
+            .OrderBy(i => Floor(i.Key) * i.Value)
+            .Select(i => i.Key)
+            .FirstOrDefault();
+        if (junk is null || !await TradeAsync("market.sell", junk, Have(junk), cancellationToken))
+        {
+            return false;
+        }
+
+        await InventoryAsync(cancellationToken);
+        return Have(junk) == 0;
+    }
+
     private long KeepForWork(string item) =>
         BotRules.Keep(Profile.Trade, item) + _plots.Where(p => p.Tiles is not null).Sum(p => StillToBuild(p).Count(k => k == item))
         + _reserved.GetValueOrDefault(item);
@@ -2144,7 +2393,8 @@ public sealed class Bot(
     }
 
     /// <summary>Buys from other players: what the bot needs for its work, or, as a trader, anything cheap enough to sell on.</summary>
-    private async Task<bool> ShopAsync(BotWorld world, CancellationToken cancellationToken)
+    /// <param name="only">What to look for and how many of each, instead of anything worth buying.</param>
+    private async Task<bool> ShopAsync(BotWorld world, IReadOnlyDictionary<string, long>? only, CancellationToken cancellationToken)
     {
         if (await OverviewAsync(world, cancellationToken) is not { } overview)
         {
@@ -2156,7 +2406,7 @@ public sealed class Bot(
         foreach (var entry in overview.Each("items"))
         {
             var id = entry.Text("id")!;
-            if (entry.LongOrNull("lowestCents") is not { } lowest || entry.Long("listed") == 0)
+            if (entry.LongOrNull("lowestCents") is not { } lowest || entry.Long("listed") == 0 || only is not null && !only.ContainsKey(id))
             {
                 continue;
             }
@@ -2188,6 +2438,11 @@ public sealed class Bot(
             var price = listing.Long("priceCents");
             var budget = (_money - BotRules.Reserve) / Math.Max(price, 1);
             var quantity = Math.Min(Math.Min(listing.Long("quantity"), BotRules.PurchaseSize), budget);
+            if (only is not null)
+            {
+                quantity = Math.Min(quantity, only[item]);
+            }
+
             if (quantity <= 0)
             {
                 return false;
@@ -2218,6 +2473,7 @@ public sealed class Bot(
         }
 
         var limit = (BotRules.Buys(Profile.Trade).Contains(item) || _needs.ContainsKey(item)) && Have(item) < BotRules.BuyUpTo ? floor * 2.0
+            : _shortfalls.ContainsKey(item) && Have(item) < BotRules.BuyUpTo ? floor * BotRules.MaterialsMarkup
             : Profile.Trade == BotTrade.Trader ? floor * 1.5
             : BotRules.Goods.Contains(item) ? floor * 1.3
             : 0;

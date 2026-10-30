@@ -353,6 +353,68 @@ public sealed class ForestryIndustryTests(ServerFactory factory) : IClassFixture
     }
 
     [Fact]
+    public async Task A_forestry_station_feeding_a_long_belt_keeps_working_while_nobody_looks()
+    {
+        using var client = await PlayerAsync();
+        var (x, y, _, _, tiles) = await PlotAsync(client);
+        // A free square for the station with its clearing, and a free strip three tiles wide south of it for the belt.
+        var (tx, ty) = (0, 0);
+        for (var cy = 8; cy < PlotLayout.Size - 20 && tx == 0; cy++)
+        {
+            for (var cx = 8; cx < PlotLayout.Size - 8 && tx == 0; cx++)
+            {
+                var free = true;
+                for (var dy = -3; dy <= 14 && free; dy++)
+                {
+                    for (var dx = dy > 3 ? -1 : -3; dx <= (dy > 3 ? 1 : 3) && free; dx++)
+                    {
+                        free = tiles[(cy + dy) * PlotLayout.Size + cx + dx] == (byte)TileObject.None && (cx + dx, cy + dy) != PlotLayout.Spawn;
+                    }
+                }
+
+                if (free)
+                {
+                    (tx, ty) = (cx, cy);
+                }
+            }
+        }
+
+        Assert.NotEqual(0, tx);
+        await GiveAsync(client, Items.ForestryStation, 1);
+        await GiveAsync(client, Items.Inserter, 2);
+        await GiveAsync(client, Items.IronChest, 1);
+        await GiveAsync(client, Items.Belt, 9);
+        await GiveAsync(client, Items.Pole, 2);
+        await GiveAsync(client, Items.Generator, 2);
+        await GiveAsync(client, Items.Coal, 100);
+
+        // Station, inserter, nine belts south along its path, inserter, chest; a generator by each inserter.
+        var station = await PlaceAsync(client, x, y, Items.ForestryStation, tx, ty);
+        await PlaceAsync(client, x, y, Items.Inserter, tx, ty + 2);
+        for (var by = ty + 3; by <= ty + 11; by++)
+        {
+            await PlaceAsync(client, x, y, Items.Belt, tx, by);
+        }
+
+        await PlaceAsync(client, x, y, Items.Inserter, tx, ty + 12);
+        var chest = await PlaceAsync(client, x, y, Items.IronChest, tx, ty + 13);
+        foreach (var gy in new[] { ty + 3, ty + 12 })
+        {
+            await PlaceAsync(client, x, y, Items.Pole, tx + 1, gy);
+            var generator = await PlaceAsync(client, x, y, Items.Generator, tx - 1, gy);
+            Assert.Equal("generator", (await client.SendAsync("generator.load", new { x, y, id = generator, item = Items.Coal, quantity = 50 })).Type());
+        }
+
+        // An hour away: wood keeps coming down the belt the whole time, not only for the first half hour.
+        factory.Time.Advance(TimeSpan.FromHours(1));
+        var storages = (await client.SendAsync("logistics.get", new { x, y })).Payload().GetProperty("storages")
+            .EnumerateArray().ToDictionary(s => s.GetProperty("id").GetString()!);
+        var stored = storages[chest].GetProperty("stored").GetInt32();
+        Assert.True(stored > 1400, $"{stored} in the chest");
+        Assert.False(Forester((await client.SendAsync("forestry.get", new { x, y })).Payload(), station).GetProperty("full").GetBoolean());
+    }
+
+    [Fact]
     public async Task Inserters_next_to_two_foresters_of_a_plot_each_take_its_wood()
     {
         using var client = await PlayerAsync();

@@ -1,5 +1,6 @@
 using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Abstractions.Contracts;
+using FactoryWorld.Modules.Characters;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace FactoryWorld.Server.Tests;
@@ -73,6 +74,54 @@ public sealed class MetricsTests(ServerFactory factory) : IClassFixture<ServerFa
         var text = await factory.CreateClient().GetStringAsync("/metrics");
         Assert.Matches($$"""factoryworld_items_produced_total\{item="{{Items.Planks}}",who="player"\} [1-9]""", text);
         Assert.Matches("""factoryworld_money_in_cents_total\{reason="sell",who="player"\} [1-9]""", text);
+    }
+
+    [Fact]
+    public async Task Metrics_show_market_trades_open_offers_prices_and_the_richest_players()
+    {
+        using var seller = await factory.ConnectAsync();
+        await seller.RegisterWithCharacterAsync();
+        using var buyer = await factory.ConnectAsync();
+        await buyer.RegisterWithCharacterAsync();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IInventory>().AddAsync(seller.AccountId, Items.Wood, 30, CancellationToken.None);
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(buyer.AccountId, 10_000, "test", CancellationToken.None);
+        }
+
+        Assert.Equal("market.done", (await seller.SendAsync("market.list", new { item = Items.Wood, quantity = 20, priceCents = 300 })).Type());
+        var id = (await buyer.SendAsync("market.item", new { item = Items.Wood })).Payload().GetProperty("listings")[0].GetProperty("id").GetInt64();
+        Assert.Equal("market.done", (await buyer.SendAsync("market.purchase", new { id, quantity = 5 })).Type());
+        Assert.Equal("market.traded", (await seller.SendAsync("market.sell", new { item = Items.Wood, quantity = 2 })).Type());
+        var traded = factory.Services.GetRequiredService<GameCounters>().Trades();
+        Assert.Contains(traded, t => t is { Market: GameCounters.Players, Item: Items.Wood, Quantity: 5, Cents: 1500 });
+        Assert.Contains(traded, t => t is { Market: GameCounters.TraderSell, Item: Items.Wood, Quantity: 2 });
+
+        factory.Services.GetRequiredService<GaugeReadings>().Forget();
+        var text = await factory.CreateClient().GetStringAsync("/metrics");
+
+        Assert.Contains($$"""factoryworld_trade_pieces_total{market="players",item="{{Items.Wood}}"} 5""", text);
+        Assert.Contains($$"""factoryworld_trade_cents_total{market="players",item="{{Items.Wood}}"} 1500""", text);
+        Assert.Matches($$"""factoryworld_trade_pieces_total\{market="trader_sell",item="{{Items.Wood}}"\} [1-9]""", text);
+        Assert.Matches("""factoryworld_market_offers\{kind="listing",who="player"\} [1-9]""", text);
+        Assert.Contains($$"""factoryworld_market_lowest_listing_cents{item="{{Items.Wood}}"} 300""", text);
+        Assert.Contains($$"""factoryworld_market_listed_pieces{item="{{Items.Wood}}"} 15""", text);
+        Assert.Matches($$"""factoryworld_trader_price_cents\{item="{{Items.Wood}}",side="buys"\} [1-9]""", text);
+        Assert.Contains("""factoryworld_market_event{event="calm"} 1""", text);
+        Assert.Matches("""factoryworld_richest_money_cents\{who="player",name="[^"]+"\} [1-9]""", text);
+        Assert.Matches("""factoryworld_wallet_money_cents\{who="player"\} [1-9]""", text);
+        Assert.Matches("""factoryworld_characters\{who="player"\} [1-9]""", text);
+        Assert.Matches("""factoryworld_characters_by_level\{who="player",levels="1"\} [1-9]""", text);
+        Assert.Contains("""factoryworld_bots{trade="forester",state="resting"} 0""", text);
+        Assert.Contains("# TYPE factoryworld_research_known gauge", text);
+        Assert.Contains("# TYPE factoryworld_plots_owned gauge", text);
+    }
+
+    [Fact]
+    public void Level_bands_are_labelled_from_their_lowest_to_their_highest_level()
+    {
+        var labels = Enumerable.Range(0, CharacterGauges.Bands.Length).Select(CharacterGauges.Band).ToList();
+        Assert.Equal(["1", "2-4", "5-9", "10-14", "15-19", "20-29", "30-49", "50+"], labels);
     }
 
     [Theory]

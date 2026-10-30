@@ -77,6 +77,7 @@ builder.Services.AddSingleton<MessageDispatcher>();
 builder.Services.AddSingleton<OnlinePlayers>();
 builder.Services.AddSingleton<ServerLoad>();
 builder.Services.AddSingleton<GameCounters>();
+builder.Services.AddSingleton<GaugeReadings>();
 builder.Services.AddHostedService<LoadReport>();
 builder.Services.AddCors(options => options.AddDefaultPolicy(policy =>
     policy.WithOrigins(builder.Configuration.GetSection("Cors:Origins").Get<string[]>() ?? [])
@@ -109,7 +110,7 @@ app.UseCors();
 app.UseWebSockets(new WebSocketOptions { KeepAliveInterval = TimeSpan.FromSeconds(30) });
 
 app.MapHealthChecks("/health");
-app.MapGet("/metrics", MetricsEndpoint.Handle);
+app.MapGet("/metrics", MetricsEndpoint.HandleAsync);
 app.MapGet("/", () => Results.Text("Factory World server"));
 app.Map("/ws", GameSocketEndpoint.HandleAsync);
 
