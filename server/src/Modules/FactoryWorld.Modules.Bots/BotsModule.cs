@@ -1,4 +1,5 @@
 using FactoryWorld.Modules.Abstractions;
+using FactoryWorld.Modules.Abstractions.Contracts;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -72,6 +73,7 @@ public sealed class BotsModule : IGameModule
         services.AddSingleton<IMessageHandler, HelpWantedHandler>();
         services.AddSingleton<IMessageHandler, HelpBotHandler>();
         services.AddSingleton<BotEngine>();
+        services.AddScoped<IGameGauges, BotGauges>();
         services.AddHostedService<BotRunner>();
     }
 

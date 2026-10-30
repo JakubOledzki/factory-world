@@ -573,7 +573,7 @@ public sealed record Traded(long Balance, bool ToPallet = false);
 
 public sealed class MarketService(
     GameDb db, IInventory inventory, IWallet wallet, TraderMarket trader, ITechnologies technologies, IEnumerable<IForestCertificate> certificates,
-    IOutfit outfit, IEnumerable<IGarageDeliveries> deliveries)
+    IOutfit outfit, IEnumerable<IGarageDeliveries> deliveries, GameCounters counters)
 {
     /// <summary>The player buys from the NPC: money out, items in, both or neither.</summary>
     public Task<Traded> BuyAsync(Guid owner, string item, int quantity, CancellationToken cancellationToken)
@@ -584,6 +584,7 @@ public sealed class MarketService(
             // Machines and logistics come from the trader only once researched.
             await technologies.RequireUnlockedAsync(owner, item, cancellationToken);
             var balance = await wallet.DebitAsync(owner, price * quantity, $"buy {quantity} {item}", cancellationToken);
+            db.AfterCommit(() => counters.Trade(GameCounters.TraderBuy, item, quantity, price * quantity));
             // A backpack always fits: it is the way out of a full inventory.
             if (Items.IsBackpack(item))
             {
@@ -618,6 +619,7 @@ public sealed class MarketService(
                 price = Math.Min(price, charge * MarketEvents.MaxPayOfCharge / 100);
             }
 
+            db.AfterCommit(() => counters.Trade(GameCounters.TraderSell, item, quantity, price * quantity));
             return new Traded(await wallet.CreditAsync(owner, price * quantity, $"sell {quantity} {item}", cancellationToken));
         }, cancellationToken);
     }
@@ -747,6 +749,7 @@ public sealed class MarketModule : IGameModule
         services.AddScoped<MarketService>();
         services.AddScoped<PlayerMarketService>();
         services.AddSingleton<MarketSummary>();
+        services.AddScoped<IGameGauges, MarketGauges>();
         services.AddScoped<IExportMarket>(provider => provider.GetRequiredService<PlayerMarketService>());
         services.AddSingleton<IMessageHandler, PricesHandler>();
         services.AddSingleton<IMessageHandler, BuyHandler>();

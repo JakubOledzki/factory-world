@@ -1,6 +1,15 @@
 [
 	{
 		"date": "2026-10-30",
+		"title": "Zwarta zakładka Wybory",
+		"changes": [
+			"Na mapie, w oknie państwa, zakładka Wybory nie rozciąga się już w dół: każdy kandydat ma swoją kartę z głosami, procentem, programem i wsparciem spółek w dwóch, trzech wierszach, a przycisk Głosuj stoi obok nazwiska.",
+			"Wsparcie z kasy spółki jest jednym wierszem pod listą: wybierasz kandydata i kwotę. Formularz kandydowania i wotum nieufności zajmują po jednym, dwóch wierszach.",
+			"Na telefonie drobne opisy w oknie państwa są większe i czytelne."
+		]
+	},
+	{
+		"date": "2026-10-30",
 		"title": "Boty robią sprzęt logistyczny na sprzedaż",
 		"changes": [
 			"Boty stawiają na działkach warsztaty i sprzedają to, co w nich zrobią: rolnicy beczkę do kiszenia, piec piekarski, kuchnię polową i wędzarnię (kiszonki, chleb, obiady, wędzone ryby), drwale piec węglowy, stolarnię i smolarnię (węgiel drzewny, meble, smoła), górnicy kamieniarnię (bloki kamienne, płyty marmurowe), a hutnicy i przemysłowcy odlewnię, hutę szkła i kamieniarnię (stal, brąz, cegły, szkło, butelki, szyby). Bot sam wybiera przepis, który daje najwięcej ponad cenę składników, dokłada wsad i opał, wyjmuje gotowe towary i przestaje, gdy na rynku jest ich dużo.",
