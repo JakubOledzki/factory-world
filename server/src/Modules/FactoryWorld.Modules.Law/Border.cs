@@ -64,11 +64,16 @@ public sealed class BorderControl(
             : goods.Where(g => g.Value > 0 && (forbidden.ContainsKey(g.Key) || trade.PercentOn(g.Key) > 0)).ToDictionary(g => g.Key, g => g.Value);
         var evaded = duty + forbidden.Sum(g => LawRules.Worth(prices, g.Key, g.Value))
             + (trade.Embargo ? goods.Sum(g => LawRules.Worth(prices, g.Key, g.Value)) : 0);
+        // The police leave new players alone, so new players may not smuggle: a low-level account would carry anything for nothing.
+        if (illegal.Count > 0 && await xp.LevelAsync(owner, cancellationToken) < LawRules.ProtectedBelowLevel)
+        {
+            return new BorderCrossing("smuggling_protected", 0, new Dictionary<string, long>());
+        }
+
         var hidden = await data.ScalarAsync("SELECT 1 FROM law.compartments WHERE player_id = @p", cancellationToken, ("p", owner)) is not null;
         Guid? inspected = null;
         var seized = new Dictionary<string, long>();
-        if (illegal.Count > 0 && await xp.LevelAsync(owner, cancellationToken) >= LawRules.ProtectedBelowLevel
-            && Random.Shared.Next(100) < await CustomsPercentAsync(owner, toCountry, hidden, cancellationToken))
+        if (illegal.Count > 0 && Random.Shared.Next(100) < await CustomsPercentAsync(owner, toCountry, hidden, cancellationToken))
         {
             // Caught: the forbidden goods stay at the border and are sold for the treasury.
             inspected = Guid.Empty;

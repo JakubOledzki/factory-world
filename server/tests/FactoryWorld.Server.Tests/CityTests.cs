@@ -298,7 +298,14 @@ public sealed class CityTests(ServerFactory factory) : IClassFixture<ServerFacto
         Assert.Equal(Items.Blueprint, bought.GetProperty("item").GetString());
         Assert.Equal(1, (await neighbour.InventoryAsync())[Items.Blueprint]);
         Assert.Equal(neighbourBefore - 30_00, await neighbour.BalanceAsync());
-        Assert.Equal(ownerBefore + 30_00, await owner.BalanceAsync());
+        Assert.Equal(ownerBefore + 30_00 * CityRules.ServiceOwnerPercent / 100, await owner.BalanceAsync());
+
+        // What the owner gets back is worth less than what the trader pays for the goods, so buying from one's own office
+        // through a second account only loses money.
+        foreach (var (_, (item, quantity, price)) in CityRules.Services)
+        {
+            Assert.True(price * CityRules.ServiceOwnerPercent / 100 < quantity * NpcPrices.Buys.GetValueOrDefault(item, price), item);
+        }
 
         // Both own a plot in the town, so both vote; the mayor rules the week after.
         var ownerName = await NameAsync(owner);

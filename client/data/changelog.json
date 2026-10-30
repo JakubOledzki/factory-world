@@ -8,7 +8,16 @@
 			"Miasta płacą za dostawy towarów, które sprzedaje handlarz, najwyżej 90% jego najniższej ceny.",
 			"Handlarz także z premią za strój i certyfikatem lasu płaci najwyżej 90% ceny, za którą sam sprzedaje dany towar.",
 			"Zlecenia firm NPC na gwoździe, mąkę, taśmy i skrzynie drewniane płacą mniej, niż handlarz bierze za ten towar: 4,50 $, 3,60 $, 7,20 $ i 52 $ za sztukę.",
-			"Na jednej działce stoją najwyżej 3 atrakcje turystyczne: hotele lodowe i punkty widokowe razem."
+			"Na jednej działce stoją najwyżej 3 atrakcje turystyczne: hotele lodowe i punkty widokowe razem.",
+			"Poniżej 5 poziomu policja cię nie ściga, ale przemyt jest wtedy zablokowany: towar trzeba zgłosić na granicy i zapłacić cło.",
+			"Paser płaci za towar najwyżej 90% najniższej ceny, za którą handlarz go sprzedaje.",
+			"Umowy między firmami nie liczą się już do przychodów w sezonie ani do wyceny firmy.",
+			"Gdy akcje firmy ma ktoś spoza niej, z kasy nie da się już wypłacać ani wydawać pieniędzy na siebie. Zamykana firma dzieli kasę między wszystkich akcjonariuszy według akcji.",
+			"Nie można sponsorować własnej kampanii wyborczej, ani w mieście, ani w państwie.",
+			"Odwołane badanie firmy oddaje każdemu członkowi to, co sam do niego wniósł.",
+			"Właściciel biura (projektowego, laboratorium, warsztatu) dostaje 25% ceny usługi; reszta idzie na materiały biura.",
+			"Po rezygnacji ze zlecenia firmy NPC następne pojawia się po 30 minutach, a nie po 5.",
+			"Naprawiono błąd: zamknięcie firmy przez ostatniego członka nie wypłacało nikomu pieniędzy z jej kasy."
 		]
 	},
 	{

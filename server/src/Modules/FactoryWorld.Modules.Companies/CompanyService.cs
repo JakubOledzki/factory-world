@@ -554,19 +554,39 @@ public sealed partial class CompanyService(
         await delete.ExecuteNonQueryAsync(cancellationToken);
     }
 
-    /// <summary>The last member left: what is in the warehouse and the cash (with wages nobody earned) go to them, and the company is gone.</summary>
+    /// <summary>The last member left: the cash (with wages nobody earned) is shared out by shares, among members who left and investors
+    /// too, the rest of it and what is in the warehouse go to the last member, and the company is gone.</summary>
     private async Task CloseAsync(Guid company, Guid player, CancellationToken cancellationToken)
     {
+        long cents;
         await using (var cash = await db.CommandAsync(
             """
-            SELECT c.cash_cents + coalesce((SELECT sum(t.wage_cents - t.paid_cents) FROM companies.tasks t WHERE t.company_id = c.id AND t.done_at IS NULL), 0)
+            SELECT c.cash_cents + coalesce((SELECT sum(t.wage_cents - t.paid_cents) FROM companies.tasks t WHERE t.company_id = c.id AND t.done_at IS NULL), 0)::bigint
             FROM companies.companies c WHERE c.id = @company
             """, cancellationToken))
         {
             cash.Parameters.AddWithValue("company", company);
-            if (await cash.ExecuteScalarAsync(cancellationToken) is long cents and > 0)
+            cents = await cash.ExecuteScalarAsync(cancellationToken) is long found ? found : 0;
+        }
+
+        if (cents > 0)
+        {
+            var shares = await SharesAsync(company, cancellationToken);
+            var total = shares.Values.Sum();
+            var left = cents;
+            foreach (var (holder, held) in shares.Where(s => s.Key != player))
             {
-                await wallet.CreditAsync(player, cents, $"company {company} closed", cancellationToken);
+                var part = (long)((Int128)cents * held / total);
+                if (part > 0)
+                {
+                    await wallet.CreditAsync(holder, part, $"company {company} closed: {held} shares", cancellationToken);
+                    left -= part;
+                }
+            }
+
+            if (left > 0)
+            {
+                await wallet.CreditAsync(player, left, $"company {company} closed", cancellationToken);
             }
         }
 

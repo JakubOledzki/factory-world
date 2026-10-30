@@ -45,6 +45,20 @@ public sealed class CompanyContributionRow
     public long Delivered { get; set; }
 }
 
+/// <summary>How much of one cost item one member brought for their company's research, to give back to them if it is called off.</summary>
+public sealed class CompanyContributorRow
+{
+    public Guid CompanyId { get; set; }
+
+    public string Technology { get; set; } = "";
+
+    public Guid AccountId { get; set; }
+
+    public string Item { get; set; } = "";
+
+    public long Delivered { get; set; }
+}
+
 public sealed class ResearchDbContext(DbContextOptions<ResearchDbContext> options, GameDb gameDb) : ModuleDbContext(options, gameDb)
 {
     public const string Schema = "research";
@@ -77,6 +91,16 @@ public sealed class ResearchDbContext(DbContextOptions<ResearchDbContext> option
             e.HasKey(r => new { r.CompanyId, r.Technology, r.Item });
             e.Property(r => r.CompanyId).HasColumnName("company_id");
             e.Property(r => r.Technology).HasColumnName("technology").HasMaxLength(32);
+            e.Property(r => r.Item).HasColumnName("item").HasMaxLength(64);
+            e.Property(r => r.Delivered).HasColumnName("delivered");
+        });
+        model.Entity<CompanyContributorRow>(e =>
+        {
+            e.ToTable("company_contributors");
+            e.HasKey(r => new { r.CompanyId, r.Technology, r.AccountId, r.Item });
+            e.Property(r => r.CompanyId).HasColumnName("company_id");
+            e.Property(r => r.Technology).HasColumnName("technology").HasMaxLength(32);
+            e.Property(r => r.AccountId).HasColumnName("account_id");
             e.Property(r => r.Item).HasColumnName("item").HasMaxLength(64);
             e.Property(r => r.Delivered).HasColumnName("delivered");
         });

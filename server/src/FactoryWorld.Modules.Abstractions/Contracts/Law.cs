@@ -18,7 +18,7 @@ public interface IBorderControl
 }
 
 /// <param name="Refused">Why the train may not go (<c>embargo</c>, <c>banned_goods</c>, <c>travel_banned</c>,
-/// <c>no_money_duty</c>), or null.</param>
+/// <c>no_money_duty</c>, <c>smuggling_protected</c>), or null.</param>
 /// <param name="DutyCents">The duty charged.</param>
 /// <param name="Seized">What customs took off a smuggling train; the train carries the rest.</param>
 public sealed record BorderCrossing(string? Refused, long DutyCents, IReadOnlyDictionary<string, long> Seized)

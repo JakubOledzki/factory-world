@@ -132,6 +132,12 @@ public sealed class ContractTests(ServerFactory factory) : IClassFixture<ServerF
         Assert.Equal(2, List(view, "npc").Count);
         Assert.NotEqual(JsonValueKind.Null, view.GetProperty("nextNpcAt").ValueKind);
         Assert.Equal("no_contract", (await player.SendAsync("contracts.deliver", new { id = Id(order), quantity = 1 })).ErrorCode());
+
+        // Giving up is no quick way to draw a better order: the next one takes longer than after a delivery.
+        factory.Time.Advance(ContractRules.NpcRefill);
+        Assert.Equal(2, List(await ViewAsync(player), "npc").Count);
+        factory.Time.Advance(ContractRules.NpcRefillAbandoned - ContractRules.NpcRefill);
+        Assert.Equal(3, List(await ViewAsync(player), "npc").Count);
     }
 
     [Fact]

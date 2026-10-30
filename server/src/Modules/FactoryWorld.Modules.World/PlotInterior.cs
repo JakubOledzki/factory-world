@@ -622,7 +622,11 @@ public sealed class PlotService(
             delete.Parameters.AddWithValue("y", y);
             delete.Parameters.AddWithValue("tx", tileX);
             delete.Parameters.AddWithValue("ty", tileY);
-            await delete.ExecuteNonQueryAsync(cancellationToken);
+            // Cut by someone else in the meantime: one tree never gives wood twice.
+            if (await delete.ExecuteNonQueryAsync(cancellationToken) == 0)
+            {
+                throw new GameException("nothing_here", "This has already been gathered.");
+            }
         }
 
         return Trees.Yield(tree.Kind, Random.Shared.Next(100), Random.Shared.Next(1000), infested, saw);

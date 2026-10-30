@@ -227,6 +227,10 @@ public static class CityRules
 
     public const int ServiceSalesPerDay = 20;
 
+    /// <summary>Part of a service's price its office's owner gets (before the mayor's tax); the rest pays for the stuff the office uses
+    /// up. Less than what the trader pays for what the buyer gets keeps an office from turning a second account's money into goods for free.</summary>
+    public const int ServiceOwnerPercent = 25;
+
     /// <summary>Rail fees from a city plot (−10%), with a freight terminal on it (another −25%), with the mayor's "rail" bonus (another −20%).</summary>
     public const double CityRail = 0.9;
 
@@ -722,7 +726,7 @@ public sealed partial class CityService(
         await ChangeTreasuryAsync(town, tax - pay, $"podatek: {reason}", cancellationToken);
     }
 
-    /// <summary>Buys an office's service: the buyer pays its owner (and the mayor's tax) and gets what it makes.</summary>
+    /// <summary>Buys an office's service: the buyer pays, its owner gets a part (less the mayor's tax), and the buyer gets what it makes.</summary>
     public Task<(string Item, int Quantity, long Cents)> BuyServiceAsync(Guid player, int x, int y, Guid id, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
@@ -754,7 +758,7 @@ public sealed partial class CityService(
             var (item, quantity, price) = CityRules.Services[office.Kind];
             await wallet.DebitAsync(player, price, $"service {office.Kind} in {town.Name}", cancellationToken);
             await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
-            await PayAsync(town, office.Owner, player, price, $"service {office.Kind} sold", cancellationToken);
+            await PayAsync(town, office.Owner, player, price * CityRules.ServiceOwnerPercent / 100, $"service {office.Kind} sold", cancellationToken);
             await using (var count = await db.CommandAsync(
                 """
                 INSERT INTO world.service_sales (id, day, count) VALUES (@id, @day, 1)

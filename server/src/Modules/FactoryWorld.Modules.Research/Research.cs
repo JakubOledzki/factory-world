@@ -1246,9 +1246,12 @@ public sealed class ResearchService(GameDb db, IInventory inventory, IWallet wal
             await using (var upsert = await db.CommandAsync(
                 """
                 INSERT INTO research.company_contributions (company_id, technology, item, delivered) VALUES (@company, @technology, @item, @used)
-                ON CONFLICT (company_id, technology, item) DO UPDATE SET delivered = company_contributions.delivered + excluded.delivered
+                ON CONFLICT (company_id, technology, item) DO UPDATE SET delivered = company_contributions.delivered + excluded.delivered;
+                INSERT INTO research.company_contributors (company_id, technology, account_id, item, delivered) VALUES (@company, @technology, @owner, @item, @used)
+                ON CONFLICT (company_id, technology, account_id, item) DO UPDATE SET delivered = company_contributors.delivered + excluded.delivered;
                 """, cancellationToken))
             {
+                upsert.Parameters.AddWithValue("owner", owner);
                 upsert.Parameters.AddWithValue("company", membership.Company);
                 upsert.Parameters.AddWithValue("technology", id);
                 upsert.Parameters.AddWithValue("item", item);
@@ -1273,7 +1276,8 @@ public sealed class ResearchService(GameDb db, IInventory inventory, IWallet wal
             return await ReadAsync(owner, [], null, cancellationToken);
         }, cancellationToken);
 
-    /// <summary>The owner or a partner calls off the company's research that is not done; what members brought goes to the one who calls it off.</summary>
+    /// <summary>The owner or a partner calls off the company's research that is not done; what each member brought goes back to them
+    /// (what was brought before members were counted goes to the one who calls it off).</summary>
     public Task<ResearchState> CancelCompanyAsync(Guid owner, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
@@ -1284,20 +1288,44 @@ public sealed class ResearchService(GameDb db, IInventory inventory, IWallet wal
                 throw new GameException("no_research", "The company is not researching anything.");
             }
 
+            var back = new List<(Guid Account, string Item, long Quantity)>();
+            await using (var select = await db.CommandAsync(
+                "SELECT account_id, item, delivered FROM research.company_contributors WHERE company_id = @company AND technology = @technology AND delivered > 0",
+                cancellationToken))
+            {
+                select.Parameters.AddWithValue("company", membership.Company);
+                select.Parameters.AddWithValue("technology", id);
+                await using var reader = await select.ExecuteReaderAsync(cancellationToken);
+                while (await reader.ReadAsync(cancellationToken))
+                {
+                    back.Add((reader.GetGuid(0), reader.GetString(1), reader.GetInt64(2)));
+                }
+            }
+
             foreach (var (item, quantity) in company.Delivered.Where(d => d.Value > 0))
+            {
+                var unclaimed = quantity - back.Where(b => b.Item == item).Sum(b => b.Quantity);
+                if (unclaimed > 0)
+                {
+                    back.Add((owner, item, unclaimed));
+                }
+            }
+
+            foreach (var (account, item, quantity) in back)
             {
                 if (item == TechTree.Money)
                 {
-                    await wallet.CreditAsync(owner, quantity, $"company research {id} cancelled", cancellationToken);
+                    await wallet.CreditAsync(account, quantity, $"company research {id} cancelled", cancellationToken);
                 }
                 else
                 {
-                    await inventory.AddAsync(owner, item, quantity, cancellationToken);
+                    await inventory.AddAsync(account, item, quantity, cancellationToken);
                 }
             }
 
             await using (var delete = await db.CommandAsync(
                 """
+                DELETE FROM research.company_contributors WHERE company_id = @company AND technology = @technology;
                 DELETE FROM research.company_contributions WHERE company_id = @company AND technology = @technology;
                 DELETE FROM research.company_technologies WHERE company_id = @company AND technology = @technology;
                 """, cancellationToken))

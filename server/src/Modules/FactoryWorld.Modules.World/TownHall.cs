@@ -483,6 +483,12 @@ public sealed partial class CityService
                 throw new GameException("not_candidate", "Back a player who stands in this week's election.");
             }
 
+            // The company's money would only go round into its own owner's or treasurer's wallet.
+            if (id == player)
+            {
+                throw new GameException("own_campaign", "A company you run does not back you yourself.");
+            }
+
             // Looked up only here: the companies module needs the world's plots, which need this service.
             var company = await services.GetRequiredService<ICompanyCash>().SpendAsync(player, cents, $"kampania: {candidate} ({town.Name})", cancellationToken);
             await wallet.CreditAsync(id, cents, $"campaign money from {company}", cancellationToken);

@@ -639,4 +639,50 @@ public sealed class CompanyEconomyTests(ServerFactory factory) : IClassFixture<S
         var holders = Economy(await owner.CompanyAsync("company.get")).GetProperty("shares").GetProperty("holders");
         Assert.DoesNotContain(holders.EnumerateArray(), h => h.GetProperty("name").GetString() == member.Name);
     }
+
+    [Fact]
+    public async Task Company_research_called_off_gives_each_member_back_what_they_brought()
+    {
+        var (owner, members, id, _) = await CompanyAsync(Roles.Worker);
+        using var o = owner;
+        using var worker = members[0];
+        await ResearchedAsync(id, TechTree.CorporateFinance);
+        Assert.Equal("research", (await owner.SendAsync("research.companyStart", new { technology = TechTree.Banking })).Type());
+
+        var workerBefore = await worker.Client.BalanceAsync();
+        var ownerBefore = await owner.Client.BalanceAsync();
+        Assert.Equal("research", (await worker.SendAsync("research.contribute", new { item = TechTree.Money, quantity = 500_00L })).Type());
+        Assert.Equal("research", (await owner.SendAsync("research.contribute", new { item = TechTree.Money, quantity = 200_00L })).Type());
+        Assert.Equal(workerBefore - 500_00, await worker.Client.BalanceAsync());
+
+        Assert.Equal("research", (await owner.SendAsync("research.companyCancel")).Type());
+        Assert.Equal(workerBefore, await worker.Client.BalanceAsync());
+        Assert.Equal(ownerBefore, await owner.Client.BalanceAsync());
+    }
+
+    [Fact]
+    public async Task With_shareholders_outside_the_company_its_money_goes_out_by_shares_only()
+    {
+        var (owner, _, id, _) = await CompanyAsync();
+        using var o = owner;
+        using var investor = await PlayerAsync();
+        await owner.CompanyAsync("company.deposit", new { cents = 1000_00 });
+        Assert.Equal("company", (await owner.SendAsync("company.withdraw", new { cents = 100_00 })).Type());
+
+        await ResearchedAsync(id, TechTree.CorporateFinance);
+        await SqlAsync("INSERT INTO companies.warehouse (company_id, item, quantity) VALUES (@c, @i, 200)", ("c", id), ("i", Items.RoastBeef));
+        await owner.CompanyAsync("company.list", new { listed = true });
+        Assert.Equal("company.exchange", (await investor.SendAsync("company.shares.buy", new { company = id, shares = 100 })).Type());
+
+        // The owner can no longer empty the cash, neither straight nor through a campaign.
+        Assert.Equal("outside_shareholders", (await owner.SendAsync("company.withdraw", new { cents = 100_00 })).ErrorCode());
+
+        // Closed, the company shares its cash out by shares, the investor's part too.
+        var shares = Economy(await owner.CompanyAsync("company.get")).GetProperty("shares");
+        var total = shares.GetProperty("total").GetInt64();
+        var cash = Cash(await owner.CompanyAsync("company.get"));
+        var before = await investor.Client.BalanceAsync();
+        await owner.SendAsync("company.leave");
+        Assert.Equal(before + cash * 100 / total, await investor.Client.BalanceAsync());
+    }
 }

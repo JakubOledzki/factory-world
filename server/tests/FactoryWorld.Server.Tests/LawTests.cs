@@ -302,6 +302,20 @@ public sealed class LawTests(LawServerFactory factory) : IClassFixture<LawServer
     }
 
     [Fact]
+    public async Task A_player_the_police_leave_alone_may_not_smuggle_but_declares_and_pays_the_duty()
+    {
+        Govern(Home, Abroad);
+        var (client, _) = await CitizenAsync(Abroad, level: 1);
+        var from = await PlotAsync(client, Abroad);
+        var to = await PlotAsync(client, Home);
+        Countries.Trade[(Abroad, Home)] = new CountryTrade(false, 30, new Dictionary<string, int>());
+        await GiveAsync(client, Items.Wood, 10);
+
+        Assert.Equal("smuggling_protected", (await SendAsync(client, from, to, Items.Wood, 1, smuggle: true)).ErrorCode());
+        Assert.Equal("station", (await SendAsync(client, from, to, Items.Wood, 1)).Type());
+    }
+
+    [Fact]
     public async Task An_officer_inspects_a_smuggling_train_a_constable_sentences_it_and_a_judge_overturns_the_sentence_on_appeal()
     {
         var (president, officers) = await PoliceAsync(Home, Ranks.Cadet, Ranks.Constable);
@@ -377,6 +391,8 @@ public sealed class LawTests(LawServerFactory factory) : IClassFixture<LawServer
         var price = offer.GetProperty("priceCents").GetInt64();
         Assert.True(price > NpcPrices.Buys[Items.Dynamite]);
         Assert.True(price < factory.Services.GetRequiredService<IMarketPrices>().SellsCents(Items.Dynamite));
+        // Not even in the trader's cheapest sale does buying from him to sell to the fence pay.
+        Assert.True(price <= new MarketPrices().CheapestSellsCents(Items.Dynamite) * 90 / 100);
         Assert.Equal("fence_not_traded", (await dealer.SendAsync("fence.sell", new { item = Items.Wood, quantity = 1 })).ErrorCode());
 
         var balance = await dealer.BalanceAsync();
