@@ -46,7 +46,8 @@ var country_labels := PackedVector2Array()
 var country_plots := PackedInt32Array()
 ## One byte per plot: 0 for none (the sea, Antarctica), i + 1 for the i-th country.
 var countries := PackedByteArray()
-## City plots and the town (county) each belongs to, as the server counts them: plot → town number.
+## City plots and the town (county) each belongs to, as the server counts them: plot → town number. Its
+## mayor and tax rule there. A city plot no town is near is a town of its own.
 var county_of := {}
 ## Bucket index → Array of town indices in it, largest first.
 var _buckets := {}
@@ -274,7 +275,7 @@ func _load_countries() -> void:
 
 
 ## The cities file (tools/build_cities.py): "FWT1", width, height (u16), count (u32), then column, row and
-## town (u16) of every city plot that belongs to a town.
+## town (u16) of every city plot.
 func _load_cities() -> void:
 	var raw := _read_gzip(CITIES_FILE)
 	if raw.size() < 12 or raw.slice(0, 4).get_string_from_ascii() != "FWT1" or raw.decode_u16(4) != width:
