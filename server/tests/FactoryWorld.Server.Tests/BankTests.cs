@@ -315,7 +315,10 @@ public sealed class BankTests(ServerFactory factory) : ExportTestBase(factory), 
 
         // It opens an account first, and an hour later pays in.
         Assert.True(await StepUntilBankAsync());
-        Assert.Equal(1, Bank(await BankAsync(banker), company).GetProperty("customers").GetInt32());
+        // Banks of the other tests may have more customers: it picks one of those then.
+        var banks = (await bot.Client.SendAsync("bank.get", null, CancellationToken.None)).Payload.GetProperty("banks").EnumerateArray().ToList();
+        var chosen = banks.Single(b => b.GetProperty("balanceCents").ValueKind == JsonValueKind.Number);
+        Assert.Equal(banks.Max(b => b.GetProperty("customers").GetInt32()), chosen.GetProperty("customers").GetInt32());
         Factory.Time.Advance(BotRules.BankEvery + TimeSpan.FromSeconds(1));
         Assert.True(await StepUntilBankAsync());
         var view = (await bot.Client.SendAsync("bank.get", null, CancellationToken.None)).Payload;
