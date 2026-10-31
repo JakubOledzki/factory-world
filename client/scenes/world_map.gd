@@ -34,8 +34,9 @@ const OTHERS := Color("#d4553f")
 const HELP := Color("#ffd23f")
 ## Why a bot asks for help, as the server names it.
 const HELP_REASONS := {
-	"stalled": "Linia produkcyjna stoi, choć ma wszystko, czego potrzebuje. Pomóż ją ustawić od nowa.",
-	"parts": "Brakuje części do linii produkcyjnej albo opału. Przynieś je z ekwipunku.",
+	"stalled": "Linia produkcyjna stanęła i bot rozebrał zaciętą część. Wejdź na jego działkę i postaw ją z powrotem.",
+	"parts": "Bot postawił linię bez części, których nie umie zrobić. Wejdź na działkę i postaw je ze swojego ekwipunku.",
+	"turned": "Bot postawił część linii odwrotnie. Wejdź na jego działkę i obróć ją we właściwą stronę.",
 }
 ## Deposit sizes as the server numbers them.
 const DEPOSITS := ["brak", "małe złoże", "średnie złoże", "duże złoże"]
@@ -752,29 +753,27 @@ func _show_help(plot: Vector2i) -> void:
 	head.add_theme_font_override("font", UI.bold())
 	_plot_box.add_child(head)
 	_plot_box.add_child(_note(HELP_REASONS.get(call.get("reason", ""), "Coś nie działa w jego fabryce.")))
+	var tasks: Array = call.get("tasks", [])
+	for task: Dictionary in tasks:
+		_plot_box.add_child(_small("• %s: %s" % ["Obróć" if task.get("turn", false) else "Postaw", str(task["name"]).to_lower()], UI.TEXT))
 	var needs: Array = call.get("needs", [])
-	for need: Dictionary in needs:
-		_plot_box.add_child(_small("• %s × %d" % [need["name"], int(need["quantity"])], UI.TEXT))
+	if not needs.is_empty():
+		_plot_box.add_child(_small("Weź ze sobą: %s." % ", ".join(needs.map(func(n: Dictionary) -> String: return "%s × %d" % [n["name"], int(n["quantity"])])), UI.MUTED))
 	var pay := int(call.get("payCents", 0))
-	_plot_box.add_child(UI.label("Zapłata: %s" % UI.money(pay), UI.GOOD))
-	_plot_box.add_child(UI.button("Pomóż (+%s)" % UI.money(pay), _on_help.bind(plot), true))
+	_plot_box.add_child(UI.label("Zapłata po uruchomieniu fabryki: %s" % UI.money(pay), UI.GOOD))
+	_plot_box.add_child(UI.button("Pomogę (+%s)" % UI.money(pay), _on_help.bind(plot), true))
 
 
+## Takes the bot's call on (for 15 minutes nobody else can) and walks onto its plot, where the tiles to set right glow.
 func _on_help(plot: Vector2i) -> void:
 	var reply := await Net.request("bots.help", {"x": plot.x, "y": plot.y})
-	if reply["type"] != "bots.helped":
+	if reply["type"] != "bots.helping":
 		_show_error(reply)
 		await _load_help()
 		if _selected == plot:
 			_show_plot()
 		return
-	var helped: Dictionary = reply["payload"]
-	_set_balance(int(helped["balanceCents"]))
-	_help.erase(plot)
-	_show_toast("%s dziękuje za pomoc!  +%s" % [helped.get("bot", "Bot"), UI.money(int(helped["payCents"]))], UI.GOLD)
-	if _selected == plot:
-		_show_plot()
-	_overlay.queue_redraw()
+	Game.enter_plot(plot)
 
 
 ## The owner names the plot: the name shows here and in the routes of trains between their plots.

@@ -44,6 +44,10 @@ namespace FactoryWorld.Modules.Bots.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("Goals")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("goals");
+
                     b.Property<DateTimeOffset>("NextSessionAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("next_session_at");

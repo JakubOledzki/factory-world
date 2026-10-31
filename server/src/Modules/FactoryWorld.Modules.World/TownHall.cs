@@ -433,6 +433,31 @@ public sealed partial class CityService
             }
         }, cancellationToken);
 
+    /// <summary>A candidate withdraws from this week's election: the deposit comes back whole, and the votes cast for them
+    /// this week are void, so that a candidate who withdrew cannot become mayor.</summary>
+    public Task WithdrawAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            var town = RequireCounty(x, y);
+            var week = CityRules.WeekOf(time.GetUtcNow());
+            await using var command = await db.CommandAsync(
+                """
+                DELETE FROM world.town_candidates WHERE town_x = @x AND town_y = @y AND week = @week AND player_id = @player AND NOT settled
+                RETURNING deposit_cents;
+                DELETE FROM world.town_votes WHERE town_x = @x AND town_y = @y AND week = @week AND candidate_id = @player;
+                """, cancellationToken);
+            command.Parameters.AddWithValue("x", town.X);
+            command.Parameters.AddWithValue("y", town.Y);
+            command.Parameters.AddWithValue("week", week);
+            command.Parameters.AddWithValue("player", player);
+            if (await command.ExecuteScalarAsync(cancellationToken) is not long deposit)
+            {
+                throw new GameException("not_standing", "You do not stand in this week's election.");
+            }
+
+            await wallet.CreditAsync(player, deposit, $"election deposit back in {town.Name}", cancellationToken);
+        }, cancellationToken);
+
     /// <summary>Counts the votes of past weeks for those who stood: the deposit comes back with a tenth of the votes and goes into the treasury without.</summary>
     private async Task SettleCandidatesAsync(Town town, int week, CancellationToken cancellationToken)
     {
@@ -828,6 +853,18 @@ public sealed class CityStandHandler(IServiceScopeFactory scopes) : CityHandler(
     {
         var r = Payload.Read<StandRequest>(payload);
         await cities.StandAsync(player, r.X, r.Y, r.TaxPercent, string.IsNullOrEmpty(r.Bonus) ? null : r.Bonus, r.Slogan, cancellationToken);
+        return null;
+    }
+}
+
+public sealed class CityWithdrawHandler(IServiceScopeFactory scopes) : CityHandler(scopes)
+{
+    public override string Type => "city.withdraw";
+
+    protected override async Task<object?> RunAsync(CityService cities, Guid player, JsonElement? payload, CancellationToken cancellationToken)
+    {
+        var r = Payload.Read<CityRequest>(payload);
+        await cities.WithdrawAsync(player, r.X, r.Y, cancellationToken);
         return null;
     }
 }

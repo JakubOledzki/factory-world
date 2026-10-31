@@ -216,6 +216,42 @@ public interface IPlotRegistry
 /// <summary>The company a plot belongs to, as one player sees it.</summary>
 public sealed record PlotCompany(string Name, bool Member);
 
+/// <summary>One thing a helper is to set right on someone else's plot: <paramref name="Kind"/> standing on the tile and facing
+/// <paramref name="Rotation"/>. With <paramref name="Object"/> the object is there already and only needs turning; without, the
+/// helper puts one from their own inventory there.</summary>
+public sealed record HelpTask(string Kind, int TileX, int TileY, int Rotation, Guid? Object = null);
+
+/// <summary>
+/// Leave for one player to set things right on another's plot: to come onto it, to put there the objects
+/// <paramref name="Tasks"/> name and to turn those it names, nothing else. Once every task is done the plot's
+/// <paramref name="Owner"/> pays the helper <paramref name="PayCents"/>, and the objects put there are the owner's.
+/// </summary>
+public sealed record PlotPermit(
+    int X, int Y, Guid Owner, Guid Helper, IReadOnlyList<HelpTask> Tasks, long PayCents, DateTimeOffset Until);
+
+/// <summary>How far a helper got: tasks done of all, and once all are, what the owner paid them.</summary>
+public sealed record HelpProgress(int Done, int Of, long PayCents, bool Finished, long? BalanceCents);
+
+/// <summary>Leave to help on someone else's plot (bots ask players to set their lines going). Kept in memory: after a
+/// restart whoever asked for help asks again.</summary>
+public interface IPlotPermits
+{
+    /// <summary>Gives the leave, in place of any other on the same plot.</summary>
+    void Grant(PlotPermit permit);
+
+    /// <summary>Takes the leave on the plot back, if there is one.</summary>
+    void Revoke(int x, int y);
+
+    /// <summary>The leave on the plot, while it lasts.</summary>
+    PlotPermit? Find(int x, int y);
+}
+
+/// <summary>Told when a helper has done every task of a leave and was paid.</summary>
+public interface IPlotHelpListener
+{
+    void Helped(PlotPermit permit);
+}
+
 /// <summary>Plots that owners brought into a company, so its members work on them together.</summary>
 public interface ICompanyPlots
 {

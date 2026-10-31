@@ -1,5 +1,32 @@
 [
 	{
+		"date": "2026-10-31",
+		"title": "Boty grają jak gracze",
+		"changes": [
+			"Każdy bot ma swój charakter: jedne są ambitne i kupują więcej działek (od 3 do 5), inne poprzestają na mniejszym. Bot odkłada pieniądze na następną działkę, gdy ma już ćwierć jej ceny.",
+			"Ambitne boty kupują też działkę w mieście i dostarczają miastu to, czego dziś chce, jak gracze.",
+			"Boty zakładają spółki i zapraszają do nich inne boty. Członkowie wpłacają do kasy, przynoszą towary na zadania spółki za pensję i razem zbierają towary na zlecenia tygodnia.",
+			"Boty nie dołączają do spółek graczy.",
+			"Boty biorą obywatelstwo, głosują za uchwałami burmistrza i kandydują na burmistrza albo prezydenta, ale tylko tam, gdzie nie kandyduje żaden gracz. Gdy zgłosisz się w ich mieście, bot wycofuje się, a głosy na niego przepadają. Boty głosują tylko na boty, więc nie rozstrzygają wyborów, w których startują gracze.",
+			"Bot burmistrz trzyma się swojego programu, poddaje uchwały pod głosowanie i buduje park, dworzec albo halę targową z kasy miasta.",
+			"Nowy przycisk: kandydaturę na burmistrza i prezydenta można wycofać. Kaucja wraca w całości.",
+			"Chciwe boty zakładają konta w bankach graczy i trzymają w nich część oszczędności, więc twój bank zyskuje klientów.",
+			"Boty z linią produkcyjną, które zbadały Przesył energii, stawiają przyłącze sieciowe i sprzedają prąd swojego generatora po cenie z okolicy. Możesz położyć do nich kabel jak do przyłącza gracza.",
+			"Boty wstępują do policji. Bot detektyw prowadzi śledztwa wobec każdego, graczy i botów, z tymi samymi limitami co gracze; gracze poniżej 5 poziomu są chronieni. Bot posterunkowy wydaje wyroki z grzywną, od których możesz się odwołać.",
+			"Odważne boty sprzedają towary paserowi, więc policja ma kogo łapać."
+		]
+	},
+	{
+		"date": "2026-10-31",
+		"title": "Pomoc botom na ich działkach",
+		"changes": [
+			"Boty proszą o pomoc inaczej: wykrzyknik na mapie świata mówi, co postawić albo obrócić w ich fabryce. Przycisk Pomogę rezerwuje zgłoszenie na 15 minut i przenosi cię na działkę bota.",
+			"Na działce bota złote pola ze strzałką pokazują, gdzie postawić część z twojego ekwipunku (podajnik, taśmociąg, słup) i w którą stronę ma stać. Część stojącą odwrotnie obracasz kliknięciem albo klawiszem R.",
+			"Bot płaci dopiero wtedy, gdy wszystko stoi jak trzeba: opłatę za pomoc i za każdą postawioną część to, co płaci za nią handlarz, i ćwierć więcej, nigdy więcej, niż handlarz sam za nią bierze. Postawione części należą do bota.",
+			"Na działce bota nie zrobisz nic poza tym, o co prosi: nie zbierzesz, nie podniesiesz i nie postawisz niczego innego. Gdy nikt nie przyjdzie przez pół godziny, bot naprawia fabrykę sam."
+		]
+	},
+	{
 		"date": "2026-10-30",
 		"title": "Powiaty miast",
 		"changes": [

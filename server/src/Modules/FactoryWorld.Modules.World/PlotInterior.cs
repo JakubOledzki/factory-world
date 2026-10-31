@@ -319,7 +319,7 @@ public sealed record Harvest(TileObject Object, IReadOnlyList<(string Item, int 
 public sealed class PlotService(
     GameDb db, WorldMap map, IInventory inventory, IEquipment equipment, ICharacterProgress progress, IProductionStats stats,
     IEnumerable<ICompanyPlots> companies, BeachService beach, PestService pests, ForestLedger ledger, IOutfit outfit, PlotTaxService taxes,
-    TimeProvider time, IServiceProvider services)
+    TimeProvider time, IServiceProvider services, PlotPermits permits)
 {
     /// <summary>The tiles of a plot as they are now; only its owner and members of its company may enter, or anyone when it is public.</summary>
     public async Task<byte[]> TilesAsync(Guid player, int x, int y, CancellationToken cancellationToken)
@@ -806,8 +806,9 @@ public sealed class PlotService(
         }
 
         rights.Remove(PlotRight.Owner);
-        // Members of the plot's company may always come; anyone else only when the owner made it public, and then only to look.
-        if (rights.Count > 0 || open)
+        // Members of the plot's company may always come; anyone else only when the owner made it public, and then only to look,
+        // or to help with what the owner asked (IPlotPermits).
+        if (rights.Count > 0 || open || permits.For(player, x, y) is not null)
         {
             rights.Add(PlotRight.Visit);
         }
@@ -860,6 +861,9 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
         var biome = map.BiomeAt(request.X, request.Y);
         var mines = await scope.ServiceProvider.GetRequiredService<MineService>().MinesAsync(request.X, request.Y, biome, cancellationToken);
         var objects = await scope.ServiceProvider.GetRequiredService<PlotObjectService>().ObjectsAsync(request.X, request.Y, cancellationToken);
+        var permit = rights.Contains(PlotRight.Build)
+            ? null
+            : scope.ServiceProvider.GetRequiredService<PlotPermits>().For(client.RequireAccount(), request.X, request.Y);
         var pests = await scope.ServiceProvider.GetRequiredService<PestService>().StateAsync(request.X, request.Y, cancellationToken);
         var smog = await scope.ServiceProvider.GetRequiredService<SmogService>().LevelAsync(request.X, request.Y, cancellationToken);
         var certificate = await scope.ServiceProvider.GetRequiredService<ForestLedger>().JsonAsync(client.RequireAccount(), cancellationToken);
@@ -888,6 +892,8 @@ public sealed class EnterPlotHandler(IServiceScopeFactory scopes, WorldMap map, 
             y = request.Y,
             biome = (int)biome,
             rights = rights.Order().Select(r => r.ToString().ToLowerInvariant()),
+            // What the player came to set right on someone else's plot, with leave to (IPlotPermits); null otherwise.
+            help = permit is null ? null : PlotPermits.Json(permit, objects),
             // How many players like the plot, and whether this one does.
             likes,
             liked,

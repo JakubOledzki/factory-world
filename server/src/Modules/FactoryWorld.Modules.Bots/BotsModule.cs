@@ -18,6 +18,9 @@ public sealed class BotsOptions
 
     /// <summary>Seconds between steps; every bot in a session takes one step per tick.</summary>
     public int TickSeconds { get; set; } = 10;
+
+    /// <summary>How likely a bot puts a part of its new line up the wrong way round, for players to turn (0 in tests).</summary>
+    public double MistakeChance { get; set; } = BotRules.MistakeChance;
 }
 
 /// <summary>Keeps the bots playing while the server runs.</summary>
@@ -59,7 +62,7 @@ public sealed class BotRunner(BotEngine engine, BotsOptions options, TimeProvide
 /// Players run by the server: they sort trash, buy plots, chop, mine, farm, smelt, craft, research, build production
 /// lines on their plots, trade on the market, take orders and earn badges through the same messages a client sends, so
 /// they appear in rankings and on the market like anyone else. A bot whose line does not work asks players for help
-/// (<c>bots.helpWanted</c>, <c>bots.help</c>) and pays whoever helps. Owns the <c>bots</c> schema.
+/// (<c>bots.helpWanted</c>, <c>bots.help</c>): a player comes onto its plot, puts up or turns what it asks, and is paid. Owns the <c>bots</c> schema.
 /// </summary>
 public sealed class BotsModule : IGameModule
 {
@@ -70,6 +73,7 @@ public sealed class BotsModule : IGameModule
         services.AddModuleDbContext<BotsDbContext>(BotsDbContext.Schema);
         services.AddSingleton(configuration.GetSection("Bots").Get<BotsOptions>() ?? new BotsOptions());
         services.AddSingleton<BotHelpBoard>();
+        services.AddSingleton<IPlotHelpListener>(provider => provider.GetRequiredService<BotHelpBoard>());
         services.AddSingleton<IMessageHandler, HelpWantedHandler>();
         services.AddSingleton<IMessageHandler, HelpBotHandler>();
         services.AddSingleton<BotEngine>();

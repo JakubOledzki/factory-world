@@ -454,6 +454,8 @@ func _render_election() -> void:
 		_body.add_child(slogan)
 		_body.add_child(UI.button("Zapisz program" if politics["standing"] else "Kandyduj (kaucja %s)" % UI.money(int(politics["depositCents"])),
 			func() -> void: _stand(int(tax.value), str(pick.get_item_metadata(pick.selected)), slogan.text), true))
+		if politics["standing"]:
+			_body.add_child(UI.button("Wycofaj kandydaturę (kaucja wraca)", _withdraw_candidacy))
 		_body.add_child(_note("Kaucja wraca, gdy dostaniesz co najmniej %d%% głosów; inaczej trafia do kasy miasta. Przy twoim imieniu widać, czy jako burmistrz dotrzymałeś obietnic." \
 			% int(politics["depositBackPercent"])))
 
@@ -562,6 +564,12 @@ func _propose(kind: String) -> void:
 func _vote_ordinance(id: String, yes: bool) -> void:
 	if _apply(await Net.request("city.ordinance", {"x": plot.x, "y": plot.y, "id": id, "yes": yes})):
 		toast.emit("Oddano głos %s uchwałą" % ("za" if yes else "przeciw"))
+
+
+func _withdraw_candidacy() -> void:
+	if _apply(await Net.request("city.withdraw", {"x": plot.x, "y": plot.y})):
+		toast.emit("Wycofałeś kandydaturę, kaucja wróciła")
+		balance_changed.emit()
 
 
 func _stand(tax: int, bonus: String, slogan: String) -> void:

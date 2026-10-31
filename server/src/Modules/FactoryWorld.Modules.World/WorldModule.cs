@@ -1698,6 +1698,8 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<IMachinePorts>(provider => provider.GetRequiredService<FeederService>());
         services.AddScoped<MineService>();
         services.AddScoped<SurveyService>();
+        services.AddSingleton<PlotPermits>();
+        services.AddSingleton<IPlotPermits>(provider => provider.GetRequiredService<PlotPermits>());
         services.AddScoped<PlotObjectService>();
         services.AddScoped<IPlacedObjects>(provider => provider.GetRequiredService<PlotObjectService>());
         services.AddScoped<PlotObjectsQuery>();
@@ -1829,6 +1831,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, CityInvestHandler>();
         services.AddSingleton<IMessageHandler, CityRecallHandler>();
         services.AddSingleton<IMessageHandler, CityStandHandler>();
+        services.AddSingleton<IMessageHandler, CityWithdrawHandler>();
         services.AddSingleton<IMessageHandler, CitySponsorHandler>();
         services.AddSingleton<IMessageHandler, CityProposeHandler>();
         services.AddSingleton<IMessageHandler, CityOrdinanceVoteHandler>();

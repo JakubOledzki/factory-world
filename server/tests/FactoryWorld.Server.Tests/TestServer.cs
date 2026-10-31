@@ -55,6 +55,8 @@ public class ServerFactory : WebApplicationFactory<Program>
         // Bots would play next to the test players; their own tests drive them by hand.
         builder.UseSetting("Bots:Enabled", "false");
         builder.UseSetting("Bots:Count", BotTests.TestBots.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        // A bot's line goes up right; the tests that need it put up wrong set the chance themselves.
+        builder.UseSetting("Bots:MistakeChance", "0");
         builder.UseSetting("ConnectionStrings:Game",
             new NpgsqlConnectionStringBuilder(_admin) { Database = _database }.ConnectionString);
         builder.ConfigureTestServices(services => services.AddSingleton<TimeProvider>(Time));

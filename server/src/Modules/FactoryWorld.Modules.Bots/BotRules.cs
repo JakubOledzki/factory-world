@@ -9,6 +9,7 @@ internal static class Biomes
     public const int Farmland = 3;
     public const int Desert = 5;
     public const int Mountains = 6;
+    public const int City = 9;
 }
 
 /// <summary>Tile codes of plot.enter: what stands on a tile.</summary>
@@ -100,6 +101,19 @@ public static class BotRules
     /// <summary>A bot pays for parts at most this share of what the NPC trader charges for them, the fee included.</summary>
     public const double HelpBelowTrader = 0.95;
 
+    /// <summary>How long a player who took on a bot's call for help has to do it before others may.</summary>
+    public static readonly TimeSpan HelpLeave = TimeSpan.FromMinutes(15);
+
+    /// <summary>How likely a bot puts one belt or inserter of its new line up the wrong way round, for players to turn
+    /// (at most once a session).</summary>
+    public const double MistakeChance = 0.2;
+
+    /// <summary>Parts a bot puts its line up without and asks players to put in place, when it can neither make nor buy them.</summary>
+    public static readonly IReadOnlySet<string> HelpParts = new HashSet<string> { Items.Inserter, Items.Belt, Items.Pole };
+
+    /// <summary>Most things one call for help asks a player to put up or turn.</summary>
+    public const int MaxHelpTasks = 3;
+
     /// <summary>A bot waits this long for help before it gives up and sets its line going itself.</summary>
     public static readonly TimeSpan HelpWait = TimeSpan.FromMinutes(30);
 
@@ -129,23 +143,154 @@ public static class BotRules
         _ => null,
     };
 
-    /// <summary>Plots a bot buys over its life; the third costs 100 000 $, so few get that far.</summary>
-    public static int MaxPlots(BotTrade trade) => trade switch
+    /// <summary>
+    /// Plots a bot buys over its life, as far as its money goes: three to five by how ambitious it is (a trader one or two).
+    /// The third costs 100 000 $, so few get that far.
+    /// </summary>
+    public static int MaxPlots(BotTrade trade, double ambition) => trade switch
     {
-        BotTrade.Trader => 1,
-        _ => 3,
+        BotTrade.Trader => ambition >= AmbitiousFrom ? 2 : 1,
+        _ => 3 + (int)Math.Round(Math.Clamp(ambition, 0, 1) * 2),
     };
 
-    /// <summary>Biomes the bot's next plot may have, given how many it owns.</summary>
-    public static int[] PlotBiomes(BotTrade trade, int owned) => trade switch
+    /// <summary>A bot this ambitious (<see cref="BotTraits.Ambition"/>) buys a plot in a town besides the ones of its trade.</summary>
+    public const double AmbitiousFrom = 0.5;
+
+    /// <summary>A bot starts saving up for its next plot once it has this share of the price.</summary>
+    public const double SaveForPlotFrom = 0.25;
+
+    /// <summary>
+    /// Biomes the bot's next plot may have, given how many it owns: those of its trade, and for an ambitious bot that owns
+    /// a plot already and none in a town, a town's too, to supply the town from.
+    /// </summary>
+    public static int[] PlotBiomes(BotTrade trade, int owned, double ambition = 0, bool hasCity = true)
     {
-        BotTrade.Forester => [Biomes.Forest],
-        BotTrade.Miner => owned == 0 ? [Biomes.Mountains] : [Biomes.Mountains, Biomes.Forest],
-        BotTrade.Farmer => owned == 0 ? [Biomes.Farmland] : [Biomes.Farmland, Biomes.Forest],
-        BotTrade.Industrialist => owned == 0 ? [Biomes.Forest] : [Biomes.Mountains],
-        BotTrade.Smelter => owned == 0 ? [Biomes.Forest] : [Biomes.Mountains, Biomes.Forest],
-        _ => [Biomes.Forest],
-    };
+        int[] biomes = trade switch
+        {
+            BotTrade.Forester => [Biomes.Forest],
+            BotTrade.Miner => owned == 0 ? [Biomes.Mountains] : [Biomes.Mountains, Biomes.Forest],
+            BotTrade.Farmer => owned == 0 ? [Biomes.Farmland] : [Biomes.Farmland, Biomes.Forest],
+            BotTrade.Industrialist => owned == 0 ? [Biomes.Forest] : [Biomes.Mountains],
+            BotTrade.Smelter => owned == 0 ? [Biomes.Forest] : [Biomes.Mountains, Biomes.Forest],
+            _ => [Biomes.Forest],
+        };
+        return owned > 0 && ambition >= AmbitiousFrom && !hasCity ? [.. biomes, Biomes.City] : biomes;
+    }
+
+    /// <summary>Bots this greedy sell the power of their line's generator through a grid tie, once they researched power distribution.</summary>
+    public const double SellsPowerFrom = 0.5;
+
+    /// <summary>What a bot asks for a kWh where nobody nearby sells power to compare with.</summary>
+    public const long PowerPriceCents = 10;
+
+    /// <summary>How far from a pole a bot puts its grid tie, within the pole's reach of 5 × 5 tiles.</summary>
+    public const int PoleReach = 2;
+
+    /// <summary>How often a bot looks at the police window: its work as an officer, or an application.</summary>
+    public static readonly TimeSpan LawEvery = TimeSpan.FromMinutes(20);
+
+    /// <summary>Bots this civic apply to their country's police.</summary>
+    public const double PoliceFrom = 0.6;
+
+    /// <summary>Bots that dare this much (<see cref="BotTraits.Risk"/>) sell the fence what it buys.</summary>
+    public const double FenceFrom = 0.75;
+
+    /// <summary>Police ranks as the law module numbers them: cadet 0, constable 1, detective 2, chief 3.</summary>
+    public const int ConstableRank = 1;
+
+    public const int DetectiveRank = 2;
+
+    public const int ChiefRank = 3;
+
+    /// <summary>People a bot detective tries in one look, until one may be investigated.</summary>
+    public const int SuspectsPerLook = 8;
+
+    /// <summary>Cases a bot officer sentences in one look at most.</summary>
+    public const int SentencesPerLook = 2;
+
+    /// <summary>The smallest fine a bot officer gives.</summary>
+    public const long MinFine = 50_00;
+
+    /// <summary>How often a bot looks at the banks and its account.</summary>
+    public static readonly TimeSpan BankEvery = TimeSpan.FromHours(1);
+
+    /// <summary>Bots this greedy (<see cref="BotTraits.Greed"/>) keep savings in a bank.</summary>
+    public const double BanksFrom = 0.4;
+
+    /// <summary>A bot opens an account and pays in once it has this much to spare.</summary>
+    public const long SavesInBankFrom = 2_000_00;
+
+    /// <summary>With less than this in its wallet (over its reserve) a bot takes money out of its account.</summary>
+    public const long WithdrawBelow = 200_00;
+
+    /// <summary>The most a bot pays in or takes out at once.</summary>
+    public const long BankBatch = 1_000_00;
+
+    /// <summary>How often a bot looks at its town hall and its country's government.</summary>
+    public static readonly TimeSpan PoliticsEvery = TimeSpan.FromMinutes(30);
+
+    /// <summary>Bots this civic (<see cref="BotTraits.Civic"/>) vote, in towns and countries; most do.</summary>
+    public const double VotesFrom = 0.3;
+
+    /// <summary>Bots this civic, and ambitious, stand for mayor where no player does; one bot per town at a time.</summary>
+    public const double StandsFrom = 0.8;
+
+    /// <summary>Bots this civic, and ambitious, run for president where nobody else does yet.</summary>
+    public const double RunsForPresidentFrom = 0.97;
+
+    /// <summary>What a bot keeps besides the deposit when it stands for an office.</summary>
+    public const long StandSpare = 1_000_00;
+
+    /// <summary>The mayor's bonuses a bot promises, one of them by its nature.</summary>
+    public static readonly string[] MayorBonuses = ["demand", "shoppers", "rail", "plots"];
+
+    /// <summary>The tax on shops and services a bot promises as mayor: 2 to 10%, more for a greedy one.</summary>
+    public static int TaxPromise(BotTraits traits) => 2 + (int)Math.Round(traits.Greed * 8);
+
+    /// <summary>How often a bot looks at its company and its invitations.</summary>
+    public static readonly TimeSpan CompanyEvery = TimeSpan.FromMinutes(10);
+
+    /// <summary>Bots this ambitious found a company of bots; about one in seven.</summary>
+    public const double FoundsFrom = 0.85;
+
+    /// <summary>A bot founds a company once it has this much: it costs nothing, but a pauper does not.</summary>
+    public const long FoundCompanyFrom = 1_000_00;
+
+    /// <summary>Bots this loyal accept an invitation from a bot's company; most do.</summary>
+    public const double JoinsFrom = 0.2;
+
+    /// <summary>A bot pays into its company's cash only with this much to spare, and only if it is not too greedy.</summary>
+    public const long DepositFrom = 500_00;
+
+    public const double DepositsBelowGreed = 0.7;
+
+    /// <summary>The most a bot pays into its company's cash in a session.</summary>
+    public const long MaxDeposit = 200_00;
+
+    /// <summary>The most pieces a bot brings to its company, or takes from it, at once.</summary>
+    public const long CompanyBatch = 200;
+
+    /// <summary>Members a bot's company grows to, the founder and those invited included: 3 to 6, more for an ambitious founder.</summary>
+    public static int CompanySize(double ambition) => 3 + (int)Math.Round(Math.Clamp(ambition, 0, 1) * 3);
+
+    private static readonly string[] CompanyWords = ["Zakłady", "Grupa", "Spółdzielnia", "Kombinat", "Bractwo", "Holding", "Manufaktura", "Konsorcjum"];
+
+    /// <summary>Names a bot tries for its company, its own name in them, until one is free (3 to 24 characters).</summary>
+    public static IEnumerable<string> CompanyNames(string character, BotTraits traits)
+    {
+        var start = (int)(traits.Risk * CompanyWords.Length) % CompanyWords.Length;
+        for (var i = 0; i < CompanyWords.Length; i++)
+        {
+            var word = CompanyWords[(start + i) % CompanyWords.Length];
+            var name = $"{word} {character}";
+            yield return name.Length <= 24 ? name : name[..24].TrimEnd(' ', '_', '.', '-', '&');
+        }
+
+        yield return $"{character[..Math.Min(character.Length, 15)]} i Spółka";
+    }
+
+    /// <summary>How often a bot with a plot in a town looks what the town wants.</summary>
+    public static readonly TimeSpan SupplyEvery = TimeSpan.FromMinutes(5);
 
     /// <summary>
     /// What the bot puts up on a plot of a biome, in the order it gets to them: it crafts each piece
@@ -244,7 +389,7 @@ public static class BotRules
         BotTrade.Industrialist =>
         [
             "logistics", "automation", "storage", "sorting", "fast_logistics", "underground_belts", "rail_freight", "long_inserters",
-            "metallurgy", "glassmaking", "stonemasonry",
+            "metallurgy", "glassmaking", "stonemasonry", "hydropower", "power_distribution",
         ],
         BotTrade.Farmer => ["milling", "logistics", "automation", "pickling", "baking", "oil_pressing", "cooking", "fishing"],
         _ => [],
