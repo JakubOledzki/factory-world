@@ -14,7 +14,7 @@ public sealed partial class Bot
 
     private void PowerCandidates(BotWorld world, Action<int, string, Func<CancellationToken, Task<bool>>> add)
     {
-        if (_site is not { } site || Traits.Greed < BotRules.SellsPowerFrom || IsLocked(Items.GridTie))
+        if (_site is not { } site || _fixes.Count > 0 || Traits.Greed < BotRules.SellsPowerFrom || IsLocked(Items.GridTie))
         {
             return;
         }

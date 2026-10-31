@@ -502,17 +502,20 @@ public sealed class LawTests(LawServerFactory factory) : IClassFixture<LawServer
         Assert.Equal("no_country", (await nobody.SendAsync("law.apply")).ErrorCode());
     }
 
-    [Fact]
-    public async Task A_civic_bot_joins_the_police_and_as_a_detective_investigates_players_and_bots_alike()
+    private BotEngine Engine => factory.Services.GetRequiredService<BotEngine>();
+
+    /// <summary>Civic bots, each test of the class taking its own: the first for the detective, the next for the constable and the chief.</summary>
+    private async Task<Bot> CivicBotAsync(int which)
+    {
+        await Engine.EnsureBotsAsync(CancellationToken.None);
+        return Engine.Bots.Where(b => b.Traits.Civic >= BotRules.PoliceFrom && b.Traits.Risk < BotRules.FenceFrom).ElementAt(which);
+    }
+
+    /// <summary>A bot at level 10, with money and a plot in <see cref="Home"/>, whose citizen it is.</summary>
+    private async Task SettleAsync(Bot bot)
     {
         // A strong player, so the bots' level cap lets a bot reach the level the police take.
         await CitizenAsync(Abroad, 20);
-        var (president, officers) = await PoliceAsync(Home);
-        var (chief, _) = officers[0];
-
-        var engine = factory.Services.GetRequiredService<BotEngine>();
-        await engine.EnsureBotsAsync(CancellationToken.None);
-        var bot = engine.Bots.First(b => b.Traits.Civic >= BotRules.PoliceFrom);
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             await scope.ServiceProvider.GetRequiredService<ICharacterProgress>()
@@ -524,22 +527,32 @@ public sealed class LawTests(LawServerFactory factory) : IClassFixture<LawServer
         var (x, y) = FreePlot();
         Assert.True((await bot.Client.SendAsync("world.buy", new { x, y }, CancellationToken.None)).Is("world.bought"));
         Countries.Plots[(x, y)] = Home;
+    }
 
-        async Task<bool> StepUntilLawAsync()
+    private async Task<bool> StepUntilLawAsync(Bot bot)
+    {
+        for (var i = 0; i < 300; i++)
         {
-            for (var i = 0; i < 300; i++)
+            if (await Engine.StepAsync(bot.Profile.Name, CancellationToken.None) == "law")
             {
-                if (await engine.StepAsync(bot.Profile.Name, CancellationToken.None) == "law")
-                {
-                    return true;
-                }
+                return true;
             }
-
-            return false;
         }
 
+        return false;
+    }
+
+    [Fact]
+    public async Task A_civic_bot_joins_the_police_and_as_a_detective_investigates_players_and_bots_alike()
+    {
+        var (president, officers) = await PoliceAsync(Home);
+        var (chief, _) = officers[0];
+        var engine = Engine;
+        var bot = await CivicBotAsync(0);
+        await SettleAsync(bot);
+
         // It applies; the chief takes it on as a detective.
-        Assert.True(await StepUntilLawAsync());
+        Assert.True(await StepUntilLawAsync(bot));
         Assert.Contains((await LawAsync(chief)).GetProperty("police").GetProperty("applications").EnumerateArray(),
             a => a.GetProperty("name").GetString() == bot.Row.CharacterName);
         await LawAsync(chief, "law.hire", new { name = bot.Row.CharacterName, yes = true });
@@ -552,11 +565,104 @@ public sealed class LawTests(LawServerFactory factory) : IClassFixture<LawServer
         // The bots below level 5 are protected: it finds that out and investigates the player in a few looks.
         for (var look = 0; look < 6; look++)
         {
-            await StepUntilLawAsync();
+            await StepUntilLawAsync(bot);
             factory.Time.Advance(BotRules.LawEvery + TimeSpan.FromSeconds(1));
         }
 
         var desk = (await bot.Client.SendAsync("law.get", null, CancellationToken.None)).Payload.GetProperty("police");
         Assert.True(desk.GetProperty("investigationsLeft").GetInt64() < LawRules.Investigations, desk.ToString());
+    }
+
+    [Fact]
+    public async Task A_bot_constable_fines_an_open_case_someone_else_opened_within_the_law_s_bounds()
+    {
+        var (_, officers) = await PoliceAsync(Home, Ranks.Detective);
+        var (chief, _) = officers[0];
+        var detective = officers[1];
+        var (dealer, dealerName) = await CitizenAsync(Home);
+        await GiveAsync(dealer, Items.Dynamite, 20);
+        for (var i = 0; i < 20; i++)
+        {
+            Assert.Equal("fence", (await dealer.SendAsync("fence.sell", new { item = Items.Dynamite, quantity = 1 })).Type());
+        }
+
+        Assert.Equal("law.investigated", (await detective.Client.SendAsync("law.investigate", new { name = dealerName })).Type());
+        var open = (await LawAsync(dealer)).GetProperty("cases").EnumerateArray().First(c => c.GetProperty("status").GetString() == "open");
+
+        var bot = await CivicBotAsync(1);
+        await SettleAsync(bot);
+        Assert.True(await StepUntilLawAsync(bot));
+        await LawAsync(chief, "law.hire", new { name = bot.Row.CharacterName, yes = true });
+        await LawAsync(chief, "law.setRank", new { name = bot.Row.CharacterName, rank = Ranks.Constable });
+
+        factory.Time.Advance(BotRules.LawEvery + TimeSpan.FromSeconds(1));
+        Assert.True(await StepUntilLawAsync(bot));
+        var sentenced = (await LawAsync(dealer)).GetProperty("cases").EnumerateArray().Single(c => c.GetProperty("id").GetInt64() == open.GetProperty("id").GetInt64());
+        Assert.Equal(CaseStatus.Sentenced, sentenced.GetProperty("status").GetString());
+        Assert.Equal(bot.Row.CharacterName, sentenced.GetProperty("decidedBy").GetString());
+        var fine = sentenced.GetProperty("fineCents").GetInt64();
+        Assert.Equal(Math.Min(Math.Max(open.GetProperty("valueCents").GetInt64(), BotRules.MinFine), open.GetProperty("maxFineCents").GetInt64()), fine);
+    }
+
+    [Fact]
+    public async Task A_bot_president_heads_a_small_police_so_salaries_do_not_empty_the_treasury()
+    {
+        Govern(Home);
+        var bot = await CivicBotAsync(2);
+        await SettleAsync(bot);
+        Countries.Offices[(bot.Row.AccountId, Home)] = [CountryOffices.President];
+
+        // With no police yet, it heads it itself.
+        Assert.True(await StepUntilLawAsync(bot));
+        var police = (await bot.Client.SendAsync("law.get", null, CancellationToken.None)).Payload.GetProperty("police");
+        Assert.Equal(BotRules.ChiefRank, police.GetProperty("rank").GetInt32());
+
+        for (var i = 0; i < BotRules.MaxOfficers + 2; i++)
+        {
+            var (applicant, _) = await CitizenAsync(Home);
+            await LawAsync(applicant, "law.apply");
+        }
+
+        // It takes on applicants up to a small police, and makes only a few of them detectives.
+        factory.Time.Advance(BotRules.LawEvery + TimeSpan.FromSeconds(1));
+        Assert.True(await StepUntilLawAsync(bot));
+        for (var look = 0; look < 2; look++)
+        {
+            factory.Time.Advance(BotRules.LawEvery + TimeSpan.FromSeconds(1));
+            await StepUntilLawAsync(bot);
+        }
+
+        police = (await bot.Client.SendAsync("law.get", null, CancellationToken.None)).Payload.GetProperty("police");
+        var force = police.GetProperty("officers").EnumerateArray().ToList();
+        Assert.Equal(BotRules.MaxOfficers, force.Count);
+        Assert.Equal(BotRules.MaxDetectives, force.Count(o => !o.GetProperty("me").GetBoolean() && o.GetProperty("rank").GetInt32() == BotRules.DetectiveRank));
+        Assert.Equal(3, police.GetProperty("applications").GetArrayLength());
+    }
+
+    [Fact]
+    public async Task A_daring_bot_sells_the_fence_only_as_much_as_it_may_take_from_npcs_in_a_session()
+    {
+        await Engine.EnsureBotsAsync(CancellationToken.None);
+        var bot = Engine.Bots.First(b => b.Traits.Risk >= BotRules.FenceFrom && b.Traits.Civic < BotRules.PoliceFrom);
+        await SettleAsync(bot);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IInventory>().AddAsync(bot.Row.AccountId, Items.Dynamite, 1000, CancellationToken.None);
+        }
+
+        bot.EndSession();
+        Assert.True(await StepUntilLawAsync(bot));
+        // Once it took what it may in the session, it sells the fence nothing more.
+        for (var look = 0; look < 2; look++)
+        {
+            factory.Time.Advance(BotRules.LawEvery + TimeSpan.FromSeconds(1));
+            Assert.False(await StepUntilLawAsync(bot));
+        }
+
+        var fence = (await bot.Client.SendAsync("fence.get", null, CancellationToken.None)).Payload;
+        var left = fence.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("id").GetString() == Items.Dynamite).GetProperty("have").GetInt64();
+        Assert.InRange(left, 1, 999);
+        var earned = (1000 - left) * fence.GetProperty("items").EnumerateArray().Single(i => i.GetProperty("id").GetString() == Items.Dynamite).GetProperty("priceCents").GetInt64();
+        Assert.True(earned <= BotRules.MaxTraderIncome, $"{earned}");
     }
 }

@@ -86,7 +86,7 @@ public sealed partial class Bot
             var item = wanted[world.Random.Next(wanted.Count)];
             const long quantity = 20;
             var reward = (long)Math.Round(Floor(item) * quantity * (1.2 + world.Random.NextDouble() * 0.4));
-            if (reward <= (_money - BotRules.Reserve) / 3)
+            if (reward <= (Spendable - BotRules.Reserve) / 3)
             {
                 var reply = await SendAsync("contracts.create", new { item, quantity, rewardCents = reward, hours = 24 }, cancellationToken);
                 return reply.Is("contracts.done");

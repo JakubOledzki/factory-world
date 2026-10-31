@@ -32,7 +32,7 @@ public sealed partial class Bot
         var banks = reply.Payload.Each("banks").Where(b => b.Each("buildings").Any()).ToList();
         if (banks.FirstOrDefault(b => b.LongOrNull("balanceCents") is not null) is not { ValueKind: JsonValueKind.Object } mine)
         {
-            if (banks.Count == 0 || _money < BotRules.SavesInBankFrom)
+            if (banks.Count == 0 || Spendable < BotRules.SavesInBankFrom)
             {
                 return false;
             }
@@ -50,16 +50,16 @@ public sealed partial class Bot
 
         var bank = mine.Text("id");
         var balance = mine.Long("balanceCents");
-        if (_money < BotRules.Reserve + BotRules.WithdrawBelow && balance > 0)
+        if (Spendable < BotRules.Reserve + BotRules.WithdrawBelow && balance > 0)
         {
             var cents = Math.Min(balance, BotRules.BankBatch);
             return (await SendAsync("bank.withdraw", new { bank, cents }, cancellationToken)).Is("bank");
         }
 
         // Savings for a plot or an office go in too: a tenth of what it has at a time.
-        if (_money >= BotRules.SavesInBankFrom)
+        if (Spendable >= BotRules.SavesInBankFrom)
         {
-            var cents = Math.Min(_money / 10, BotRules.BankBatch);
+            var cents = Math.Min(Spendable / 10, BotRules.BankBatch);
             var deposited = await SendAsync("bank.deposit", new { bank, cents }, cancellationToken);
             if (deposited.Is("bank"))
             {

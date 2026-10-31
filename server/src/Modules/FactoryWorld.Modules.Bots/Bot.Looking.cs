@@ -171,6 +171,8 @@ public sealed partial class Bot
         }
 
         _craftQueue = crafting.Each("queue").Count();
+        _crafting.Clear();
+        _crafting.UnionWith(crafting.Each("queue").Select(q => q.Text("recipe")).OfType<string>());
     }
 
     private IEnumerable<(string Item, long Quantity)> Recipe(string id) =>

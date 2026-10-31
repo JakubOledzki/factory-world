@@ -32,10 +32,12 @@ const MINE := Color("#f5b041")
 const OTHERS := Color("#d4553f")
 ## The exclamation mark over a bot's plot when it asks players for help.
 const HELP := Color("#ffd23f")
+## Seconds between looks at which bots ask for help, while the map is open.
+const HELP_EVERY := 30.0
 ## Why a bot asks for help, as the server names it.
 const HELP_REASONS := {
 	"stalled": "Linia produkcyjna stanęła i bot rozebrał zaciętą część. Wejdź na jego działkę i postaw ją z powrotem.",
-	"parts": "Bot postawił linię bez części, których nie umie zrobić. Wejdź na działkę i postaw je ze swojego ekwipunku.",
+	"parts": "W linii bota brakuje części, których nie umie zrobić. Weź zgłoszenie przyciskiem Pomogę i postaw je ze swojego ekwipunku.",
 	"turned": "Bot postawił część linii odwrotnie. Wejdź na jego działkę i obróć ją we właściwą stronę.",
 }
 ## Deposit sizes as the server numbers them.
@@ -61,6 +63,7 @@ var _tax_per_mille := 0
 var _center := Vector2.ZERO
 var _zoom := 1.0
 var _area_in := 0.0
+var _help_in := HELP_EVERY
 
 ## Set once the map and the interface exist.
 var _built := false
@@ -308,6 +311,11 @@ func _process(delta: float) -> void:
 		_area_in -= delta
 		if _area_in <= 0.0:
 			_load_area()
+	# Bots ask for help and get it all the time: the exclamation marks follow.
+	_help_in -= delta
+	if _help_in <= 0.0:
+		_help_in = HELP_EVERY
+		_load_help()
 
 
 func _hover(screen: Vector2) -> void:
@@ -976,8 +984,13 @@ func _load_help() -> void:
 	var calls := {}
 	for call: Dictionary in reply["payload"]["requests"]:
 		calls[Vector2i(call["x"], call["y"])] = call
+	var before: Variant = _help.get(_selected)
 	_help = calls
 	_overlay.queue_redraw()
+	# The panel of the plot picked shows its call as it is now: taken by someone, put up or changed.
+	if _panel.visible and _selected.y >= 0 and not _plot.get("loading", false) \
+			and JSON.stringify(before) != JSON.stringify(calls.get(_selected)):
+		_show_plot()
 
 
 ## Loads who owns the plots around the view, once the camera stops moving.
