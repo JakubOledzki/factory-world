@@ -1,6 +1,14 @@
 [
 	{
 		"date": "2026-10-31",
+		"title": "Boty grają jak gracze",
+		"changes": [
+			"Każdy bot ma swój charakter: jedne są ambitne i kupują więcej działek (od 3 do 5), inne poprzestają na mniejszym. Bot odkłada pieniądze na następną działkę, gdy ma już ćwierć jej ceny.",
+			"Ambitne boty kupują też działkę w mieście i dostarczają miastu to, czego dziś chce, jak gracze."
+		]
+	},
+	{
+		"date": "2026-10-31",
 		"title": "Pomoc botom na ich działkach",
 		"changes": [
 			"Boty proszą o pomoc inaczej: wykrzyknik na mapie świata mówi, co postawić albo obrócić w ich fabryce. Przycisk Pomogę rezerwuje zgłoszenie na 15 minut i przenosi cię na działkę bota.",

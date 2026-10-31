@@ -41,6 +41,9 @@ internal sealed class BotPlot(int x, int y, int biome)
 
     public int Planted { get; set; }
 
+    /// <summary>When the bot next looks what the town wants, for a plot in a town.</summary>
+    public DateTimeOffset SupplyAt { get; set; }
+
     /// <summary>What stands on the plot (workbenches, furnaces, chests...), as plot.enter sent it.</summary>
     public List<(Guid Id, string Kind, int X, int Y)> Objects { get; } = [];
 
@@ -318,15 +321,26 @@ public sealed partial class Bot(
             Add(8, "sell waste", ct => TradeAsync("market.sell", waste, TraderMay(waste, Have(waste)), ct));
         }
 
-        if (_plots.Count < BotRules.MaxPlots(trade) && _mapWidth > 0)
+        if (_plots.Count < BotRules.MaxPlots(trade, Traits.Ambition) && _mapWidth > 0)
         {
-            var biomes = BotRules.PlotBiomes(trade, _plots.Count);
+            var biomes = BotRules.PlotBiomes(trade, _plots.Count, Traits.Ambition, _plots.Any(p => p.Biome == Biomes.City));
             var cheapest = biomes.Min(b => PlotPrice(b));
             if (_money >= cheapest + BotRules.Reserve)
             {
                 // The first plot is what a new player saves up for.
                 Add(_plots.Count == 0 ? 40 : 10, "buy plot", ct => BuyPlotAsync(biomes, ct));
             }
+
+            SaveForPlot(cheapest, world);
+        }
+        else
+        {
+            Goals.Drop(BotGoals.Plot);
+        }
+
+        foreach (var plot in _plots.Where(p => p.Biome == Biomes.City && p.SupplyAt <= world.Now && traderPays))
+        {
+            Add(8, "supply town", ct => SupplyTownAsync(plot, world, ct));
         }
 
         var ore = BotRules.Ores.FirstOrDefault(o => Have(o) >= 5);

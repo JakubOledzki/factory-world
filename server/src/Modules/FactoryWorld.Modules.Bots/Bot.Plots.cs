@@ -62,6 +62,7 @@ public sealed partial class Bot
 
                     _nextPlotBaseCents = 0;
                     _fresh = false;
+                    Goals.Drop(BotGoals.Plot);
                     _logger.LogInformation("Bot {Bot} bought plot {X}:{Y}", Row.CharacterName, x, y);
                     return true;
                 }
@@ -74,6 +75,67 @@ public sealed partial class Bot
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Holds money back for the next plot once the bot has a share of its price (<see cref="BotRules.SaveForPlotFrom"/>), so
+    /// that it does not spend it at the market the way a player saving up would not; the first plot it buys as soon as it can.
+    /// </summary>
+    private void SaveForPlot(long price, BotWorld world)
+    {
+        if (_plots.Count == 0 || _money < price * BotRules.SaveForPlotFrom)
+        {
+            Goals.Drop(BotGoals.Plot);
+            return;
+        }
+
+        if (Goals[BotGoals.Plot] is not { } goal || goal.Cents != price)
+        {
+            Goals.Set(new BotGoal(BotGoals.Plot, price, null, Goals[BotGoals.Plot]?.Since ?? world.Now));
+        }
+    }
+
+    /// <summary>
+    /// Delivers the town of its city plot what it wants today and the bot has spare, like a player supplying a town.
+    /// What the town pays counts towards <see cref="BotRules.MaxTraderIncome"/>, since it is new money like the trader's.
+    /// </summary>
+    private async Task<bool> SupplyTownAsync(BotPlot plot, BotWorld world, CancellationToken cancellationToken)
+    {
+        plot.SupplyAt = world.Now + BotRules.SupplyEvery;
+        var city = await SendAsync("city.get", new { x = plot.X, y = plot.Y }, cancellationToken);
+        if (!city.Is("city") || city.Payload.Get("state") is not { } state)
+        {
+            return false;
+        }
+
+        var delivered = false;
+        foreach (var need in state.Each("needs"))
+        {
+            var item = need.Text("id") ?? "";
+            var left = need.Long("wanted") - need.Long("delivered");
+            var spare = Have(item) - KeepForWork(item);
+            if (left <= 0 || spare <= 0 || _traderIncome >= BotRules.MaxTraderIncome)
+            {
+                continue;
+            }
+
+            var price = Math.Max(need.Long("priceCents"), 1);
+            var quantity = Math.Min(Math.Min(left, spare), Math.Max(1, (BotRules.MaxTraderIncome - _traderIncome) / price));
+            var reply = await SendAsync("city.deliver", new { x = plot.X, y = plot.Y, item, quantity }, cancellationToken);
+            if (!reply.Is("city") || reply.Payload.Get("result") is not { } result)
+            {
+                continue;
+            }
+
+            var cents = result.Long("cents") + result.Long("subsidyCents");
+            _money += cents;
+            _traderIncome += cents;
+            _inventory[item] = Have(item) - result.Long("quantity");
+            delivered = true;
+            _logger.LogInformation("Bot {Bot} delivered {Quantity} {Item} to the town at {X}:{Y}", Row.CharacterName, result.Long("quantity"), item, plot.X, plot.Y);
+        }
+
+        return delivered;
     }
 
     /// <summary>The plot at the bot's home, in the map's projection (Behrmann, as the world module draws it).</summary>

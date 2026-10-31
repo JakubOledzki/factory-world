@@ -9,6 +9,7 @@ internal static class Biomes
     public const int Farmland = 3;
     public const int Desert = 5;
     public const int Mountains = 6;
+    public const int City = 9;
 }
 
 /// <summary>Tile codes of plot.enter: what stands on a tile.</summary>
@@ -142,23 +143,42 @@ public static class BotRules
         _ => null,
     };
 
-    /// <summary>Plots a bot buys over its life; the third costs 100 000 $, so few get that far.</summary>
-    public static int MaxPlots(BotTrade trade) => trade switch
+    /// <summary>
+    /// Plots a bot buys over its life, as far as its money goes: three to five by how ambitious it is (a trader one or two).
+    /// The third costs 100 000 $, so few get that far.
+    /// </summary>
+    public static int MaxPlots(BotTrade trade, double ambition) => trade switch
     {
-        BotTrade.Trader => 1,
-        _ => 3,
+        BotTrade.Trader => ambition >= AmbitiousFrom ? 2 : 1,
+        _ => 3 + (int)Math.Round(Math.Clamp(ambition, 0, 1) * 2),
     };
 
-    /// <summary>Biomes the bot's next plot may have, given how many it owns.</summary>
-    public static int[] PlotBiomes(BotTrade trade, int owned) => trade switch
+    /// <summary>A bot this ambitious (<see cref="BotTraits.Ambition"/>) buys a plot in a town besides the ones of its trade.</summary>
+    public const double AmbitiousFrom = 0.5;
+
+    /// <summary>A bot starts saving up for its next plot once it has this share of the price.</summary>
+    public const double SaveForPlotFrom = 0.25;
+
+    /// <summary>
+    /// Biomes the bot's next plot may have, given how many it owns: those of its trade, and for an ambitious bot that owns
+    /// a plot already and none in a town, a town's too, to supply the town from.
+    /// </summary>
+    public static int[] PlotBiomes(BotTrade trade, int owned, double ambition = 0, bool hasCity = true)
     {
-        BotTrade.Forester => [Biomes.Forest],
-        BotTrade.Miner => owned == 0 ? [Biomes.Mountains] : [Biomes.Mountains, Biomes.Forest],
-        BotTrade.Farmer => owned == 0 ? [Biomes.Farmland] : [Biomes.Farmland, Biomes.Forest],
-        BotTrade.Industrialist => owned == 0 ? [Biomes.Forest] : [Biomes.Mountains],
-        BotTrade.Smelter => owned == 0 ? [Biomes.Forest] : [Biomes.Mountains, Biomes.Forest],
-        _ => [Biomes.Forest],
-    };
+        int[] biomes = trade switch
+        {
+            BotTrade.Forester => [Biomes.Forest],
+            BotTrade.Miner => owned == 0 ? [Biomes.Mountains] : [Biomes.Mountains, Biomes.Forest],
+            BotTrade.Farmer => owned == 0 ? [Biomes.Farmland] : [Biomes.Farmland, Biomes.Forest],
+            BotTrade.Industrialist => owned == 0 ? [Biomes.Forest] : [Biomes.Mountains],
+            BotTrade.Smelter => owned == 0 ? [Biomes.Forest] : [Biomes.Mountains, Biomes.Forest],
+            _ => [Biomes.Forest],
+        };
+        return owned > 0 && ambition >= AmbitiousFrom && !hasCity ? [.. biomes, Biomes.City] : biomes;
+    }
+
+    /// <summary>How often a bot with a plot in a town looks what the town wants.</summary>
+    public static readonly TimeSpan SupplyEvery = TimeSpan.FromMinutes(5);
 
     /// <summary>
     /// What the bot puts up on a plot of a biome, in the order it gets to them: it crafts each piece
