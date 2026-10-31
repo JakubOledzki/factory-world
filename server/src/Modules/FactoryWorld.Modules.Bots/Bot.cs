@@ -56,11 +56,14 @@ internal sealed record BotLineSite(
     BotPlot Plot, Guid Input, Guid Machine, Guid Output, Guid Generator, IReadOnlyList<(Guid Id, string Kind, int X, int Y)> Parts);
 
 /// <summary>What all the bots share: who is a bot, the market overview one of them fetched, and the board of calls for help.</summary>
-public sealed class BotCommons(BotHelpBoard help)
+public sealed class BotCommons(BotHelpBoard help, double mistakeChance = BotRules.MistakeChance)
 {
     private readonly HashSet<string> _names = new(StringComparer.Ordinal);
 
     public BotHelpBoard Help { get; } = help;
+
+    /// <summary>How likely a bot puts a part of its new line up the wrong way round (<see cref="BotRules.MistakeChance"/>).</summary>
+    public double MistakeChance { get; set; } = mistakeChance;
 
     /// <summary>The market overview as some bot last fetched it, and when.</summary>
     internal (JsonElement Overview, DateTimeOffset At)? Overview { get; set; }
@@ -91,9 +94,9 @@ public sealed class BotCommons(BotHelpBoard help)
 /// <param name="grant">Credits the bot's wallet with this many cents (the server's allowance, see <see cref="BotRules.Allowance"/>).</param>
 /// <param name="commons">What the bots share; a bot on its own has its own.</param>
 public sealed class Bot(
-    BotProfile profile, BotRow row, BotClient client, ILogger logger, Func<long, CancellationToken, Task>? grant = null, BotCommons? commons = null)
+    BotProfile profile, BotRow row, BotClient client, ILogger logger, BotCommons commons, Func<long, CancellationToken, Task>? grant = null)
 {
-    private readonly BotCommons _commons = commons ?? new BotCommons(new BotHelpBoard());
+    private readonly BotCommons _commons = commons;
     private readonly BotLine? _line = BotRules.Line(profile.Trade);
     private BotLineSite? _site;
     private DateTimeOffset _tendAt;
@@ -105,6 +108,14 @@ public sealed class Bot(
     private DateTimeOffset _wantingSince;
     private HelpRequest? _help;
     private DateTimeOffset _helpUntil;
+
+    /// <summary>What is wrong with the bot's line that players may set right for it: parts to put up, a belt to turn.</summary>
+    private readonly List<HelpTask> _fixes = [];
+    private string _fixReason = HelpReasons.Parts;
+    private DateTimeOffset _fixesSince;
+
+    /// <summary>Whether the bot put a part of its line up the wrong way round this session already.</summary>
+    private bool _mistaken;
     private long _traderIncome;
     private DateTimeOffset _contractsAt;
     private Dictionary<string, long> _needs = new(StringComparer.Ordinal);
@@ -177,6 +188,7 @@ public sealed class Bot(
         _purchases = 0;
         _traderIncome = 0;
         _help = null;
+        _mistaken = false;
         _recipeSet = false;
         _lastInputs = -1;
         _placeFailures = 0;
@@ -211,14 +223,14 @@ public sealed class Bot(
 
         if (_help is not null && _helpUntil <= world.Now)
         {
-            // Nobody came: the bot sets about it itself.
-            _commons.Help.Withdraw(Row.Name);
-            var reason = _help.Reason;
-            _help = null;
-            if (reason == HelpReasons.Stalled && _site is { } stalled)
+            // Nobody came: the bot sets about it itself, unless a player is at it right now.
+            if (_commons.Help.Withdraw(Row.Name))
             {
-                await RepairAsync(stalled, cancellationToken);
-                return "repair line";
+                _help = null;
+            }
+            else
+            {
+                _helpUntil = world.Now + BotRules.HelpLeave;
             }
         }
 
@@ -1829,6 +1841,12 @@ public sealed class Bot(
 
         if (_site is { } site)
         {
+            if (_fixes.Count > 0)
+            {
+                FixCandidates(site, world, add);
+                return;
+            }
+
             if (_tendAt <= world.Now)
             {
                 add(10, "tend line", ct => TendAsync(line, site, world, ct));
@@ -1853,7 +1871,10 @@ public sealed class Bot(
             }
         }
 
-        if (missing.Count == 0)
+        // Parts players can bring it waits for no longer than this: it puts the line up without them and asks for them.
+        var forHelp = missing.Count > 0 && missing.All(m => BotRules.HelpParts.Contains(m.Item)) && missing.Sum(m => m.Quantity) <= BotRules.MaxHelpTasks
+            && _wantingSince != default && world.Now - _wantingSince >= BotRules.PartsWait;
+        if (missing.Count == 0 || forHelp)
         {
             if (_plots.FirstOrDefault(p => p.Clearing.Count > 0) is { } clearing)
             {
@@ -1861,7 +1882,7 @@ public sealed class Bot(
             }
             else if (_placeFailures < 3)
             {
-                add(12, "build line", ct => BuildLineAsync(line, world, ct));
+                add(12, "build line", ct => BuildLineAsync(line, world, missing, ct));
             }
 
             return;
@@ -1890,11 +1911,67 @@ public sealed class Bot(
         {
             add(3, "buy line part", ct => TradeAsync("market.buy", dear, 1, ct));
         }
+    }
 
-        if (world.Now - _wantingSince >= BotRules.PartsWait)
+    /// <summary>
+    /// What the bot does about what is wrong with its line: asks players to set it right, and when nobody came for
+    /// <see cref="BotRules.HelpWait"/>, sets right itself what it can. A line it cannot finish even then it takes down,
+    /// to put it up again once it has all the parts.
+    /// </summary>
+    private void FixCandidates(BotLineSite site, BotWorld world, Action<int, string, Func<CancellationToken, Task<bool>>> add)
+    {
+        var waited = world.Now - _fixesSince;
+        var doable = _fixes.Any(f => f.Object is not null || Have(f.Kind) > 0);
+        if (waited >= BotRules.HelpWait && doable || waited >= BotRules.HelpWait * 2)
         {
-            add(3, "ask for parts", ct => AskForPartsAsync(missing, world, ct));
+            add(20, "fix line", ct => FixAsync(site, world, ct));
         }
+        else
+        {
+            add(20, "ask for help", _ => Task.FromResult(Ask(_fixReason, site.Plot, world)));
+        }
+    }
+
+    /// <summary>Turns and puts up itself what it asked players to; what it cannot, it takes the line down for after a long wait.</summary>
+    private async Task<bool> FixAsync(BotLineSite site, BotWorld world, CancellationToken cancellationToken)
+    {
+        var (x, y) = (site.Plot.X, site.Plot.Y);
+        foreach (var fix in _fixes.ToList())
+        {
+            BotReply? reply = fix.Object is { } id
+                ? await SendAsync("plot.rotate", new { x, y, id, rotation = fix.Rotation }, cancellationToken)
+                : Have(fix.Kind) > 0
+                    ? await SendAsync("plot.place", new { x, y, kind = fix.Kind, tileX = fix.TileX, tileY = fix.TileY, rotation = fix.Rotation }, cancellationToken)
+                    : null;
+            if (reply is { Ok: true })
+            {
+                _fixes.Remove(fix);
+            }
+        }
+
+        if (_fixes.Count > 0 && world.Now - _fixesSince >= BotRules.HelpWait * 2)
+        {
+            var ids = site.Parts.Select(p => p.Id).Distinct().ToList();
+            await SendAsync("plot.pickupMany", new { x, y, ids }, cancellationToken);
+            _fixes.Clear();
+            _wantingSince = world.Now;
+            logger.LogInformation("Bot {Bot} took down its unfinished line on {X}:{Y}", Row.CharacterName, x, y);
+        }
+
+        await InventoryAsync(cancellationToken);
+        LookAgain(site);
+        return true;
+    }
+
+    /// <summary>The line changed under the bot's hands: it looks at the plot again before it tends the line.</summary>
+    private void LookAgain(BotLineSite site)
+    {
+        _site = null;
+        site.Plot.Tiles = null;
+        _stalls = 0;
+        _lastInputs = -1;
+        _tendAt = default;
+        _recipeSet = false;
     }
 
     private async Task<bool> LookOverAsync(BotWorld world, CancellationToken cancellationToken)
@@ -1951,7 +2028,13 @@ public sealed class Bot(
     }
 
     /// <summary>Puts the whole line up at once, with a building plan, where it fits nearest to the spawn.</summary>
-    private async Task<bool> BuildLineAsync(BotLine line, BotWorld world, CancellationToken cancellationToken)
+    /// <remarks>
+    /// Without the <paramref name="missing"/> parts the line goes up all the same, and players are asked to put them in;
+    /// with all of them, the bot may put a belt or an inserter up the wrong way round (<see cref="BotCommons.MistakeChance"/>),
+    /// for players to turn.
+    /// </remarks>
+    private async Task<bool> BuildLineAsync(
+        BotLine line, BotWorld world, IReadOnlyList<(string Item, long Quantity)> missing, CancellationToken cancellationToken)
     {
         foreach (var plot in _plots.Where(p => p.Tiles is not null))
         {
@@ -1960,9 +2043,28 @@ public sealed class Bot(
                 continue;
             }
 
-            var objects = BotFactory.Layout(line.Machine)
-                .Select(p => new { kind = p.Kind, tileX = spot.X + p.Dx, tileY = spot.Y + p.Dy, rotation = BotFactory.East })
-                .ToList();
+            var parts = BotFactory.Layout(line.Machine).Select(p => (p.Kind, X: spot.X + p.Dx, Y: spot.Y + p.Dy, Rotation: BotFactory.East)).ToList();
+            var left = new List<HelpTask>();
+            foreach (var (item, quantity) in missing)
+            {
+                for (var i = 0; i < quantity && parts.FindLastIndex(p => p.Kind == item) is var at and >= 0; i++)
+                {
+                    left.Add(new HelpTask(item, parts[at].X, parts[at].Y, BotFactory.East));
+                    parts.RemoveAt(at);
+                }
+            }
+
+            (int X, int Y)? wrong = null;
+            if (left.Count == 0 && !_mistaken && world.Random.NextDouble() < _commons.MistakeChance)
+            {
+                var movers = parts.Select((p, i) => (p.Kind, i)).Where(m => m.Kind is Items.Belt or Items.Inserter).ToList();
+                var at = movers[world.Random.Next(movers.Count)].i;
+                parts[at] = parts[at] with { Rotation = (BotFactory.East + 2) % 4 };
+                wrong = (parts[at].X, parts[at].Y);
+                _mistaken = true;
+            }
+
+            var objects = parts.Select(p => new { kind = p.Kind, tileX = p.X, tileY = p.Y, rotation = p.Rotation }).ToList();
             var reply = await SendAsync("plot.placeMany", new { x = plot.X, y = plot.Y, objects }, cancellationToken);
             if (!reply.Is("plot.placedMany"))
             {
@@ -1977,7 +2079,21 @@ public sealed class Bot(
                 var (kind, ox, oy) = (o.Text("kind")!, (int)o.Long("tileX"), (int)o.Long("tileY"));
                 plot.Objects.Add((o.Id("id") ?? Guid.Empty, kind, ox, oy));
                 plot.Busy.UnionWith(Footprints.Tiles(kind, ox, oy));
+                if ((ox, oy) == wrong && o.Id("id") is { } turned)
+                {
+                    _fixes.Add(new HelpTask(kind, ox, oy, BotFactory.East, turned));
+                    _fixReason = HelpReasons.Turned;
+                }
             }
+
+            if (left.Count > 0)
+            {
+                _fixes.AddRange(left);
+                _fixReason = HelpReasons.Parts;
+                plot.Busy.UnionWith(left.Select(l => (l.TileX, l.TileY)));
+            }
+
+            _fixesSince = world.Now;
 
             FindSite(plot);
             await InventoryAsync(cancellationToken);
@@ -2130,13 +2246,9 @@ public sealed class Bot(
         _stalls = taken == 0 && fuel > 0 && complete && _lastInputs >= 0 && before >= _lastInputs ? _stalls + 1 : 0;
         _lastInputs = line.Inputs.Sum(i => inside.GetValueOrDefault(i));
 
-        if (fuel == 0)
+        if (_stalls >= BotRules.StalledAfter)
         {
-            Ask(HelpReasons.Parts, [(line.Fuels[^1], 20L)], site.Plot, world);
-        }
-        else if (_stalls >= BotRules.StalledAfter)
-        {
-            Ask(HelpReasons.Stalled, [], site.Plot, world);
+            await StallAsync(site, world, cancellationToken);
         }
 
         return true;
@@ -2173,89 +2285,94 @@ public sealed class Bot(
     private static Dictionary<string, long> Stored(JsonElement storage) =>
         storage.Each("items").GroupBy(i => i.Text("id")!).ToDictionary(g => g.Key, g => g.Sum(i => i.Long("quantity")), StringComparer.Ordinal);
 
-    /// <summary>Takes the belts and inserters up and puts them back: whatever jammed them comes back to the inventory.</summary>
-    private async Task RepairAsync(BotLineSite site, CancellationToken cancellationToken)
+    /// <summary>
+    /// The line stands still: the bot takes the belts and inserters up (whatever jammed them comes back to the inventory) and
+    /// puts them back, all but the inserter that feeds the machine, which it asks players to put in place.
+    /// </summary>
+    private async Task StallAsync(BotLineSite site, BotWorld world, CancellationToken cancellationToken)
     {
         var (x, y) = (site.Plot.X, site.Plot.Y);
+        var input = site.Parts.First(p => p.Id == site.Input);
+        var feeder = (X: input.X + BotFactory.MachineX - 1, Y: input.Y);
         var moving = site.Parts.Where(p => p.Kind is Items.Inserter or Items.Belt).ToList();
         foreach (var part in moving)
         {
             await SendAsync("plot.pickup", new { x, y, id = part.Id }, cancellationToken);
         }
 
-        var objects = moving.Select(p => new { kind = p.Kind, tileX = p.X, tileY = p.Y, rotation = BotFactory.East }).ToList();
-        await SendAsync("plot.placeMany", new { x, y, objects }, cancellationToken);
-        _site = null;
-        site.Plot.Tiles = null;
-        _stalls = 0;
-        _lastInputs = -1;
-        _tendAt = default;
+        var objects = moving.Where(p => (p.X, p.Y) != feeder)
+            .Select(p => new { kind = p.Kind, tileX = p.X, tileY = p.Y, rotation = BotFactory.East }).ToList();
+        if (objects.Count > 0)
+        {
+            await SendAsync("plot.placeMany", new { x, y, objects }, cancellationToken);
+        }
+
+        _fixes.Clear();
+        _fixes.Add(new HelpTask(Items.Inserter, feeder.X, feeder.Y, BotFactory.East));
+        _fixReason = HelpReasons.Stalled;
+        _fixesSince = world.Now;
         await InventoryAsync(cancellationToken);
-        logger.LogInformation("Bot {Bot} set its line on {X}:{Y} up anew", Row.CharacterName, x, y);
+        LookAgain(site);
+        logger.LogInformation("Bot {Bot} took its stalled line on {X}:{Y} apart", Row.CharacterName, x, y);
     }
 
-    /// <summary>Asks players for the parts it lacks, as many as it can pay for.</summary>
-    private Task<bool> AskForPartsAsync(List<(string Item, long Quantity)> missing, BotWorld world, CancellationToken cancellationToken)
+    /// <summary>
+    /// Puts up a call for help over the plot: an exclamation mark on the world map, as long as the bot can pay. A player
+    /// who sets everything right gets the fee, and for each part they put up what the trader pays for it and a quarter more,
+    /// never more than the trader charges for the parts. A call the bot left up (a player is at it) it takes over again.
+    /// </summary>
+    private bool Ask(string reason, BotPlot plot, BotWorld world)
     {
-        var plot = _plots[0];
-        return Task.FromResult(Ask(HelpReasons.Parts, missing, plot, world));
-    }
-
-    /// <summary>Puts up a call for help over the plot: an exclamation mark on the world map, as long as the bot can pay.</summary>
-    private bool Ask(string reason, IReadOnlyList<(string Item, long Quantity)> needs, BotPlot plot, BotWorld world)
-    {
-        if (_help is not null)
+        if (_help is not null || _fixes.Count == 0)
         {
             return false;
         }
 
-        var pay = BotRules.HelpFee;
-        var asked = new List<(string Item, long Quantity)>();
-        foreach (var (item, quantity) in needs)
+        if (_commons.Help.Of(Row.Name) is { } standing)
         {
-            var worth = (long)Math.Ceiling(Math.Max(Floor(item), 1) * quantity * BotRules.HelpMarkup);
-            if (pay + worth + BotRules.Reserve > _money)
-            {
-                break;
-            }
-
-            pay += worth;
-            asked.Add((item, quantity));
+            _help = standing;
+            _helpUntil = world.Now + BotRules.HelpWait;
+            return true;
         }
 
-        if (pay + BotRules.Reserve > _money || needs.Count > 0 && asked.Count == 0)
-        {
-            return false;
-        }
-
+        var parts = _fixes.Where(f => f.Object is null).Select(f => f.Kind).ToList();
+        var pay = BotRules.HelpFee + parts.Sum(p => (long)Math.Ceiling(Math.Max(Floor(p), 1) * BotRules.HelpMarkup));
         // Never more than the trader charges for the same parts, so buying them from him to bring them here pays nobody.
-        if (asked.Count > 0 && asked.All(a => _traderSells.ContainsKey(a.Item)))
+        if (parts.Count > 0 && parts.All(_traderSells.ContainsKey))
         {
-            pay = Math.Min(pay, (long)(asked.Sum(a => _traderSells[a.Item] * a.Quantity) * BotRules.HelpBelowTrader));
+            pay = Math.Min(pay, (long)(parts.Sum(p => _traderSells[p]) * BotRules.HelpBelowTrader));
         }
 
-        _help = new HelpRequest(Row.Name, Row.CharacterName, Row.AccountId, plot.X, plot.Y, reason, asked, pay, world.Now);
+        if (pay + BotRules.Reserve > _money)
+        {
+            return false;
+        }
+
+        _help = new HelpRequest(Row.Name, Row.CharacterName, Row.AccountId, plot.X, plot.Y, reason, _fixes.ToList(), pay, world.Now);
         _helpUntil = world.Now + BotRules.HelpWait;
         _commons.Help.Post(_help);
         logger.LogInformation("Bot {Bot} asks for help on {X}:{Y}: {Reason}", Row.CharacterName, plot.X, plot.Y, reason);
         return true;
     }
 
-    /// <summary>A player answered the call: the parts are in the inventory, or the stalled line is to be set up anew.</summary>
+    /// <summary>A player set the line right on the bot's plot and was paid: the bot looks at its line again and tends it.</summary>
     private async Task<string> HelpedAsync(HelpRequest answered, BotWorld world, CancellationToken cancellationToken)
     {
         _help = null;
+        _fixes.Clear();
         _wantingSince = default;
         await InventoryAsync(cancellationToken);
         _money = (await SendAsync("wallet.get", null, cancellationToken)).Payload.Long("balanceCents");
-        if (answered.Reason == HelpReasons.Stalled && _site is { } site)
+        if (_site is { } site)
         {
-            await RepairAsync(site, cancellationToken);
-            return "helped: line set up anew";
+            LookAgain(site);
+        }
+        else if (_plots.FirstOrDefault(p => p.X == answered.X && p.Y == answered.Y) is { } plot)
+        {
+            plot.Tiles = null;
         }
 
-        _tendAt = world.Now;
-        return "helped: got parts";
+        return "helped: line set right";
     }
 
     /// <summary>The market overview: one bot fetches it, and the others use it for a few seconds, as the server sums it up that often anyway.</summary>

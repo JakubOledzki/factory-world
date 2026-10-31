@@ -100,6 +100,19 @@ public static class BotRules
     /// <summary>A bot pays for parts at most this share of what the NPC trader charges for them, the fee included.</summary>
     public const double HelpBelowTrader = 0.95;
 
+    /// <summary>How long a player who took on a bot's call for help has to do it before others may.</summary>
+    public static readonly TimeSpan HelpLeave = TimeSpan.FromMinutes(15);
+
+    /// <summary>How likely a bot puts one belt or inserter of its new line up the wrong way round, for players to turn
+    /// (at most once a session).</summary>
+    public const double MistakeChance = 0.2;
+
+    /// <summary>Parts a bot puts its line up without and asks players to put in place, when it can neither make nor buy them.</summary>
+    public static readonly IReadOnlySet<string> HelpParts = new HashSet<string> { Items.Inserter, Items.Belt, Items.Pole };
+
+    /// <summary>Most things one call for help asks a player to put up or turn.</summary>
+    public const int MaxHelpTasks = 3;
+
     /// <summary>A bot waits this long for help before it gives up and sets its line going itself.</summary>
     public static readonly TimeSpan HelpWait = TimeSpan.FromMinutes(30);
 

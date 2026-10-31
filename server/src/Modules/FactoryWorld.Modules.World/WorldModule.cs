@@ -1698,6 +1698,8 @@ public sealed class WorldModule : IGameModule
         services.AddScoped<IMachinePorts>(provider => provider.GetRequiredService<FeederService>());
         services.AddScoped<MineService>();
         services.AddScoped<SurveyService>();
+        services.AddSingleton<PlotPermits>();
+        services.AddSingleton<IPlotPermits>(provider => provider.GetRequiredService<PlotPermits>());
         services.AddScoped<PlotObjectService>();
         services.AddScoped<IPlacedObjects>(provider => provider.GetRequiredService<PlotObjectService>());
         services.AddScoped<PlotObjectsQuery>();

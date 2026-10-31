@@ -28,7 +28,10 @@ public sealed class BotEngine(
     private readonly IReadOnlyList<IMessageObserver> _observers = observers.ToList();
     private readonly Dictionary<string, Bot> _bots = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _ticking = new(1, 1);
-    private readonly BotCommons _commons = new(help);
+    private readonly BotCommons _commons = new(help, options.MistakeChance);
+
+    /// <summary>What all the bots share, e.g. the board of their calls for help.</summary>
+    public BotCommons Commons => _commons;
 
     public Random Random { get; init; } = Random.Shared;
 
@@ -70,8 +73,8 @@ public sealed class BotEngine(
                 if (!_bots.ContainsKey(profile.Name))
                 {
                     var account = row.AccountId;
-                    _bots[profile.Name] = new Bot(profile, row, new BotClient(account, _handlers, _observers, load, logger), logger,
-                        (cents, ct) => GrantAsync(account, cents, ct), _commons);
+                    _bots[profile.Name] = new Bot(profile, row, new BotClient(account, _handlers, _observers, load, logger), logger, _commons,
+                        (cents, ct) => GrantAsync(account, cents, ct));
                 }
             }
         }

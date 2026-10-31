@@ -1,5 +1,15 @@
 [
 	{
+		"date": "2026-10-31",
+		"title": "Pomoc botom na ich działkach",
+		"changes": [
+			"Boty proszą o pomoc inaczej: wykrzyknik na mapie świata mówi, co postawić albo obrócić w ich fabryce. Przycisk Pomogę rezerwuje zgłoszenie na 15 minut i przenosi cię na działkę bota.",
+			"Na działce bota złote pola ze strzałką pokazują, gdzie postawić część z twojego ekwipunku (podajnik, taśmociąg, słup) i w którą stronę ma stać. Część stojącą odwrotnie obracasz kliknięciem albo klawiszem R.",
+			"Bot płaci dopiero wtedy, gdy wszystko stoi jak trzeba: opłatę za pomoc i za każdą postawioną część to, co płaci za nią handlarz, i ćwierć więcej, nigdy więcej, niż handlarz sam za nią bierze. Postawione części należą do bota.",
+			"Na działce bota nie zrobisz nic poza tym, o co prosi: nie zbierzesz, nie podniesiesz i nie postawisz niczego innego. Gdy nikt nie przyjdzie przez pół godziny, bot naprawia fabrykę sam."
+		]
+	},
+	{
 		"date": "2026-10-30",
 		"title": "Powiaty miast",
 		"changes": [

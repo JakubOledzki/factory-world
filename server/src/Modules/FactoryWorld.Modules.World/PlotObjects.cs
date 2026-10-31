@@ -182,9 +182,12 @@ public interface IPlacedHook
 public sealed class PlotObjectService(
     GameDb db, PlotService plots, IInventory inventory, IEnumerable<IMachineContents> machines, IEnumerable<IPlotAutomation> automation,
     IEnumerable<IPlacedHook> placing, BeachService beach, OilService oil, IEnumerable<ICompanyPlots> companies, PlotObjectsQuery query,
-    WorldMap map, Towns towns)
+    WorldMap map, Towns towns, PlotPermits permits, IWallet wallet, IEnumerable<IPlotHelpListener> helped)
     : IPlacedObjects
 {
+    /// <summary>How far the player got with the help they give on the plot, after a place or a turn under a leave; null otherwise.</summary>
+    public HelpProgress? Help { get; private set; }
+
     public async Task<IReadOnlyList<PlacedOnPlot>> ObjectsAsync(int x, int y, CancellationToken cancellationToken)
     {
         await using var command = await db.CommandAsync(
@@ -202,8 +205,79 @@ public sealed class PlotObjectService(
     }
 
     /// <summary>Puts an object from the inventory on a free tile of the player's plot, turned by <paramref name="rotation"/> quarter turns.</summary>
-    public Task<PlacedOnPlot> PlaceAsync(Guid player, int x, int y, string kind, int tileX, int tileY, int rotation, CancellationToken cancellationToken) =>
-        db.InTransactionAsync(() => PlaceOneAsync(player, x, y, kind, tileX, tileY, rotation, true, cancellationToken), cancellationToken);
+    /// <summary>A helper (<see cref="IPlotPermits"/>) puts only what a task of their leave names, where it names, and the object is the plot owner's.</summary>
+    public async Task<PlacedOnPlot> PlaceAsync(Guid player, int x, int y, string kind, int tileX, int tileY, int rotation, CancellationToken cancellationToken)
+    {
+        var permit = await LeaveAsync(player, x, y, cancellationToken);
+        var placed = await db.InTransactionAsync(async () =>
+        {
+            var placed = await PlaceOneAsync(player, x, y, kind, tileX, tileY, rotation, true, cancellationToken, permit);
+            if (permit is not null)
+            {
+                await HelpedAsync(permit, cancellationToken);
+            }
+
+            return placed;
+        }, cancellationToken);
+        Tell(permit);
+        return placed;
+    }
+
+    /// <summary>The leave the player helps under on the plot: only when they may not build there themselves.</summary>
+    private async Task<PlotPermit?> LeaveAsync(Guid player, int x, int y, CancellationToken cancellationToken) =>
+        (await plots.RightsAsync(player, x, y, cancellationToken)).Contains(PlotRight.Build) ? null : permits.For(player, x, y);
+
+    /// <summary>
+    /// Counts the leave's tasks done; with the last one the leave is used up and the plot's owner pays the helper, in the
+    /// transaction that did it, so the help pays once and only when the owner can pay.
+    /// </summary>
+    private async Task HelpedAsync(PlotPermit permit, CancellationToken cancellationToken)
+    {
+        var done = PlotPermits.Done(permit, await ObjectsAsync(permit.X, permit.Y, cancellationToken));
+        if (done < permit.Tasks.Count)
+        {
+            Help = new HelpProgress(done, permit.Tasks.Count, permit.PayCents, false, null);
+            return;
+        }
+
+        if (!permits.Take(permit))
+        {
+            throw new GameException("help_expired", "The leave to help on this plot ran out.");
+        }
+
+        try
+        {
+            var reason = $"help on plot {permit.X}:{permit.Y}";
+            try
+            {
+                await wallet.DebitAsync(permit.Owner, permit.PayCents, reason, cancellationToken);
+            }
+            catch (GameException ex) when (ex.Code == "not_enough_money")
+            {
+                throw new GameException("owner_cannot_pay", "The plot's owner has no money left to pay for the help.");
+            }
+
+            var balance = await wallet.CreditAsync(permit.Helper, permit.PayCents, reason, cancellationToken);
+            Help = new HelpProgress(done, permit.Tasks.Count, permit.PayCents, true, balance);
+        }
+        catch
+        {
+            permits.Restore(permit);
+            throw;
+        }
+    }
+
+    /// <summary>Tells whoever asked for the help that it is done, once the payment is in.</summary>
+    private void Tell(PlotPermit? permit)
+    {
+        if (permit is not null && Help is { Finished: true })
+        {
+            foreach (var listener in helped)
+            {
+                listener.Helped(permit);
+            }
+        }
+    }
 
     /// <summary>Puts up a whole building plan at once: all of its objects or, when one of them cannot stand
     /// where planned, none. The plot's machinery is brought up to now once for the lot, not once per object.</summary>
@@ -226,7 +300,8 @@ public sealed class PlotObjectService(
             return (IReadOnlyList<PlacedOnPlot>)placed;
         }, cancellationToken);
 
-    private async Task<PlacedOnPlot> PlaceOneAsync(Guid player, int x, int y, string kind, int tileX, int tileY, int rotation, bool catchUp, CancellationToken cancellationToken)
+    private async Task<PlacedOnPlot> PlaceOneAsync(
+        Guid player, int x, int y, string kind, int tileX, int tileY, int rotation, bool catchUp, CancellationToken cancellationToken, PlotPermit? permit = null)
     {
         if (!PlotObjects.Placeable.Contains(kind))
         {
@@ -238,7 +313,20 @@ public sealed class PlotObjectService(
             throw new GameException("bad_rotation", "Rotation is 0, 1, 2 or 3 quarter turns.");
         }
 
-        var biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+        Biome biome;
+        if (permit is null)
+        {
+            biome = await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+        }
+        else if (PlotPermits.PlaceTask(permit, kind, tileX, tileY) is null)
+        {
+            throw new GameException("not_help_task", "You may put here only what the owner asked for help with.");
+        }
+        else
+        {
+            biome = map.BiomeAt(x, y);
+        }
+
         foreach (var (tx, ty) in Footprints.Tiles(kind, tileX, tileY))
         {
             if ((tx, ty) == PlotLayout.Spawn || !await plots.FreeAsync(player, x, y, tx, ty, cancellationToken))
@@ -294,7 +382,9 @@ public sealed class PlotObjectService(
         insert.Parameters.AddWithValue("y", y);
         insert.Parameters.AddWithValue("tx", tileX);
         insert.Parameters.AddWithValue("ty", tileY);
-        insert.Parameters.AddWithValue("owner", player);
+        // What a helper puts up is the plot owner's, as if they had put it up themselves.
+        var owner = permit?.Owner ?? player;
+        insert.Parameters.AddWithValue("owner", owner);
         insert.Parameters.AddWithValue("kind", kind);
         insert.Parameters.AddWithValue("rotation", rotation);
         var inserted = await insert.ExecuteNonQueryAsync(cancellationToken);
@@ -306,22 +396,33 @@ public sealed class PlotObjectService(
 
         foreach (var hook in placing)
         {
-            await hook.PlacedAsync(player, x, y, placed, cancellationToken);
+            await hook.PlacedAsync(owner, x, y, placed, cancellationToken);
         }
 
         return placed;
     }
 
     /// <summary>Turns an object on the player's plot to face another way, e.g. a belt to carry elsewhere.</summary>
-    public Task<PlacedOnPlot> RotateAsync(Guid player, int x, int y, Guid id, int rotation, CancellationToken cancellationToken) =>
-        db.InTransactionAsync(async () =>
+    /// <summary>A helper turns only what their leave names (<see cref="PlotPermits.MayTurn"/>).</summary>
+    public async Task<PlacedOnPlot> RotateAsync(Guid player, int x, int y, Guid id, int rotation, CancellationToken cancellationToken)
+    {
+        var permit = await LeaveAsync(player, x, y, cancellationToken);
+        var turned = await db.InTransactionAsync(async () =>
         {
             if (rotation is < 0 or > 3)
             {
                 throw new GameException("bad_rotation", "Rotation is 0, 1, 2 or 3 quarter turns.");
             }
 
-            await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            if (permit is null)
+            {
+                await plots.RequireOwnerAsync(player, x, y, cancellationToken);
+            }
+            else if ((await ObjectsAsync(x, y, cancellationToken)).FirstOrDefault(o => o.Id == id) is not { } standing || !PlotPermits.MayTurn(permit, standing))
+            {
+                throw new GameException("not_help_task", "You may turn only what the owner asked for help with.");
+            }
+
             await CatchUpAsync(x, y, cancellationToken);
             await using var update = await db.CommandAsync(
                 """
@@ -339,8 +440,18 @@ public sealed class PlotObjectService(
                 throw new GameException("no_object", "There is no such object on this plot.");
             }
 
-            return new PlacedOnPlot(id, reader.GetString(0), reader.GetInt32(1), reader.GetInt32(2), rotation);
+            var turned = new PlacedOnPlot(id, reader.GetString(0), reader.GetInt32(1), reader.GetInt32(2), rotation);
+            await reader.DisposeAsync();
+            if (permit is not null)
+            {
+                await HelpedAsync(permit, cancellationToken);
+            }
+
+            return turned;
         }, cancellationToken);
+        Tell(permit);
+        return turned;
+    }
 
     /// <summary>Takes an object off the player's plot back into the inventory, with whatever it holds. On a
     /// company's plot a member who may build picks up what they put there; the plot's owner picks up anything.</summary>
@@ -686,10 +797,21 @@ public sealed class PlaceOnPlotHandler(IServiceScopeFactory scopes) : IMessageHa
     {
         var request = Payload.Read<PlaceOnPlotRequest>(payload);
         await using var scope = scopes.CreateAsyncScope();
-        var placed = await scope.ServiceProvider.GetRequiredService<PlotObjectService>().PlaceAsync(
+        var service = scope.ServiceProvider.GetRequiredService<PlotObjectService>();
+        var placed = await service.PlaceAsync(
             client.RequireAccount(), request.X, request.Y, request.Kind ?? "", request.TileX, request.TileY, request.Rotation, cancellationToken);
-        return new Reply("plot.placed", new { @object = ObjectJson(placed) });
+        return new Reply("plot.placed", new { @object = ObjectJson(placed), help = HelpJson(service.Help) });
     }
+
+    /// <summary>A helper's progress on someone else's plot (<see cref="IPlotPermits"/>), or null for the plot's own people.</summary>
+    public static object? HelpJson(HelpProgress? help) => help is null ? null : new
+    {
+        done = help.Done,
+        of = help.Of,
+        payCents = help.PayCents,
+        finished = help.Finished,
+        balanceCents = help.BalanceCents,
+    };
 
     public static object ObjectJson(PlacedOnPlot placed) => new
     {
@@ -724,8 +846,8 @@ public sealed class RotateOnPlotHandler(IServiceScopeFactory scopes) : IMessageH
     {
         var request = Payload.Read<RotateOnPlotRequest>(payload);
         await using var scope = scopes.CreateAsyncScope();
-        var turned = await scope.ServiceProvider.GetRequiredService<PlotObjectService>()
-            .RotateAsync(client.RequireAccount(), request.X, request.Y, request.Id, request.Rotation, cancellationToken);
-        return new Reply("plot.rotated", new { @object = PlaceOnPlotHandler.ObjectJson(turned) });
+        var service = scope.ServiceProvider.GetRequiredService<PlotObjectService>();
+        var turned = await service.RotateAsync(client.RequireAccount(), request.X, request.Y, request.Id, request.Rotation, cancellationToken);
+        return new Reply("plot.rotated", new { @object = PlaceOnPlotHandler.ObjectJson(turned), help = PlaceOnPlotHandler.HelpJson(service.Help) });
     }
 }

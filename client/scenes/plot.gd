@@ -471,6 +471,8 @@ var _items: Array = []
 var _ready_to_play := false
 ## On someone else's public plot: the player may only walk about and look, the server allows nothing more.
 var _visitor := false
+## What the player came to set right on a bot's plot (plot.enter's help): tasks, pay and until when; empty otherwise.
+var _help := {}
 ## Tilled tiles: Vector2i → { crop, readyAt } (crop and readyAt null on an empty field).
 var _fields := {}
 var _crops := {}
@@ -1068,6 +1070,7 @@ func _sprite_anchor(sprite: String) -> Vector2:
 func _apply_plot(plot: Dictionary) -> void:
 	_plot = plot
 	_visitor = not "work" in plot.get("rights", ["work"])
+	_help = plot["help"] if plot.get("help") is Dictionary else {}
 	_size = plot["size"]
 	_harvest_seconds = plot["harvestSeconds"]
 	_chop_seconds = plot.get("chopSeconds", _harvest_seconds)
@@ -1985,6 +1988,8 @@ func _power_note(id: String) -> String:
 
 
 func _draw_marks() -> void:
+	if not _help.is_empty():
+		_draw_help()
 	_draw_power_reach()
 	_draw_in_use()
 	if _hold_id != "":
@@ -2323,15 +2328,97 @@ func _visitor_input(event: InputEvent) -> bool:
 	if event is InputEventMouseButton and event.pressed and event.button_index in [MOUSE_BUTTON_LEFT, MOUSE_BUTTON_RIGHT]:
 		if event.button_index == MOUSE_BUTTON_LEFT:
 			var cell := Vector2i((get_global_mouse_position() / TILE).floor())
-			if _tile(cell) >= 0:
+			if not _help_task(cell).is_empty():
+				_help_at(cell)
+			elif _tile(cell) >= 0:
 				_walk_to(cell)
 		get_viewport().set_input_as_handled()
+		return true
+	if event.is_action_pressed("rotate") and not _help_task(_hovered).is_empty():
+		_help_at(_hovered)
 		return true
 	for action: String in ["interact", "rotate", "plant", "upgrade_mine", "station", "market", "plan", "clear", "pipette"]:
 		if event.is_action_pressed(action):
 			_show_toast("To nie twoja działka: możesz tu tylko chodzić i oglądać.", UI.MUTED)
 			return true
 	return false
+
+
+# --- Helping a bot on its plot ---------------------------------------------------------------------
+
+## The task of the help not done yet on the tile, or {}.
+func _help_task(cell: Vector2i) -> Dictionary:
+	for task: Dictionary in _help.get("tasks", []):
+		if not task.get("done", false) and Vector2i(int(task["tileX"]), int(task["tileY"])) == cell:
+			return task
+	return {}
+
+
+## Does the task on the tile: turns what stands there a quarter turn, or puts the part up from the inventory facing the
+## way the bot wants it.
+func _help_at(cell: Vector2i) -> void:
+	var task := _help_task(cell)
+	if task.is_empty():
+		return
+	var reply: Dictionary
+	if _placed.has(cell):
+		var object: Dictionary = _placed[cell]
+		reply = await Net.request("plot.rotate", {"x": _at.x, "y": _at.y, "id": object["id"], "rotation": (int(object.get("rotation", 0)) + 1) % 4})
+		if reply["type"] != "plot.rotated":
+			_show_error(reply)
+			return
+		_placed[cell] = reply["payload"]["object"]
+		_draw_cell(cell)
+	else:
+		if _count(task["kind"]) < 1:
+			_show_toast("Nie masz w ekwipunku: %s. Kup go na rynku albo zrób przy stole." % str(task["name"]).to_lower(), UI.ERROR)
+			return
+		_player.face(Vector2(cell.x + 0.5 - _player.floor_pos.x, _player.floor_pos.y - cell.y - 0.5))
+		reply = await Net.request("plot.place", {"x": _at.x, "y": _at.y, "kind": task["kind"], "tileX": cell.x, "tileY": cell.y, "rotation": int(task["rotation"])})
+		if reply["type"] != "plot.placed":
+			_show_error(reply)
+			return
+		var object: Dictionary = reply["payload"]["object"]
+		_effects.dust(_object_centre(object["kind"], cell), 1)
+		_put_placed(object)
+		_astar.set_point_solid(cell, not _walkable(cell))
+		_draw_cell(cell)
+		_reload_inventory()
+	_helped(reply["payload"].get("help"))
+
+
+## Marks what is done now, and thanks the player once the bot paid.
+func _helped(progress: Variant) -> void:
+	for task: Dictionary in _help.get("tasks", []):
+		var cell := Vector2i(int(task["tileX"]), int(task["tileY"]))
+		task["done"] = _placed.has(cell) and _placed[cell]["kind"] == task["kind"] and int(_placed[cell].get("rotation", 0)) == int(task["rotation"])
+	if progress is Dictionary and progress.get("finished", false):
+		_help = {}
+		_set_balance(int(progress["balanceCents"]))
+		_show_toast("Fabryka bota ruszyła! Bot zapłacił ci %s." % UI.money(int(progress["payCents"])), UI.GOLD)
+	elif progress is Dictionary:
+		_show_toast("Pomoc: zrobione %d z %d." % [int(progress["done"]), int(progress["of"])], UI.TEXT)
+	_update_hint()
+	_marks.queue_redraw()
+	_poll_logistics()
+
+
+## The tiles to set right, in gold, with an arrow the way the part is to face.
+func _draw_help() -> void:
+	var gold := Color("#ffd23f")
+	for task: Dictionary in _help.get("tasks", []):
+		if task.get("done", false):
+			continue
+		var cell := Vector2i(int(task["tileX"]), int(task["tileY"]))
+		var rect := Rect2(Vector2(cell) * TILE, TILE).grow(-2.0)
+		_marks.draw_rect(rect, Color(gold, 0.18))
+		_marks.draw_rect(rect, Color(gold, 0.9), false, 2.0)
+		var centre := _cell_centre(cell)
+		var way: Vector2 = [Vector2(0, 1), Vector2(1, 0), Vector2(0, -1), Vector2(-1, 0)][int(task["rotation"]) % 4]
+		var tip := centre + way * TILE * 0.38
+		_marks.draw_line(centre - way * TILE * 0.3, tip, gold, 3.0, true)
+		var side := Vector2(-way.y, way.x)
+		_marks.draw_colored_polygon(PackedVector2Array([tip + way * 6, tip - way * 6 + side * 7, tip - way * 6 - side * 7]), gold)
 
 
 ## Zooms with two fingers on a touch screen or a pinch on a touchpad; true if it did.
@@ -5405,6 +5492,12 @@ func _update_hint() -> void:
 			else ("Motyką zaorzesz tu ziemię tylko tam, gdzie podlewa zraszacz." if _irrigable else "Motyką orze się tylko żyzne gleby."),
 		"tool_shears": "Kliknij owcę, aby ją ostrzyc nożycami, albo inne zwierzę, aby je nakarmić." if _pasture else "Na tej działce nie da się trzymać zwierząt.",
 	}
+	if _visitor and not _help.is_empty():
+		var tasks: Array = _help.get("tasks", [])
+		var left := int(ceil((float(_help.get("untilMs", 0)) - Time.get_unix_time_from_system() * 1000.0) / 60000.0))
+		_hint.text = "Pomagasz botowi: kliknij złote pole, aby postawić tam część z ekwipunku albo obrócić to, co stoi, aż stanie jak strzałka. Zrobione %d z %d, zapłata %s, zostało %d min." % [
+			tasks.filter(func(t: Dictionary) -> bool: return t.get("done", false)).size(), tasks.size(), UI.money(int(_help.get("payCents", 0))), maxi(left, 0)]
+		return
 	if _visitor:
 		_hint.text = "Zwiedzasz cudzą działkę: możesz po niej chodzić i oglądać, ale nie zajrzysz do skrzyń, niczego nie zbierzesz, nie wydobędziesz ani nie postawisz."
 		return
@@ -5848,7 +5941,11 @@ func _load() -> void:
 		_plant_button.visible = false
 		_plan_button.visible = false
 		_clear_button.visible = false
-		_show_toast("Działka publiczna: możesz po niej chodzić i oglądać.", UI.MUTED)
+		if _help.is_empty():
+			_show_toast("Działka publiczna: możesz po niej chodzić i oglądać.", UI.MUTED)
+		else:
+			_subtitle.text += "  ·  pomoc"
+			_show_toast("Złote pola pokazują, co postawić albo obrócić, żeby fabryka bota ruszyła.", UI.GOLD)
 	_update_hint()
 	_loading.queue_free()
 	_reload_inventory()
