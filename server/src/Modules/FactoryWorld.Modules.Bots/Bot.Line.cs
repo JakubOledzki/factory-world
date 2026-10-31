@@ -444,6 +444,13 @@ public sealed partial class Bot
     {
         var waited = world.Now - _fixesSince;
         var doable = _fixes.Any(f => f.Object is not null || Have(f.Kind) > 0);
+        // Meanwhile it makes the parts it asked for, if it can by now, to put them up itself should nobody come.
+        if (_fixes.FirstOrDefault(f => f.Object is null && Have(f.Kind) == 0 && _workbench is not null && _craftQueue < 5
+                && !IsLocked(f.Kind) && Has(Recipe(f.Kind))) is { } craftable)
+        {
+            add(6, "craft line part", ct => CraftAsync(craftable.Kind, ct));
+        }
+
         if (waited >= BotRules.HelpWait && doable || waited >= BotRules.HelpWait * 2)
         {
             add(20, "fix line", ct => FixAsync(site, world, ct));

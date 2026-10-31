@@ -177,6 +177,48 @@ public static class BotRules
         return owned > 0 && ambition >= AmbitiousFrom && !hasCity ? [.. biomes, Biomes.City] : biomes;
     }
 
+    /// <summary>How often a bot looks at its company and its invitations.</summary>
+    public static readonly TimeSpan CompanyEvery = TimeSpan.FromMinutes(10);
+
+    /// <summary>Bots this ambitious found a company of bots; about one in seven.</summary>
+    public const double FoundsFrom = 0.85;
+
+    /// <summary>A bot founds a company once it has this much: it costs nothing, but a pauper does not.</summary>
+    public const long FoundCompanyFrom = 1_000_00;
+
+    /// <summary>Bots this loyal accept an invitation from a bot's company; most do.</summary>
+    public const double JoinsFrom = 0.2;
+
+    /// <summary>A bot pays into its company's cash only with this much to spare, and only if it is not too greedy.</summary>
+    public const long DepositFrom = 500_00;
+
+    public const double DepositsBelowGreed = 0.7;
+
+    /// <summary>The most a bot pays into its company's cash in a session.</summary>
+    public const long MaxDeposit = 200_00;
+
+    /// <summary>The most pieces a bot brings to its company, or takes from it, at once.</summary>
+    public const long CompanyBatch = 200;
+
+    /// <summary>Members a bot's company grows to, the founder and those invited included: 3 to 6, more for an ambitious founder.</summary>
+    public static int CompanySize(double ambition) => 3 + (int)Math.Round(Math.Clamp(ambition, 0, 1) * 3);
+
+    private static readonly string[] CompanyWords = ["Zakłady", "Grupa", "Spółdzielnia", "Kombinat", "Bractwo", "Holding", "Manufaktura", "Konsorcjum"];
+
+    /// <summary>Names a bot tries for its company, its own name in them, until one is free (3 to 24 characters).</summary>
+    public static IEnumerable<string> CompanyNames(string character, BotTraits traits)
+    {
+        var start = (int)(traits.Risk * CompanyWords.Length) % CompanyWords.Length;
+        for (var i = 0; i < CompanyWords.Length; i++)
+        {
+            var word = CompanyWords[(start + i) % CompanyWords.Length];
+            var name = $"{word} {character}";
+            yield return name.Length <= 24 ? name : name[..24].TrimEnd(' ', '_', '.', '-', '&');
+        }
+
+        yield return $"{character[..Math.Min(character.Length, 15)]} i Spółka";
+    }
+
     /// <summary>How often a bot with a plot in a town looks what the town wants.</summary>
     public static readonly TimeSpan SupplyEvery = TimeSpan.FromMinutes(5);
 

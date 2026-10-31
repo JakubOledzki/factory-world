@@ -79,6 +79,54 @@ public sealed class BotCommons(BotHelpBoard help, double mistakeChance = BotRule
         }
     }
 
+    private readonly Dictionary<Guid, string> _companies = [];
+    private readonly HashSet<string> _unattached = new(StringComparer.Ordinal);
+
+    /// <summary>A bot founded the company: other bots may join it. Bots join no player's company, where a player could take out
+    /// what they pay in.</summary>
+    public void Founded(Guid company, string bot)
+    {
+        lock (_companies)
+        {
+            _companies[company] = bot;
+        }
+    }
+
+    public bool FoundedByBot(Guid company)
+    {
+        lock (_companies)
+        {
+            return _companies.ContainsKey(company);
+        }
+    }
+
+    /// <summary>The bot is in no company: bots that founded one may invite it.</summary>
+    public void Unattached(string character)
+    {
+        lock (_unattached)
+        {
+            _unattached.Add(character);
+        }
+    }
+
+    /// <summary>The bot is in a company, or invited to one.</summary>
+    public void Joined(string character)
+    {
+        lock (_unattached)
+        {
+            _unattached.Remove(character);
+        }
+    }
+
+    /// <summary>Bots known to be in no company.</summary>
+    public IReadOnlyList<string> Unattached()
+    {
+        lock (_unattached)
+        {
+            return _unattached.Order(StringComparer.Ordinal).ToList();
+        }
+    }
+
     /// <summary>Whether a name on the market belongs to a bot: bots do not trade among themselves to sell on.</summary>
     public bool IsBot(string? character)
     {
@@ -204,6 +252,8 @@ public sealed partial class Bot(
         _traderIncome = 0;
         _help = null;
         _mistaken = false;
+        _deposited = false;
+        _companyAt = default;
         _recipeSet = false;
         _lastInputs = -1;
         _placeFailures = 0;
@@ -337,6 +387,8 @@ public sealed partial class Bot(
         {
             Goals.Drop(BotGoals.Plot);
         }
+
+        CompanyCandidates(world, Add);
 
         foreach (var plot in _plots.Where(p => p.Biome == Biomes.City && p.SupplyAt <= world.Now && traderPays))
         {

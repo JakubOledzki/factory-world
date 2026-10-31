@@ -139,7 +139,7 @@ public sealed class BotLineTests(ServerFactory factory) : IClassFixture<ServerFa
             foreach (var (item, quantity) in new[]
                      {
                          (Items.IronOre, 300L), (Items.Coal, 150L), (Items.Wood, 300L), (Items.Stone, 200L),
-                         (Items.IronIngot, 120L), (Items.CopperIngot, 40L), (Items.Nails, 60L),
+                         (Items.IronIngot, 120L), (Items.CopperIngot, 100L), (Items.Nails, 60L),
                      })
             {
                 await inventory.AddAsync(bot.Row.AccountId, item, quantity, CancellationToken.None);

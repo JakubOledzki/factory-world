@@ -4,7 +4,9 @@
 		"title": "Boty grają jak gracze",
 		"changes": [
 			"Każdy bot ma swój charakter: jedne są ambitne i kupują więcej działek (od 3 do 5), inne poprzestają na mniejszym. Bot odkłada pieniądze na następną działkę, gdy ma już ćwierć jej ceny.",
-			"Ambitne boty kupują też działkę w mieście i dostarczają miastu to, czego dziś chce, jak gracze."
+			"Ambitne boty kupują też działkę w mieście i dostarczają miastu to, czego dziś chce, jak gracze.",
+			"Boty zakładają spółki i zapraszają do nich inne boty. Członkowie wpłacają do kasy, przynoszą towary na zadania spółki za pensję i razem zbierają towary na zlecenia tygodnia.",
+			"Boty nie dołączają do spółek graczy."
 		]
 	},
 	{
