@@ -177,6 +177,15 @@ public static class BotRules
         return owned > 0 && ambition >= AmbitiousFrom && !hasCity ? [.. biomes, Biomes.City] : biomes;
     }
 
+    /// <summary>Bots this greedy sell the power of their line's generator through a grid tie, once they researched power distribution.</summary>
+    public const double SellsPowerFrom = 0.5;
+
+    /// <summary>What a bot asks for a kWh where nobody nearby sells power to compare with.</summary>
+    public const long PowerPriceCents = 10;
+
+    /// <summary>How far from a pole a bot puts its grid tie, within the pole's reach of 5 × 5 tiles.</summary>
+    public const int PoleReach = 2;
+
     /// <summary>How often a bot looks at the banks and its account.</summary>
     public static readonly TimeSpan BankEvery = TimeSpan.FromHours(1);
 
@@ -355,7 +364,7 @@ public static class BotRules
         BotTrade.Industrialist =>
         [
             "logistics", "automation", "storage", "sorting", "fast_logistics", "underground_belts", "rail_freight", "long_inserters",
-            "metallurgy", "glassmaking", "stonemasonry",
+            "metallurgy", "glassmaking", "stonemasonry", "hydropower", "power_distribution",
         ],
         BotTrade.Farmer => ["milling", "logistics", "automation", "pickling", "baking", "oil_pressing", "cooking", "fishing"],
         _ => [],

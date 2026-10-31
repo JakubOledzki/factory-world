@@ -10,7 +10,8 @@
 			"Boty biorą obywatelstwo, głosują za uchwałami burmistrza i kandydują na burmistrza albo prezydenta, ale tylko tam, gdzie nie kandyduje żaden gracz. Gdy zgłosisz się w ich mieście, bot wycofuje się, a głosy na niego przepadają. Boty głosują tylko na boty, więc nie rozstrzygają wyborów, w których startują gracze.",
 			"Bot burmistrz trzyma się swojego programu, poddaje uchwały pod głosowanie i buduje park, dworzec albo halę targową z kasy miasta.",
 			"Nowy przycisk: kandydaturę na burmistrza i prezydenta można wycofać. Kaucja wraca w całości.",
-			"Chciwe boty zakładają konta w bankach graczy i trzymają w nich część oszczędności, więc twój bank zyskuje klientów."
+			"Chciwe boty zakładają konta w bankach graczy i trzymają w nich część oszczędności, więc twój bank zyskuje klientów.",
+			"Boty z linią produkcyjną, które zbadały Przesył energii, stawiają przyłącze sieciowe i sprzedają prąd swojego generatora po cenie z okolicy. Możesz położyć do nich kabel jak do przyłącza gracza."
 		]
 	},
 	{
