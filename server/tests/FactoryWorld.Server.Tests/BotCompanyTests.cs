@@ -97,15 +97,29 @@ public sealed class BotCompanyTests(ServerFactory factory) : IClassFixture<Serve
 
         factory.Time.Advance(BotRules.CompanyEvery + TimeSpan.FromSeconds(1));
         Assert.Null(await StepUntilAsync(bot, "join company", 100));
-        Assert.Equal(JsonValueKind.Null, (await CompanyAsync(bot)).GetProperty("company").ValueKind);
+        // The other tests' founders may have invited it meanwhile: it may be in theirs, never in the player's.
+        var company = (await CompanyAsync(bot)).GetProperty("company");
+        Assert.True(company.ValueKind == JsonValueKind.Null || company.GetProperty("name").GetString() != "Firma Gracza", company.ToString());
     }
 
     [Fact]
     public async Task Bots_in_a_company_bring_what_its_tasks_ask_for_and_gather_its_orders_together()
     {
         await Engine.EnsureBotsAsync(CancellationToken.None);
-        var founder = Engine.Bots.Last(b => b.Profile.Trade == BotTrade.Smelter);
-        var member = Engine.Bots.Last(b => b.Profile.Trade == BotTrade.Forester);
+        // Bots no other test of the class uses: in no company yet, and not ambitious enough to found one.
+        var free = new List<Bot>();
+        var others = Engine.Bots.Where(b => b.Traits.Loyalty >= BotRules.JoinsFrom && b.Traits.Ambition < BotRules.FoundsFrom).ToList();
+        var taken = new[] { others.First(), others.Last() };
+        foreach (var candidate in Engine.Bots.Where(b => b.Traits.Ambition < BotRules.FoundsFrom && !taken.Contains(b)).Reverse())
+        {
+            if ((await CompanyAsync(candidate)).GetProperty("company").ValueKind == JsonValueKind.Null)
+            {
+                free.Add(candidate);
+            }
+        }
+
+        var founder = free.First(b => b.Profile.Trade == BotTrade.Smelter);
+        var member = free.First(b => b.Profile.Trade == BotTrade.Forester);
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(founder.Row.AccountId, 10_000_00, "test", CancellationToken.None);
