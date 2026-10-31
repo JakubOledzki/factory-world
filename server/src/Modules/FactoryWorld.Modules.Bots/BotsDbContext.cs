@@ -20,6 +20,9 @@ public sealed class BotRow
 
     /// <summary>When the session it is in ends; null between sessions.</summary>
     public DateTimeOffset? SessionUntil { get; set; }
+
+    /// <summary>Its goals (<see cref="BotGoals"/>) as JSON; null before it set any.</summary>
+    public string? Goals { get; set; }
 }
 
 public sealed class BotsDbContext(DbContextOptions<BotsDbContext> options, GameDb gameDb) : ModuleDbContext(options, gameDb)
@@ -39,6 +42,7 @@ public sealed class BotsDbContext(DbContextOptions<BotsDbContext> options, GameD
             e.Property(b => b.CreatedAt).HasColumnName("created_at");
             e.Property(b => b.NextSessionAt).HasColumnName("next_session_at");
             e.Property(b => b.SessionUntil).HasColumnName("session_until");
+            e.Property(b => b.Goals).HasColumnName("goals").HasColumnType("jsonb");
             e.HasIndex(b => b.AccountId).IsUnique();
         });
     }

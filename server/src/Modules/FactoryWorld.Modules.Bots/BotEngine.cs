@@ -304,10 +304,11 @@ public sealed class BotEngine(
         await using var scope = scopes.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<GameDb>();
         await using var command = await db.CommandAsync(
-            "UPDATE bots.bots SET next_session_at = @next, session_until = @until WHERE name = @name", cancellationToken);
+            "UPDATE bots.bots SET next_session_at = @next, session_until = @until, goals = @goals::jsonb WHERE name = @name", cancellationToken);
         command.Parameters.AddWithValue("name", row.Name);
         command.Parameters.AddWithValue("next", row.NextSessionAt);
         command.Parameters.AddWithValue("until", (object?)row.SessionUntil ?? DBNull.Value);
+        command.Parameters.AddWithValue("goals", (object?)row.Goals ?? DBNull.Value);
         await command.ExecuteNonQueryAsync(cancellationToken);
     }
 }

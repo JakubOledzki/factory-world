@@ -155,8 +155,20 @@ public sealed class BotLineTests(ServerFactory factory) : IClassFixture<ServerFa
 
         Assert.True(bot.HasLine, "The bot built no line: " + string.Join(", ", actions.GroupBy(a => a ?? "-").Select(g => $"{g.Key} ×{g.Count()}")));
         var line = await LinePlotAsync(bot);
-        Assert.NotNull(line);
-        var (x, y, plot) = line.Value;
+        if (line is null)
+        {
+            var info = await bot.Client.SendAsync("world.info", null, CancellationToken.None);
+            var dump = new List<string>();
+            foreach (var p in info.Payload.GetProperty("plots").EnumerateArray())
+            {
+                var inside = await bot.Client.SendAsync("plot.enter", new { x = p.GetProperty("x").GetInt32(), y = p.GetProperty("y").GetInt32() }, CancellationToken.None);
+                dump.Add(string.Join(",", inside.Payload.GetProperty("objects").EnumerateArray().Select(o => o.GetProperty("kind").GetString())));
+            }
+
+            Assert.Fail($"No whole line on its plots: {string.Join(" | ", dump)}; last steps: {string.Join(", ", actions.TakeLast(15))}; help: {bot.Help?.Reason}");
+        }
+
+        var (x, y, plot) = line!.Value;
         var objects = plot.GetProperty("objects").EnumerateArray().ToList();
         var furnace = objects.First(o => o.GetProperty("kind").GetString() == Items.Furnace
             && objects.Count(c => c.GetProperty("kind").GetString() == Items.WoodenChest
