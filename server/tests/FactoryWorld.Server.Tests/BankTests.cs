@@ -1,6 +1,7 @@
 using System.Text.Json;
 using FactoryWorld.Modules.Abstractions;
 using FactoryWorld.Modules.Abstractions.Contracts;
+using FactoryWorld.Modules.Bots;
 using FactoryWorld.Modules.Crafting;
 using FactoryWorld.Modules.Market;
 using FactoryWorld.Modules.Research;
@@ -274,5 +275,50 @@ public sealed class BankTests(ServerFactory factory) : ExportTestBase(factory), 
         Assert.Equal("plot.pickedUp", (await banker.SendAsync("plot.pickup", new { x = brusselsPlot.X, y = brusselsPlot.Y, id = head })).Type());
         Assert.Equal(1000_00, Bank(await BankAsync(friend), company).GetProperty("balanceCents").GetInt64());
         Assert.Single(Bank(await BankAsync(friend), company).GetProperty("buildings").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task A_greedy_bot_opens_an_account_in_a_players_bank_and_keeps_part_of_its_savings_there()
+    {
+        using var banker = await PlayerAsync();
+        var madrid = CityPlot(TownNamed("Madryt"));
+        var company = await CompanyAsync(banker, true, madrid);
+        await GiveAsync(banker, Items.Bank, 1);
+        await PlaceAsync(banker, madrid, Items.Bank, BankTile);
+
+        var engine = Factory.Services.GetRequiredService<BotEngine>();
+        await engine.EnsureBotsAsync(CancellationToken.None);
+        var bot = engine.Bots.First(b => b.Traits.Greed >= BotRules.BanksFrom);
+        await using (var scope = Factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(bot.Row.AccountId, 100_000_00, "test", CancellationToken.None);
+        }
+
+        var x = 100;
+        while (!(await bot.Client.SendAsync("world.buy", new { x, y = 500 }, CancellationToken.None)).Is("world.bought"))
+        {
+            x++;
+        }
+
+        async Task<bool> StepUntilBankAsync()
+        {
+            for (var i = 0; i < 300; i++)
+            {
+                if (await engine.StepAsync(bot.Profile.Name, CancellationToken.None) == "bank")
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // It opens an account first, and an hour later pays in.
+        Assert.True(await StepUntilBankAsync());
+        Assert.Equal(1, Bank(await BankAsync(banker), company).GetProperty("customers").GetInt32());
+        Factory.Time.Advance(BotRules.BankEvery + TimeSpan.FromSeconds(1));
+        Assert.True(await StepUntilBankAsync());
+        var view = (await bot.Client.SendAsync("bank.get", null, CancellationToken.None)).Payload;
+        Assert.Contains(view.GetProperty("transfers").EnumerateArray(), t => t.GetProperty("kind").GetString() == "deposit");
     }
 }

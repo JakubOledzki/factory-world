@@ -396,6 +396,7 @@ public sealed partial class Bot(
 
         CompanyCandidates(world, Add);
         PoliticsCandidates(world, Add);
+        BankCandidates(world, Add);
 
         foreach (var plot in _plots.Where(p => p.Biome == Biomes.City && p.SupplyAt <= world.Now && traderPays))
         {

@@ -177,6 +177,21 @@ public static class BotRules
         return owned > 0 && ambition >= AmbitiousFrom && !hasCity ? [.. biomes, Biomes.City] : biomes;
     }
 
+    /// <summary>How often a bot looks at the banks and its account.</summary>
+    public static readonly TimeSpan BankEvery = TimeSpan.FromHours(1);
+
+    /// <summary>Bots this greedy (<see cref="BotTraits.Greed"/>) keep savings in a bank.</summary>
+    public const double BanksFrom = 0.4;
+
+    /// <summary>A bot opens an account and pays in once it has this much to spare.</summary>
+    public const long SavesInBankFrom = 2_000_00;
+
+    /// <summary>With less than this in its wallet (over its reserve) a bot takes money out of its account.</summary>
+    public const long WithdrawBelow = 200_00;
+
+    /// <summary>The most a bot pays in or takes out at once.</summary>
+    public const long BankBatch = 1_000_00;
+
     /// <summary>How often a bot looks at its town hall and its country's government.</summary>
     public static readonly TimeSpan PoliticsEvery = TimeSpan.FromMinutes(30);
 
