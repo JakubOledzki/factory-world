@@ -80,6 +80,9 @@ public static class BotRules
     /// <summary>The most a bot gets from the trader for a stack it sells off to free a tile of a full inventory.</summary>
     public const long RoomFor = 5_00;
 
+    /// <summary>How often a bot looks whether something waits on its pallet: players fill its buy orders while it is busy elsewhere.</summary>
+    public static readonly TimeSpan PalletEvery = TimeSpan.FromMinutes(30);
+
     /// <summary>With this many pieces to sell piling up, a bot gathers less and works its line and the market more.</summary>
     public const long Glut = 600;
 
@@ -413,8 +416,11 @@ public static class BotRules
     /// </summary>
     public const long BuyUpTo = 200;
 
-    /// <summary>How many of an item the bot holds back from selling, for its own work.</summary>
-    public static long Keep(BotTrade trade, string item) => (trade, item) switch
+    /// <summary>How many of an item the bot holds back from selling, for its own work: one stack at most, so that what it keeps
+    /// leaves most of its tiles free for what it gathers and makes.</summary>
+    public static long Keep(BotTrade trade, string item) => Math.Min(Stacks.Of(item), KeepWanted(trade, item));
+
+    private static long KeepWanted(BotTrade trade, string item) => (trade, item) switch
     {
         (BotTrade.Forester, Items.Wood) => 60,
         (BotTrade.Forester, Items.Sapling) => 10,

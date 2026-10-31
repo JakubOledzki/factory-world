@@ -392,9 +392,9 @@ func error_text(reply: Dictionary) -> String:
 	var payload: Variant = reply.get("payload")
 	var code: String = payload.get("code", "") if payload is Dictionary else ""
 	var details: Variant = payload.get("details") if payload is Dictionary else null
-	# Some of it would fit: the server says how much, so the player can take or buy that many.
+	# Some of a purchase would fit (and no pallet takes the rest): the server says how much, so the player can buy that many.
 	if code == "inventory_full" and details is Dictionary and int(details.get("room", 0)) > 0:
-		return "Ekwipunek pełny: zmieści się jeszcze %d szt. Weź mniej, zrób miejsce albo załóż większy plecak." % int(details["room"])
+		return "Ekwipunek pełny: zmieści się jeszcze %d szt. Kup mniej, zrób miejsce albo załóż większy plecak." % int(details["room"])
 	return ERRORS.get(code, "Błąd serwera (%s)." % code)
 
 

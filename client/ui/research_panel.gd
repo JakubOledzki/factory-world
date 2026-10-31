@@ -445,9 +445,9 @@ func _render_details() -> void:
 			_details.add_child(_item_row(cost["id"], cost["name"], text, UI.GOOD if have >= need or technology["status"] == "active" else UI.ERROR))
 		if int(technology.get("costCents", 0)) > 0:
 			_details.add_child(_money_row("Pieniądze", UI.money(int(technology["costCents"]))))
-		# The cost goes in at once, so it must all be in the inventory together.
+		# The cost goes in at once, so it must all be in the inventory together; once the research runs, it has.
 		var tiles := int(technology.get("costTiles", 0))
-		if tiles > 0 and not technology.get("companyOnly", false):
+		if tiles > 0 and technology["status"] in ["available", "locked"] and not technology.get("companyOnly", false):
 			var fits := _slots < 1 or tiles <= _slots
 			var text := "Koszt zajmuje %s ekwipunku." % UI.tiles(tiles)
 			if not fits:

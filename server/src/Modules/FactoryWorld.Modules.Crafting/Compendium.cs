@@ -45,7 +45,7 @@ public sealed class GetCompendiumHandler(IServiceScopeFactory scopes) : IMessage
         return new Reply("compendium", new
         {
             // With how many pieces of each fill a tile of the inventory.
-            items = Items.Names.Select(n => new { id = n.Key, name = n.Value, stack = Stacks.Of(n.Key) }),
+            items = Items.Names.Select(n => new { id = n.Key, name = n.Value, stack = Items.IsMoney(n.Key) ? 0 : Stacks.Of(n.Key) }),
             recipes = Compendium.Recipes.Select(r => new
             {
                 id = r.Item,

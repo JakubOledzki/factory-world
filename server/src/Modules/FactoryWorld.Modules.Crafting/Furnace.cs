@@ -265,6 +265,7 @@ public sealed class FurnaceService(
                     throw new GameException("furnace_full", $"The furnace holds at most {level.MaxFuel} coal.");
                 }
 
+                await inventory.RemoveAsync(owner, item, quantity, cancellationToken);
                 state = state with { Fuel = state.Fuel + quantity };
             }
             else if (item == Items.Coke)
@@ -274,6 +275,7 @@ public sealed class FurnaceService(
                     throw new GameException("furnace_full", $"The furnace holds at most as much coke as {level.MaxFuel} coal burns.");
                 }
 
+                await inventory.RemoveAsync(owner, item, quantity, cancellationToken);
                 state = state with { Heat = state.Heat + quantity * Smelting.CokeHeat(level) };
             }
             else if (Smelting.For(item) is { } recipe)
@@ -288,6 +290,8 @@ public sealed class FurnaceService(
                     throw new GameException("furnace_full", $"The furnace holds at most {level.MaxInput} ore.");
                 }
 
+                // The ore leaves the inventory first: its tiles may be what makes room for the ingots of another kind.
+                await inventory.RemoveAsync(owner, item, quantity, cancellationToken);
                 if (state.Output is { } output && output != recipe.Output && state.OutputQuantity > 0)
                 {
                     (state, xp) = await TakeOutputAsync(owner, state, taken, partial: false, cancellationToken);
@@ -300,7 +304,6 @@ public sealed class FurnaceService(
                 throw new GameException("not_smeltable", "This cannot go into the furnace.");
             }
 
-            await inventory.RemoveAsync(owner, item, quantity, cancellationToken);
             state = Smelting.Start(state, time.GetUtcNow());
             await FurnaceRows.WriteAsync(db, owner, id, level, state, cancellationToken);
             return new FurnaceReply(id, level, state, time.GetUtcNow(), taken, xp);

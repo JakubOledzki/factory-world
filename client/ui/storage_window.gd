@@ -192,7 +192,7 @@ func _render() -> void:
 	else:
 		_help.text = "Każdy rodzaj przedmiotu zajmuje osobne miejsca. Podajnik ustawiony przodem do skrzyni wkłada do niej, tyłem wyjmuje."
 	_help.text += " Przy otwartym ekwipunku [I] dotknij przedmiotu, aby go tu włożyć." if UI.touch() \
-		else " Przy otwartym ekwipunku [I] Shift + klik na przedmiot wkłada go tu cały, a przeciągnięcie na to okno też."
+		else " Przy otwartym ekwipunku [I] Shift + klik na kafelek wkłada tu jego stos, a przeciągnięcie kafelka na to okno też."
 	_fit.call_deferred()
 
 

@@ -20,6 +20,34 @@ public sealed partial class Bot
         return true;
     }
 
+    /// <summary>
+    /// Takes what waits on its pallet (what it bought that did not fit, its filled buy orders) into the inventory as far as it
+    /// fits, the way a player would; when not one piece fits, it sells off a cheap stack it has no work for first.
+    /// </summary>
+    private async Task<bool> UnloadPalletAsync(BotWorld world, CancellationToken cancellationToken)
+    {
+        _palletAt = world.Now + BotRules.PalletEvery;
+        var pallet = await SendAsync("garage.storage", new { id = _pallet }, cancellationToken);
+        if (!pallet.Is("storage"))
+        {
+            return false;
+        }
+
+        var acted = false;
+        _onPallet.Clear();
+        foreach (var item in pallet.Payload.Each("items").Select(i => i.Text("id")!).ToList())
+        {
+            acted |= await TakeFromPalletAsync(item, cancellationToken);
+        }
+
+        if (acted)
+        {
+            await InventoryAsync(cancellationToken);
+        }
+
+        return acted;
+    }
+
     private async Task<bool> PlaceInGarageAsync(string kind, CancellationToken cancellationToken)
     {
         if (FreeGarageCell(kind) is not { } cell)
@@ -148,13 +176,7 @@ public sealed partial class Bot
         var acted = false;
         if (machine.Get("output") is { ValueKind: JsonValueKind.Object } output && output.Long("quantity") > 0)
         {
-            var taken = await SendAsync("machine.take", new { machine = id, what = "output" }, cancellationToken);
-            if (taken.Error == "inventory_full" && await MakeRoomAsync(output.Text("id")!, cancellationToken))
-            {
-                taken = await SendAsync("machine.take", new { machine = id, what = "output" }, cancellationToken);
-            }
-
-            acted = taken.Ok;
+            acted = (await WithRoomAsync("machine.take", new { machine = id, what = "output" }, output.Text("id")!, cancellationToken)).Ok;
             await InventoryAsync(cancellationToken);
         }
 
@@ -245,7 +267,7 @@ public sealed partial class Bot
         var output = state.Payload.Get("output")?.Long("quantity") ?? 0;
         if (output > 0)
         {
-            var taken = await SendAsync("furnace.take", new { furnace, what = "output" }, cancellationToken);
+            var taken = await WithRoomAsync("furnace.take", new { furnace, what = "output" }, state.Payload.Get("output")?.Text("id") ?? "", cancellationToken);
             if (taken.Ok)
             {
                 await InventoryAsync(cancellationToken);

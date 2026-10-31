@@ -294,3 +294,41 @@ public sealed class BotMarketTests(ServerFactory factory) : IClassFixture<Server
         Assert.True(listed >= Engine.Roster.Count / 2, $"{listed} listings");
     }
 }
+
+/// <summary>A bot and its delivery pallet, on a database of its own.</summary>
+public sealed class BotPalletTests(ServerFactory factory) : IClassFixture<ServerFactory>
+{
+    private BotEngine Engine => factory.Services.GetRequiredService<BotEngine>();
+
+    [Fact]
+    public async Task A_bot_takes_in_what_waits_on_its_pallet()
+    {
+        await Engine.EnsureBotsAsync(CancellationToken.None);
+        var bot = Engine.Bots.First(b => b.Profile.Trade == BotTrade.Smelter);
+        var pallet = (await bot.Client.SendAsync("garage.get", null, CancellationToken.None)).Payload.GetProperty("objects").EnumerateArray()
+            .First(o => o.GetProperty("kind").GetString() == Items.Pallet).GetProperty("id").GetString();
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            // What it bought that did not fit, or a buy order a player filled while its inventory was full.
+            Assert.True(await scope.ServiceProvider.GetRequiredService<IGarageDeliveries>().DeliverAsync(bot.Row.AccountId, Items.Nails, 30, CancellationToken.None));
+        }
+
+        async Task<long> WaitingAsync() =>
+            (await bot.Client.SendAsync("garage.storage", new { id = pallet }, CancellationToken.None)).Payload.GetProperty("items").EnumerateArray()
+            .Sum(i => i.GetProperty("quantity").GetInt64());
+        for (var i = 0; i < 200 && await WaitingAsync() > 0; i++)
+        {
+            factory.Time.Advance(TimeSpan.FromMinutes(1));
+            await Engine.StepAsync(bot.Profile.Name, CancellationToken.None);
+        }
+
+        Assert.Equal(0, await WaitingAsync());
+        // Into its inventory, from where it may have listed them since (and it may have bought a few more meanwhile).
+        var inventory = (await bot.Client.SendAsync("inventory.get", null, CancellationToken.None)).Payload.GetProperty("items").EnumerateArray()
+            .Where(i => i.GetProperty("id").GetString() == Items.Nails).Sum(i => i.GetProperty("quantity").GetInt64());
+        var listed = (await bot.Client.SendAsync("market.mine", null, CancellationToken.None)).Payload.GetProperty("listings").EnumerateArray()
+            .Where(l => l.GetProperty("item").GetString() == Items.Nails && l.GetProperty("open").GetBoolean())
+            .Sum(l => l.GetProperty("quantity").GetInt64() - l.GetProperty("done").GetInt64());
+        Assert.True(inventory + listed >= 30, $"{inventory} in the inventory, {listed} listed");
+    }
+}

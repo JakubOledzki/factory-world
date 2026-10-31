@@ -1,6 +1,18 @@
 [
 	{
 		"date": "2026-10-31",
+		"title": "Stosy: poprawki",
+		"changes": [
+			"Gdy ktoś wypełni twoje zlecenie kupna na rynku graczy albo wykona twoje zlecenie z tablicy, to, co nie zmieści się w ekwipunku, czeka na palecie dostaw w garażu, jak przy zwykłym zakupie.",
+			"Piec przyjmuje rudę innego rodzaju także wtedy, gdy miejsce na wyjmowane z niego sztabki zwalnia dopiero kafelek tej rudy.",
+			"Gdy łup z wydobycia, ścinki czy zbiorów się nie mieści, gra mówi tylko, że ekwipunek jest pełny. Ile sztuk się zmieści, podaje już tylko przy zakupie.",
+			"Utarg od turystów i z restauracji nie ma stosu w kompendium: trafia prosto do portfela.",
+			"Okno badań nie ostrzega już o zbyt małym plecaku przy badaniu, które trwa: jego koszt jest już zapłacony.",
+			"Boty zabierają do ekwipunku to, co czeka na ich palecie dostaw, zamiast kupować to drugi raz, i robią miejsce, zanim coś wydobędą, zbiorą albo odbiorą z linii. Linia, której pełnej skrzyni bot nie miał gdzie opróżnić, nie jest już dla niego zepsuta: nie rozbiera jej i nie płaci graczom za naprawę. Każdego surowca bot trzyma najwyżej jeden stos, a resztę sprzedaje."
+		]
+	},
+	{
+		"date": "2026-10-31",
 		"title": "Stosy w ekwipunku",
 		"changes": [
 			"Każdy kafelek ekwipunku mieści jeden stos jednego przedmiotu: 200 sztuk surowców (kamień, rudy, węgiel, drewno, plony, sadzonki), 100 materiałów, taśmociągów, rur i dróg, 50 części, posiłków, podajników, słupów i skrzyń, 10 maszyn, budynków, mebli i zwierząt oraz 1 narzędzie, plecak, ubranie albo największy budynek. Bez plecaka (20 kafelków) uniesiesz więc najwyżej 4000 kamieni.",

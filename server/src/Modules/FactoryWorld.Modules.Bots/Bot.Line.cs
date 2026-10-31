@@ -706,13 +706,20 @@ public sealed partial class Bot
         }
 
         long taken = 0;
+        var full = false;
         foreach (var (item, quantity) in Stored(output.Payload))
         {
-            if ((await SendAsync("storage.take", new { x, y, id = site.Output, item, quantity = 0 }, cancellationToken)).Ok)
+            var take = await WithRoomAsync("storage.take", new { x, y, id = site.Output, item, quantity = 0 }, item, cancellationToken);
+            if (take.Ok)
             {
                 taken += quantity;
             }
+
+            full |= take.Error == "inventory_full";
         }
+
+        // The products stay in a chest that is full: the line stands because the bot had no room for them.
+        var blocked = full && output.Payload.GetProperty("usedSlots").GetInt64() >= output.Payload.GetProperty("slots").GetInt64();
 
         var input = await SendAsync("storage.get", new { x, y, id = site.Input }, cancellationToken);
         var inside = input.Is("storage") ? Stored(input.Payload) : [];
@@ -770,9 +777,10 @@ public sealed partial class Bot
             _recipeSet = (await SendAsync("machine.recipe", new { machine = site.Machine, recipe }, cancellationToken)).Ok;
         }
 
-        // Stalled: it had all it needs since the last look, and used none of it.
+        // Stalled: it had all it needs since the last look, and used none of it. A line whose full output chest the bot had no
+        // room to empty stands for that, not because anything is wrong with it.
         var complete = heated && line.Inputs.Any(i => inside.GetValueOrDefault(i) > 0);
-        _stalls = taken == 0 && fuel > 0 && complete && _lastInputs >= 0 && before >= _lastInputs ? _stalls + 1 : 0;
+        _stalls = taken == 0 && !blocked && fuel > 0 && complete && _lastInputs >= 0 && before >= _lastInputs ? _stalls + 1 : 0;
         _lastInputs = line.Inputs.Sum(i => inside.GetValueOrDefault(i));
 
         if (_stalls >= BotRules.StalledAfter)
