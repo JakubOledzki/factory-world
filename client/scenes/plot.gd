@@ -3680,17 +3680,31 @@ func _ask_clear(area: Rect2i) -> void:
 	if kinds.size() > 6:
 		lines.append("i %d innych rodzajów" % (kinds.size() - 6))
 	var text := "%s.\n\nTo, co jest w środku (w skrzyniach, maszynach, na taśmach), też wróci do ekwipunku." % ", ".join(lines)
-	# A kind the inventory does not have yet needs a free tile; it still comes back without one, but then nothing new fits.
+	# What comes back needs tiles of the inventory; it still comes back without them, but then nothing new fits.
 	var have := {}
+	var used := 0
 	for stack: Dictionary in _items:
 		if int(stack["quantity"]) > 0:
-			have[stack["id"]] = true
-	var new_kinds := kinds.filter(func(kind: String) -> bool: return not have.has(kind)).size()
-	var free := maxi(0, _slots.slots - have.size())
-	if new_kinds > free:
-		text += "\n\nUwaga: w ekwipunku są tylko %d wolne miejsca, a to %d nowych rodzajów przedmiotów. Nic nie przepadnie, ale ekwipunek się przepełni i nic nowego do niego nie trafi, dopóki nie zrobisz miejsca." % [free, new_kinds]
+			have[stack["id"]] = int(stack["quantity"])
+			used += _tiles_of(stack["id"], int(stack["quantity"]))
+	var needed := 0
+	for kind: String in kinds:
+		var held := int(have.get(kind, 0))
+		needed += _tiles_of(kind, held + int(counts[kind])) - _tiles_of(kind, held)
+	var free := maxi(0, _slots.slots - used)
+	if needed > free:
+		text += "\n\nUwaga: to zajmie %s ekwipunku, a wolnych masz %d. Nic nie przepadnie, ale ekwipunek się przepełni i nic nowego do niego nie trafi, dopóki nie zrobisz miejsca." % [UI.tiles(needed), free]
 	_clear_to = Vector2i(area.position.x + area.end.x - 1 - corner.x, area.position.y + area.end.y - 1 - corner.y)
 	ConfirmDialog.ask(_hud, "Schować %d obiektów do ekwipunku?" % objects.size(), text, "Schowaj wszystko", func() -> void: _clear_area(area))
+
+
+## Tiles `quantity` pieces of `item` take in the inventory: full stacks and one more for the rest (one tile while the
+## server has not said its stack).
+static func _tiles_of(item: String, quantity: int) -> int:
+	var stack := Game.stack_of(item)
+	if quantity < 1:
+		return 0
+	return 1 if stack < 1 else ceili(quantity / float(stack))
 
 
 ## Takes everything of the player's off the rectangle in one go.
@@ -5792,6 +5806,9 @@ func _build_windows() -> void:
 	layer.add_child(_canteen_window)
 	_market_window = MarketWindow.new()
 	_market_window.traded.connect(_on_traded)
+	_market_window.to_pallet.connect(func(_item: String, quantity: int) -> void:
+		_show_toast("Nie wszystko się zmieściło w ekwipunku: %d szt. czeka na palecie dostaw w garażu." % quantity if quantity > 0
+				else "Ekwipunek pełny: zakup czeka na palecie dostaw w garażu.", UI.GOLD))
 	_market_window.failed.connect(_show_error)
 	_market_window.pick_up_requested.connect(_pick_up_placed)
 	layer.add_child(_market_window)
@@ -5846,7 +5863,7 @@ func _reload_inventory() -> void:
 	_slots.show_items(reply["payload"])
 	_hotbar.set_items(_items)
 	_crafting_window.set_items(_items)
-	_research_window.set_items(_items)
+	_research_window.set_items(_items, _slots.slots)
 	_furnace_window.set_items(_items)
 	_storage_window.set_items(_items)
 	_splitter_window.set_items(_items)

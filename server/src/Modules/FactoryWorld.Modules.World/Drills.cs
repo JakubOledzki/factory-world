@@ -217,7 +217,7 @@ public sealed class DrillService(
             return await WorkedAsync(x, y, id, automation, cancellationToken);
         }, cancellationToken);
 
-    /// <summary>Takes all the ore out of a drill into the player's inventory.</summary>
+    /// <summary>Takes the ore out of a drill into the player's inventory, each kind as far as it fits; the rest stays in.</summary>
     public Task<(DrillOnPlot Drill, IReadOnlyList<(string Item, int Quantity)> Taken, XpGain? Xp)> TakeAsync(
         Guid player, int x, int y, Guid id, IEnumerable<IPlotAutomation> automation, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -229,9 +229,18 @@ public sealed class DrillService(
             var taken = new List<(string, int)>();
             foreach (var (item, quantity) in drill.Patch.Ores.ToList())
             {
-                await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
-                drill.Patch.Take(item, quantity, machineNow);
-                taken.Add((item, quantity));
+                var fits = (int)await inventory.RoomForAsync(player, item, quantity, cancellationToken);
+                if (fits > 0)
+                {
+                    drill.Patch.Take(item, fits, machineNow);
+                    await inventory.AddAsync(player, item, fits, cancellationToken);
+                    taken.Add((item, fits));
+                }
+            }
+
+            if (taken.Count == 0 && drill.Patch.Stored > 0)
+            {
+                throw InventoryExtensions.InventoryFull();
             }
 
             drill.Patch.Advance(now, machineNow);

@@ -24,6 +24,8 @@ Gdy czegoś brakuje, zaproponuj wartości (patrz punkt 6) i zapytaj o zgodę jed
 - nazwa w słowniku `Names` (`[X] = "Nazwa po polsku"`).
 - jeśli to narzędzie, plecak, ubranie lub posiłek: odpowiedni rekord (`Saw`, `Backpack`, `Garment`, `Meal`) i pomocnicze `Is...` tak jak dla podobnych przedmiotów.
 
+Stos w ekwipunku (ile sztuk mieści jeden kafelek): `Contracts/Stacks.cs` przydziela go po rodzaju: surowce, plony, sadzonki i płyny 200; materiały, taśmociągi, rury i drogi 100; części, posiłki, znaleziska i drobne obiekty stawiane na działce tuzinami (podajniki, słupy, skrzynie) 50; maszyny, budynki, meble, zwierzęta, dekoracje i towary dla miast 10; narzędzia, plecaki, ubrania i budynki od 5 × 5 wzwyż 1. Przedmiot spoza tych reguł dostaje 100. Jeśli to za dużo albo za mało, dopisz go do właściwego zbioru (`RawGoods`, `Lines`, `Parts`, `Goods`, `Crowns`). Klient bierze stosy z serwera (`inventory.stacks`), więc w kliencie nic nie zmieniasz.
+
 Obiekt stawiany na działce: rozmiar w `Contracts/Footprints.cs` (`Sizes`; poziomy maszyn: 2 × 2, 3 × 3, 4 × 4) i zbiór `PlotObjects.Placeable` w `Modules/FactoryWorld.Modules.World/PlotObjects.cs`.
 
 ## 2. Serwer: skąd się bierze
@@ -46,6 +48,8 @@ Do tego, jeśli pasuje: `MarketEvents.cs` (wydarzenia rynkowe), `Contracts/NpcCo
 
 Maszyny, logistyka i towary handlarza dostępne są dopiero po badaniu: lista `unlocks` właściwej technologii w `Modules/FactoryWorld.Modules.Research/Research.cs`. Nowa technologia: `new(Id, "Nazwa", "Opis po polsku.", [wymagane], [koszt], czas, xp, [odblokowuje])` w odpowiedniej gałęzi.
 
+Koszt badania gracz przynosi w ekwipunku, więc policz, ile kafelków zajmuje (`Stacks.Tiles` każdego składnika; okno badań pokazuje to jako `costTiles`). Do 20 kafelków wystarczy ekwipunek bez plecaka; więcej wymaga plecaka (szkolny 40, turystyczny 60, trekkingowy 80, wyprawowy 100, magnata 120 kafelków) i powinno przypadać na badania z poziomu, na którym gracz taki plecak już ma.
+
 ## 5. Klient i grafika
 
 - `client/ui/item_info.gd`: wpis `"id": ["Nazwa", "Opis.", "Skąd: stacja: składniki → ilość (czas)."]` i, jeśli wzorce id nie wystarczą, kategoria w `CATEGORIES`.
@@ -63,7 +67,7 @@ Policz i pokaż w odpowiedzi (skill `balans` robi to dokładniej):
 
 ## 7. Testy, changelog, README
 
-- Test w `server/tests/FactoryWorld.Server.Tests/` obok podobnych (np. `CraftingTests.cs`, `ProcessingTests.cs`, `ResearchTests.cs`), nazwa testu jako zdanie: `The_<stacja>_makes_<co>_from_<składniki>_in_<czas>`. `CompendiumTests` sprawdza, że każdy przedmiot ma swoje miejsce w kompendium.
+- Test w `server/tests/FactoryWorld.Server.Tests/` obok podobnych (np. `CraftingTests.cs`, `ProcessingTests.cs`, `ResearchTests.cs`), nazwa testu jako zdanie: `The_<stacja>_makes_<co>_from_<składniki>_in_<czas>`. `CompendiumTests` sprawdza, że każdy przedmiot ma swoje miejsce w kompendium, a `StackTests`, że ma jeden z pięciu stosów.
 - `client/data/changelog.json`: nowy wpis na górze (data, tytuł, zmiany po polsku, językiem gracza).
 - `README.md`: zaktualizuj opis modułu lub protokołu, jeśli się zmienił.
 

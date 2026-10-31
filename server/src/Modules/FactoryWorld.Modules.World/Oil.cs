@@ -320,7 +320,7 @@ public sealed class OilService(
             return await WorkedAsync(x, y, id, automation, cancellationToken);
         }, cancellationToken);
 
-    /// <summary>Takes everything a well holds into the player's inventory.</summary>
+    /// <summary>Takes what a well holds into the player's inventory, as much as fits; the rest stays in.</summary>
     public Task<(WellOnPlot Well, IReadOnlyList<(string Item, int Quantity)> Taken, XpGain? Xp)> TakeAsync(
         Guid player, int x, int y, Guid id, IEnumerable<IPlotAutomation> automation, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -331,9 +331,9 @@ public sealed class OilService(
             var taken = new List<(string, int)>();
             if (well.Patch.Stored > 0)
             {
-                var quantity = well.Patch.Stored;
-                await inventory.ReceiveAsync(player, well.Patch.Product, quantity, cancellationToken);
+                var quantity = (int)await inventory.FitAsync(player, well.Patch.Product, well.Patch.Stored, cancellationToken);
                 well.Patch.Take(quantity, machineNow);
+                await inventory.AddAsync(player, well.Patch.Product, quantity, cancellationToken);
                 taken.Add((well.Patch.Product, quantity));
             }
 

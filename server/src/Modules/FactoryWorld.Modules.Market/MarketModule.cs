@@ -568,8 +568,8 @@ public sealed class MarketPrices : IMarketPrices
 public sealed record TradeRequest(string Item, int Quantity);
 
 /// <param name="Balance">The player's money afterwards, in cents.</param>
-/// <param name="ToPallet">What was bought did not fit in the inventory and waits on the pallet in the garage.</param>
-public sealed record Traded(long Balance, bool ToPallet = false);
+/// <param name="ToPallet">How much of what was bought did not fit in the inventory and waits on the pallet in the garage.</param>
+public sealed record Traded(long Balance, long ToPallet = 0);
 
 public sealed class MarketService(
     GameDb db, IInventory inventory, IWallet wallet, TraderMarket trader, ITechnologies technologies, IEnumerable<IForestCertificate> certificates,
@@ -592,8 +592,7 @@ public sealed class MarketService(
                 return new Traded(balance);
             }
 
-            var toPallet = await Delivery.OverflowAsync(inventory, deliveries, owner, item, quantity, cancellationToken);
-            return new Traded(balance, toPallet);
+            return new Traded(balance, await Delivery.OverflowAsync(inventory, deliveries, owner, item, quantity, cancellationToken));
         }, cancellationToken);
     }
 
@@ -714,7 +713,14 @@ public abstract class TradeHandler(IServiceScopeFactory scopes) : IMessageHandle
 
         var market = scope.ServiceProvider.GetRequiredService<MarketService>();
         var traded = await TradeAsync(market, client.RequireAccount(), request, cancellationToken);
-        return new Reply("market.traded", new { item = request.Item, quantity = request.Quantity, balanceCents = traded.Balance, toPallet = traded.ToPallet });
+        return new Reply("market.traded", new
+        {
+            item = request.Item,
+            quantity = request.Quantity,
+            balanceCents = traded.Balance,
+            toPallet = traded.ToPallet > 0,
+            palletQuantity = traded.ToPallet,
+        });
     }
 
     protected abstract Task<Traded> TradeAsync(MarketService market, Guid owner, TradeRequest request, CancellationToken cancellationToken);
@@ -769,26 +775,41 @@ public sealed class MarketModule : IGameModule
         services.MigrateModuleAsync<MarketDbContext>(cancellationToken);
 }
 
-/// <summary>Where bought goods go: into the inventory, or onto the pallet in the garage when it is full.</summary>
+/// <summary>Where bought goods go: into the inventory as far as its tiles hold them, the rest onto the pallet in the garage.</summary>
 public static class Delivery
 {
-    /// <summary>Gives the player what they bought; true when it went onto the pallet. Fails with
-    /// <c>inventory_full</c> when the inventory is full and the garage has no pallet.</summary>
-    public static async Task<bool> OverflowAsync(
+    /// <summary>Gives the player what they bought; returns how much of it went onto the pallet. Fails with
+    /// <c>inventory_full</c> when not all of it fits in the inventory and the garage has no pallet.</summary>
+    public static async Task<long> OverflowAsync(
         IInventory inventory, IEnumerable<IGarageDeliveries> deliveries, Guid player, string item, long quantity, CancellationToken cancellationToken)
     {
-        if (!await inventory.HasRoomAsync(player, item, cancellationToken))
+        var fits = await inventory.RoomForAsync(player, item, quantity, cancellationToken);
+        var rest = quantity - fits;
+        if (rest > 0 && !await PalletAsync(deliveries, player, item, rest, cancellationToken))
         {
-            foreach (var pallet in deliveries)
+            // The client says how many would fit, so the player can buy that many.
+            throw InventoryExtensions.InventoryFull(fits);
+        }
+
+        if (fits > 0)
+        {
+            await inventory.AddAsync(player, item, fits, cancellationToken);
+        }
+
+        return rest;
+    }
+
+    private static async Task<bool> PalletAsync(
+        IEnumerable<IGarageDeliveries> deliveries, Guid player, string item, long quantity, CancellationToken cancellationToken)
+    {
+        foreach (var pallet in deliveries)
+        {
+            if (await pallet.DeliverAsync(player, item, quantity, cancellationToken))
             {
-                if (await pallet.DeliverAsync(player, item, quantity, cancellationToken))
-                {
-                    return true;
-                }
+                return true;
             }
         }
 
-        await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
         return false;
     }
 }

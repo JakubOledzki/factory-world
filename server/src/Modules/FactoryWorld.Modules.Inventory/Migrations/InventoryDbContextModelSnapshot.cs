@@ -62,9 +62,12 @@ namespace FactoryWorld.Modules.Inventory.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("quantity");
 
-                    b.Property<int?>("Slot")
-                        .HasColumnType("integer")
-                        .HasColumnName("slot");
+                    b.PrimitiveCollection<int[]>("Tiles")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer[]")
+                        .HasColumnName("tiles")
+                        .HasDefaultValueSql("'{}'");
 
                     b.HasKey("OwnerId", "ItemId");
 

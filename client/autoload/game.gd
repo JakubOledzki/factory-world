@@ -371,6 +371,9 @@ var character := {}:
 var plot := Vector2i(-1, -1)
 ## The game's messages to the player, on every screen.
 var notices := NoticeFeed.new()
+## How many pieces of each item fill a tile of the inventory (item id → stack), from the server; empty until it answers.
+var stacks := {}
+var _asking_stacks := false
 
 
 func _ready() -> void:
@@ -388,7 +391,27 @@ func _ready() -> void:
 func error_text(reply: Dictionary) -> String:
 	var payload: Variant = reply.get("payload")
 	var code: String = payload.get("code", "") if payload is Dictionary else ""
+	var details: Variant = payload.get("details") if payload is Dictionary else null
+	# Some of it would fit: the server says how much, so the player can take or buy that many.
+	if code == "inventory_full" and details is Dictionary and int(details.get("room", 0)) > 0:
+		return "Ekwipunek pełny: zmieści się jeszcze %d szt. Weź mniej, zrób miejsce albo załóż większy plecak." % int(details["room"])
 	return ERRORS.get(code, "Błąd serwera (%s)." % code)
+
+
+## Asks the server once for the stack of every item (Game.stacks); a second call while it answers waits for nothing.
+func load_stacks() -> void:
+	if not stacks.is_empty() or _asking_stacks:
+		return
+	_asking_stacks = true
+	var reply := await Net.request("inventory.stacks")
+	_asking_stacks = false
+	if reply["type"] == "inventory.stacks":
+		stacks = reply["payload"]["stacks"]
+
+
+## How many pieces of `item` fill a tile of the inventory; 0 while the server has not said.
+func stack_of(item: String) -> int:
+	return int(stacks.get(item, 0))
 
 
 ## Called by the start screen once connected: logs in with the saved token or shows the login screen.
@@ -420,6 +443,7 @@ func enter_game() -> void:
 	if reply["type"] == "character":
 		character = reply["payload"]
 		watch_achievements()
+		load_stacks()
 		get_tree().change_scene_to_file(GARAGE_SCENE)
 	else:
 		character = {}

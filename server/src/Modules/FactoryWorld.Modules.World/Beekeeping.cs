@@ -97,7 +97,7 @@ public sealed class BeeService(
             return (hive, lindens);
         }, cancellationToken);
 
-    /// <summary>Takes the honey and the wax out of the hive into the inventory.</summary>
+    /// <summary>Takes the honey and the wax out of the hive into the inventory, as far as they fit; the rest stays in.</summary>
     public Task<(Hive Hive, int Lindens, IReadOnlyList<(string Item, int Quantity)> Taken, XpGain? Xp)> TakeAsync(
         Guid player, Guid id, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -105,29 +105,33 @@ public sealed class BeeService(
             var (hive, lindens) = await OpenAsync(id, cancellationToken);
             await plots.RequireOwnerAsync(player, hive.X, hive.Y, cancellationToken, PlotRight.Take);
             var taken = new List<(string Item, int Quantity)>();
-            if (hive.Honey > 0)
+            var honey = (int)await inventory.RoomForAsync(player, Items.Honey, hive.Honey, cancellationToken);
+            if (honey > 0)
             {
-                taken.Add((Items.Honey, hive.Honey));
+                await inventory.AddAsync(player, Items.Honey, honey, cancellationToken);
+                taken.Add((Items.Honey, honey));
             }
 
-            if (hive.Wax > 0)
+            var wax = (int)await inventory.RoomForAsync(player, Items.Wax, hive.Wax, cancellationToken);
+            if (wax > 0)
             {
-                taken.Add((Items.Wax, hive.Wax));
+                await inventory.AddAsync(player, Items.Wax, wax, cancellationToken);
+                taken.Add((Items.Wax, wax));
             }
 
-            foreach (var (item, quantity) in taken)
+            if (taken.Count == 0 && hive.Honey + hive.Wax > 0)
             {
-                await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
+                throw InventoryExtensions.InventoryFull();
             }
 
             XpGain? xp = null;
             if (taken.Count > 0)
             {
                 await stats.RecordAsync(hive.Owner, taken.Select(t => ProductionEntry.Made(t.Item, t.Quantity, time.GetUtcNow())).ToList(), cancellationToken);
-                xp = await progress.AddXpAsync(player, hive.Honey * Bees.XpPerJar, cancellationToken);
+                xp = await progress.AddXpAsync(player, honey * Bees.XpPerJar, cancellationToken);
             }
 
-            hive = hive with { Honey = 0, Wax = 0 };
+            hive = hive with { Honey = hive.Honey - honey, Wax = hive.Wax - wax };
             await SaveAsync(hive, cancellationToken);
             return (hive, lindens, (IReadOnlyList<(string, int)>)taken, xp);
         }, cancellationToken);

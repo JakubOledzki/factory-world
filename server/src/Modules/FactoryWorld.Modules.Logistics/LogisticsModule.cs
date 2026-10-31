@@ -118,7 +118,8 @@ public sealed class LogisticsService(
             Storages.Add(stacks, item, quantity);
         }, cancellationToken);
 
-    /// <summary>Takes items out of a storage into the inventory: <paramref name="quantity"/> of them, or all when 0.</summary>
+    /// <summary>Takes items out of a storage into the inventory: <paramref name="quantity"/> of them, or all when 0. Only as many
+    /// as the inventory has room for come out; the rest stays in.</summary>
     public Task<(LogisticsState State, PlotObject Storage)> TakeAsync(
         Guid player, int x, int y, Guid id, string item, int quantity, CancellationToken cancellationToken) =>
         ChangeStorageAsync(player, x, y, id, PlotRight.Take, async (_, stacks, _) =>
@@ -128,13 +129,15 @@ public sealed class LogisticsService(
                 throw new GameException("bad_quantity", "Take out at least one.");
             }
 
-            var taken = Storages.Remove(stacks, item, quantity == 0 ? int.MaxValue : quantity);
-            if (taken == 0 || (quantity > 0 && taken < quantity))
+            var held = stacks.FirstOrDefault(s => s.Item == item)?.Quantity ?? 0;
+            if (held == 0 || quantity > held)
             {
                 throw new GameException("not_enough_items", "There is not that much in it.");
             }
 
-            await inventory.ReceiveAsync(player, item, taken, cancellationToken);
+            var taken = (int)await inventory.FitAsync(player, item, quantity == 0 ? held : quantity, cancellationToken);
+            Storages.Remove(stacks, item, taken);
+            await inventory.AddAsync(player, item, taken, cancellationToken);
         }, cancellationToken);
 
     /// <summary>Most items a splitter can be set to sort out.</summary>

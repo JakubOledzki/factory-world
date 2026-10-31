@@ -41,18 +41,19 @@ public sealed class GetCompendiumHandler(IServiceScopeFactory scopes) : IMessage
     {
         await using var scope = scopes.CreateAsyncScope();
         var locked = await scope.ServiceProvider.GetRequiredService<ITechnologies>().LockedAsync(client.RequireAccount(), cancellationToken);
-        static object Stacks(IEnumerable<(string Item, int Quantity)> stacks) => stacks.Select(s => new { id = s.Item, quantity = s.Quantity });
+        static object Pieces(IEnumerable<(string Item, int Quantity)> pieces) => pieces.Select(s => new { id = s.Item, quantity = s.Quantity });
         return new Reply("compendium", new
         {
-            items = Items.Names.Select(n => new { id = n.Key, name = n.Value }),
+            // With how many pieces of each fill a tile of the inventory.
+            items = Items.Names.Select(n => new { id = n.Key, name = n.Value, stack = Stacks.Of(n.Key) }),
             recipes = Compendium.Recipes.Select(r => new
             {
                 id = r.Item,
                 quantity = r.Quantity,
                 seconds = r.Seconds,
                 station = r.Station,
-                ingredients = Stacks(r.Ingredients),
-                extras = Stacks(r.Extras),
+                ingredients = Pieces(r.Ingredients),
+                extras = Pieces(r.Extras),
             }),
             // What the fired machines burn, and how many batches one piece lasts; coal in a furnace lasts for its own count of smelts.
             fuels = Processing.Fuels,

@@ -21,6 +21,7 @@ var _panel := PanelContainer.new()
 var _icon := TextureRect.new()
 var _name: Label
 var _category: Label
+var _stack: Label
 var _about: Label
 var _source: Label
 var _market_box := VBoxContainer.new()
@@ -74,6 +75,8 @@ func _init() -> void:
 	names.add_child(_category)
 	head.add_child(names)
 	box.add_child(head)
+	_stack = UI.label("", UI.MUTED)
+	box.add_child(_stack)
 	_about = UI.label("", UI.TEXT, HORIZONTAL_ALIGNMENT_LEFT, true)
 	box.add_child(_about)
 	box.add_child(UI.label("Skąd:", UI.MUTED))
@@ -140,6 +143,7 @@ func _process(delta: float) -> void:
 		_icon.texture = UI.item_texture(item)
 		_name.text = ItemInfo.name_of(item)
 		_category.text = ItemInfo.CATEGORIES[ItemInfo.category_of(item)][0]
+		_show_stack()
 		_about.text = ItemInfo.description(item)
 		_source.text = ItemInfo.source(item)
 		_show_prices()
@@ -198,6 +202,18 @@ func _hovered_item() -> String:
 					return child.get_meta("item")
 		node = node.get_parent()
 	return ""
+
+
+## How many of the card's item fill a tile of the inventory; asked for once, so the first card may show it a moment later.
+func _show_stack() -> void:
+	var stack := Game.stack_of(_item)
+	_stack.text = "Stos: %d szt. na kafelek ekwipunku" % stack if stack > 0 else ""
+	_stack.visible = stack > 0
+	if Game.stacks.is_empty():
+		await Game.load_stacks()
+		if _item != "":
+			_stack.text = "Stos: %d szt. na kafelek ekwipunku" % Game.stack_of(_item) if Game.stack_of(_item) > 0 else ""
+			_stack.visible = Game.stack_of(_item) > 0
 
 
 ## Asks for the trader's prices and players' offers now; the card shows them once both are in.

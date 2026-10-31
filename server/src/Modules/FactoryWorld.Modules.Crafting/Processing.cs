@@ -1076,8 +1076,9 @@ public sealed class MachineService(
             XpGain? xp = null;
             if (state.Recipe != recipe.Id)
             {
-                (state, xp) = await TakeOutputAsync(owner, machine, state, taken, cancellationToken);
-                state = await TakeInputsAsync(owner, machine, state, taken, cancellationToken);
+                // The products must all fit; the ingredients come back whether or not they do.
+                (state, xp) = await TakeOutputAsync(owner, machine, state, taken, partial: false, cancellationToken);
+                state = await TakeInputsAsync(owner, machine, state, taken, partial: false, cancellationToken);
                 state = Processing.Start(machine, state with { Recipe = recipe.Id, Inputs = new int[recipe.Ingredients.Count] }, clock.At(time.GetUtcNow()));
                 await MachineRows.WriteAsync(db, owner, id, machine.Kind, state, cancellationToken);
             }
@@ -1140,7 +1141,8 @@ public sealed class MachineService(
             return Reply(id, machine, state, clock, [], null);
         }, cancellationToken);
 
-    /// <summary>Takes the products (<c>output</c>), the ingredients not used yet (<c>input</c>) or the fuel (<c>fuel</c>) out.</summary>
+    /// <summary>Takes the products (<c>output</c>), the ingredients not used yet (<c>input</c>) or the fuel (<c>fuel</c>) out, as
+    /// much as fits in the inventory; the rest stays in.</summary>
     public Task<MachineReply> TakeAsync(Guid owner, Guid id, string what, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
@@ -1150,18 +1152,27 @@ public sealed class MachineService(
             switch (what)
             {
                 case "output":
-                    (state, xp) = await TakeOutputAsync(owner, machine, state, taken, cancellationToken);
+                    (state, xp) = await TakeOutputAsync(owner, machine, state, taken, partial: true, cancellationToken);
                     // Room again for what was waiting on a full machine.
                     state = Processing.Start(machine, state, clock.At(time.GetUtcNow()));
                     break;
                 case "input":
-                    state = await TakeInputsAsync(owner, machine, state, taken, cancellationToken);
+                    state = await TakeInputsAsync(owner, machine, state, taken, partial: true, cancellationToken);
                     break;
                 case "fuel":
+                    var back = 0;
                     if (state.FuelItem is { } fuel && state.Fuel > 0)
                     {
-                        await inventory.AddAsync(owner, fuel, state.Fuel, cancellationToken);
-                        taken.Add((fuel, state.Fuel));
+                        back = (int)await inventory.FitAsync(owner, fuel, state.Fuel, cancellationToken);
+                        await inventory.AddAsync(owner, fuel, back, cancellationToken);
+                        taken.Add((fuel, back));
+                    }
+
+                    if (back < state.Fuel)
+                    {
+                        // Fuel left by the fire keeps the batches going.
+                        state = state with { Fuel = state.Fuel - back };
+                        break;
                     }
 
                     // The batch in the fire keeps going on the fuel already lit, if there is any.
@@ -1180,62 +1191,119 @@ public sealed class MachineService(
             return Reply(id, machine, state, clock, taken, xp);
         }, cancellationToken);
 
+    /// <summary>Gives the player <paramref name="quantity"/> pieces; returns how many. With <paramref name="partial"/> only as many
+    /// as fit, else all of them or, when they do not fit, none with <c>inventory_full</c>.</summary>
+    private async Task<int> GiveAsync(Guid owner, string item, int quantity, bool partial, CancellationToken cancellationToken)
+    {
+        if (!partial)
+        {
+            await inventory.ReceiveAsync(owner, item, quantity, cancellationToken);
+            return quantity;
+        }
+
+        var fits = (int)await inventory.RoomForAsync(owner, item, quantity, cancellationToken);
+        if (fits > 0)
+        {
+            await inventory.AddAsync(owner, item, fits, cancellationToken);
+        }
+
+        return fits;
+    }
+
+    /// <summary>Hands the products (and what the recipe gives besides) to the player: as many as fit (<paramref name="partial"/>),
+    /// the rest staying in, or all of them, failing with <c>inventory_full</c> when they do not fit (before a new recipe).</summary>
     private async Task<(MachineState, XpGain?)> TakeOutputAsync(
-        Guid owner, ProcessingMachine machine, MachineState state, List<(string, int)> taken, CancellationToken cancellationToken)
+        Guid owner, ProcessingMachine machine, MachineState state, List<(string, int)> taken, bool partial, CancellationToken cancellationToken)
     {
         if (machine.Recipe(state.Recipe) is not { } recipe || !state.HasOutput)
         {
             return (state, null);
         }
 
-        for (var i = 0; i < recipe.Extras.Count; i++)
+        var given = 0;
+        var extras = new int[recipe.Extras.Count];
+        for (var i = 0; i < extras.Length; i++)
         {
-            if (state.Extra(i) > 0)
+            extras[i] = state.Extra(i);
+            if (extras[i] > 0 && await GiveAsync(owner, recipe.Extras[i].Item, extras[i], partial, cancellationToken) is var some and > 0)
             {
-                await inventory.ReceiveAsync(owner, recipe.Extras[i].Item, state.Extra(i), cancellationToken);
-                taken.Add((recipe.Extras[i].Item, state.Extra(i)));
+                taken.Add((recipe.Extras[i].Item, some));
+                extras[i] -= some;
+                given += some;
             }
         }
 
-        state = state with { Extras = new int[recipe.Extras.Count] };
-        if (state.Output == 0)
+        state = state with { Extras = extras };
+        XpGain? xp = null;
+        if (state.Output > 0)
         {
-            return (state, null);
+            int made;
+            // What tourists paid goes into the wallet.
+            if (Items.IsMoney(recipe.Id))
+            {
+                made = state.Output;
+                await wallet.CreditAsync(owner, made * Processing.TakingsCents, $"takings {machine.Kind}", cancellationToken);
+            }
+            else
+            {
+                made = await GiveAsync(owner, recipe.Id, state.Output, partial, cancellationToken);
+            }
+
+            if (made > 0)
+            {
+                taken.Add((recipe.Id, made));
+                xp = await progress.AddXpAsync(owner, (long)made * recipe.Xp, cancellationToken);
+                state = state with { Output = state.Output - made };
+                given += made;
+            }
         }
 
-        // What tourists paid goes into the wallet.
-        if (Items.IsMoney(recipe.Id))
+        if (given == 0)
         {
-            await wallet.CreditAsync(owner, state.Output * Processing.TakingsCents, $"takings {machine.Kind}", cancellationToken);
-        }
-        else
-        {
-            await inventory.ReceiveAsync(owner, recipe.Id, state.Output, cancellationToken);
+            throw InventoryExtensions.InventoryFull();
         }
 
-        taken.Add((recipe.Id, state.Output));
-        var xp = await progress.AddXpAsync(owner, (long)state.Output * recipe.Xp, cancellationToken);
-        return (state with { Output = 0 }, xp);
+        return (state, xp);
     }
 
+    /// <summary>Gives back the ingredients not used yet: as many as fit (<paramref name="partial"/>), the rest staying in, or all
+    /// of them, fitting or not (a new recipe). The batch going on stops when what is left makes no batch.</summary>
     private async Task<MachineState> TakeInputsAsync(
-        Guid owner, ProcessingMachine machine, MachineState state, List<(string, int)> taken, CancellationToken cancellationToken)
+        Guid owner, ProcessingMachine machine, MachineState state, List<(string, int)> taken, bool partial, CancellationToken cancellationToken)
     {
         if (machine.Recipe(state.Recipe) is not { } recipe)
         {
             return state;
         }
 
-        for (var i = 0; i < recipe.Ingredients.Count; i++)
+        var inputs = new int[recipe.Ingredients.Count];
+        var given = 0;
+        for (var i = 0; i < inputs.Length; i++)
         {
-            if (state.Input(i) > 0)
+            inputs[i] = state.Input(i);
+            if (inputs[i] == 0)
             {
-                await inventory.AddAsync(owner, recipe.Ingredients[i].Item, state.Input(i), cancellationToken);
-                taken.Add((recipe.Ingredients[i].Item, state.Input(i)));
+                continue;
+            }
+
+            var item = recipe.Ingredients[i].Item;
+            var back = partial ? (int)await inventory.RoomForAsync(owner, item, inputs[i], cancellationToken) : inputs[i];
+            if (back > 0)
+            {
+                await inventory.AddAsync(owner, item, back, cancellationToken);
+                taken.Add((item, back));
+                inputs[i] -= back;
+                given += back;
             }
         }
 
-        return state with { Inputs = new int[recipe.Ingredients.Count], StartedAt = null };
+        if (given == 0 && inputs.Any(q => q > 0))
+        {
+            throw InventoryExtensions.InventoryFull();
+        }
+
+        state = state with { Inputs = inputs };
+        return Processing.Batches(machine, state) > 0 ? state : state with { StartedAt = null };
     }
 
     /// <summary>Services the machine for <see cref="MachineServicing.Cents"/>: it works at full speed again for <see cref="MachineServicing.Every"/>

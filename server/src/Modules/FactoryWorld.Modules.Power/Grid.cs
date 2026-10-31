@@ -921,19 +921,21 @@ public sealed class PowerGrid : IPowerGrid
         Plan();
     }
 
-    /// <summary>Takes out the fuel not burning yet; the piece in the fire burns on.</summary>
-    public (string Item, int Quantity)? Unfuel(Guid id, DateTimeOffset at)
+    /// <summary>Takes out the fuel not burning yet, at most <paramref name="limit"/> pieces; the piece in the fire burns on, and so
+    /// does the fuel left.</summary>
+    public (string Item, int Quantity)? Unfuel(Guid id, DateTimeOffset at, int limit = int.MaxValue)
     {
         var state = Generator(id, at);
-        if (state.FuelItem is not { } fuel || state.Fuel == 0)
+        if (state.FuelItem is not { } fuel || state.Fuel == 0 || limit < 1)
         {
             return null;
         }
 
+        var taken = Math.Min(limit, state.Fuel);
         Settle(at);
-        Data.Generators[id] = state with { FuelItem = null, Fuel = 0 };
+        Data.Generators[id] = taken < state.Fuel ? state with { Fuel = state.Fuel - taken } : state with { FuelItem = null, Fuel = 0 };
         Plan();
-        return (fuel, state.Fuel);
+        return (fuel, taken);
     }
 
     /// <summary>A generator or a battery taken off the plot: the grid goes on without it.</summary>

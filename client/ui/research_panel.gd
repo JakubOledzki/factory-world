@@ -23,6 +23,8 @@ const TREE_MARGIN := Vector2(18, 40)
 
 var _state := {}
 var _items: Array = []
+## Tiles of the player's inventory (0 when the screen did not say).
+var _slots := 0
 var _selected := ""
 ## The branch whose tree is shown.
 var _branch := ""
@@ -119,8 +121,9 @@ func loaded() -> bool:
 	return not _state.is_empty()
 
 
-func set_items(items: Array) -> void:
+func set_items(items: Array, slots := 0) -> void:
 	_items = items
+	_slots = slots
 	if is_visible_in_tree():
 		_render()
 
@@ -442,6 +445,14 @@ func _render_details() -> void:
 			_details.add_child(_item_row(cost["id"], cost["name"], text, UI.GOOD if have >= need or technology["status"] == "active" else UI.ERROR))
 		if int(technology.get("costCents", 0)) > 0:
 			_details.add_child(_money_row("Pieniądze", UI.money(int(technology["costCents"]))))
+		# The cost goes in at once, so it must all be in the inventory together.
+		var tiles := int(technology.get("costTiles", 0))
+		if tiles > 0 and not technology.get("companyOnly", false):
+			var fits := _slots < 1 or tiles <= _slots
+			var text := "Koszt zajmuje %s ekwipunku." % UI.tiles(tiles)
+			if not fits:
+				text += " Masz %s: załóż większy plecak, żeby zmieścić go naraz." % UI.tiles(_slots)
+			_details.add_child(UI.label(text, UI.MUTED if fits else UI.ERROR, HORIZONTAL_ALIGNMENT_LEFT, true))
 	_details.add_child(UI.label("Czas: %s  ·  %d XP" % [_seconds(float(technology["seconds"])), int(technology["xp"])], UI.MUTED))
 
 	_render_company(technology)

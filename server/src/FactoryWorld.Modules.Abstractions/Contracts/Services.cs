@@ -3,15 +3,16 @@ namespace FactoryWorld.Modules.Abstractions.Contracts;
 // Public services that modules offer each other. Call them inside GameDb.InTransactionAsync
 // when several must succeed together.
 
-/// <summary>Items a player owns (owner = account id).</summary>
+/// <summary>Items a player owns (owner = account id). Each tile of the inventory holds one stack of an item
+/// (<see cref="Stacks.Of"/> pieces at most), so more of an item takes more tiles.</summary>
 public interface IInventory
 {
-    /// <summary>Adds items whether or not there is a free tile: for what comes back to the player
-    /// (a machine picked up, an offer cancelled) or arrives without them doing anything.</summary>
+    /// <summary>Adds items whether or not they fit: for what comes back to the player (a machine picked up, an offer
+    /// cancelled) or arrives without them doing anything. What does not fit lies past the tiles until room is made.</summary>
     Task AddAsync(Guid owner, string item, long quantity, CancellationToken cancellationToken);
 
     /// <summary>Adds items the player takes (buys, gathers, takes out of something). Fails with
-    /// <c>inventory_full</c> when the item is not in the inventory yet and every tile is taken.</summary>
+    /// <c>inventory_full</c> when they do not all fit (see <see cref="RoomAsync"/>).</summary>
     Task ReceiveAsync(Guid owner, string item, long quantity, CancellationToken cancellationToken);
 
     /// <summary>Fails with <c>not_enough_items</c> when the player has fewer.</summary>
@@ -19,8 +20,38 @@ public interface IInventory
 
     Task<long> CountAsync(Guid owner, string item, CancellationToken cancellationToken);
 
-    /// <summary>Whether <see cref="ReceiveAsync"/> would take the item now: it is in the inventory already or a tile is free.</summary>
+    /// <summary>How many more pieces of the item fit: what its last stack still takes and whole stacks on the tiles no
+    /// other item lies on; 0 when the inventory is full (or over full with things given back).</summary>
+    Task<long> RoomAsync(Guid owner, string item, CancellationToken cancellationToken);
+
+    /// <summary>Whether <see cref="ReceiveAsync"/> would take at least one piece of the item now.</summary>
     Task<bool> HasRoomAsync(Guid owner, string item, CancellationToken cancellationToken);
+}
+
+public static class InventoryExtensions
+{
+    /// <summary>How many of <paramref name="quantity"/> pieces the player can take now: all, or as many as fit. Fails with
+    /// <c>inventory_full</c> when not one fits. For taking out of a machine or a store, where the rest stays inside.</summary>
+    public static async Task<long> FitAsync(this IInventory inventory, Guid owner, string item, long quantity, CancellationToken cancellationToken)
+    {
+        var fits = await inventory.RoomForAsync(owner, item, quantity, cancellationToken);
+        if (fits < 1 && quantity > 0)
+        {
+            throw InventoryFull();
+        }
+
+        return fits;
+    }
+
+    /// <summary>How many of <paramref name="quantity"/> pieces fit in the inventory now: all, some or none. For taking several
+    /// things out of a machine at once, each as far as it fits.</summary>
+    public static async Task<long> RoomForAsync(this IInventory inventory, Guid owner, string item, long quantity, CancellationToken cancellationToken) =>
+        Math.Min(quantity, await inventory.RoomAsync(owner, item, cancellationToken));
+
+    /// <summary>The error of an inventory with no room for what the player takes; <paramref name="room"/>, how many pieces would
+    /// still fit, goes to the client in the error's details.</summary>
+    public static GameException InventoryFull(long room = 0) =>
+        new("inventory_full", "Your inventory is full: make room or put on a bigger backpack.", room > 0 ? new { room } : null);
 }
 
 /// <summary>A player's money, in cents, with every change recorded in a ledger.</summary>

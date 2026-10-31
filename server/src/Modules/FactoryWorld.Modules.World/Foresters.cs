@@ -302,14 +302,6 @@ public sealed class ForestPatch(
 
         return taken;
     }
-
-    /// <summary>Takes all the wood out at <paramref name="now"/>, by item.</summary>
-    public IReadOnlyList<(string Item, int Quantity)> TakeAll(DateTimeOffset now)
-    {
-        var all = Store.OrderBy(s => s.Key == Items.Wood ? 0 : 1).Select(s => (s.Key, s.Value)).ToList();
-        Take(int.MaxValue, now);
-        return all;
-    }
 }
 
 /// <summary>A forester on its plot with its forest.</summary>
@@ -336,7 +328,7 @@ public sealed class ForesterService(
             return await ReportAsync(x, y, cancellationToken);
         }, cancellationToken);
 
-    /// <summary>Takes all the wood out of a forester on the player's plot into the inventory.</summary>
+    /// <summary>Takes the wood out of a forester on the player's plot into the inventory, as far as it fits; the rest stays.</summary>
     public Task<(PlotForests State, IReadOnlyList<(string Item, int Quantity)> Taken, XpGain? Xp)> TakeAsync(
         Guid player, int x, int y, Guid id, IEnumerable<IPlotAutomation> automation, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -351,22 +343,34 @@ public sealed class ForesterService(
             var forests = await OpenAsync(x, y, now, cancellationToken);
             var forester = forests.FirstOrDefault(f => f.Object.Id == id)
                 ?? throw new GameException("no_object", "There is no such forester's building on this plot.");
-            var taken = forester.Patch.TakeAll(now);
+            var taken = new List<(string Item, int Quantity)>();
+            foreach (var (item, quantity) in forester.Patch.Store.OrderBy(s => s.Key == Items.Wood ? 0 : 1).ToList())
+            {
+                var fits = (int)await inventory.RoomForAsync(player, item, quantity, cancellationToken);
+                if (fits > 0)
+                {
+                    forester.Patch.Take(fits, now, item);
+                    await inventory.AddAsync(player, item, fits, cancellationToken);
+                    taken.Add((item, fits));
+                }
+            }
+
+            if (taken.Count == 0 && forester.Patch.Store.Count > 0)
+            {
+                throw InventoryExtensions.InventoryFull();
+            }
+
             // Room again: what waited on the full store is cut from now on.
             forester.Patch.Advance(now);
             await SaveAsync(x, y, forests, cancellationToken);
             XpGain? xp = null;
-            foreach (var (item, quantity) in taken)
-            {
-                await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
-            }
 
             if (taken.Count > 0)
             {
                 xp = await progress.AddXpAsync(player, taken.Sum(t => t.Quantity) / Foresters.WoodPerXp, cancellationToken);
             }
 
-            return (await ReportAsync(x, y, cancellationToken), taken, xp);
+            return (await ReportAsync(x, y, cancellationToken), (IReadOnlyList<(string, int)>)taken, xp);
         }, cancellationToken);
 
     /// <summary>Sets the kind of tree a forester on the player's plot plants from now on.</summary>

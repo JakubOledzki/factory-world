@@ -290,7 +290,7 @@ public sealed class FurnaceService(
 
                 if (state.Output is { } output && output != recipe.Output && state.OutputQuantity > 0)
                 {
-                    (state, xp) = await TakeOutputAsync(owner, state, taken, cancellationToken);
+                    (state, xp) = await TakeOutputAsync(owner, state, taken, partial: false, cancellationToken);
                 }
 
                 state = state with { Input = item, InputQuantity = state.InputQuantity + quantity };
@@ -306,7 +306,8 @@ public sealed class FurnaceService(
             return new FurnaceReply(id, level, state, time.GetUtcNow(), taken, xp);
         }, cancellationToken);
 
-    /// <summary>Takes the ingots (<c>output</c>), the ore not smelted yet (<c>input</c>) or the coal (<c>fuel</c>) out.</summary>
+    /// <summary>Takes the ingots (<c>output</c>), the ore not smelted yet (<c>input</c>) or the coal (<c>fuel</c>) out, as much as
+    /// fits in the inventory; the rest stays in.</summary>
     public Task<FurnaceReply> TakeAsync(Guid owner, Guid id, string what, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
@@ -316,18 +317,25 @@ public sealed class FurnaceService(
             switch (what)
             {
                 case "output":
-                    (state, xp) = await TakeOutputAsync(owner, state, taken, cancellationToken);
+                    (state, xp) = await TakeOutputAsync(owner, state, taken, partial: true, cancellationToken);
                     break;
-                case "input" when state.Input is { } input:
-                    await inventory.AddAsync(owner, input, state.InputQuantity, cancellationToken);
-                    taken.Add((input, state.InputQuantity));
-                    state = state with { Input = null, InputQuantity = 0, StartedAt = null };
+                case "input" when state.Input is { } input && state.InputQuantity > 0:
+                    var ore = (int)await inventory.FitAsync(owner, input, state.InputQuantity, cancellationToken);
+                    await inventory.AddAsync(owner, input, ore, cancellationToken);
+                    taken.Add((input, ore));
+                    // Ore left inside keeps smelting.
+                    state = ore < state.InputQuantity
+                        ? state with { InputQuantity = state.InputQuantity - ore }
+                        : state with { Input = null, InputQuantity = 0, StartedAt = null };
                     break;
                 case "fuel" when state.Fuel > 0:
-                    await inventory.AddAsync(owner, Items.Coal, state.Fuel, cancellationToken);
-                    taken.Add((Items.Coal, state.Fuel));
-                    // The piece in the fire keeps burning on the coal already lit, if there is any.
-                    state = state.Heat > 0 ? state with { Fuel = 0 } : state with { Fuel = 0, StartedAt = null };
+                    var coal = (int)await inventory.FitAsync(owner, Items.Coal, state.Fuel, cancellationToken);
+                    await inventory.AddAsync(owner, Items.Coal, coal, cancellationToken);
+                    taken.Add((Items.Coal, coal));
+                    // The piece in the fire keeps burning on the coal left or already lit, if there is any.
+                    state = coal < state.Fuel ? state with { Fuel = state.Fuel - coal }
+                        : state.Heat > 0 ? state with { Fuel = 0 }
+                        : state with { Fuel = 0, StartedAt = null };
                     break;
                 case "input" or "fuel":
                     break;
@@ -339,17 +347,30 @@ public sealed class FurnaceService(
             return new FurnaceReply(id, level, state, time.GetUtcNow(), taken, xp);
         }, cancellationToken);
 
-    private async Task<(FurnaceState, XpGain?)> TakeOutputAsync(Guid owner, FurnaceState state, List<(string, int)> taken, CancellationToken cancellationToken)
+    /// <summary>Hands the ingots to the player: as many as fit (<paramref name="partial"/>), the rest staying in, or all of them,
+    /// failing with <c>inventory_full</c> when they do not fit (before ore of another kind goes in).</summary>
+    private async Task<(FurnaceState, XpGain?)> TakeOutputAsync(
+        Guid owner, FurnaceState state, List<(string, int)> taken, bool partial, CancellationToken cancellationToken)
     {
         if (state.Output is not { } output || state.OutputQuantity == 0)
         {
             return (state, null);
         }
 
-        await inventory.ReceiveAsync(owner, output, state.OutputQuantity, cancellationToken);
-        taken.Add((output, state.OutputQuantity));
-        var xp = await progress.AddXpAsync(owner, state.OutputQuantity * Smelting.XpPerIngot, cancellationToken);
-        return (state with { Output = null, OutputQuantity = 0 }, xp);
+        var quantity = state.OutputQuantity;
+        if (partial)
+        {
+            quantity = (int)await inventory.FitAsync(owner, output, quantity, cancellationToken);
+            await inventory.AddAsync(owner, output, quantity, cancellationToken);
+        }
+        else
+        {
+            await inventory.ReceiveAsync(owner, output, quantity, cancellationToken);
+        }
+
+        taken.Add((output, quantity));
+        var xp = await progress.AddXpAsync(owner, quantity * Smelting.XpPerIngot, cancellationToken);
+        return (quantity < state.OutputQuantity ? state with { OutputQuantity = state.OutputQuantity - quantity } : state with { Output = null, OutputQuantity = 0 }, xp);
     }
 
     /// <summary>The player's furnace, locked until the transaction ends and smelted up to now.</summary>

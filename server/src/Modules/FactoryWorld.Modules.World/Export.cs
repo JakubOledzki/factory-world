@@ -362,13 +362,14 @@ public sealed class ExportService(
             await ChangeStockAsync(x, y, item, quantity, cancellationToken);
         }, cancellationToken);
 
-    /// <summary>Moves items from the chest into the inventory.</summary>
+    /// <summary>Moves items from the chest into the inventory, as many as it has room for; the rest stays.</summary>
     public Task<ExportChestState> UnloadAsync(Guid player, int x, int y, string item, long quantity, CancellationToken cancellationToken) =>
         ChangeAsync(player, x, y, PlotRight.Take, async _ =>
         {
             CheckQuantity(item, quantity);
-            await ChangeStockAsync(x, y, item, -quantity, cancellationToken);
-            await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
+            var taken = await inventory.FitAsync(player, item, quantity, cancellationToken);
+            await ChangeStockAsync(x, y, item, -taken, cancellationToken);
+            await inventory.AddAsync(player, item, taken, cancellationToken);
         }, cancellationToken);
 
     /// <summary>Sets what a piece of <paramref name="item"/> is listed for; 0 takes the price off, and the train leaves the item behind.</summary>

@@ -54,7 +54,7 @@ public sealed class MessageDispatcher(
         }
         catch (GameException ex)
         {
-            return Error(request.Id, ex.Code, ex.Message);
+            return Error(request.Id, ex.Code, ex.Message, ex.Details);
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -85,6 +85,8 @@ public sealed class MessageDispatcher(
         }
     }
 
-    private static Envelope Error(string? id, string code, string message) =>
-        new("error", id, JsonSerializer.SerializeToElement(new { code, message }, Json));
+    private static Envelope Error(string? id, string code, string message, object? details = null) =>
+        new("error", id, details is null
+            ? JsonSerializer.SerializeToElement(new { code, message }, Json)
+            : JsonSerializer.SerializeToElement(new { code, message, details }, Json));
 }

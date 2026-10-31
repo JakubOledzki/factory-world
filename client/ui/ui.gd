@@ -252,3 +252,11 @@ static func money(cents: int) -> String:
 			grouped += " "
 		grouped += whole[i]
 	return "%s%s,%02d $" % ["-" if cents < 0 else "", grouped, absi(cents) % 100]
+
+
+## A count of inventory tiles with the right Polish ending: "1 kafelek", "3 kafelki", "12 kafelków".
+static func tiles(n: int) -> String:
+	if n == 1:
+		return "1 kafelek"
+	var few := n % 10 in [2, 3, 4] and not n % 100 in [12, 13, 14]
+	return "%d %s" % [n, "kafelki" if few else "kafelków"]
