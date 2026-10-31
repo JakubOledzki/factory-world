@@ -311,7 +311,7 @@ public sealed partial class Bot
                     return false;
                 }
 
-                var mined = await SendAsync("plot.mine", new { x = plot.X, y = plot.Y, mine = mine.Id }, cancellationToken);
+                var mined = await WithRoomAsync("plot.mine", new { x = plot.X, y = plot.Y, mine = mine.Id }, Items.Stone, cancellationToken);
                 var index = plot.Mines.IndexOf(mine);
                 if (mined.Is("plot.mined"))
                 {
@@ -355,7 +355,13 @@ public sealed partial class Bot
                 continue;
             }
 
-            var reply = await SendAsync("plot.harvest", new { x = plot.X, y = plot.Y, tileX = x, tileY = y }, cancellationToken);
+            var loot = plot.Tiles[y * plot.Size + x] switch
+            {
+                Tiles.Rock => Items.Stone,
+                Tiles.Dune => Items.Sand,
+                _ => Items.Wood,
+            };
+            var reply = await WithRoomAsync("plot.harvest", new { x = plot.X, y = plot.Y, tileX = x, tileY = y }, loot, cancellationToken);
             if (reply.Error == "too_fast")
             {
                 return false;
@@ -391,7 +397,7 @@ public sealed partial class Bot
         if (ripe >= 0)
         {
             var f = plot.Fields[ripe];
-            var reply = await SendAsync("plot.reap", new { x = plot.X, y = plot.Y, tileX = f.X, tileY = f.Y }, cancellationToken);
+            var reply = await WithRoomAsync("plot.reap", new { x = plot.X, y = plot.Y, tileX = f.X, tileY = f.Y }, f.Crop!, cancellationToken);
             if (!reply.Is("plot.field"))
             {
                 plot.Fields.RemoveAt(ripe);

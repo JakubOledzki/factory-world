@@ -10,6 +10,14 @@ public sealed partial class Bot
 {
     private async Task<bool> TradeAsync(string type, string item, long quantity, CancellationToken cancellationToken)
     {
+        // What it bought before and still waits on its pallet, it takes from there rather than buy it again.
+        if (type == "market.buy" && _onPallet.Contains(item))
+        {
+            var taken = await TakeFromPalletAsync(item, cancellationToken);
+            await InventoryAsync(cancellationToken);
+            return taken;
+        }
+
         var before = _money;
         var reply = await SendAsync(type, new { item, quantity = Math.Min(quantity, 1000) }, cancellationToken);
         if (!reply.Is("market.traded"))
@@ -22,8 +30,33 @@ public sealed partial class Bot
             _traderIncome += Math.Max(0, _money - before);
         }
 
+        // What did not fit waits on the pallet: the bot takes it in at once if it can make room for it.
+        var taking = reply.Payload.Long("palletQuantity") == 0 || await TakeFromPalletAsync(item, cancellationToken);
         await InventoryAsync(cancellationToken);
-        return true;
+        return taking;
+    }
+
+    /// <summary>Takes an item off its pallet into the inventory, as far as it fits; frees a tile first when not one piece does.
+    /// What stays there the bot remembers, so as not to buy it again.</summary>
+    private async Task<bool> TakeFromPalletAsync(string item, CancellationToken cancellationToken)
+    {
+        if (_pallet is not { } pallet)
+        {
+            return false;
+        }
+
+        var reply = await WithRoomAsync("garage.storage.take", new { id = pallet, item, quantity = 0 }, item, cancellationToken);
+        var left = reply.Ok ? reply.Payload.Each("items").Any(i => i.Text("id") == item) : reply.Error == "inventory_full";
+        if (left)
+        {
+            _onPallet.Add(item);
+        }
+        else
+        {
+            _onPallet.Remove(item);
+        }
+
+        return reply.Ok;
     }
 
     /// <summary>What the bot has more of than it keeps: what it made itself first (a crafter sells its belts and chests rather than
@@ -40,13 +73,18 @@ public sealed partial class Bot
     private long Keep(string item) =>
         Math.Max(KeepForWork(item), BotRules.Buys(Profile.Trade).Contains(item) ? BotRules.BuyUpTo : 0);
 
-    /// <summary>What the bot holds back for its work: what its trade keeps, whatever it still means to build on its plots, and its line's parts and their makings.</summary>
     /// <summary>
     /// Frees a tile of a full inventory for <paramref name="incoming"/> the way a player would: sells the trader the
     /// whole of its cheapest stack it has no work for, if that is worth little.
     /// </summary>
     private async Task<bool> MakeRoomAsync(string incoming, CancellationToken cancellationToken)
     {
+        // Past what it may take from the trader in a session, the bot waits for players to buy what it lists.
+        if (_traderIncome >= BotRules.MaxTraderIncome)
+        {
+            return false;
+        }
+
         var junk = _inventory
             .Where(i => i.Value > 0 && i.Key != incoming && Floor(i.Key) > 0 && KeepForWork(i.Key) == 0
                 && !BotRules.Products(Profile.Trade).Contains(i.Key) && !_workshopGoods.Contains(i.Key)
@@ -63,6 +101,20 @@ public sealed partial class Bot
         return Have(junk) == 0;
     }
 
+    /// <summary>Sends a request that brings something into the inventory; when it fails only because the inventory is full,
+    /// frees a tile (<see cref="MakeRoomAsync"/>) and sends it once more.</summary>
+    private async Task<BotReply> WithRoomAsync(string type, object payload, string incoming, CancellationToken cancellationToken)
+    {
+        var reply = await SendAsync(type, payload, cancellationToken);
+        if (reply.Error == "inventory_full" && await MakeRoomAsync(incoming, cancellationToken))
+        {
+            reply = await SendAsync(type, payload, cancellationToken);
+        }
+
+        return reply;
+    }
+
+    /// <summary>What the bot holds back for its work: what its trade keeps, whatever it still means to build on its plots, and its line's parts and their makings.</summary>
     private long KeepForWork(string item) =>
         BotRules.Keep(Profile.Trade, item) + _plots.Where(p => p.Tiles is not null).Sum(p => StillToBuild(p).Count(k => k == item))
         + _reserved.GetValueOrDefault(item);
@@ -183,6 +235,13 @@ public sealed partial class Bot
             {
                 _purchases++;
                 _inventory[item] = Have(item) + quantity;
+                if (reply.Payload.Long("palletQuantity") > 0)
+                {
+                    // What did not fit waits on the pallet: the bot takes it in at once if it can make room for it.
+                    await TakeFromPalletAsync(item, cancellationToken);
+                    await InventoryAsync(cancellationToken);
+                }
+
                 return true;
             }
         }

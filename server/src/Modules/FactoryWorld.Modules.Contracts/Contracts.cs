@@ -146,7 +146,8 @@ public sealed record DeliverRequest(long Id, long Quantity);
 public sealed record ContractResult(long BalanceCents, XpGain? Xp, bool Completed, long RewardCents);
 
 public sealed class ContractService(
-    GameDb db, IInventory inventory, IWallet wallet, ICharacterProgress progress, ICharacterNames names, TimeProvider time)
+    GameDb db, IInventory inventory, IWallet wallet, ICharacterProgress progress, ICharacterNames names, TimeProvider time,
+    IEnumerable<IGarageDeliveries> deliveries)
 {
     /// <summary>The player's NPC orders, the board of other players' orders, the orders they deliver and those they gave.</summary>
     public Task<object> ViewAsync(Guid player, CancellationToken cancellationToken) =>
@@ -304,7 +305,8 @@ public sealed class ContractService(
             await CloseAsync(contract, ContractOutcome.Done, now, cancellationToken);
             if (contract.IssuerId is { } issuer)
             {
-                await inventory.AddAsync(issuer, contract.ItemId, contract.Quantity, cancellationToken);
+                // What the issuer's inventory has no room for waits on their pallet, as a filled buy order's does.
+                await deliveries.HandOverAsync(inventory, issuer, contract.ItemId, contract.Quantity, cancellationToken);
             }
             else
             {

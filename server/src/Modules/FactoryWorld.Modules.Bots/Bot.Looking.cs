@@ -106,6 +106,7 @@ public sealed partial class Bot
         _workbench = null;
         _furnace = null;
         _bin = false;
+        _pallet = null;
         foreach (var o in garage.Each("objects"))
         {
             var kind = o.Text("kind")!;
@@ -120,6 +121,9 @@ public sealed partial class Bot
                     break;
                 case Items.TrashBin:
                     _bin = true;
+                    break;
+                case Items.Pallet:
+                    _pallet ??= o.Id("id");
                     break;
             }
         }

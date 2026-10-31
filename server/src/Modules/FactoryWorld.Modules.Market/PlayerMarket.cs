@@ -219,13 +219,13 @@ public sealed class PlayerMarketService(
             return new Traded(balance, await Delivery.OverflowAsync(inventory, deliveries, buyer, listing.ItemId, request.Quantity, cancellationToken));
         }, cancellationToken);
 
-    /// <summary>Fills another player's buy order: items to the buyer, the waiting money to the seller.</summary>
+    /// <summary>Fills another player's buy order: items to the buyer (what does not fit, onto their pallet), the waiting money to the seller.</summary>
     public Task<long> FillAsync(Guid seller, TakeRequest request, CancellationToken cancellationToken) =>
         ChangeAsync(async () =>
         {
             var order = await TakeAsync(OfferKind.Order, seller, request, cancellationToken);
             await inventory.RemoveAsync(seller, order.ItemId, request.Quantity, cancellationToken);
-            await inventory.AddAsync(order.OwnerId, order.ItemId, request.Quantity, cancellationToken);
+            await deliveries.HandOverAsync(inventory, order.OwnerId, order.ItemId, request.Quantity, cancellationToken);
             db.AfterCommit(() => counters.Trade(GameCounters.Players, order.ItemId, request.Quantity, request.Quantity * order.PriceCents));
             return await PayAsync(seller, request.Quantity * order.PriceCents, $"filled order {request.Quantity} {order.ItemId}", cancellationToken);
         }, cancellationToken);

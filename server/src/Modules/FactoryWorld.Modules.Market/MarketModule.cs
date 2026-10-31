@@ -785,7 +785,7 @@ public static class Delivery
     {
         var fits = await inventory.RoomForAsync(player, item, quantity, cancellationToken);
         var rest = quantity - fits;
-        if (rest > 0 && !await PalletAsync(deliveries, player, item, rest, cancellationToken))
+        if (rest > 0 && !await deliveries.ToPalletAsync(player, item, rest, cancellationToken))
         {
             // The client says how many would fit, so the player can buy that many.
             throw InventoryExtensions.InventoryFull(fits);
@@ -797,19 +797,5 @@ public static class Delivery
         }
 
         return rest;
-    }
-
-    private static async Task<bool> PalletAsync(
-        IEnumerable<IGarageDeliveries> deliveries, Guid player, string item, long quantity, CancellationToken cancellationToken)
-    {
-        foreach (var pallet in deliveries)
-        {
-            if (await pallet.DeliverAsync(player, item, quantity, cancellationToken))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 }

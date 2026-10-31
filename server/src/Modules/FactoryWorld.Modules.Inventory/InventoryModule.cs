@@ -152,9 +152,11 @@ public sealed class InventoryService(GameDb db, IInventorySize size) : IInventor
         Check(item, quantity);
         // Two requests at once may both see the same room and fill a little past it, as things given back do: nothing is
         // made or lost by it, and the player takes nothing new until there is room again.
-        if (await RoomAsync(owner, item, cancellationToken) is var room && quantity > room)
+        // No "this many would fit" here: what comes this way (a vein, a tree, a harvest, a furnace's ingots) has a size the
+        // player does not choose. Purchases, where taking fewer helps, tell it themselves.
+        if (quantity > await RoomAsync(owner, item, cancellationToken))
         {
-            throw InventoryExtensions.InventoryFull(room);
+            throw InventoryExtensions.InventoryFull();
         }
 
         await AddAsync(owner, item, quantity, cancellationToken);
@@ -181,9 +183,6 @@ public sealed class InventoryService(GameDb db, IInventorySize size) : IInventor
 
         return InventoryRules.Room(await size.SlotsAsync(owner, cancellationToken), held, item);
     }
-
-    public async Task<bool> HasRoomAsync(Guid owner, string item, CancellationToken cancellationToken) =>
-        await RoomAsync(owner, item, cancellationToken) > 0;
 
     /// <summary>Tiles of the player's inventory grid; items can be moved to any of them.</summary>
     public Task<int> SlotsAsync(Guid owner, CancellationToken cancellationToken) => size.SlotsAsync(owner, cancellationToken);
@@ -372,13 +371,17 @@ public sealed class MoveItemHandler(IServiceScopeFactory scopes) : IMessageHandl
 }
 
 /// <summary>How many pieces of every item fill a tile of the inventory (<see cref="StackSizes"/>); the client asks once, for
-/// the item cards and to count tiles before taking things.</summary>
+/// the item cards and to count tiles before taking things. Takings go straight to the wallet and never lie in the
+/// inventory, so they have no stack.</summary>
 public sealed class GetStacksHandler : IMessageHandler
 {
+    private static readonly IReadOnlyDictionary<string, int> Sizes =
+        StackSizes.Sizes.Where(s => !Items.IsMoney(s.Key)).ToDictionary(s => s.Key, s => s.Value);
+
     public string Type => "inventory.stacks";
 
     public Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken) =>
-        Task.FromResult(new Reply("inventory.stacks", new { stacks = StackSizes.Sizes }));
+        Task.FromResult(new Reply("inventory.stacks", new { stacks = Sizes }));
 }
 
 /// <summary>The quick bar: five numbered slots, each holding the id of an item the player picks up with one key.

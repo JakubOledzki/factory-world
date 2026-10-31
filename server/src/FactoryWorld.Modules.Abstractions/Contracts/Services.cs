@@ -23,9 +23,6 @@ public interface IInventory
     /// <summary>How many more pieces of the item fit: what its last stack still takes and whole stacks on the tiles no
     /// other item lies on; 0 when the inventory is full (or over full with things given back).</summary>
     Task<long> RoomAsync(Guid owner, string item, CancellationToken cancellationToken);
-
-    /// <summary>Whether <see cref="ReceiveAsync"/> would take at least one piece of the item now.</summary>
-    Task<bool> HasRoomAsync(Guid owner, string item, CancellationToken cancellationToken);
 }
 
 public static class InventoryExtensions
@@ -164,6 +161,42 @@ public interface IGarageDeliveries
 {
     /// <summary>Puts items on the pallet; false, with nothing done, when no pallet stands in the garage.</summary>
     Task<bool> DeliverAsync(Guid player, string item, long quantity, CancellationToken cancellationToken);
+}
+
+public static class GarageDeliveries
+{
+    /// <summary>Puts items on the player's pallet; false, with nothing done, when no pallet stands in the garage.</summary>
+    public static async Task<bool> ToPalletAsync(
+        this IEnumerable<IGarageDeliveries> deliveries, Guid player, string item, long quantity, CancellationToken cancellationToken)
+    {
+        foreach (var pallet in deliveries)
+        {
+            if (await pallet.DeliverAsync(player, item, quantity, cancellationToken))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>Gives the player goods they paid for beforehand and someone else hands over (a filled buy order, a finished
+    /// contract): what fits into the inventory, the rest onto the pallet, or past the tiles when the garage has no pallet.
+    /// Never refused, since the player is not the one acting.</summary>
+    public static async Task HandOverAsync(
+        this IEnumerable<IGarageDeliveries> deliveries, IInventory inventory, Guid player, string item, long quantity, CancellationToken cancellationToken)
+    {
+        var fits = await inventory.RoomForAsync(player, item, quantity, cancellationToken);
+        if (quantity > fits && await deliveries.ToPalletAsync(player, item, quantity - fits, cancellationToken))
+        {
+            quantity = fits;
+        }
+
+        if (quantity > 0)
+        {
+            await inventory.AddAsync(player, item, quantity, cancellationToken);
+        }
+    }
 }
 
 /// <summary>How many tiles a player's inventory has: <see cref="Items.InventorySlots"/>, more with a backpack on.</summary>

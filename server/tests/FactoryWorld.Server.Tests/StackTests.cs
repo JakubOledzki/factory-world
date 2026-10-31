@@ -140,6 +140,11 @@ public sealed class StackTests(ServerFactory factory) : IClassFixture<ServerFact
         Assert.Equal("market.traded", (await client.SendAsync("market.sell", new { item = Items.Stone, quantity = 300 })).Type());
         Assert.Equal(200, await inventory.RoomAsync(client.AccountId, Items.Wood, CancellationToken.None));
         Assert.Equal(0, Item(await client.SendAsync("inventory.get"), Items.Stone).GetProperty("over").GetInt64());
+
+        // What comes from a vein, a tree or a harvest has a size the player does not choose: no "this many would fit".
+        var some = await Assert.ThrowsAsync<GameException>(() => inventory.ReceiveAsync(client.AccountId, Items.Wood, 201, CancellationToken.None));
+        Assert.Equal("inventory_full", some.Code);
+        Assert.Null(some.Details);
     }
 
     [Fact]
@@ -167,8 +172,7 @@ public sealed class StackTests(ServerFactory factory) : IClassFixture<ServerFact
     public async Task What_does_not_fit_of_a_purchase_waits_on_the_pallet_and_comes_off_as_far_as_it_fits()
     {
         using var client = await PlayerAsync();
-        var pallet = (await client.SendAsync("garage.get")).Payload().GetProperty("objects").EnumerateArray()
-            .First(o => o.GetProperty("kind").GetString() == Items.Pallet).GetProperty("id").GetGuid();
+        var pallet = await PalletAsync(client);
         await MoneyAsync(client, 100_000);
         await FillAsync(client, leave: 1);
         await GiveAsync(client, Items.Nails, 70);
@@ -193,12 +197,9 @@ public sealed class StackTests(ServerFactory factory) : IClassFixture<ServerFact
     {
         using var client = await factory.ConnectAsync();
         await client.RegisterWithCharacterAsync();
-        await GiveAsync(client, Items.Furnace, 1);
+        var furnace = await FurnaceAsync(client);
         await GiveAsync(client, Items.IronOre, 30);
         await GiveAsync(client, Items.Coal, 6);
-        Assert.Equal("garage", (await client.SendAsync("garage.place", new { kind = Items.Furnace, x = 7, y = 4 })).Type());
-        var furnace = (await client.SendAsync("garage.get")).Payload().GetProperty("objects").EnumerateArray()
-            .First(o => o.GetProperty("kind").GetString() == Items.Furnace).GetProperty("id").GetString()!;
         await client.SendAsync("furnace.load", new { furnace, item = Items.IronOre, quantity = 30 });
         await client.SendAsync("furnace.load", new { furnace, item = Items.Coal, quantity = 6 });
         factory.Time.Advance(TimeSpan.FromMinutes(10));
@@ -216,6 +217,77 @@ public sealed class StackTests(ServerFactory factory) : IClassFixture<ServerFact
     }
 
     [Fact]
+    public async Task Ore_of_another_kind_frees_its_tile_for_the_ingots_it_pushes_out_of_the_furnace()
+    {
+        using var client = await factory.ConnectAsync();
+        await client.RegisterWithCharacterAsync();
+        var furnace = await FurnaceAsync(client);
+        await GiveAsync(client, Items.IronOre, 10);
+        await GiveAsync(client, Items.Coal, 3);
+        await client.SendAsync("furnace.load", new { furnace, item = Items.IronOre, quantity = 10 });
+        await client.SendAsync("furnace.load", new { furnace, item = Items.Coal, quantity = 3 });
+        factory.Time.Advance(TimeSpan.FromMinutes(10));
+        Assert.Equal(10, (await client.SendAsync("furnace.get", new { furnace })).Payload().GetProperty("output").GetProperty("quantity").GetInt32());
+
+        // 95 iron ingots on one tile, 50 copper ore on another, stone on all the rest: the ten ingots fit only once the ore is in.
+        await GiveAsync(client, Items.IronIngot, 95);
+        await GiveAsync(client, Items.CopperOre, 50);
+        await FillAsync(client, leave: 0);
+
+        var loaded = await client.SendAsync("furnace.load", new { furnace, item = Items.CopperOre, quantity = 50 });
+
+        Assert.Equal("furnace", loaded.Type());
+        var inventory = await client.InventoryAsync();
+        Assert.Equal(105, inventory[Items.IronIngot]);
+        Assert.False(inventory.ContainsKey(Items.CopperOre));
+    }
+
+    [Fact]
+    public async Task A_filled_buy_order_puts_what_does_not_fit_on_the_buyers_pallet()
+    {
+        using var buyer = await PlayerAsync();
+        using var seller = await PlayerAsync();
+        var pallet = await PalletAsync(buyer);
+        await MoneyAsync(buyer, 100_000);
+        await FillAsync(buyer, leave: 1);
+        await GiveAsync(buyer, Items.Nails, 70);
+        Assert.Equal("market.done", (await buyer.SendAsync("market.order", new { item = Items.Nails, quantity = 50, priceCents = 10 })).Type());
+        var order = (await buyer.SendAsync("market.mine")).Payload().GetProperty("orders")[0].GetProperty("id").GetInt64();
+        await GiveAsync(seller, Items.Nails, 50);
+
+        // The seller acts, so nothing is refused: 30 nails fit, 20 wait on the pallet.
+        Assert.Equal("market.done", (await seller.SendAsync("market.fill", new { id = order, quantity = 50 })).Type());
+
+        Assert.Equal(100, (await buyer.InventoryAsync())[Items.Nails]);
+        Assert.Equal(20, Waiting(await buyer.SendAsync("garage.storage", new { id = pallet }), Items.Nails));
+        Assert.False((await seller.InventoryAsync()).ContainsKey(Items.Nails));
+    }
+
+    [Fact]
+    public async Task A_finished_order_puts_what_does_not_fit_on_the_issuers_pallet()
+    {
+        using var issuer = await PlayerAsync();
+        using var contractor = await factory.ConnectAsync();
+        await contractor.RegisterWithCharacterAsync();
+        var pallet = await PalletAsync(issuer);
+        await MoneyAsync(issuer, 100_000);
+        Assert.Equal("contracts.done", (await issuer.SendAsync("contracts.create", new { item = Items.Nails, quantity = 50, rewardCents = 1_000, hours = 24 })).Type());
+        var id = (await issuer.SendAsync("contracts.get")).Payload().GetProperty("issued")[0].GetProperty("id").GetInt64();
+        await FillAsync(issuer, leave: 1);
+        await GiveAsync(issuer, Items.Nails, 70);
+        await GiveAsync(contractor, Items.Nails, 50);
+        Assert.Equal("contracts.done", (await contractor.SendAsync("contracts.accept", new { id })).Type());
+
+        // The contractor acts, so nothing is refused: 30 nails fit, 20 wait on the pallet.
+        var done = await contractor.SendAsync("contracts.deliver", new { id, quantity = 50 });
+
+        Assert.True(done.Payload().GetProperty("completed").GetBoolean());
+        Assert.Equal(100, (await issuer.InventoryAsync())[Items.Nails]);
+        Assert.Equal(20, Waiting(await issuer.SendAsync("garage.storage", new { id = pallet }), Items.Nails));
+        Assert.False((await contractor.InventoryAsync()).ContainsKey(Items.Nails));
+    }
+
+    [Fact]
     public async Task The_game_tells_the_stacks_and_the_tiles_a_research_cost_takes()
     {
         using var client = await factory.ConnectAsync();
@@ -223,11 +295,14 @@ public sealed class StackTests(ServerFactory factory) : IClassFixture<ServerFact
 
         var stacks = (await client.SendAsync("inventory.stacks")).Payload().GetProperty("stacks");
         Assert.Equal(200, stacks.GetProperty(Items.Stone).GetInt32());
-        Assert.Equal(Items.Names.Count, stacks.EnumerateObject().Count());
+        // Takings go straight to the wallet, so they have no stack.
+        Assert.Equal(Items.Names.Keys.Count(id => !Items.IsMoney(id)), stacks.EnumerateObject().Count());
+        Assert.False(stacks.TryGetProperty(Items.Takings, out _));
 
-        var compendium = (await client.SendAsync("compendium.get")).Payload().GetProperty("items").EnumerateArray()
-            .First(i => i.GetProperty("id").GetString() == Items.Assembler);
-        Assert.Equal(10, compendium.GetProperty("stack").GetInt32());
+        var compendium = (await client.SendAsync("compendium.get")).Payload().GetProperty("items").EnumerateArray().ToList();
+        int Stack(string item) => compendium.First(i => i.GetProperty("id").GetString() == item).GetProperty("stack").GetInt32();
+        Assert.Equal(10, Stack(Items.Assembler));
+        Assert.Equal(0, Stack(Items.DiningTakings));
 
         // 2000 steel ingots, 5000 crude oil and 1000 beams: 20 + 25 + 10 tiles.
         var offshore = (await client.SendAsync("research.get")).Payload().GetProperty("technologies").EnumerateArray()
@@ -262,6 +337,20 @@ public sealed class StackTests(ServerFactory factory) : IClassFixture<ServerFact
             await wallet.CreditAsync(client.AccountId, cents - balance, "test", CancellationToken.None);
         }
     }
+
+    /// <summary>A stone furnace put up in the player's garage.</summary>
+    private async Task<string> FurnaceAsync(GameClient client)
+    {
+        await GiveAsync(client, Items.Furnace, 1);
+        Assert.Equal("garage", (await client.SendAsync("garage.place", new { kind = Items.Furnace, x = 7, y = 4 })).Type());
+        return (await client.SendAsync("garage.get")).Payload().GetProperty("objects").EnumerateArray()
+            .First(o => o.GetProperty("kind").GetString() == Items.Furnace).GetProperty("id").GetString()!;
+    }
+
+    /// <summary>The delivery pallet every garage starts with.</summary>
+    private static async Task<Guid> PalletAsync(GameClient client) =>
+        (await client.SendAsync("garage.get")).Payload().GetProperty("objects").EnumerateArray()
+            .First(o => o.GetProperty("kind").GetString() == Items.Pallet).GetProperty("id").GetGuid();
 
     /// <summary>Fills every free tile but <paramref name="leave"/> with full stacks of stone.</summary>
     private async Task FillAsync(GameClient client, int leave)

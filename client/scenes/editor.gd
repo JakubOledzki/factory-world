@@ -60,6 +60,7 @@ func _submit() -> void:
 	if reply["type"] == "character":
 		Game.character = reply["payload"]
 		Game.watch_achievements()
+		Game.load_stacks()
 		get_tree().change_scene_to_file(Game.GARAGE_SCENE)
 		return
 	_error.text = Game.error_text(reply)

@@ -254,6 +254,15 @@ public sealed partial class Bot(
     private Guid? _workbench;
     private Guid? _furnace;
     private bool _bin;
+
+    /// <summary>The delivery pallet in its garage, where what it bought that did not fit and its filled buy orders wait.</summary>
+    private Guid? _pallet;
+
+    /// <summary>When the bot next looks at its pallet.</summary>
+    private DateTimeOffset _palletAt;
+
+    /// <summary>What waits on its pallet for room in its inventory, as far as the bot knows.</summary>
+    private readonly HashSet<string> _onPallet = new(StringComparer.Ordinal);
     private int _sortQueue;
     private DateTimeOffset _sortDoneAt;
     private int _craftQueue;
@@ -417,6 +426,11 @@ public sealed partial class Bot(
         if (Have(Items.Trash) < 5 && _sortQueue == 0 && _money >= 40_00 && _traderSells.ContainsKey(Items.Trash))
         {
             Add(3, "buy trash", ct => TradeAsync("market.buy", Items.Trash, 20, ct));
+        }
+
+        if (_pallet is not null && _palletAt <= world.Now)
+        {
+            Add(10, "unload pallet", ct => UnloadPalletAsync(world, ct));
         }
 
         var waste = BotRules.Waste.FirstOrDefault(w => Have(w) >= 10);
