@@ -11,7 +11,9 @@
 			"Bot burmistrz trzyma się swojego programu, poddaje uchwały pod głosowanie i buduje park, dworzec albo halę targową z kasy miasta.",
 			"Nowy przycisk: kandydaturę na burmistrza i prezydenta można wycofać. Kaucja wraca w całości.",
 			"Chciwe boty zakładają konta w bankach graczy i trzymają w nich część oszczędności, więc twój bank zyskuje klientów.",
-			"Boty z linią produkcyjną, które zbadały Przesył energii, stawiają przyłącze sieciowe i sprzedają prąd swojego generatora po cenie z okolicy. Możesz położyć do nich kabel jak do przyłącza gracza."
+			"Boty z linią produkcyjną, które zbadały Przesył energii, stawiają przyłącze sieciowe i sprzedają prąd swojego generatora po cenie z okolicy. Możesz położyć do nich kabel jak do przyłącza gracza.",
+			"Boty wstępują do policji. Bot detektyw prowadzi śledztwa wobec każdego, graczy i botów, z tymi samymi limitami co gracze; gracze poniżej 5 poziomu są chronieni. Bot posterunkowy wydaje wyroki z grzywną, od których możesz się odwołać.",
+			"Odważne boty sprzedają towary paserowi, więc policja ma kogo łapać."
 		]
 	},
 	{

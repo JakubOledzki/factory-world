@@ -82,6 +82,52 @@ public sealed class BotCommons(BotHelpBoard help, double mistakeChance = BotRule
     /// <summary>The country a plot lies in, as the map the players' client has tells it.</summary>
     public Func<int, int, CancellationToken, Task<string?>> CountryOf { get; set; } = (_, _, _) => Task.FromResult<string?>(null);
 
+    private readonly HashSet<string> _people = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, DateTimeOffset> _protected = new(StringComparer.Ordinal);
+
+    /// <summary>The law protects the player (below level 5) until then: bot detectives leave them be.</summary>
+    public void Protect(string name, DateTimeOffset until)
+    {
+        lock (_protected)
+        {
+            _protected[name] = until;
+        }
+    }
+
+    public bool IsProtected(string name, DateTimeOffset now)
+    {
+        lock (_protected)
+        {
+            return _protected.TryGetValue(name, out var until) && until > now;
+        }
+    }
+
+    /// <summary>A player or bot some bot came across (in a town hall, at the border, in a report): bot detectives investigate them.</summary>
+    public void Seen(string? name)
+    {
+        if (string.IsNullOrEmpty(name) || name == "?")
+        {
+            return;
+        }
+
+        lock (_people)
+        {
+            _people.Add(name);
+        }
+    }
+
+    /// <summary>Everyone the bots came across, the bots themselves included.</summary>
+    public IReadOnlyList<string> People()
+    {
+        lock (_people)
+        {
+            lock (_names)
+            {
+                return _people.Concat(_names).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal).ToList();
+            }
+        }
+    }
+
     private readonly Dictionary<Guid, string> _companies = [];
     private readonly HashSet<string> _unattached = new(StringComparer.Ordinal);
 
@@ -258,6 +304,7 @@ public sealed partial class Bot(
         _deposited = false;
         _politicsAt = default;
         _tieOpen = false;
+        _lawAt = default;
         _townPlot = null;
         _countryLooked = false;
         _companyAt = default;
@@ -399,6 +446,7 @@ public sealed partial class Bot(
         PoliticsCandidates(world, Add);
         BankCandidates(world, Add);
         PowerCandidates(world, Add);
+        LawCandidates(world, Add);
 
         foreach (var plot in _plots.Where(p => p.Biome == Biomes.City && p.SupplyAt <= world.Now && traderPays))
         {

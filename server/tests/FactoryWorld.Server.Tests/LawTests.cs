@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using FactoryWorld.Modules.Abstractions.Contracts;
+using FactoryWorld.Modules.Bots;
 using FactoryWorld.Modules.Characters;
 using FactoryWorld.Modules.Law;
 using FactoryWorld.Modules.Market;
@@ -499,5 +500,63 @@ public sealed class LawTests(LawServerFactory factory) : IClassFixture<LawServer
         var (nobody, _) = await CitizenAsync(Home);
         Countries.Citizens.TryRemove(nobody.AccountId, out _);
         Assert.Equal("no_country", (await nobody.SendAsync("law.apply")).ErrorCode());
+    }
+
+    [Fact]
+    public async Task A_civic_bot_joins_the_police_and_as_a_detective_investigates_players_and_bots_alike()
+    {
+        // A strong player, so the bots' level cap lets a bot reach the level the police take.
+        await CitizenAsync(Abroad, 20);
+        var (president, officers) = await PoliceAsync(Home);
+        var (chief, _) = officers[0];
+
+        var engine = factory.Services.GetRequiredService<BotEngine>();
+        await engine.EnsureBotsAsync(CancellationToken.None);
+        var bot = engine.Bots.First(b => b.Traits.Civic >= BotRules.PoliceFrom);
+        await using (var scope = factory.Services.CreateAsyncScope())
+        {
+            await scope.ServiceProvider.GetRequiredService<ICharacterProgress>()
+                .AddXpAsync(bot.Row.AccountId, Leveling.TotalXpForLevel(10), CancellationToken.None);
+            await scope.ServiceProvider.GetRequiredService<IWallet>().CreditAsync(bot.Row.AccountId, 100_000_00, "test", CancellationToken.None);
+        }
+
+        Countries.Citizens[bot.Row.AccountId] = Home;
+        var (x, y) = FreePlot();
+        Assert.True((await bot.Client.SendAsync("world.buy", new { x, y }, CancellationToken.None)).Is("world.bought"));
+        Countries.Plots[(x, y)] = Home;
+
+        async Task<bool> StepUntilLawAsync()
+        {
+            for (var i = 0; i < 300; i++)
+            {
+                if (await engine.StepAsync(bot.Profile.Name, CancellationToken.None) == "law")
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        // It applies; the chief takes it on as a detective.
+        Assert.True(await StepUntilLawAsync());
+        Assert.Contains((await LawAsync(chief)).GetProperty("police").GetProperty("applications").EnumerateArray(),
+            a => a.GetProperty("name").GetString() == bot.Row.CharacterName);
+        await LawAsync(chief, "law.hire", new { name = bot.Row.CharacterName, yes = true });
+        await LawAsync(chief, "law.setRank", new { name = bot.Row.CharacterName, rank = Ranks.Detective });
+
+        // It investigates someone it came across: a player of the town hall, or another bot.
+        var (_, suspect) = await CitizenAsync(Home);
+        engine.Commons.Seen(suspect);
+        factory.Time.Advance(BotRules.LawEvery + TimeSpan.FromSeconds(1));
+        // The bots below level 5 are protected: it finds that out and investigates the player in a few looks.
+        for (var look = 0; look < 6; look++)
+        {
+            await StepUntilLawAsync();
+            factory.Time.Advance(BotRules.LawEvery + TimeSpan.FromSeconds(1));
+        }
+
+        var desk = (await bot.Client.SendAsync("law.get", null, CancellationToken.None)).Payload.GetProperty("police");
+        Assert.True(desk.GetProperty("investigationsLeft").GetInt64() < LawRules.Investigations, desk.ToString());
     }
 }

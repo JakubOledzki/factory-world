@@ -186,6 +186,31 @@ public static class BotRules
     /// <summary>How far from a pole a bot puts its grid tie, within the pole's reach of 5 × 5 tiles.</summary>
     public const int PoleReach = 2;
 
+    /// <summary>How often a bot looks at the police window: its work as an officer, or an application.</summary>
+    public static readonly TimeSpan LawEvery = TimeSpan.FromMinutes(20);
+
+    /// <summary>Bots this civic apply to their country's police.</summary>
+    public const double PoliceFrom = 0.6;
+
+    /// <summary>Bots that dare this much (<see cref="BotTraits.Risk"/>) sell the fence what it buys.</summary>
+    public const double FenceFrom = 0.75;
+
+    /// <summary>Police ranks as the law module numbers them: cadet 0, constable 1, detective 2, chief 3.</summary>
+    public const int ConstableRank = 1;
+
+    public const int DetectiveRank = 2;
+
+    public const int ChiefRank = 3;
+
+    /// <summary>People a bot detective tries in one look, until one may be investigated.</summary>
+    public const int SuspectsPerLook = 8;
+
+    /// <summary>Cases a bot officer sentences in one look at most.</summary>
+    public const int SentencesPerLook = 2;
+
+    /// <summary>The smallest fine a bot officer gives.</summary>
+    public const long MinFine = 50_00;
+
     /// <summary>How often a bot looks at the banks and its account.</summary>
     public static readonly TimeSpan BankEvery = TimeSpan.FromHours(1);
 

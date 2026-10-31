@@ -78,6 +78,11 @@ public sealed partial class Bot
 
         var (x, y) = _townPlot!.Value;
         var people = politics.Each("people").ToList();
+        foreach (var person in people)
+        {
+            _commons.Seen(person.Text("name"));
+        }
+
         var playerStands = people.Any(p => p.True("stands") && !_commons.IsBot(p.Text("name")));
         var standing = politics.True("standing");
 
