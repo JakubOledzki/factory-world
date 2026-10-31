@@ -66,13 +66,32 @@ public sealed partial class Bot
         var rank = (int)police.Long("rank");
         if (rank == BotRules.ChiefRank)
         {
+            // The treasury pays every officer by the day: it takes on applicants only up to a small police, the others wait
+            // their turn. One who may not join (a criminal record, another citizenship, too low a level) it turns down, so
+            // that they hear and do not hold up those after them.
+            var room = BotRules.MaxOfficers - police.Each("officers").Count();
             foreach (var applicant in police.Each("applications").Select(a => a.Text("name")).OfType<string>().ToList())
             {
-                acted |= (await SendAsync("law.hire", new { name = applicant, yes = true }, cancellationToken)).Is("law");
+                if (room <= 0)
+                {
+                    break;
+                }
+
+                if ((await SendAsync("law.hire", new { name = applicant, yes = true }, cancellationToken)).Is("law"))
+                {
+                    room--;
+                    acted = true;
+                }
+                else
+                {
+                    acted |= (await SendAsync("law.hire", new { name = applicant, yes = false }, cancellationToken)).Is("law");
+                }
             }
 
-            // Its officers become detectives: they are the ones who investigate.
-            foreach (var officer in police.Each("officers").Where(o => !o.True("me") && o.Long("rank") < BotRules.DetectiveRank))
+            // A few of its officers become detectives: they are the ones who investigate.
+            var detectives = police.Each("officers").Count(o => !o.True("me") && o.Long("rank") >= BotRules.DetectiveRank);
+            foreach (var officer in police.Each("officers").Where(o => !o.True("me") && o.Long("rank") < BotRules.DetectiveRank)
+                         .Take(Math.Max(BotRules.MaxDetectives - detectives, 0)))
             {
                 acted |= (await SendAsync("law.setRank", new { name = officer.Text("name"), rank = BotRules.DetectiveRank }, cancellationToken)).Is("law");
             }

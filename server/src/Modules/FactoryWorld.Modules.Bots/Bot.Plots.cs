@@ -42,7 +42,7 @@ public sealed partial class Bot
                     }
 
                     var biome = (int)plot.Payload.Long("biome");
-                    if (!biomes.Contains(biome) || price + BotRules.Reserve > _money)
+                    if (!biomes.Contains(biome) || price + BotRules.Reserve > Spendable)
                     {
                         continue;
                     }
@@ -83,7 +83,7 @@ public sealed partial class Bot
     /// </summary>
     private void SaveForPlot(long price, BotWorld world)
     {
-        if (_plots.Count == 0 || _money < price * BotRules.SaveForPlotFrom)
+        if (_plots.Count == 0 || Spendable < price * BotRules.SaveForPlotFrom)
         {
             Goals.Drop(BotGoals.Plot);
             return;
@@ -219,7 +219,6 @@ public sealed partial class Bot
         }
 
         plot.Busy.Add(plot.Spawn);
-        FindSite(plot);
 
         plot.Fields.Clear();
         foreach (var f in p.Each("fields"))
@@ -239,6 +238,9 @@ public sealed partial class Bot
 
         plot.Planted = trees.Count;
         plot.Busy.UnionWith(busy);
+        FindSite(plot, world.Now);
+        // Where the parts it asked players for are to go it plants, tills and builds nothing.
+        var held = HeldTiles(plot);
         plot.Mines.Clear();
         foreach (var m in p.Each("mines"))
         {
@@ -257,7 +259,7 @@ public sealed partial class Bot
         var size = plot.Size;
         var near = Enumerable.Range(0, plot.Tiles.Length)
             .Select(i => (X: i % size, Y: i / size))
-            .Where(t => t.Y > plot.Spawn.Y && !busy.Contains(t))
+            .Where(t => t.Y > plot.Spawn.Y && !busy.Contains(t) && !held.Contains(t))
             .OrderBy(t => Math.Abs(t.X - plot.Spawn.X) + Math.Abs(t.Y - plot.Spawn.Y));
         foreach (var t in near)
         {
@@ -534,7 +536,7 @@ public sealed partial class Bot
 
         if (Have(tool) == 0)
         {
-            if (!_traderSells.TryGetValue(tool, out var price) || _money < price + BotRules.Reserve)
+            if (!_traderSells.TryGetValue(tool, out var price) || Spendable < price + BotRules.Reserve)
             {
                 return false;
             }

@@ -108,11 +108,11 @@ public static class BotRules
     /// (at most once a session).</summary>
     public const double MistakeChance = 0.2;
 
-    /// <summary>Parts a bot puts its line up without and asks players to put in place, when it can neither make nor buy them.</summary>
-    public static readonly IReadOnlySet<string> HelpParts = new HashSet<string> { Items.Inserter, Items.Belt, Items.Pole };
-
-    /// <summary>Most things one call for help asks a player to put up or turn.</summary>
-    public const int MaxHelpTasks = 3;
+    /// <summary>
+    /// Parts a bot puts its line up without and asks players to put in place, when it can neither make nor buy them: all
+    /// but the machine and the two chests, by which it knows its line on the plot.
+    /// </summary>
+    public static readonly IReadOnlySet<string> HelpParts = new HashSet<string> { Items.Inserter, Items.Belt, Items.Pole, Items.Generator };
 
     /// <summary>A bot waits this long for help before it gives up and sets its line going itself.</summary>
     public static readonly TimeSpan HelpWait = TimeSpan.FromMinutes(30);
@@ -210,6 +210,15 @@ public static class BotRules
 
     /// <summary>The smallest fine a bot officer gives.</summary>
     public const long MinFine = 50_00;
+
+    /// <summary>
+    /// Officers a bot chief keeps, itself included: the treasury pays each a salary by the day, so a bot police stays small
+    /// and does not empty the treasury the players' taxes fill.
+    /// </summary>
+    public const int MaxOfficers = 4;
+
+    /// <summary>Detectives, the dearest rank below the chief, a bot chief keeps.</summary>
+    public const int MaxDetectives = 2;
 
     /// <summary>How often a bot looks at the banks and its account.</summary>
     public static readonly TimeSpan BankEvery = TimeSpan.FromHours(1);

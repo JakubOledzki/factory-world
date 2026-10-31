@@ -14,17 +14,24 @@ public sealed partial class Bot
 
     /// <summary>
     /// The technologies the bot may research now: the first three on its list (what its line takes) always, the rest once its
-    /// line stands, so that a bakery or a foundry does not eat the copper the line's inserters need.
+    /// line stands whole, so that a bakery or a foundry does not eat the copper the line's inserters need.
     /// </summary>
     private IEnumerable<string> ResearchNow() =>
-        BotRules.Research(Profile.Trade).Where((_, i) => i < 3 || _line is null || _site is not null);
+        BotRules.Research(Profile.Trade).Where((_, i) => i < 3 || _line is null || LineStands);
 
     /// <summary>Whether the bot has researched everything its line is made of.</summary>
     private bool LineReady(BotLine line) => line.Kit.All(k => !IsLocked(k.Item) || Have(k.Item) >= k.Quantity);
 
-    /// <summary>Parts of the line the bot still lacks, while none stands.</summary>
+    /// <summary>
+    /// Parts of the line the bot still lacks: while none stands, of everything it is made of; once it stands without some,
+    /// of those it asked players to put up, which it gets together meanwhile to put up itself should nobody come.
+    /// </summary>
     private List<(string Item, long Quantity)> Missing(BotLine line) =>
-        _site is not null ? [] : line.Kit.Select(k => (k.Item, Quantity: k.Quantity - Have(k.Item))).Where(k => k.Quantity > 0).ToList();
+        (_site is null ? line.Kit : Asked()).Select(k => (k.Item, Quantity: k.Quantity - Have(k.Item))).Where(k => k.Quantity > 0).ToList();
+
+    /// <summary>The parts the bot asked players to put up in its line, by kind.</summary>
+    private IEnumerable<(string Item, long Quantity)> Asked() =>
+        _fixes.Where(f => f.Object is null).GroupBy(f => f.Kind).Select(g => (Item: g.Key, Quantity: (long)g.Count()));
 
     /// <summary>What making the missing parts at the workbench takes, in all.</summary>
     private Dictionary<string, long> Makings(BotLine line)
@@ -52,7 +59,7 @@ public sealed partial class Bot
     private Dictionary<string, long> Needs()
     {
         var needs = new Dictionary<string, long>(StringComparer.Ordinal);
-        if (_line is { } line && _site is null && _plots.Count > 0 && LineReady(line))
+        if (_line is { } line && _plots.Count > 0 && LineReady(line))
         {
             foreach (var (item, quantity) in Makings(line))
             {
@@ -80,15 +87,15 @@ public sealed partial class Bot
     }
 
     /// <summary>What the bot does not sell: the cost of the technologies it can research next, and while its line is not up,
-    /// the parts and what it makes them of.</summary>
+    /// the parts and what it makes them of (once it stands without some, those it asked players for).</summary>
     private Dictionary<string, long> Reserved()
     {
-        var reserved = _line is { } line && _site is null && _plots.Count > 0
+        var reserved = _line is { } line && _plots.Count > 0
             ? Makings(line)
             : new Dictionary<string, long>(StringComparer.Ordinal);
-        if (_line is not null && _site is null && _plots.Count > 0)
+        if (_line is not null && _plots.Count > 0)
         {
-            foreach (var (item, quantity) in _line.Kit)
+            foreach (var (item, quantity) in _site is null ? _line.Kit : Asked())
             {
                 reserved[item] = reserved.GetValueOrDefault(item) + quantity;
             }
@@ -391,11 +398,14 @@ public sealed partial class Bot
             }
         }
 
-        // Parts players can bring and it cannot make (nothing on the workbench, nothing to make them of) it waits for no
-        // longer than this: it puts the line up without them and asks for them.
-        var making = _craftQueue > 0 || missing.Any(m => !IsLocked(m.Item) && Has(Recipe(m.Item)));
-        var forHelp = missing.Count > 0 && missing.All(m => BotRules.HelpParts.Contains(m.Item)) && missing.Sum(m => m.Quantity) <= BotRules.MaxHelpTasks
-            && !making && _wantingSince != default && world.Now - _wantingSince >= BotRules.PartsWait;
+        // Parts players can put in and it cannot make (none on the workbench now, nor what they are made of, and nothing to
+        // make them of) it waits for no longer than this: it puts the line up without them and asks for them, if it can pay
+        // whoever comes.
+        var making = missing.Any(m => _crafting.Contains(m.Item) || Recipe(m.Item).Any(i => _crafting.Contains(i.Item))
+            || _workbench is not null && !IsLocked(m.Item) && Has(Recipe(m.Item)));
+        var forHelp = missing.Count > 0 && missing.All(m => BotRules.HelpParts.Contains(m.Item)) && !making
+            && _wantingSince != default && world.Now - _wantingSince >= BotRules.PartsWait
+            && HelpPay(missing.SelectMany(m => Enumerable.Repeat(m.Item, (int)m.Quantity)).ToList()) + BotRules.Reserve <= Spendable;
         if (missing.Count == 0 || forHelp)
         {
             if (_plots.FirstOrDefault(p => p.Clearing.Count > 0) is { } clearing)
@@ -428,7 +438,7 @@ public sealed partial class Bot
 
         // A part it cannot make it may buy from the trader, dear: money leaves the game that way.
         var dear = missing.Select(m => m.Item).FirstOrDefault(p =>
-            _traderSells.TryGetValue(p, out var price) && price <= Floor(p) * BotRules.MaxPartMarkup && _money >= price + BotRules.Reserve + 20_00);
+            _traderSells.TryGetValue(p, out var price) && price <= Floor(p) * BotRules.MaxPartMarkup && Spendable >= price + BotRules.Reserve + 20_00);
         if (dear is not null)
         {
             add(3, "buy line part", ct => TradeAsync("market.buy", dear, 1, ct));
@@ -442,6 +452,12 @@ public sealed partial class Bot
     /// </summary>
     private void FixCandidates(BotLineSite site, BotWorld world, Action<int, string, Func<CancellationToken, Task<bool>>> add)
     {
+        if (_fixesSince == default)
+        {
+            // Back from its rest: nobody could help it while it was away (its call came down), so it waits afresh.
+            _fixesSince = world.Now;
+        }
+
         var waited = world.Now - _fixesSince;
         var doable = _fixes.Any(f => f.Object is not null || Have(f.Kind) > 0);
         // Meanwhile it makes the parts it asked for, if it can by now, to put them up itself should nobody come.
@@ -451,17 +467,39 @@ public sealed partial class Bot
             add(6, "craft line part", ct => CraftAsync(craftable.Kind, ct));
         }
 
-        if (waited >= BotRules.HelpWait && doable || waited >= BotRules.HelpWait * 2)
+        if (waited >= BotRules.HelpWait && doable || waited >= BotRules.HelpWait * 2 || Obstructed(site))
         {
             add(20, "fix line", ct => FixAsync(site, world, ct));
         }
-        else
+        else if (_commons.Help.Of(Row.Name) is not null || HelpPay(_fixes.Where(f => f.Object is null).Select(f => f.Kind).ToList()) + BotRules.Reserve <= Spendable)
         {
+            // A call it cannot pay for it does not put up: it earns meanwhile, and asks once it can.
             add(20, "ask for help", _ => Task.FromResult(Ask(_fixReason, site.Plot, world)));
         }
     }
 
-    /// <summary>Turns and puts up itself what it asked players to; what it cannot, it takes the line down for after a long wait.</summary>
+    /// <summary>
+    /// Whether something stands, grows or lies where a part the bot asked for is to go (a tree, a field, a building), so that
+    /// nobody can put it up and the line cannot be finished where it stands.
+    /// </summary>
+    private bool Obstructed(BotLineSite site) =>
+        _fixes.Where(f => f.Object is null).SelectMany(f => Footprints.Tiles(f.Kind, f.TileX, f.TileY)).Any(t =>
+            t.X < 0 || t.Y < 0 || t.X >= site.Plot.Size || t.Y >= site.Plot.Size
+            || site.Plot.Tiles is { } tiles && tiles[t.Y * site.Plot.Size + t.X] != Tiles.None || site.Plot.Busy.Contains(t));
+
+    /// <summary>
+    /// The tiles where the parts the bot asked players for are to stand, on the plot of its line: it plants, tills and builds
+    /// nothing there, or nobody could finish what it asked.
+    /// </summary>
+    private HashSet<(int X, int Y)> HeldTiles(BotPlot plot) =>
+        _site?.Plot == plot
+            ? _fixes.Where(f => f.Object is null).SelectMany(f => Footprints.Tiles(f.Kind, f.TileX, f.TileY)).ToHashSet()
+            : [];
+
+    /// <summary>
+    /// Turns and puts up itself what it asked players to; what it cannot, it takes the line down for after a long wait, or at
+    /// once when something stands in the way of a missing part.
+    /// </summary>
     private async Task<bool> FixAsync(BotLineSite site, BotWorld world, CancellationToken cancellationToken)
     {
         var (x, y) = (site.Plot.X, site.Plot.Y);
@@ -478,9 +516,17 @@ public sealed partial class Bot
             }
         }
 
-        if (_fixes.Count > 0 && world.Now - _fixesSince >= BotRules.HelpWait * 2)
+        if (_fixes.Count > 0 && (world.Now - _fixesSince >= BotRules.HelpWait * 2 || Obstructed(site)))
         {
-            var ids = site.Parts.Select(p => p.Id).Distinct().ToList();
+            // Players may have put some of the parts up since the bot last looked, and it may have just now: it takes up
+            // everything that stands where its line does.
+            var input = site.Parts.First(p => p.Id == site.Input);
+            var entered = await SendAsync("plot.enter", new { x, y }, cancellationToken);
+            var ids = entered.Is("plot")
+                ? entered.Payload.Each("objects").Where(o => o.Long("tileX") >= input.X && o.Long("tileX") < input.X + BotFactory.Width
+                        && o.Long("tileY") >= input.Y && o.Long("tileY") < input.Y + BotFactory.Depth)
+                    .Select(o => o.Id("id")).OfType<Guid>().ToList()
+                : site.Parts.Select(p => p.Id).Distinct().ToList();
             await SendAsync("plot.pickupMany", new { x, y, ids }, cancellationToken);
             _fixes.Clear();
             _wantingSince = world.Now;
@@ -514,8 +560,13 @@ public sealed partial class Bot
         return looked;
     }
 
-    /// <summary>Finds the bot's line among what stands on the plot: its machine with the chests and the generator in their places.</summary>
-    private void FindSite(BotPlot plot)
+    /// <summary>
+    /// Finds the bot's line among what stands on the plot: its machine with the chests in their places (the generator may
+    /// be missing, for players to put up), of several such the one with most of the line round it. What the bot asked
+    /// players for it keeps only in memory, so after a restart it reads off the plot what of its line is still missing and
+    /// asks for that again. The tiles of what is missing it keeps free of fields, trees and buildings of its own.
+    /// </summary>
+    private void FindSite(BotPlot plot, DateTimeOffset now)
     {
         if (_line is not { } line || _site is not null && _site.Plot != plot)
         {
@@ -523,23 +574,54 @@ public sealed partial class Bot
         }
 
         _site = null;
+        var layout = BotFactory.Layout(line.Machine);
+        (int X, int Y, Guid Machine, int Standing)? found = null;
         foreach (var machine in plot.Objects.Where(o => o.Kind == line.Machine))
         {
-            var (x, y) = (machine.X - BotFactory.MachineX, machine.Y);
-            var input = plot.Objects.FirstOrDefault(o => o.Kind == Items.WoodenChest && o.X == x && o.Y == y);
-            var output = plot.Objects.FirstOrDefault(o => o.Kind == Items.WoodenChest && o.X == x + BotFactory.OutputX && o.Y == y);
-            var generator = plot.Objects.FirstOrDefault(o =>
-                o.Kind == Items.Generator && o.X == x + BotFactory.GeneratorX && o.Y == y + BotFactory.GeneratorY);
-            if (input.Kind is null || output.Kind is null || generator.Kind is null)
+            var (mx, my) = (machine.X - BotFactory.MachineX, machine.Y);
+            if (!Stands(plot, Items.WoodenChest, mx, my) || !Stands(plot, Items.WoodenChest, mx + BotFactory.OutputX, my))
             {
                 continue;
             }
 
-            var parts = plot.Objects.Where(o => o.X >= x && o.X < x + BotFactory.Width && o.Y >= y && o.Y < y + BotFactory.Depth).ToList();
-            _site = new BotLineSite(plot, input.Id, machine.Id, output.Id, generator.Id, parts);
+            var standing = layout.Count(p => Stands(plot, p.Kind, mx + p.Dx, my + p.Dy));
+            if (found is null || standing > found.Value.Standing)
+            {
+                found = (mx, my, machine.Id, standing);
+            }
+        }
+
+        if (found is not { } best)
+        {
             return;
         }
+
+        var (x, y) = (best.X, best.Y);
+        var input = plot.Objects.First(o => o.Kind == Items.WoodenChest && o.X == x && o.Y == y);
+        var output = plot.Objects.First(o => o.Kind == Items.WoodenChest && o.X == x + BotFactory.OutputX && o.Y == y);
+        var generator = plot.Objects.FirstOrDefault(o =>
+            o.Kind == Items.Generator && o.X == x + BotFactory.GeneratorX && o.Y == y + BotFactory.GeneratorY);
+        var parts = plot.Objects.Where(o => o.X >= x && o.X < x + BotFactory.Width && o.Y >= y && o.Y < y + BotFactory.Depth).ToList();
+        _site = new BotLineSite(plot, input.Id, best.Machine, output.Id, generator.Id, parts);
+        if (_fixes.Count == 0 && _help is null)
+        {
+            foreach (var (kind, dx, dy) in layout.Where(p => !Stands(plot, p.Kind, x + p.Dx, y + p.Dy)))
+            {
+                _fixes.Add(new HelpTask(kind, x + dx, y + dy, BotFactory.East));
+            }
+
+            if (_fixes.Count > 0)
+            {
+                (_fixReason, _fixesSince) = (HelpReasons.Parts, now);
+            }
+        }
+
+        var held = HeldTiles(plot);
+        plot.Free.RemoveAll(t => held.Contains(t) || parts.Any(p => Footprints.Covers(p.Kind, p.X, p.Y, t.X, t.Y)));
     }
+
+    /// <summary>Whether an object of the kind stands on the plot with its corner on the tile.</summary>
+    private static bool Stands(BotPlot plot, string kind, int x, int y) => plot.Objects.Any(o => o.Kind == kind && o.X == x && o.Y == y);
 
     /// <summary>Tiles nothing may be built on: something stands, grows or lies there.</summary>
     private static bool[,] Blocked(BotPlot plot)
@@ -619,12 +701,11 @@ public sealed partial class Bot
             {
                 _fixes.AddRange(left);
                 _fixReason = HelpReasons.Parts;
-                plot.Busy.UnionWith(left.Select(l => (l.TileX, l.TileY)));
             }
 
             _fixesSince = world.Now;
 
-            FindSite(plot);
+            FindSite(plot, world.Now);
             await InventoryAsync(cancellationToken);
             _wantingSince = default;
             _tendAt = world.Now;
@@ -864,15 +945,8 @@ public sealed partial class Bot
             return true;
         }
 
-        var parts = _fixes.Where(f => f.Object is null).Select(f => f.Kind).ToList();
-        var pay = BotRules.HelpFee + parts.Sum(p => (long)Math.Ceiling(Math.Max(Floor(p), 1) * BotRules.HelpMarkup));
-        // Never more than the trader charges for the same parts, so buying them from him to bring them here pays nobody.
-        if (parts.Count > 0 && parts.All(_traderSells.ContainsKey))
-        {
-            pay = Math.Min(pay, (long)(parts.Sum(p => _traderSells[p]) * BotRules.HelpBelowTrader));
-        }
-
-        if (pay + BotRules.Reserve > _money)
+        var pay = HelpPay(_fixes.Where(f => f.Object is null).Select(f => f.Kind).ToList());
+        if (pay + BotRules.Reserve > Spendable)
         {
             return false;
         }
@@ -882,6 +956,22 @@ public sealed partial class Bot
         _commons.Help.Post(_help);
         _logger.LogInformation("Bot {Bot} asks for help on {X}:{Y}: {Reason}", Row.CharacterName, plot.X, plot.Y, reason);
         return true;
+    }
+
+    /// <summary>
+    /// What the bot pays whoever puts these parts up for it (one each) and sets the rest right: the fee, and for each part
+    /// what the trader pays for it and a quarter more, never more than the trader charges for the parts, so buying them
+    /// from him to bring them here pays nobody.
+    /// </summary>
+    private long HelpPay(IReadOnlyCollection<string> parts)
+    {
+        var pay = BotRules.HelpFee + parts.Sum(p => (long)Math.Ceiling(Math.Max(Floor(p), 1) * BotRules.HelpMarkup));
+        if (parts.Count > 0 && parts.All(_traderSells.ContainsKey))
+        {
+            pay = Math.Min(pay, (long)(parts.Sum(p => _traderSells[p]) * BotRules.HelpBelowTrader));
+        }
+
+        return pay;
     }
 
     /// <summary>A player set the line right on the bot's plot and was paid: the bot looks at its line again and tends it.</summary>

@@ -102,7 +102,7 @@ public sealed partial class Bot
         var botsStanding = people.Where(p => p.True("stands") && _commons.IsBot(p.Text("name"))).ToList();
         var deposit = politics.Long("depositCents");
         if (!standing && !playerStands && botsStanding.Count == 0 && Traits.Civic >= BotRules.StandsFrom && Traits.Ambition >= BotRules.AmbitiousFrom
-            && _money >= deposit + BotRules.Reserve + BotRules.StandSpare)
+            && Spendable >= deposit + BotRules.Reserve + BotRules.StandSpare)
         {
             var taxPercent = BotRules.TaxPromise(Traits);
             var bonus = BotRules.MayorBonuses[(int)(Traits.Risk * BotRules.MayorBonuses.Length) % BotRules.MayorBonuses.Length];
@@ -220,7 +220,7 @@ public sealed partial class Bot
 
         var deposit = election?.Long("depositCents") ?? long.MaxValue;
         if (!standing && candidates.Count == 0 && Traits.Civic >= BotRules.RunsForPresidentFrom && Traits.Ambition >= BotRules.AmbitiousFrom
-            && _money >= deposit + BotRules.Reserve + BotRules.StandSpare)
+            && Spendable >= deposit + BotRules.Reserve + BotRules.StandSpare)
         {
             var stood = await SendAsync("country.stand", new
             {

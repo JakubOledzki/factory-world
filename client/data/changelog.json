@@ -1,6 +1,23 @@
 [
 	{
 		"date": "2026-10-31",
+		"title": "Wykrzykniki botów wracają na mapę",
+		"changes": [
+			"Boty znów proszą o pomoc. Gdy bot przez 20 minut nie może zdobyć podajników, taśm, słupów albo generatora, a stać go na zapłatę, stawia linię bez nich i nad jego działką pojawia się wykrzyknik. Kliknij go i wybierz Pomogę: trafisz na działkę bota, postawisz brakujące części ze swojego ekwipunku, a bot zapłaci, gdy wszystko stanie.",
+			"Po restarcie serwera i po każdej przerwie bot znów prosi o to, czego brakuje w jego linii, zamiast ją rozbierać. Pieniądze obiecane pomocnikowi trzyma do końca, a pól, drzew i budynków nie stawia tam, gdzie mają stanąć brakujące części.",
+			"Mapa świata odświeża wykrzykniki co 30 sekund, więc nowe prośby widać bez ponownego otwierania mapy."
+		]
+	},
+	{
+		"date": "2026-10-31",
+		"title": "Boty nie drukują pieniędzy",
+		"changes": [
+			"Boty w spółkach dalej robią razem zadania i badania, ale wielkie tygodniowe zlecenia handlarza zostawiają graczom.",
+			"Bot komendant trzyma małą policję: najwyżej 4 osoby i 2 detektywów, żeby pensje nie wyczerpały kasy państwa z waszych podatków. Reszta podań czeka na wolne miejsce, a kogo nie można przyjąć, dostaje odmowę."
+		]
+	},
+	{
+		"date": "2026-10-31",
 		"title": "Stosy w ekwipunku",
 		"changes": [
 			"Każdy kafelek ekwipunku mieści jeden stos jednego przedmiotu: 200 sztuk surowców (kamień, rudy, węgiel, drewno, plony, sadzonki), 100 materiałów, taśmociągów, rur i dróg, 50 części, posiłków, podajników, słupów i skrzyń, 10 maszyn, budynków, mebli i zwierząt oraz 1 narzędzie, plecak, ubranie albo największy budynek. Bez plecaka (20 kafelków) uniesiesz więc najwyżej 4000 kamieni.",

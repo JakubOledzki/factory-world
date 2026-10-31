@@ -258,6 +258,9 @@ public sealed partial class Bot(
     private DateTimeOffset _sortDoneAt;
     private int _craftQueue;
 
+    /// <summary>What the crafting queue is making, by recipe.</summary>
+    private readonly HashSet<string> _crafting = new(StringComparer.Ordinal);
+
     /// <summary>The product the bot is making the parts of, to finish it before it starts on another.</summary>
     private string? _making;
     private int _openListings;
@@ -277,7 +280,13 @@ public sealed partial class Bot(
     public BotGoals Goals { get; } = BotGoals.Load(row.Goals);
 
     /// <summary>Money the bot may spend on goods: what it has past what its goals hold back.</summary>
-    private long Spare => _money - Goals.SavingCents;
+    private long Spare => Spendable - Goals.SavingCents;
+
+    /// <summary>
+    /// Money the bot may spend at all: what it has past what it promised whoever answers its call for help, which the world
+    /// takes from its wallet only once the last part stands.
+    /// </summary>
+    private long Spendable => _money - (_help?.PayCents ?? 0);
 
     public BotRow Row { get; } = row;
 
@@ -286,8 +295,11 @@ public sealed partial class Bot(
     /// <summary>The bot's XP as it last saw it.</summary>
     public long Xp => _xp;
 
-    /// <summary>Whether the bot has its production line standing (as far as it saw this session).</summary>
-    public bool HasLine => _site is not null;
+    /// <summary>Whether the bot has its production line standing whole (as far as it saw this session): no part it asked
+    /// players to put up is missing.</summary>
+    public bool HasLine => LineStands;
+
+    private bool LineStands => _site is not null && !_fixes.Any(f => f.Object is null);
 
     /// <summary>The bot's call for help, while players may answer it.</summary>
     public HelpRequest? Help => _help;
@@ -300,6 +312,12 @@ public sealed partial class Bot(
         _purchases = 0;
         _traderIncome = 0;
         _help = null;
+        // Its call comes down while it rests: it waits for help afresh when it is back.
+        if (_fixes.Count > 0)
+        {
+            _fixesSince = default;
+        }
+
         _mistaken = false;
         _deposited = false;
         _politicsAt = default;
@@ -414,7 +432,7 @@ public sealed partial class Bot(
             Add(_plots.Count == 0 ? 10 : 4, "sort", SortAsync);
         }
 
-        if (Have(Items.Trash) < 5 && _sortQueue == 0 && _money >= 40_00 && _traderSells.ContainsKey(Items.Trash))
+        if (Have(Items.Trash) < 5 && _sortQueue == 0 && Spendable >= 40_00 && _traderSells.ContainsKey(Items.Trash))
         {
             Add(3, "buy trash", ct => TradeAsync("market.buy", Items.Trash, 20, ct));
         }
@@ -429,7 +447,7 @@ public sealed partial class Bot(
         {
             var biomes = BotRules.PlotBiomes(trade, _plots.Count, Traits.Ambition, _plots.Any(p => p.Biome == Biomes.City));
             var cheapest = biomes.Min(b => PlotPrice(b));
-            if (_money >= cheapest + BotRules.Reserve)
+            if (Spendable >= cheapest + BotRules.Reserve)
             {
                 // The first plot is what a new player saves up for.
                 Add(_plots.Count == 0 ? 40 : 10, "buy plot", ct => BuyPlotAsync(biomes, ct));

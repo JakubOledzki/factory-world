@@ -103,7 +103,7 @@ public sealed class BotCompanyTests(ServerFactory factory) : IClassFixture<Serve
     }
 
     [Fact]
-    public async Task Bots_in_a_company_bring_what_its_tasks_ask_for_and_gather_its_orders_together()
+    public async Task Bots_in_a_company_bring_what_its_tasks_ask_for_and_leave_the_weekly_orders_to_players()
     {
         await Engine.EnsureBotsAsync(CancellationToken.None);
         // Bots no other test of the class uses: in no company yet, and not ambitious enough to found one.
@@ -161,29 +161,29 @@ public sealed class BotCompanyTests(ServerFactory factory) : IClassFixture<Serve
             Assert.True(await scope.ServiceProvider.GetRequiredService<IWallet>().BalanceAsync(member.Row.AccountId, CancellationToken.None) > before);
         }
 
-        // It puts what one of the week's orders wants into the warehouse, and the founder delivers it.
+        // What one of the week's orders wants it keeps: bots leave the trader's weekly orders to players, as an order pays new
+        // money far past a bot's limit and what goes towards an unfinished one is lost.
         await using (var scope = factory.Services.CreateAsyncScope())
         {
             await scope.ServiceProvider.GetRequiredService<IInventory>().AddAsync(member.Row.AccountId, orderItem, 500, CancellationToken.None);
         }
 
-        factory.Time.Advance(BotRules.CompanyEvery + TimeSpan.FromSeconds(1));
-
         var actions = new List<string?>();
-        for (var i = 0; i < 300 && !actions.Contains("company order"); i++)
+        for (var i = 0; i < 120; i++)
         {
+            if (i % 40 == 0)
+            {
+                member.EndSession();
+                factory.Time.Advance(BotRules.CompanyEvery + TimeSpan.FromSeconds(1));
+            }
+
             actions.Add(await Engine.StepAsync(member.Profile.Name, CancellationToken.None));
+            actions.Add(await Engine.StepAsync(founder.Profile.Name, CancellationToken.None));
         }
 
-        var inventoryNow = (await member.Client.SendAsync("inventory.get", null, CancellationToken.None)).Payload.ToString();
-        Assert.True(actions.Contains("company order"), orderItem + " " + string.Join(",", actions.Distinct()) + " " + inventoryNow);
-        var orderItems = (await CompanyAsync(founder)).GetProperty("company").GetProperty("economy").GetProperty("orders")
-            .EnumerateArray().Select(o => o.GetProperty("id").GetString()).ToList();
+        Assert.DoesNotContain("company order", actions);
         var after = (await CompanyAsync(founder)).GetProperty("company");
-        Assert.Contains(after.GetProperty("warehouse").GetProperty("items").EnumerateArray(), i => orderItems.Contains(i.GetProperty("id").GetString()));
-        Assert.NotNull(await StepUntilAsync(founder, "company order"));
-        var delivered = (await CompanyAsync(founder)).GetProperty("company").GetProperty("economy").GetProperty("orders")
-            .EnumerateArray().Sum(o => o.GetProperty("delivered").GetInt64());
-        Assert.True(delivered > 0);
+        Assert.DoesNotContain(after.GetProperty("warehouse").GetProperty("items").EnumerateArray(), i => i.GetProperty("id").GetString() == orderItem);
+        Assert.Equal(0, after.GetProperty("economy").GetProperty("orders").EnumerateArray().Sum(o => o.GetProperty("delivered").GetInt64()));
     }
 }

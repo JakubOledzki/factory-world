@@ -84,7 +84,7 @@ public sealed partial class Bot
             {
                 add(20, "join company", JoinCompanyAsync);
             }
-            else if (_invitations.Count == 0 && _plots.Count > 0 && Traits.Ambition >= BotRules.FoundsFrom && _money >= BotRules.FoundCompanyFrom)
+            else if (_invitations.Count == 0 && _plots.Count > 0 && Traits.Ambition >= BotRules.FoundsFrom && Spendable >= BotRules.FoundCompanyFrom)
             {
                 add(6, "found company", ct => FoundCompanyAsync(world, ct));
             }
@@ -200,9 +200,10 @@ public sealed partial class Bot
             : 0;
 
     /// <summary>
-    /// Joint work in its company: bringing what tasks ask for (the wage comes from the company's cash), gathering the
-    /// week's orders in the warehouse together and, for those who may take from it, delivering them; the owner and the
-    /// treasurer set tasks for what the founder's trade needs and take what the members brought.
+    /// Joint work in its company: bringing what tasks ask for (the wage comes from the company's cash); the owner and the
+    /// treasurer set tasks for what the founder's trade needs and take what the members brought. The trader's weekly orders
+    /// bots leave to players: an order of thousands pays new money far past what a bot may take from NPCs in a session, and
+    /// what is delivered towards one that is not finished by the week's end is lost.
     /// </summary>
     private void CompanyWork(JsonElement company, Action<int, string, Func<CancellationToken, Task<bool>>> add)
     {
@@ -223,29 +224,6 @@ public sealed partial class Bot
                 var quantity = Math.Min(Math.Min(left, SpareOf(item)), BotRules.CompanyBatch);
                 add(10, "company task", ct => CompanySendAsync("company.task.deliver", new { id, quantity }, ct));
                 break;
-            }
-        }
-
-        foreach (var order in economy.Each("orders"))
-        {
-            var item = order.Text("id") ?? "";
-            var slot = order.Long("slot");
-            var left = order.Long("quantity") - order.Long("delivered");
-            if (left <= 0)
-            {
-                continue;
-            }
-
-            if (SpareOf(item) > 0 && Stored(company, item) < left)
-            {
-                var quantity = Math.Min(Math.Min(left - Stored(company, item), SpareOf(item)), BotRules.CompanyBatch);
-                add(6, "company order", ct => CompanySendAsync("company.put", new { item, quantity }, ct));
-            }
-
-            if (mayTake && Stored(company, item) > 0)
-            {
-                var quantity = Math.Min(left, Stored(company, item));
-                add(6, "company order", ct => CompanySendAsync("company.order.deliver", new { slot, quantity }, ct));
             }
         }
 
@@ -270,9 +248,9 @@ public sealed partial class Bot
         {
             foreach (var item in BotRules.Buys(Profile.Trade).Concat(_line?.Inputs ?? []).Distinct())
             {
-                // What members brought for its tasks and no order wants: the bot takes it to work with.
+                // What members brought for its tasks: the bot takes it to work with.
                 var stored = Stored(company, item);
-                if (stored > 0 && !economy.Each("orders").Any(o => o.Text("id") == item))
+                if (stored > 0)
                 {
                     var quantity = Math.Min(stored, BotRules.CompanyBatch);
                     add(5, "take from company", ct => CompanySendAsync("company.take", new { item, quantity }, ct));
