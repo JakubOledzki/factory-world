@@ -289,6 +289,11 @@ public static class PoliticsHandlers
             await n.StandAsync(p, r.Country, r.PlotTaxPerMille, r.ForeignerFeePercent, r.Slogan, c);
             return null;
         }),
+        Country<CountryRequest>("country.withdraw", async (n, p, r, c) =>
+        {
+            await n.WithdrawAsync(p, r.Country, c);
+            return null;
+        }),
         Country<CountryVoteRequest>("country.vote", async (n, p, r, c) =>
         {
             await n.VoteAsync(p, r.Country, r.Candidate, c);

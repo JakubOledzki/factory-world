@@ -177,6 +177,27 @@ public static class BotRules
         return owned > 0 && ambition >= AmbitiousFrom && !hasCity ? [.. biomes, Biomes.City] : biomes;
     }
 
+    /// <summary>How often a bot looks at its town hall and its country's government.</summary>
+    public static readonly TimeSpan PoliticsEvery = TimeSpan.FromMinutes(30);
+
+    /// <summary>Bots this civic (<see cref="BotTraits.Civic"/>) vote, in towns and countries; most do.</summary>
+    public const double VotesFrom = 0.3;
+
+    /// <summary>Bots this civic, and ambitious, stand for mayor where no player does; one bot per town at a time.</summary>
+    public const double StandsFrom = 0.8;
+
+    /// <summary>Bots this civic, and ambitious, run for president where nobody else does yet.</summary>
+    public const double RunsForPresidentFrom = 0.97;
+
+    /// <summary>What a bot keeps besides the deposit when it stands for an office.</summary>
+    public const long StandSpare = 1_000_00;
+
+    /// <summary>The mayor's bonuses a bot promises, one of them by its nature.</summary>
+    public static readonly string[] MayorBonuses = ["demand", "shoppers", "rail", "plots"];
+
+    /// <summary>The tax on shops and services a bot promises as mayor: 2 to 10%, more for a greedy one.</summary>
+    public static int TaxPromise(BotTraits traits) => 2 + (int)Math.Round(traits.Greed * 8);
+
     /// <summary>How often a bot looks at its company and its invitations.</summary>
     public static readonly TimeSpan CompanyEvery = TimeSpan.FromMinutes(10);
 

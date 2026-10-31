@@ -1831,6 +1831,7 @@ public sealed class WorldModule : IGameModule
         services.AddSingleton<IMessageHandler, CityInvestHandler>();
         services.AddSingleton<IMessageHandler, CityRecallHandler>();
         services.AddSingleton<IMessageHandler, CityStandHandler>();
+        services.AddSingleton<IMessageHandler, CityWithdrawHandler>();
         services.AddSingleton<IMessageHandler, CitySponsorHandler>();
         services.AddSingleton<IMessageHandler, CityProposeHandler>();
         services.AddSingleton<IMessageHandler, CityOrdinanceVoteHandler>();

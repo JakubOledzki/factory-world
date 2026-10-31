@@ -28,7 +28,15 @@ public sealed class BotEngine(
     private readonly IReadOnlyList<IMessageObserver> _observers = observers.ToList();
     private readonly Dictionary<string, Bot> _bots = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _ticking = new(1, 1);
-    private readonly BotCommons _commons = new(help, options.MistakeChance);
+    private readonly BotCommons _commons = new(help, options.MistakeChance)
+    {
+        // A player's client finds the country of a plot in the map it ships with; a bot asks the countries the same.
+        CountryOf = async (x, y, cancellationToken) =>
+        {
+            await using var scope = scopes.CreateAsyncScope();
+            return await scope.ServiceProvider.GetRequiredService<ICountries>().CountryOfPlotAsync(x, y, cancellationToken);
+        },
+    };
 
     /// <summary>What all the bots share, e.g. the board of their calls for help.</summary>
     public BotCommons Commons => _commons;

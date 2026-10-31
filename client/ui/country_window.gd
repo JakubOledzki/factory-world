@@ -338,6 +338,8 @@ func _render_election() -> void:
 		var stand := UI.button("Kandyduj (kaucja %s)" % UI.money(int(election["depositCents"])) if not election["standing"] else "Zapisz program",
 			func() -> void: _stand(int(tax.value), int(fee.value), slogan.text), true)
 		stand_row.add_child(stand)
+		if election["standing"]:
+			stand_row.add_child(UI.button("Wycofaj się", _withdraw))
 		var refund := _note("Kaucja wraca przy co najmniej %d%% głosów, inaczej trafia do skarbca." % int(election["depositBackPercent"]))
 		refund.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		stand_row.add_child(_middle(refund))
@@ -486,6 +488,12 @@ func _render_parties() -> void:
 func _choose_citizenship() -> void:
 	if _apply(await Net.request("country.citizenship", {"country": _code})):
 		toast.emit("Jesteś obywatelem: %s" % _state["name"])
+
+
+func _withdraw() -> void:
+	if _apply(await Net.request("country.withdraw", {"country": _code})):
+		toast.emit("Wycofałeś kandydaturę, kaucja wróciła")
+		balance_changed.emit()
 
 
 func _stand(tax: int, fee: int, slogan: String) -> void:

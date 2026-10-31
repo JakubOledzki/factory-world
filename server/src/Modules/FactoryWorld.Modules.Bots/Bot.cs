@@ -79,6 +79,9 @@ public sealed class BotCommons(BotHelpBoard help, double mistakeChance = BotRule
         }
     }
 
+    /// <summary>The country a plot lies in, as the map the players' client has tells it.</summary>
+    public Func<int, int, CancellationToken, Task<string?>> CountryOf { get; set; } = (_, _, _) => Task.FromResult<string?>(null);
+
     private readonly Dictionary<Guid, string> _companies = [];
     private readonly HashSet<string> _unattached = new(StringComparer.Ordinal);
 
@@ -253,6 +256,9 @@ public sealed partial class Bot(
         _help = null;
         _mistaken = false;
         _deposited = false;
+        _politicsAt = default;
+        _townPlot = null;
+        _countryLooked = false;
         _companyAt = default;
         _recipeSet = false;
         _lastInputs = -1;
@@ -389,6 +395,7 @@ public sealed partial class Bot(
         }
 
         CompanyCandidates(world, Add);
+        PoliticsCandidates(world, Add);
 
         foreach (var plot in _plots.Where(p => p.Biome == Biomes.City && p.SupplyAt <= world.Now && traderPays))
         {

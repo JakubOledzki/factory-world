@@ -501,6 +501,28 @@ public sealed partial class NationService(
             }
         }, cancellationToken);
 
+    /// <summary>A candidate withdraws from this term's election: the deposit comes back whole, and the votes cast for them void.</summary>
+    public Task WithdrawAsync(Guid player, string? code, CancellationToken cancellationToken) =>
+        db.InTransactionAsync(async () =>
+        {
+            var country = RequireCountry(code);
+            await using var command = await db.CommandAsync(
+                """
+                DELETE FROM politics.candidates WHERE country = @country AND term = @term AND player_id = @player AND NOT settled
+                RETURNING deposit_cents;
+                DELETE FROM politics.votes WHERE country = @country AND term = @term AND candidate_id = @player;
+                """, cancellationToken);
+            command.Parameters.AddWithValue("country", country.Code);
+            command.Parameters.AddWithValue("term", Term);
+            command.Parameters.AddWithValue("player", player);
+            if (await command.ExecuteScalarAsync(cancellationToken) is not long deposit)
+            {
+                throw new GameException("not_standing", "You do not stand in this term's election.");
+            }
+
+            await wallet.CreditAsync(player, deposit, $"election deposit back in {country.Code}", cancellationToken);
+        }, cancellationToken);
+
     /// <summary>A citizen votes for a candidate of the election going on (a new vote replaces the old).</summary>
     public Task VoteAsync(Guid player, string? code, string? candidate, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>

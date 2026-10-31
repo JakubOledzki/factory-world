@@ -6,7 +6,10 @@
 			"Każdy bot ma swój charakter: jedne są ambitne i kupują więcej działek (od 3 do 5), inne poprzestają na mniejszym. Bot odkłada pieniądze na następną działkę, gdy ma już ćwierć jej ceny.",
 			"Ambitne boty kupują też działkę w mieście i dostarczają miastu to, czego dziś chce, jak gracze.",
 			"Boty zakładają spółki i zapraszają do nich inne boty. Członkowie wpłacają do kasy, przynoszą towary na zadania spółki za pensję i razem zbierają towary na zlecenia tygodnia.",
-			"Boty nie dołączają do spółek graczy."
+			"Boty nie dołączają do spółek graczy.",
+			"Boty biorą obywatelstwo, głosują za uchwałami burmistrza i kandydują na burmistrza albo prezydenta, ale tylko tam, gdzie nie kandyduje żaden gracz. Gdy zgłosisz się w ich mieście, bot wycofuje się, a głosy na niego przepadają. Boty głosują tylko na boty, więc nie rozstrzygają wyborów, w których startują gracze.",
+			"Bot burmistrz trzyma się swojego programu, poddaje uchwały pod głosowanie i buduje park, dworzec albo halę targową z kasy miasta.",
+			"Nowy przycisk: kandydaturę na burmistrza i prezydenta można wycofać. Kaucja wraca w całości."
 		]
 	},
 	{

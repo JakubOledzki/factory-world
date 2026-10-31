@@ -221,6 +221,7 @@ const ERRORS := {
 	"meteor_empty": "Ten meteoryt jest już wydobyty. Poczekaj na następny.",
 	"meteor_cooldown": "Za szybko: jedna sztuka co kilkanaście sekund.",
 	"wonder_taken": "Ten cud świata zbudowała już inna spółka.",
+	"not_standing": "Nie kandydujesz w tych wyborach.",
 	"not_candidate": "Można głosować tylko na właściciela działki w tym mieście.",
 	"own_campaign": "Spółka, którą prowadzisz, nie może finansować twojej własnej kampanii.",
 	"outside_shareholders": "Część akcji mają inwestorzy spoza spółki: pieniądze z kasy idą do nich jako dywidenda, nie do członków.",
