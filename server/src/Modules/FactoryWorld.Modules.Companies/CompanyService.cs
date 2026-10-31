@@ -414,7 +414,7 @@ public sealed partial class CompanyService(
             return await ReadAsync(player, cancellationToken);
         }, cancellationToken);
 
-    /// <summary>The owner and partners take items out of the warehouse into their inventory.</summary>
+    /// <summary>The owner and partners take items out of the warehouse into their inventory, as many as fit; the rest stays.</summary>
     public Task<CompanyView> TakeAsync(Guid player, string? item, long quantity, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
@@ -425,9 +425,10 @@ public sealed partial class CompanyService(
                 throw new GameException("not_allowed", "Workers do not take from the warehouse.");
             }
 
-            await ChangeStockAsync(company, item!, -quantity, cancellationToken);
-            await inventory.ReceiveAsync(player, item!, quantity, cancellationToken);
-            await LogAsync(company, player, "take", cancellationToken, item, quantity);
+            var taken = await inventory.FitAsync(player, item!, quantity, cancellationToken);
+            await ChangeStockAsync(company, item!, -taken, cancellationToken);
+            await inventory.AddAsync(player, item!, taken, cancellationToken);
+            await LogAsync(company, player, "take", cancellationToken, item, taken);
             return await ReadAsync(player, cancellationToken);
         }, cancellationToken);
 

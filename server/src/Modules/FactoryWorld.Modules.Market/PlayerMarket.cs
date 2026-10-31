@@ -207,7 +207,7 @@ public sealed class PlayerMarketService(
     }
 
     /// <summary>Buys from another player's listing: money to the seller, items to the buyer.</summary>
-    public Task<long> PurchaseAsync(Guid buyer, TakeRequest request, CancellationToken cancellationToken) =>
+    public Task<Traded> PurchaseAsync(Guid buyer, TakeRequest request, CancellationToken cancellationToken) =>
         ChangeAsync(async () =>
         {
             var listing = await TakeAsync(OfferKind.Listing, buyer, request, cancellationToken);
@@ -216,8 +216,7 @@ public sealed class PlayerMarketService(
             var balance = await wallet.DebitAsync(buyer, cents, $"market buy {request.Quantity} {listing.ItemId}", cancellationToken);
             await PayAsync(listing.OwnerId, cents, $"market sold {request.Quantity} {listing.ItemId}", cancellationToken);
             db.AfterCommit(() => counters.Trade(GameCounters.Players, listing.ItemId, request.Quantity, cents));
-            await Delivery.OverflowAsync(inventory, deliveries, buyer, listing.ItemId, request.Quantity, cancellationToken);
-            return balance;
+            return new Traded(balance, await Delivery.OverflowAsync(inventory, deliveries, buyer, listing.ItemId, request.Quantity, cancellationToken));
         }, cancellationToken);
 
     /// <summary>Fills another player's buy order: items to the buyer, the waiting money to the seller.</summary>
@@ -632,8 +631,11 @@ public sealed class PurchaseHandler(IServiceScopeFactory scopes) : PlayerMarketH
 
     protected override bool Trades => true;
 
-    protected override async Task<Reply> HandleAsync(PlayerMarketService market, JsonElement? payload, Guid player, CancellationToken cancellationToken) =>
-        Done(await market.PurchaseAsync(player, Payload.Read<TakeRequest>(payload), cancellationToken));
+    protected override async Task<Reply> HandleAsync(PlayerMarketService market, JsonElement? payload, Guid player, CancellationToken cancellationToken)
+    {
+        var traded = await market.PurchaseAsync(player, Payload.Read<TakeRequest>(payload), cancellationToken);
+        return new Reply("market.done", new { balanceCents = traded.Balance, toPallet = traded.ToPallet > 0, palletQuantity = traded.ToPallet });
+    }
 }
 
 public sealed class OrderHandler(IServiceScopeFactory scopes) : PlayerMarketHandler(scopes)

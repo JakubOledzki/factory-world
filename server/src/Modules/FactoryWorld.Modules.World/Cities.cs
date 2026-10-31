@@ -1344,7 +1344,7 @@ public sealed partial class CityService(
             return await ShopStateAsync(id, x, y, cancellationToken);
         }, cancellationToken);
 
-    /// <summary>Takes goods off the shop's shelves back into the inventory.</summary>
+    /// <summary>Takes goods off the shop's shelves back into the inventory, as many as it has room for; the rest stays.</summary>
     public Task<object> TakeFromShopAsync(Guid player, Guid id, string item, long quantity, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
@@ -1356,9 +1356,10 @@ public sealed partial class CityService(
                 throw new GameException("bad_quantity", "The shop has not so many.");
             }
 
-            row.Quantity -= quantity;
+            var taken = await inventory.FitAsync(player, item, quantity, cancellationToken);
+            row.Quantity -= taken;
             await SaveShopItemAsync(row, cancellationToken);
-            await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
+            await inventory.AddAsync(player, item, taken, cancellationToken);
             return await ShopStateAsync(id, x, y, cancellationToken);
         }, cancellationToken);
 

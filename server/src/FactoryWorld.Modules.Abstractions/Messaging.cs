@@ -64,9 +64,12 @@ public interface IMessageObserver
 }
 
 /// <summary>A failure the client may show to the player, e.g. "not enough money".</summary>
-public sealed class GameException(string code, string message) : Exception(message)
+/// <param name="details">More for the client than the code says, e.g. how many pieces still fit; sent as the error's <c>details</c>.</param>
+public sealed class GameException(string code, string message, object? details = null) : Exception(message)
 {
     public string Code { get; } = code;
+
+    public object? Details { get; } = details;
 }
 
 public static class Payload

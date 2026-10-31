@@ -27,6 +27,8 @@ var _loading := false
 ## From the server: names by id (in the server's order), recipes by the item they make and by
 ## each ingredient, fuels, canteen portions, locked items, and the trader's prices by id.
 var _names := {}
+## How many pieces of each item fill a tile of the inventory.
+var _stacks := {}
 var _made_by := {}
 var _used_in := {}
 var _fuels := {}
@@ -120,8 +122,10 @@ func refresh() -> void:
 
 func _read(payload: Dictionary) -> void:
 	_names.clear()
+	_stacks.clear()
 	for item: Dictionary in payload.get("items", []):
 		_names[item["id"]] = item["name"]
+		_stacks[item["id"]] = int(item.get("stack", 0))
 	_made_by.clear()
 	_used_in.clear()
 	for recipe: Dictionary in payload.get("recipes", []):
@@ -234,6 +238,8 @@ func _render_details() -> void:
 	title.add_theme_font_size_override("font_size", 19)
 	titles.add_child(title)
 	titles.add_child(UI.label(ItemInfo.CATEGORIES[ItemInfo.category_of(item)][0], UI.MUTED))
+	if int(_stacks.get(item, 0)) > 0:
+		titles.add_child(UI.label("Stos: %d szt. na kafelek ekwipunku" % int(_stacks[item]), UI.MUTED))
 	head.add_child(titles)
 	_details.add_child(head)
 	if _locked.has(item):

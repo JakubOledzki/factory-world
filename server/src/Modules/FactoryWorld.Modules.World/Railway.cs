@@ -350,13 +350,14 @@ public sealed class StationService(
             await StationStock.ChangeAsync(db, x, y, item, quantity, cancellationToken);
         }, cancellationToken);
 
-    /// <summary>Moves items from the station into the inventory.</summary>
+    /// <summary>Moves items from the station into the inventory, as many as it has room for; the rest stays.</summary>
     public Task<StationState> UnloadAsync(Guid player, int x, int y, string item, long quantity, CancellationToken cancellationToken) =>
         ChangeAsync(player, x, y, PlotRight.Take, async () =>
         {
             CheckQuantity(item, quantity);
-            await StationStock.ChangeAsync(db, x, y, item, -quantity, cancellationToken);
-            await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
+            var taken = await inventory.FitAsync(player, item, quantity, cancellationToken);
+            await StationStock.ChangeAsync(db, x, y, item, -taken, cancellationToken);
+            await inventory.AddAsync(player, item, taken, cancellationToken);
         }, cancellationToken);
 
     /// <summary>Sends items from this station by train to the station of another owned plot; <paramref name="bySea"/>, by

@@ -92,13 +92,32 @@ public sealed class Trough(Guid id, Guid owner, string kind, int tileX, int tile
         return added;
     }
 
-    public IReadOnlyList<(string Item, int Quantity)> TakeAll()
+    /// <summary>What is in it, feed and what it collected together, by item.</summary>
+    public IReadOnlyList<(string Item, int Quantity)> Contents() =>
+        Store.Concat(Output).GroupBy(s => s.Key).OrderBy(g => g.Key).Select(g => (g.Key, g.Sum(s => s.Value))).ToList();
+
+    /// <summary>Takes up to <paramref name="quantity"/> pieces of an item out, of the feed first, then of what it collected;
+    /// returns how many.</summary>
+    public int Take(string item, int quantity)
     {
-        var all = Store.Concat(Output).GroupBy(s => s.Key).OrderBy(g => g.Key).Select(g => (g.Key, g.Sum(s => s.Value))).ToList();
-        Changed |= Store.Count > 0 || Output.Count > 0;
-        Store.Clear();
-        Output.Clear();
-        return all;
+        var taken = 0;
+        foreach (var bin in new[] { Store, Output })
+        {
+            var some = Math.Min(quantity - taken, bin.GetValueOrDefault(item));
+            if (some > 0)
+            {
+                bin[item] -= some;
+                if (bin[item] == 0)
+                {
+                    bin.Remove(item);
+                }
+
+                taken += some;
+                Changed = true;
+            }
+        }
+
+        return taken;
     }
 
     /// <summary>Takes one piece of a product out of an automatic barn.</summary>
@@ -310,7 +329,8 @@ public sealed class FeederService(
             return (feeder, await AnimalsAsync(x, y, cancellationToken));
         }, cancellationToken);
 
-    /// <summary>Takes all the feed out of a feeder into the inventory, and from an automatic barn what it collected too.</summary>
+    /// <summary>Takes the feed out of a feeder into the inventory, and from an automatic barn what it collected too, each as far
+    /// as it fits; the rest stays in.</summary>
     public Task<(Trough Feeder, IReadOnlyList<PlotAnimal> Animals, IReadOnlyList<(string Item, int Quantity)> Taken)> TakeAsync(
         Guid player, int x, int y, Guid id, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
@@ -319,14 +339,26 @@ public sealed class FeederService(
             var yard = await OpenAsync(x, y, cancellationToken);
             var feeder = Find(yard, id);
             yard.Feed(time.GetUtcNow());
-            var taken = feeder.TakeAll();
-            await SaveAsync(x, y, yard, cancellationToken);
-            foreach (var (item, quantity) in taken)
+            var inside = feeder.Contents();
+            var taken = new List<(string Item, int Quantity)>();
+            foreach (var (item, quantity) in inside)
             {
-                await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
+                var fits = (int)await inventory.RoomForAsync(player, item, quantity, cancellationToken);
+                if (fits > 0)
+                {
+                    feeder.Take(item, fits);
+                    await inventory.AddAsync(player, item, fits, cancellationToken);
+                    taken.Add((item, fits));
+                }
             }
 
-            return (feeder, await AnimalsAsync(x, y, cancellationToken), taken);
+            if (taken.Count == 0 && inside.Count > 0)
+            {
+                throw InventoryExtensions.InventoryFull();
+            }
+
+            await SaveAsync(x, y, yard, cancellationToken);
+            return (feeder, await AnimalsAsync(x, y, cancellationToken), (IReadOnlyList<(string, int)>)taken);
         }, cancellationToken);
 
     /// <summary>The plot's animals after its feeders fed the hungry ones; the client asks every few seconds while a feeder stands there.</summary>

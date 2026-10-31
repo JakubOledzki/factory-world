@@ -71,14 +71,15 @@ public sealed class WardrobeService(GameDb db, IInventory inventory, IOutfit out
             return await ReadAsync(owner, id, cancellationToken);
         }, cancellationToken);
 
-    /// <summary>Takes clothes out of the wardrobe into the inventory.</summary>
+    /// <summary>Takes clothes out of the wardrobe into the inventory, as many as it has room for; the rest stays.</summary>
     public Task<WardrobeState> TakeAsync(Guid owner, Guid id, string item, long quantity, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
             CheckClothing(item, quantity);
             await OpenAsync(owner, id, cancellationToken);
-            await GarageItemRows.RemoveAsync(db, id, item, quantity, cancellationToken);
-            await inventory.ReceiveAsync(owner, item, quantity, cancellationToken);
+            var taken = await inventory.FitAsync(owner, item, quantity, cancellationToken);
+            await GarageItemRows.RemoveAsync(db, id, item, taken, cancellationToken);
+            await inventory.AddAsync(owner, item, taken, cancellationToken);
             return await ReadAsync(owner, id, cancellationToken);
         }, cancellationToken);
 

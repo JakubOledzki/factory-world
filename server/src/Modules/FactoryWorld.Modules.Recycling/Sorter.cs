@@ -198,7 +198,8 @@ public sealed class SorterService(GameDb db, IInventory inventory, ICharacterPro
         }, cancellationToken);
 
     /// <summary>Takes sorted items out: one kind (<paramref name="item"/>), all of them (null), or the
-    /// trash still waiting (<c>trash</c>). Each sorted item taken out gives the XP of one sorting.</summary>
+    /// trash still waiting (<c>trash</c>), each as far as it fits in the inventory; the rest stays in. Each sorted item
+    /// taken out gives the XP of one sorting.</summary>
     public Task<SorterReply> TakeAsync(Guid owner, Guid id, string? item, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
@@ -207,13 +208,16 @@ public sealed class SorterService(GameDb db, IInventory inventory, ICharacterPro
             XpGain? xp = null;
             if (item == Items.Trash)
             {
+                var back = 0;
                 if (state.Queued > 0)
                 {
-                    await inventory.AddAsync(owner, Items.Trash, state.Queued, cancellationToken);
-                    taken.Add((Items.Trash, state.Queued));
+                    back = (int)await inventory.FitAsync(owner, Items.Trash, state.Queued, cancellationToken);
+                    await inventory.AddAsync(owner, Items.Trash, back, cancellationToken);
+                    taken.Add((Items.Trash, back));
                 }
 
-                state = state with { Queued = 0, StartedAt = null };
+                // Trash left waiting keeps being sorted.
+                state = back < state.Queued ? state with { Queued = state.Queued - back } : state with { Queued = 0, StartedAt = null };
             }
             else
             {
@@ -223,11 +227,30 @@ public sealed class SorterService(GameDb db, IInventory inventory, ICharacterPro
                 }
 
                 var stored = new Dictionary<string, int>(state.Stored);
-                foreach (var (kind, quantity) in state.Stored.Where(s => s.Value > 0 && (item is null || s.Key == item)))
+                var wanted = state.Stored.Where(s => s.Value > 0 && (item is null || s.Key == item)).ToList();
+                foreach (var (kind, quantity) in wanted)
                 {
-                    await inventory.AddAsync(owner, kind, quantity, cancellationToken);
-                    taken.Add((kind, quantity));
-                    stored.Remove(kind);
+                    var fits = (int)await inventory.RoomForAsync(owner, kind, quantity, cancellationToken);
+                    if (fits == 0)
+                    {
+                        continue;
+                    }
+
+                    await inventory.AddAsync(owner, kind, fits, cancellationToken);
+                    taken.Add((kind, fits));
+                    if (fits < quantity)
+                    {
+                        stored[kind] = quantity - fits;
+                    }
+                    else
+                    {
+                        stored.Remove(kind);
+                    }
+                }
+
+                if (taken.Count == 0 && wanted.Count > 0)
+                {
+                    throw InventoryExtensions.InventoryFull();
                 }
 
                 var count = taken.Sum(t => t.Item2);

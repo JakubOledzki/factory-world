@@ -1,6 +1,20 @@
 [
 	{
 		"date": "2026-10-31",
+		"title": "Stosy w ekwipunku",
+		"changes": [
+			"Każdy kafelek ekwipunku mieści jeden stos jednego przedmiotu: 200 sztuk surowców (kamień, rudy, węgiel, drewno, plony, sadzonki), 100 materiałów, taśmociągów, rur i dróg, 50 części, posiłków, podajników, słupów i skrzyń, 10 maszyn, budynków, mebli i zwierząt oraz 1 narzędzie, plecak, ubranie albo największy budynek. Bez plecaka (20 kafelków) uniesiesz więc najwyżej 4000 kamieni.",
+			"Większy zapas leży na kilku kafelkach: najpierw pełne stosy, na końcu niepełny. Stos przeciągasz na inny kafelek jak dotąd. Rozmiar stosu widać w podpowiedzi przedmiotu i w kompendium.",
+			"Z maszyn, pieców, skrzyń, regału, szafy, wiertnic, pasiek, zagród, stacji i szybów bierzesz tyle, ile się zmieści; reszta zostaje w środku.",
+			"U handlarza i na targu graczy to, co się nie zmieści, czeka na palecie dostaw w garażu. Bez palety zakup większy niż wolne miejsce jest odrzucony z informacją, ile się zmieści.",
+			"Wydobycie, ścinka drzew, zbiory, połowy i meteoryty nie udają się, gdy łup się nie zmieści: najpierw zrób miejsce.",
+			"To, co do ciebie wraca (podniesiona maszyna, wycofana oferta, składniki po zmianie przepisu, nagrody za zadania), wchodzi zawsze, nawet ponad miejsce. Nadmiar widać na czerwono za kafelkami i dopóki go nie odłożysz, nic nowego nie weźmiesz.",
+			"Okno badań pokazuje, ile kafelków zajmuje koszt badania. Najdroższe badania ropy potrzebują plecaka szkolnego albo turystycznego.",
+			"Nikt nic nie traci: wszystko, co już masz, zostaje w ekwipunku, najwyżej za kafelkami. Boty mają te same limity."
+		]
+	},
+	{
+		"date": "2026-10-31",
 		"title": "Boty grają jak gracze",
 		"changes": [
 			"Każdy bot ma swój charakter: jedne są ambitne i kupują więcej działek (od 3 do 5), inne poprzestają na mniejszym. Bot odkłada pieniądze na następną działkę, gdy ma już ćwierć jej ceny.",

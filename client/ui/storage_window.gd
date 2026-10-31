@@ -125,7 +125,7 @@ func _render() -> void:
 	_fill.value = int(_state["usedSlots"])
 	_fill.visible = can_put
 	if not can_put:
-		_fill_label.text = "Czeka tu, co kupisz przy pełnym ekwipunku: %d szt." % stored if stored > 0 else "Nic nie czeka na odbiór."
+		_fill_label.text = "Czeka tu, co z zakupów nie zmieściło się w ekwipunku: %d szt." % stored if stored > 0 else "Nic nie czeka na odbiór."
 	elif int(_state["slots"]) > 1:
 		_fill_label.text = "Zajęte miejsca: %d z %d (po %d sztuk)" % [int(_state["usedSlots"]), int(_state["slots"]), int(_state["slotSize"])]
 	else:
@@ -156,7 +156,7 @@ func _render() -> void:
 	_load_heading.visible = can_put
 	_help.text = ""
 	if not can_put:
-		_help.text = "Gdy ekwipunek jest pełny, zakupy od handlarza i od graczy trafiają na tę paletę. Odbierzesz je, gdy zrobisz miejsce."
+		_help.text = "Co z zakupów od handlarza i od graczy nie zmieści się w ekwipunku, trafia na tę paletę. Odbierzesz to, gdy zrobisz miejsce."
 		_fit.call_deferred()
 		return
 	var any := false

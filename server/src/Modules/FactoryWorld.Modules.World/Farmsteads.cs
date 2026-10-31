@@ -305,13 +305,25 @@ public sealed class FarmsteadService(
             var now = time.GetUtcNow();
             var farms = await OpenAsync(x, y, now, cancellationToken);
             var farm = Find(farms, id);
-            var taken = farm.Patch.TakeAll(now);
+            var taken = new List<(string Item, int Quantity)>();
+            foreach (var (item, quantity) in farm.Patch.Store.OrderBy(s => s.Key).ToList())
+            {
+                var fits = (int)await inventory.RoomForAsync(player, item, quantity, cancellationToken);
+                if (fits > 0)
+                {
+                    farm.Patch.Take(fits, now, item);
+                    await inventory.AddAsync(player, item, fits, cancellationToken);
+                    taken.Add((item, fits));
+                }
+            }
+
+            if (taken.Count == 0 && farm.Patch.Store.Count > 0)
+            {
+                throw InventoryExtensions.InventoryFull();
+            }
+
             farm.Patch.Advance(now);
             await SaveAsync(x, y, farms, cancellationToken);
-            foreach (var (item, quantity) in taken)
-            {
-                await inventory.ReceiveAsync(player, item, quantity, cancellationToken);
-            }
 
             XpGain? xp = taken.Count > 0 ? await progress.AddXpAsync(player, taken.Sum(t => t.Quantity) / Farmsteads.CropsPerXp, cancellationToken) : null;
             return (await ReportAsync(x, y, cancellationToken), (IReadOnlyList<(string, int)>)taken, xp);

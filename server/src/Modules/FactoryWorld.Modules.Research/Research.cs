@@ -1434,6 +1434,8 @@ public abstract class ResearchHandler(IServiceScopeFactory scopes) : IMessageHan
                 branch = TechTree.BranchOf[t.Id].Id,
                 requires = t.Requires,
                 cost = t.Cost.Select(c => new { id = c.Item, name = Items.Names[c.Item], quantity = c.Quantity }),
+                // Tiles of the inventory the cost takes: it is all used up at once, so it must all fit in the inventory.
+                costTiles = t.Cost.Sum(c => Stacks.Tiles(c.Item, c.Quantity)),
                 // Money it uses up besides the items.
                 costCents = t.CostCents,
                 seconds = t.Time.TotalSeconds,

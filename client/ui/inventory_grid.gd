@@ -1,10 +1,11 @@
 class_name InventoryGrid
 extends GridContainer
-## The tiles of the player's inventory: 20, more with a backpack on; each holds one kind of item.
-## Kinds beyond the tiles (given back while the inventory was full) show after them, in red. Drag an item onto another tile to move it there (onto
-## an item, they swap places); the server keeps the order. Works with the mouse and with a
-## finger, which Godot turns into a mouse. A tap or click without dragging emits `clicked`.
-## With a chest or a machine open (GameWindow.intake), Shift-click puts the whole stack in, Ctrl-click
+## The tiles of the player's inventory: 20, more with a backpack on; each holds one stack: up to `stack` pieces of one
+## item (200 stone, 10 machines, 1 tool). A bigger supply lies on more tiles, full stacks first. What does not fit (given
+## back while the inventory was full) shows after the tiles, in red, and nothing new comes in until there is room for it.
+## Drag a stack onto another tile to move it there (onto a stack, they swap places); the server keeps the order. Works
+## with the mouse and with a finger, which Godot turns into a mouse. A tap or click without dragging emits `clicked`.
+## With a chest or a machine open (GameWindow.intake), Shift-click puts the stack in, Ctrl-click
 ## half, and so does dragging the item onto its window; on a phone a tap asks how many (QuantityDialog).
 
 ## The player clicked an item; the screen decides what that does (e.g. take a tool in hand).
@@ -35,21 +36,40 @@ func _init() -> void:
 	add_theme_constant_override("v_separation", 4)
 
 
-## Shows the inventory from the server: items with their tiles.
+## Shows the inventory from the server: each item on the tiles its stacks lie on (`tiles`, `stack` pieces each, the
+## last one maybe less), and what lies past the tiles (`over`) after them.
 func show_items(inventory: Dictionary) -> void:
-	var by_slot := {}
-	var last := -1
-	for i in inventory["items"].size():
-		var stack: Dictionary = inventory["items"][i]
-		var slot: int = int(stack["slot"]) if stack.get("slot") != null else i
-		by_slot[slot] = stack
-		last = maxi(last, slot)
 	slots = int(inventory.get("slots", MIN_TILES))
+	var by_slot := {}
+	var past: Array[Dictionary] = []
+	for item: Dictionary in inventory["items"]:
+		var over := int(item.get("over", 0))
+		var size := int(item.get("stack", 0))
+		var tiles: Array = item.get("tiles", [])
+		# A server without stacks sends one tile (`slot`) holding all of an item.
+		if not item.has("tiles") and item.get("slot") != null:
+			tiles = [item["slot"]]
+		var left := int(item["quantity"]) - over
+		for k in tiles.size():
+			var here := left if k == tiles.size() - 1 or size < 1 else mini(size, left)
+			left -= here
+			by_slot[int(tiles[k])] = _tile_stack(item, here, false)
+		if over > 0:
+			past.append(_tile_stack(item, over, true))
 	for child in get_children():
 		child.free()
-	var count := maxi(ceili(slots / float(COLUMNS)) * COLUMNS, ceili((last + 1) / float(COLUMNS)) * COLUMNS)
+	var count := ceili((slots + past.size()) / float(COLUMNS)) * COLUMNS
 	for slot in count:
-		add_child(Tile.new(self, slot, by_slot.get(slot, {})))
+		var stack: Dictionary = by_slot.get(slot, {})
+		if slot >= slots:
+			stack = past[slot - slots] if slot - slots < past.size() else {}
+		add_child(Tile.new(self, slot, stack))
+
+
+## What one tile shows of an item: `quantity` pieces of its `total`; `over`, lying past the tiles.
+static func _tile_stack(item: Dictionary, quantity: int, over: bool) -> Dictionary:
+	return {"id": item["id"], "name": item["name"], "quantity": quantity, "total": int(item["quantity"]),
+		"stack": int(item.get("stack", 0)), "over": over}
 
 
 ## Puts the item into the open window that takes it: all that fits, or half; on a touch screen the
@@ -72,15 +92,14 @@ func put_away(stack: Dictionary, half := false, at := Vector2.INF) -> bool:
 	return true
 
 
-## Moves the item at once, then asks the server; its reply (or a refusal) redraws the tiles.
+## Moves the stack at once, then asks the server; its reply (or a refusal) redraws the tiles.
 func _move(from: Tile, to: Tile) -> void:
 	if from == to or from.stack.is_empty():
 		return
-	var item: String = from.stack["id"]
 	var moved := from.stack
 	from.set_stack(to.stack)
 	to.set_stack(moved)
-	var reply := await Net.request("inventory.move", {"item": item, "slot": to.slot})
+	var reply := await Net.request("inventory.move", {"from": from.slot, "to": to.slot})
 	if reply["type"] == "inventory":
 		show_items(reply["payload"])
 		changed.emit(reply["payload"]["items"])
@@ -92,7 +111,7 @@ func _move(from: Tile, to: Tile) -> void:
 		changed.emit(fresh["payload"]["items"])
 
 
-## One tile; it can hold one stack of items.
+## One tile; it holds one stack of an item.
 class Tile extends PanelContainer:
 	var slot := 0
 	var stack := {}
@@ -147,15 +166,21 @@ class Tile extends PanelContainer:
 			return
 		_icon.texture = UI.item_texture(items["id"])
 		set_meta("item", items["id"])
-		_count.text = str(int(items["quantity"]))
-		tooltip_text = "%s: %d" % [items["name"], int(items["quantity"])]
+		var quantity := int(items["quantity"])
+		var total := int(items.get("total", quantity))
+		_count.text = str(quantity)
+		tooltip_text = "%s: %d" % [items["name"], quantity]
+		if total != quantity:
+			tooltip_text += " (razem %d)" % total
+		if int(items.get("stack", 0)) > 0:
+			tooltip_text += "\nStos: %d szt. na kafelek" % int(items["stack"])
 		var hint: String = _grid.hint.call(items["id"])
 		if not hint.is_empty():
 			tooltip_text += "\n" + hint
 		if slot >= _grid.slots:
-			tooltip_text += "\nNie mieści się w ekwipunku: przenieś na wolny kafelek albo załóż większy plecak"
+			tooltip_text += "\nNie mieści się w ekwipunku: sprzedaj, odłóż albo załóż większy plecak. Do tego czasu nic nowego nie weźmiesz."
 		tooltip_text += "\nPrzeciągnij, aby przenieść" if UI.touch() \
-			else "\nPrzeciągnij, aby przenieść; Shift + klik wkłada do otwartej skrzyni lub maszyny, Ctrl + klik połowę"
+			else "\nPrzeciągnij, aby przenieść; Shift + klik wkłada stos do otwartej skrzyni lub maszyny, Ctrl + klik połowę"
 		mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 
 	func _gui_input(event: InputEvent) -> void:
@@ -186,8 +211,9 @@ class Tile extends PanelContainer:
 		return {"inventory_tile": self}
 
 	func _can_drop_data(_at: Vector2, data: Variant) -> bool:
+		# What lies past the tiles only goes into a chest or a machine: no tile is free for it.
 		var ok: bool = data is Dictionary and data.has("inventory_tile") and is_instance_valid(data["inventory_tile"]) \
-			and data["inventory_tile"]._grid == _grid and slot < _grid.slots
+			and data["inventory_tile"]._grid == _grid and slot < _grid.slots and data["inventory_tile"].slot < _grid.slots
 		_light(ok and data["inventory_tile"] != self)
 		return ok
 

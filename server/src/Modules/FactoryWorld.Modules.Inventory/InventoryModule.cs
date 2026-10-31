@@ -4,6 +4,7 @@ using FactoryWorld.Modules.Abstractions.Contracts;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using StackSizes = FactoryWorld.Modules.Abstractions.Contracts.Stacks;
 
 namespace FactoryWorld.Modules.Inventory;
 
@@ -16,8 +17,9 @@ public sealed class Stack
 
     public long Quantity { get; set; }
 
-    /// <summary>The tile of the inventory grid the player put the item on; null until it is shown.</summary>
-    public int? Slot { get; set; }
+    /// <summary>The tiles of the inventory grid the item's stacks lie on, in order: full stacks first, the rest on the last.
+    /// Given when the inventory is listed; empty until then, and short of what the item needs when the grid is full.</summary>
+    public int[] Tiles { get; set; } = [];
 }
 
 /// <summary>An item the player put on a numbered slot of the quick bar (keys 1 to 5).</summary>
@@ -48,7 +50,7 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
             e.Property(s => s.OwnerId).HasColumnName("owner_id");
             e.Property(s => s.ItemId).HasColumnName("item_id").HasMaxLength(64);
             e.Property(s => s.Quantity).HasColumnName("quantity");
-            e.Property(s => s.Slot).HasColumnName("slot");
+            e.Property(s => s.Tiles).HasColumnName("tiles").HasDefaultValueSql("'{}'");
         });
         model.Entity<HotbarSlot>(e =>
         {
@@ -61,12 +63,76 @@ public sealed class InventoryDbContext(DbContextOptions<InventoryDbContext> opti
     }
 }
 
-/// <summary>The player's items. Each kind takes one tile of the grid, however many there are; the grid
-/// has <see cref="IInventorySize"/> tiles. More kinds than tiles can be there (things given back),
-/// but nothing new comes in through <see cref="ReceiveAsync"/> until a tile is free.</summary>
+/// <summary>How the stacks of an inventory lie on its tiles; pure, for the service and the tests.</summary>
+public static class InventoryRules
+{
+    /// <summary>How many more pieces of <paramref name="item"/> fit in <paramref name="slots"/> tiles holding <paramref name="stacks"/>:
+    /// what its last stack still takes and whole stacks on the tiles the other items leave free.</summary>
+    public static long Room(int slots, IEnumerable<(string Item, long Quantity)> stacks, string item)
+    {
+        long mine = 0, others = 0;
+        foreach (var (id, quantity) in stacks)
+        {
+            if (id == item)
+            {
+                mine += quantity;
+            }
+            else
+            {
+                others += StackSizes.Tiles(id, quantity);
+            }
+        }
+
+        return Math.Max(0, (slots - others) * StackSizes.Of(item) - mine);
+    }
+
+    /// <summary>
+    /// Gives every item the tiles its stacks need. An item keeps the tiles it had, in their order, as far as it still needs them
+    /// (and they are in the grid and not taken twice, which two requests at once can do); then the items short of tiles get the
+    /// first free ones, in the order of their first tile. When the grid is full, what is left lies past it, on no tile.
+    /// </summary>
+    public static void Lay(int slots, IReadOnlyList<Stack> stacks)
+    {
+        var order = stacks.OrderBy(s => s.Tiles.Length > 0 ? s.Tiles[0] : int.MaxValue).ThenBy(s => s.ItemId, StringComparer.Ordinal).ToList();
+        var taken = new HashSet<int>();
+        var kept = new List<List<int>>();
+        foreach (var stack in order)
+        {
+            var need = StackSizes.Tiles(stack.ItemId, stack.Quantity);
+            var keep = new List<int>();
+            foreach (var tile in stack.Tiles)
+            {
+                if (keep.Count < need && tile >= 0 && tile < slots && taken.Add(tile))
+                {
+                    keep.Add(tile);
+                }
+            }
+
+            kept.Add(keep);
+        }
+
+        var free = new Queue<int>(Enumerable.Range(0, slots).Where(t => !taken.Contains(t)));
+        for (var i = 0; i < order.Count; i++)
+        {
+            var need = StackSizes.Tiles(order[i].ItemId, order[i].Quantity);
+            while (kept[i].Count < need && free.TryDequeue(out var tile))
+            {
+                kept[i].Add(tile);
+            }
+
+            order[i].Tiles = kept[i].ToArray();
+        }
+    }
+
+    /// <summary>What lies past the grid of an item laid by <see cref="Lay"/>: the pieces its tiles do not hold.</summary>
+    public static long Over(Stack stack) => Math.Max(0, stack.Quantity - (long)stack.Tiles.Length * StackSizes.Of(stack.ItemId));
+}
+
+/// <summary>The player's items. Each tile of the grid (<see cref="IInventorySize"/> of them) holds one stack: up to
+/// <see cref="StackSizes.Of"/> pieces of one item. Things given back can fill more than the tiles; nothing new comes in
+/// through <see cref="ReceiveAsync"/> until there is room for it.</summary>
 public sealed class InventoryService(GameDb db, IInventorySize size) : IInventory
 {
-
     public async Task AddAsync(Guid owner, string item, long quantity, CancellationToken cancellationToken)
     {
         Check(item, quantity);
@@ -84,26 +150,40 @@ public sealed class InventoryService(GameDb db, IInventorySize size) : IInventor
     public async Task ReceiveAsync(Guid owner, string item, long quantity, CancellationToken cancellationToken)
     {
         Check(item, quantity);
-        if (!await HasRoomAsync(owner, item, cancellationToken))
+        // Two requests at once may both see the same room and fill a little past it, as things given back do: nothing is
+        // made or lost by it, and the player takes nothing new until there is room again.
+        if (await RoomAsync(owner, item, cancellationToken) is var room && quantity > room)
         {
-            throw new GameException("inventory_full", "Your inventory is full: make room or put on a bigger backpack.");
+            throw InventoryExtensions.InventoryFull(room);
         }
 
         await AddAsync(owner, item, quantity, cancellationToken);
     }
 
-    public async Task<bool> HasRoomAsync(Guid owner, string item, CancellationToken cancellationToken)
+    public async Task<long> RoomAsync(Guid owner, string item, CancellationToken cancellationToken)
     {
-        if (await CountAsync(owner, item, cancellationToken) > 0)
+        if (!Items.Exists(item))
         {
-            return true;
+            throw new GameException("unknown_item", $"Unknown item '{item}'.");
         }
 
-        await using var command = await db.CommandAsync(
-            "SELECT count(*) FROM inventory.stacks WHERE owner_id = @owner AND quantity > 0", cancellationToken);
-        command.Parameters.AddWithValue("owner", owner);
-        return (long)(await command.ExecuteScalarAsync(cancellationToken))! < await size.SlotsAsync(owner, cancellationToken);
+        var held = new List<(string, long)>();
+        await using (var command = await db.CommandAsync(
+            "SELECT item_id, quantity FROM inventory.stacks WHERE owner_id = @owner AND quantity > 0", cancellationToken))
+        {
+            command.Parameters.AddWithValue("owner", owner);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                held.Add((reader.GetString(0), reader.GetInt64(1)));
+            }
+        }
+
+        return InventoryRules.Room(await size.SlotsAsync(owner, cancellationToken), held, item);
     }
+
+    public async Task<bool> HasRoomAsync(Guid owner, string item, CancellationToken cancellationToken) =>
+        await RoomAsync(owner, item, cancellationToken) > 0;
 
     /// <summary>Tiles of the player's inventory grid; items can be moved to any of them.</summary>
     public Task<int> SlotsAsync(Guid owner, CancellationToken cancellationToken) => size.SlotsAsync(owner, cancellationToken);
@@ -112,11 +192,11 @@ public sealed class InventoryService(GameDb db, IInventorySize size) : IInventor
     {
         Check(item, quantity);
         // One conditional update: two requests at once can never take more than the player has.
-        // An emptied stack frees its tile; the item gets a new one when the player gets it again.
+        // An emptied item frees its tiles; it gets new ones when the player gets it again.
         await using var command = await db.CommandAsync(
             """
             UPDATE inventory.stacks SET quantity = quantity - @quantity,
-                slot = CASE WHEN quantity = @quantity THEN NULL ELSE slot END
+                tiles = CASE WHEN quantity = @quantity THEN '{}' ELSE tiles END
             WHERE owner_id = @owner AND item_id = @item AND quantity >= @quantity
             """, cancellationToken);
         command.Parameters.AddWithValue("owner", owner);
@@ -137,12 +217,13 @@ public sealed class InventoryService(GameDb db, IInventorySize size) : IInventor
         return await command.ExecuteScalarAsync(cancellationToken) is long n ? n : 0;
     }
 
-    /// <summary>The player's items in tile order. Items without a tile get the first free ones, which are saved.</summary>
-    public async Task<IReadOnlyList<Stack>> ListAsync(Guid owner, CancellationToken cancellationToken)
+    /// <summary>The tiles of the grid and the player's items in tile order, items past the grid last. Items get the tiles
+    /// their stacks need (<see cref="InventoryRules.Lay"/>), which are saved.</summary>
+    public async Task<(int Slots, IReadOnlyList<Stack> Stacks)> ListAsync(Guid owner, CancellationToken cancellationToken)
     {
         var stacks = new List<Stack>();
         await using (var command = await db.CommandAsync(
-            "SELECT item_id, quantity, slot FROM inventory.stacks WHERE owner_id = @owner AND quantity > 0 ORDER BY slot NULLS LAST, item_id", cancellationToken))
+            "SELECT item_id, quantity, tiles FROM inventory.stacks WHERE owner_id = @owner AND quantity > 0", cancellationToken))
         {
             command.Parameters.AddWithValue("owner", owner);
             await using var reader = await command.ExecuteReaderAsync(cancellationToken);
@@ -153,53 +234,62 @@ public sealed class InventoryService(GameDb db, IInventorySize size) : IInventor
                     OwnerId = owner,
                     ItemId = reader.GetString(0),
                     Quantity = reader.GetInt64(1),
-                    Slot = reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                    Tiles = reader.GetFieldValue<int[]>(2),
                 });
             }
         }
 
         var slots = await size.SlotsAsync(owner, cancellationToken);
-        var taken = new HashSet<int>();
-        var placed = new List<Stack>();
-        var overflow = slots;
-        foreach (var stack in stacks)
+        var before = stacks.ToDictionary(s => s.ItemId, s => s.Tiles);
+        InventoryRules.Lay(slots, stacks);
+        foreach (var stack in stacks.Where(s => !s.Tiles.SequenceEqual(before[s.ItemId])))
         {
-            // A tile out of the grid or taken twice (two requests at once) counts as no tile.
-            if (stack.Slot is not { } slot || slot < 0 || slot >= slots || !taken.Add(slot))
-            {
-                stack.Slot = null;
-            }
+            await SaveTilesAsync(owner, stack, cancellationToken);
         }
 
-        foreach (var stack in stacks.Where(s => s.Slot is null))
-        {
-            var free = Enumerable.Range(0, slots).FirstOrDefault(i => !taken.Contains(i), -1);
-            if (free < 0)
-            {
-                // More items than tiles: the rest go after the grid, unsaved.
-                stack.Slot = overflow++;
-                continue;
-            }
-
-            taken.Add(free);
-            stack.Slot = free;
-            placed.Add(stack);
-        }
-
-        foreach (var stack in placed)
-        {
-            await using var command = await db.CommandAsync(
-                "UPDATE inventory.stacks SET slot = @slot WHERE owner_id = @owner AND item_id = @item", cancellationToken);
-            command.Parameters.AddWithValue("owner", owner);
-            command.Parameters.AddWithValue("item", stack.ItemId);
-            command.Parameters.AddWithValue("slot", stack.Slot!.Value);
-            await command.ExecuteNonQueryAsync(cancellationToken);
-        }
-
-        return stacks.OrderBy(s => s.Slot).ToList();
+        return (slots, stacks.OrderBy(s => s.Tiles.Length > 0 ? s.Tiles[0] : int.MaxValue).ThenBy(s => s.ItemId, StringComparer.Ordinal).ToList());
     }
 
-    /// <summary>Puts an item on another tile; an item already there swaps places with it.</summary>
+    /// <summary>Moves what lies on tile <paramref name="from"/> to tile <paramref name="to"/>; what lay there takes its place.
+    /// Two stacks of one item swap too: the one that was not full moves.</summary>
+    public async Task MoveAsync(Guid owner, int from, int to, CancellationToken cancellationToken)
+    {
+        var slots = await size.SlotsAsync(owner, cancellationToken);
+        if (from < 0 || from >= slots || to < 0 || to >= slots)
+        {
+            throw new GameException("bad_slot", $"The inventory has tiles 0 to {slots - 1}.");
+        }
+
+        await db.InTransactionAsync(async () =>
+        {
+            // Tiles are given when the inventory is listed; this makes sure both tiles are known as they are now.
+            var (_, stacks) = await ListAsync(owner, cancellationToken);
+            var moved = stacks.FirstOrDefault(s => s.Tiles.Contains(from))
+                ?? throw new GameException("not_enough_items", "Nothing lies on that tile.");
+            if (from == to)
+            {
+                return;
+            }
+
+            // Both places are found before either changes: two tiles of one item are in the same array.
+            var there = stacks.FirstOrDefault(s => s.Tiles.Contains(to));
+            var i = Array.IndexOf(moved.Tiles, from);
+            if (there is not null)
+            {
+                there.Tiles[Array.IndexOf(there.Tiles, to)] = from;
+            }
+
+            moved.Tiles[i] = to;
+
+            await SaveTilesAsync(owner, moved, cancellationToken);
+            if (there is not null && there != moved)
+            {
+                await SaveTilesAsync(owner, there, cancellationToken);
+            }
+        }, cancellationToken);
+    }
+
+    /// <summary>Moves the first stack of an item to tile <paramref name="slot"/> (the older form of <see cref="MoveAsync(Guid, int, int, CancellationToken)"/>).</summary>
     public async Task MoveAsync(Guid owner, string item, int slot, CancellationToken cancellationToken)
     {
         if (!Items.Exists(item))
@@ -213,23 +303,24 @@ public sealed class InventoryService(GameDb db, IInventorySize size) : IInventor
             throw new GameException("bad_slot", $"The inventory has tiles 0 to {slots - 1}.");
         }
 
-        // Tiles are given when the inventory is listed; this makes sure the moved item has one to swap.
-        await ListAsync(owner, cancellationToken);
-        // One statement: the sub-select sees the tiles from before the update, so the swap is atomic.
-        await using var command = await db.CommandAsync(
-            """
-            UPDATE inventory.stacks SET slot = CASE WHEN item_id = @item THEN @slot
-                ELSE (SELECT s.slot FROM inventory.stacks s WHERE s.owner_id = @owner AND s.item_id = @item) END
-            WHERE owner_id = @owner AND quantity > 0 AND (item_id = @item OR slot = @slot)
-                AND EXISTS (SELECT 1 FROM inventory.stacks s WHERE s.owner_id = @owner AND s.item_id = @item AND s.quantity > 0)
-            """, cancellationToken);
-        command.Parameters.AddWithValue("owner", owner);
-        command.Parameters.AddWithValue("item", item);
-        command.Parameters.AddWithValue("slot", slot);
-        if (await command.ExecuteNonQueryAsync(cancellationToken) == 0)
+        var (_, stacks) = await ListAsync(owner, cancellationToken);
+        var stack = stacks.FirstOrDefault(s => s.ItemId == item) ?? throw new GameException("not_enough_items", "You don't have this item.");
+        if (stack.Tiles.Length == 0)
         {
-            throw new GameException("not_enough_items", "You don't have this item.");
+            throw new GameException("inventory_full", "This item lies past the tiles: make room first.");
         }
+
+        await MoveAsync(owner, stack.Tiles[0], slot, cancellationToken);
+    }
+
+    private async Task SaveTilesAsync(Guid owner, Stack stack, CancellationToken cancellationToken)
+    {
+        await using var command = await db.CommandAsync(
+            "UPDATE inventory.stacks SET tiles = @tiles WHERE owner_id = @owner AND item_id = @item AND quantity > 0", cancellationToken);
+        command.Parameters.AddWithValue("owner", owner);
+        command.Parameters.AddWithValue("item", stack.ItemId);
+        command.Parameters.AddWithValue("tiles", stack.Tiles);
+        await command.ExecuteNonQueryAsync(cancellationToken);
     }
 
     private static void Check(string item, long quantity)
@@ -264,11 +355,30 @@ public sealed class MoveItemHandler(IServiceScopeFactory scopes) : IMessageHandl
         var request = Payload.Read<MoveItemRequest>(payload);
         await using var scope = scopes.CreateAsyncScope();
         var inventory = scope.ServiceProvider.GetRequiredService<InventoryService>();
-        await inventory.MoveAsync(account, request.Item ?? "", request.Slot, cancellationToken);
+        if (request is { From: { } from, To: { } to })
+        {
+            await inventory.MoveAsync(account, from, to, cancellationToken);
+        }
+        else
+        {
+            await inventory.MoveAsync(account, request.Item ?? "", request.Slot ?? -1, cancellationToken);
+        }
+
         return await InventoryReply.CreateAsync(inventory, account, cancellationToken);
     }
 
-    private sealed record MoveItemRequest(string? Item, int Slot);
+    /// <summary>A tile to another (<c>from</c>, <c>to</c>), or, as older clients ask, an item's first stack to a tile (<c>item</c>, <c>slot</c>).</summary>
+    private sealed record MoveItemRequest(string? Item, int? Slot, int? From, int? To);
+}
+
+/// <summary>How many pieces of every item fill a tile of the inventory (<see cref="StackSizes"/>); the client asks once, for
+/// the item cards and to count tiles before taking things.</summary>
+public sealed class GetStacksHandler : IMessageHandler
+{
+    public string Type => "inventory.stacks";
+
+    public Task<Reply> HandleAsync(JsonElement? payload, ClientContext client, CancellationToken cancellationToken) =>
+        Task.FromResult(new Reply("inventory.stacks", new { stacks = StackSizes.Sizes }));
 }
 
 /// <summary>The quick bar: five numbered slots, each holding the id of an item the player picks up with one key.
@@ -386,12 +496,25 @@ internal static class InventoryReply
 {
     public static async Task<Reply> CreateAsync(InventoryService inventory, Guid account, CancellationToken cancellationToken)
     {
-        var stacks = await inventory.ListAsync(account, cancellationToken);
-        return new Reply("inventory", new
+        var (slots, stacks) = await inventory.ListAsync(account, cancellationToken);
+        // An item with no tile at all (the grid is full) shows past the grid, as one tile each.
+        var past = slots;
+        var items = new List<object>();
+        foreach (var s in stacks)
         {
-            slots = await inventory.SlotsAsync(account, cancellationToken),
-            items = stacks.Select(s => new { id = s.ItemId, name = Items.Names[s.ItemId], quantity = s.Quantity, slot = s.Slot }),
-        });
+            items.Add(new
+            {
+                id = s.ItemId,
+                name = Items.Names[s.ItemId],
+                quantity = s.Quantity,
+                slot = s.Tiles.Length > 0 ? s.Tiles[0] : past++,
+                tiles = s.Tiles,
+                over = InventoryRules.Over(s),
+                stack = StackSizes.Of(s.ItemId),
+            });
+        }
+
+        return new Reply("inventory", new { slots, items });
     }
 }
 
@@ -407,6 +530,7 @@ public sealed class InventoryModule : IGameModule
         services.AddScoped<IInventory>(sp => sp.GetRequiredService<InventoryService>());
         services.AddSingleton<IMessageHandler, GetInventoryHandler>();
         services.AddSingleton<IMessageHandler, MoveItemHandler>();
+        services.AddSingleton<IMessageHandler, GetStacksHandler>();
         services.AddScoped<Hotbar>();
         services.AddSingleton<IMessageHandler, GetHotbarHandler>();
         services.AddSingleton<IMessageHandler, SetHotbarHandler>();

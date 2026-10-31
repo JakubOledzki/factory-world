@@ -323,20 +323,22 @@ public sealed class PowerService(GameDb db, IPlotObjects plots, IPlotRegistry re
             return new GeneratorReply(id, grid, time.GetUtcNow(), []);
         }, cancellationToken);
 
-    /// <summary>Takes the fuel not burning yet back into the inventory.</summary>
+    /// <summary>Takes the fuel not burning yet back into the inventory, as much as fits; the rest stays by the fire.</summary>
     public Task<GeneratorReply> TakeAsync(Guid player, int x, int y, Guid id, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
             var grid = await GeneratorGridAsync(player, x, y, id, cancellationToken, PlotRight.Take);
             var taken = new List<(string, int)>();
-            if (grid.Unfuel(id, time.GetUtcNow()) is { } fuel)
+            var now = time.GetUtcNow();
+            if (grid.Generator(id, now) is { FuelItem: { } item, Fuel: > 0 } state
+                && grid.Unfuel(id, now, (int)await inventory.FitAsync(player, item, state.Fuel, cancellationToken)) is { } fuel)
             {
                 await inventory.AddAsync(player, fuel.Item, fuel.Quantity, cancellationToken);
                 taken.Add(fuel);
                 await grid.SaveAsync(cancellationToken);
             }
 
-            return new GeneratorReply(id, grid, time.GetUtcNow(), taken);
+            return new GeneratorReply(id, grid, now, taken);
         }, cancellationToken);
 
     /// <summary>A generator or a battery taken off its plot: its fuel goes back to the owner, its stored power is lost, and the grid goes on without it.

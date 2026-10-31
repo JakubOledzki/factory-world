@@ -22,6 +22,7 @@ var table := ""
 var can_pick_up := false
 
 var _items: Array = []
+var _slots := 0
 var _panel := ResearchPanel.new()
 var _pick_up_button: Button
 
@@ -51,14 +52,15 @@ func open_at(id: String) -> void:
 	table = id
 	_pick_up_button.visible = can_pick_up
 	show_window()
-	_panel.set_items(_items)
+	_panel.set_items(_items, _slots)
 	_panel.refresh()
 
 
-## The screen calls this whenever the inventory changes.
-func set_items(items: Array) -> void:
+## The screen calls this whenever the inventory changes, with the inventory's tiles.
+func set_items(items: Array, slots := 0) -> void:
 	_items = items
-	_panel.set_items(items)
+	_slots = slots
+	_panel.set_items(items, slots)
 
 
 ## Asks the server for the tree once, so research that ended while the game was closed is

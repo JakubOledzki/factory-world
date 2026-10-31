@@ -170,7 +170,7 @@ public sealed class SeasonService(GameDb db, IInventory inventory, IAlbumFinds a
             var (season, _) = SeasonCalendar.Current(time.GetUtcNow()) ?? throw new GameException("no_season", "No holiday is on now.");
             var offer = season.Shop.FirstOrDefault(o => o.Item == item) ?? throw new GameException("unknown_offer", "This season has no such decoration.");
             await inventory.RemoveAsync(owner, season.Token, offer.Price, cancellationToken);
-            await inventory.AddAsync(owner, offer.Item, 1, cancellationToken);
+            await inventory.ReceiveAsync(owner, offer.Item, 1, cancellationToken);
         }, cancellationToken);
 }
 

@@ -156,7 +156,8 @@ public sealed class GarageStorageService(GameDb db, IInventory inventory)
             return await ReadAsync(owner, id, kind, cancellationToken);
         }, cancellationToken);
 
-    /// <summary>Moves items from the shelf or the pallet into the inventory: <paramref name="quantity"/> of them, or all when 0.</summary>
+    /// <summary>Moves items from the shelf or the pallet into the inventory: <paramref name="quantity"/> of them, or all when 0.
+    /// Only as many as the inventory has room for come out; the rest stays.</summary>
     public Task<GarageStorageState> TakeAsync(Guid owner, Guid id, string item, long quantity, CancellationToken cancellationToken) =>
         db.InTransactionAsync(async () =>
         {
@@ -172,8 +173,9 @@ public sealed class GarageStorageService(GameDb db, IInventory inventory)
             }
 
             Check(item, quantity);
-            await GarageItemRows.RemoveAsync(db, holder, item, quantity, cancellationToken);
-            await inventory.ReceiveAsync(owner, item, quantity, cancellationToken);
+            var taken = await inventory.FitAsync(owner, item, quantity, cancellationToken);
+            await GarageItemRows.RemoveAsync(db, holder, item, taken, cancellationToken);
+            await inventory.AddAsync(owner, item, taken, cancellationToken);
             return await ReadAsync(owner, id, kind, cancellationToken);
         }, cancellationToken);
 

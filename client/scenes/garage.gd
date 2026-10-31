@@ -930,8 +930,9 @@ func _build_windows() -> void:
 	_market_window = MarketWindow.new()
 	_market_window.dock_right()
 	_market_window.traded.connect(_on_traded)
-	_market_window.to_pallet.connect(func(_item: String) -> void:
-		_show_toast("Ekwipunek pełny: zakup czeka na palecie dostaw.", UI.GOLD))
+	_market_window.to_pallet.connect(func(_item: String, quantity: int) -> void:
+		_show_toast("Nie wszystko się zmieściło w ekwipunku: %d szt. czeka na palecie dostaw." % quantity if quantity > 0
+				else "Ekwipunek pełny: zakup czeka na palecie dostaw.", UI.GOLD))
 	_market_window.failed.connect(_show_error)
 	_contracts_window = ContractsWindow.new()
 	_contracts_window.changed.connect(_on_contracts_changed)
@@ -1140,7 +1141,7 @@ func _apply_inventory(inventory: Dictionary) -> void:
 	_market_window.set_player(_items, _balance)
 	_contracts_window.set_player(_items, _balance)
 	_crafting_window.set_items(_items)
-	_research_window.set_items(_items)
+	_research_window.set_items(_items, _slots.slots)
 	_furnace_window.set_items(_items)
 	_sorter_window.set_items(_items)
 	_storage_window.set_items(_items)
